@@ -1,0 +1,796 @@
+/**
+ * Hotel Website - Footer Styles
+ * Consolidated footer styles - Minimalist Professional Design
+ * All footer-related CSS in one place
+ */
+
+/* ============================================
+   MINIMALIST FOOTER - BASE STYLES
+   ============================================ */
+
+.minimalist-footer {
+    background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 100%);
+    padding: 60px 0 30px;
+    margin-top: auto;
+    position: relative;
+    overflow: hidden;
+}
+
+.minimalist-footer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--gold) 0%, #FFD700 50%, var(--dark-gold) 100%);
+}
+
+.minimalist-footer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 40px;
+    margin-bottom: 40px;
+}
+
+.minimalist-footer-column {
+    display: flex;
+    flex-direction: column;
+}
+
+.minimalist-footer-column h4 {
+    color: var(--gold);
+    font-family: var(--font-serif);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    position: relative;
+    padding-bottom: 12px;
+}
+
+.minimalist-footer-column h4::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--gold), var(--dark-gold));
+}
+
+.minimalist-footer-links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.minimalist-footer-links li {
+    margin: 0;
+}
+
+.minimalist-footer-links a {
+    color: rgba(251, 248, 243, 0.8);
+    text-decoration: none;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.minimalist-footer-links a:hover {
+    color: var(--gold);
+    transform: translateX(5px);
+}
+
+.minimalist-footer-links a.policy-link {
+    cursor: pointer;
+}
+
+/* ============================================
+   CONTACT INFO - FOOTER
+   ============================================ */
+
+.minimalist-contact-info {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.minimalist-contact-info li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(212, 175, 55, 0.1);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.minimalist-contact-info li:hover {
+    background: rgba(212, 175, 55, 0.08);
+    border-color: rgba(212, 175, 55, 0.25);
+    transform: translateX(4px);
+}
+
+.minimalist-contact-info li i {
+    color: var(--gold);
+    font-size: 16px;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.minimalist-contact-info li a,
+.minimalist-contact-info li span {
+    color: rgba(251, 248, 243, 0.85);
+    font-size: 14px;
+    line-height: 1.5;
+    text-decoration: none;
+}
+
+.minimalist-contact-info li a:hover {
+    color: var(--gold);
+}
+
+/* ============================================
+   SOCIAL LINKS - FOOTER
+   ============================================ */
+
+.minimalist-social-links {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.minimalist-social-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+    color: var(--gold);
+    font-size: 16px;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    text-decoration: none;
+}
+
+.minimalist-social-icon:hover {
+    background: rgba(212, 175, 55, 0.15);
+    border-color: rgba(212, 175, 55, 0.4);
+    color: #FFD700;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(212, 175, 55, 0.3);
+}
+
+/* ============================================
+   SHARE BUTTONS - FOOTER
+   ============================================ */
+
+.share-section-title {
+    color: var(--gold);
+    font-family: var(--font-serif);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin: 16px 0 12px;
+}
+
+.minimalist-share-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.minimalist-share-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    border: 1px solid rgba(212, 175, 55, 0.18);
+    color: var(--navy);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.minimalist-share-btn:hover {
+    background: rgba(212, 175, 55, 0.1);
+    border-color: rgba(212, 175, 55, 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(212, 175, 55, 0.25);
+}
+
+.minimalist-share-btn i {
+    font-size: 14px;
+    color: var(--gold);
+}
+
+/* ============================================
+   FOOTER BOTTOM - COPYRIGHT & CREDITS
+   ============================================ */
+
+.minimalist-footer-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 30px;
+    margin-top: 40px;
+    border-top: 1px solid rgba(212, 175, 55, 0.15);
+}
+
+.minimalist-footer-copyright,
+.minimalist-footer-credits {
+    flex: 1;
+}
+
+.minimalist-footer-copyright p,
+.minimalist-footer-credits p {
+    color: rgba(251, 248, 243, 0.6);
+    font-size: 13px;
+    margin: 0;
+    line-height: 1.6;
+}
+
+.minimalist-footer-copyright p i,
+.minimalist-footer-credits p i {
+    color: var(--gold);
+}
+
+/* ============================================
+   POLICY MODALS - FOOTER
+   ============================================ */
+
+.policy-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 900;
+}
+
+.policy-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.policy-modals {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    z-index: 901;
+    pointer-events: none;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.policy-modal {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+    transition: all 0.3s ease;
+    max-width: 620px;
+    width: 100%;
+    pointer-events: none;
+}
+
+.policy-modal.active {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.policy-modal__content {
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+    padding: 28px;
+    position: relative;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.policy-modal__header h3 {
+    margin: 8px 0 6px 0;
+    font-size: 22px;
+    color: var(--navy);
+}
+
+.policy-summary {
+    margin: 0 0 14px 0;
+    color: #555;
+    font-size: 14px;
+    font-style: italic;
+}
+
+.policy-modal__body {
+    margin-top: 14px;
+    color: #444;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.policy-pill {
+    display: inline-block;
+    padding: 6px 12px;
+    background: rgba(212, 175, 55, 0.15);
+    color: var(--gold);
+    font-weight: 600;
+    font-size: 11px;
+    border-radius: 999px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+}
+
+/* ============================================
+   TRUST BADGES - FOOTER
+   ============================================ */
+
+.trust-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    margin-top: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+}
+
+.trust-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(212, 175, 55, 0.15);
+    border-radius: 10px;
+    color: #666;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    transition: all 0.3s ease;
+}
+
+.trust-badge:hover {
+    background: rgba(212, 175, 55, 0.08);
+    border-color: rgba(212, 175, 55, 0.3);
+    transform: translateY(-1px);
+}
+
+.trust-badge i {
+    color: var(--gold);
+    font-size: 16px;
+    margin-right: 6px;
+}
+
+.trust-badge .verified-icon {
+    color: #00C853;
+    font-size: 12px;
+    margin-left: 6px;
+}
+
+/* ============================================
+   LEGACY FOOTER STYLES (Backward Compatibility)
+   ============================================ */
+
+/* Original footer class styles */
+.footer {
+    padding: 50px 0 30px;
+}
+
+.footer-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.footer-column h4 {
+    font-size: 16px;
+    margin-bottom: 16px;
+}
+
+.footer-links li {
+    margin-bottom: 10px;
+}
+
+.footer-links a {
+    font-size: 14px;
+}
+
+.footer-bottom {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    text-align: center;
+    padding-top: 30px;
+    margin: 0;
+}
+
+.footer-copyright,
+.footer-credits {
+    font-size: 12px;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN - TABLET (769px to 1190px)
+   ============================================ */
+
+@media (min-width: 769px) and (max-width: 1190px) {
+    /* Enhanced contact info */
+    .minimalist-contact-info {
+        display: flex;
+        flex-direction: row;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+
+    .minimalist-contact-info li {
+        width: auto;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(212, 175, 55, 0.1);
+        border-radius: 10px;
+    }
+
+    .minimalist-contact-info li:hover {
+        background: rgba(212, 175, 55, 0.08);
+        border-color: rgba(212, 175, 55, 0.25);
+    }
+
+    /* Enhanced social links */
+    .minimalist-social-links {
+        margin-top: 12px;
+    }
+
+    /* Trust badges */
+    .trust-badges {
+        margin-top: 20px;
+    }
+
+    /* Minimalist footer grid */
+    .minimalist-footer-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 30px;
+    }
+}
+
+/* ============================================
+   RESPONSIVE DESIGN - MOBILE (768px and below)
+   ============================================ */
+
+@media (max-width: 768px) {
+    /* Footer base */
+    .minimalist-footer,
+    .footer {
+        padding: 40px 0 20px;
+        overflow-x: hidden;
+    }
+
+    /* Footer grid - stack columns */
+    .minimalist-footer-grid,
+    .footer-grid {
+        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+    }
+
+    /* Footer columns */
+    .minimalist-footer-column,
+    .footer-column {
+        width: 100%;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(212, 175, 55, 0.1);
+        border-radius: 12px;
+    }
+
+    /* Footer column headings */
+    .minimalist-footer-column h4,
+    .footer-column h4 {
+        font-size: 16px;
+        text-align: center;
+        margin-bottom: 12px;
+    }
+
+    .minimalist-footer-column h4::after {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    /* Footer links */
+    .minimalist-footer-links,
+    .footer-links {
+        text-align: center;
+    }
+
+    .minimalist-footer-links a,
+    .footer-links a {
+        font-size: 14px;
+        padding: 10px;
+        justify-content: center;
+    }
+
+    .minimalist-footer-links a:hover,
+    .footer-links a:hover {
+        transform: translateX(0);
+    }
+
+    /* Contact info */
+    .minimalist-contact-info {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .minimalist-contact-info li {
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+        width: 100%;
+        gap: 12px;
+        padding: 12px;
+        background: transparent;
+        border: none;
+    }
+
+    .minimalist-contact-info li:hover {
+        background: rgba(212, 175, 55, 0.05);
+        border-left: 3px solid rgba(212, 175, 55, 0.2);
+        border-radius: 8px;
+        transform: translateX(4px);
+    }
+
+    .minimalist-contact-info li i {
+        width: 24px;
+        height: 24px;
+        font-size: 16px;
+        margin: 2px 0 0 0;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .minimalist-contact-info li span {
+        flex: 1;
+        line-height: 1.5;
+    }
+
+    .minimalist-contact-info li a {
+        flex: 1;
+        line-height: 1.5;
+    }
+
+    /* Social links - center on mobile */
+    .minimalist-social-links {
+        justify-content: center;
+        gap: 12px;
+    }
+
+    .minimalist-social-icon {
+        width: 45px;
+        height: 45px;
+        font-size: 16px;
+    }
+
+    /* Share buttons - smaller on mobile */
+    .minimalist-share-buttons {
+        justify-content: center;
+        padding: 12px;
+    }
+
+    .minimalist-share-btn {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    /* Trust badges - stack on mobile */
+    .trust-badges {
+        flex-direction: row;
+        justify-content: center;
+        padding: 12px;
+        gap: 8px;
+    }
+
+    .trust-badge {
+        padding: 6px 12px;
+        font-size: 10px;
+    }
+
+    /* Footer bottom */
+    .minimalist-footer-bottom,
+    .footer-bottom {
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
+        text-align: center;
+    }
+
+    .minimalist-footer-copyright,
+    .minimalist-footer-credits,
+    .footer-copyright,
+    .footer-credits {
+        font-size: 12px;
+        margin-bottom: 8px;
+    }
+
+    /* Policy modals */
+    .policy-modal__content {
+        padding: 22px;
+    }
+
+    .policy-modal__header h3 {
+        font-size: 19px;
+    }
+
+    .policy-modal__body {
+        font-size: 13px;
+    }
+}
+
+/* ============================================
+   RESPONSIVE DESIGN - SMALL MOBILE (480px and below)
+   ============================================ */
+
+@media (max-width: 480px) {
+    .minimalist-footer-grid,
+    .footer-grid {
+        gap: 24px;
+    }
+
+    .minimalist-footer-column,
+    .footer-column {
+        padding: 16px;
+    }
+
+    .minimalist-footer-column h4,
+    .footer-column h4 {
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+
+    .minimalist-social-links {
+        gap: 10px;
+    }
+
+    .minimalist-social-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 14px;
+    }
+
+    .minimalist-contact-info i {
+        width: 20px;
+        height: 20px;
+        font-size: 13px;
+    }
+
+    .trust-badges {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px;
+        padding: 12px;
+    }
+
+    .trust-badge {
+        padding: 6px 10px;
+        font-size: 10px;
+    }
+
+    .minimalist-share-buttons {
+        flex-direction: row;
+        gap: 8px;
+        padding: 12px;
+        flex-wrap: wrap;
+    }
+
+    .minimalist-share-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
+    .minimalist-share-btn span {
+        display: none;
+    }
+
+    .minimalist-footer-bottom,
+    .footer-bottom {
+        padding: 12px;
+    }
+}
+
+/* ============================================
+   SAFE AREA SUPPORT - NOTCHED DEVICES
+   ============================================ */
+
+@supports (padding: env(safe-area-inset-left)) {
+    .minimalist-footer,
+    .footer {
+        padding-left: max(20px, env(safe-area-inset-left));
+        padding-right: max(20px, env(safe-area-inset-right));
+        padding-bottom: max(30px, env(safe-area-inset-bottom));
+    }
+}
+
+/* ============================================
+   ACCESSIBILITY - REDUCED MOTION
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+    .minimalist-footer-links a,
+    .minimalist-contact-info li,
+    .minimalist-social-icon,
+    .minimalist-share-btn,
+    .trust-badge,
+    .policy-modal {
+        transition: none !important;
+        animation: none !important;
+    }
+
+    .minimalist-footer-links a:hover,
+    .minimalist-contact-info li:hover,
+    .minimalist-social-icon:hover,
+    .minimalist-share-btn:hover,
+    .trust-badge:hover {
+        transform: none !important;
+    }
+}
+
+/* ============================================
+   ACCESSIBILITY - FOCUS VISIBLE
+   ============================================ */
+
+.minimalist-footer-links a:focus-visible,
+.minimalist-contact-info li a:focus-visible,
+.minimalist-social-icon:focus-visible,
+.minimalist-share-btn:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+    .minimalist-footer,
+    .footer {
+        background: white !important;
+        color: black !important;
+    }
+
+    .minimalist-social-links,
+    .minimalist-share-buttons,
+    .trust-badges {
+        display: none !important;
+    }
+
+    .policy-overlay,
+    .policy-modals {
+        display: none !important;
+    }
+}

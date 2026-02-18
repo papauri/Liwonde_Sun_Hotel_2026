@@ -1,0 +1,654 @@
+/**
+ * Admin Components CSS
+ * Modal and Alert styles for admin pages
+ */
+
+/* ============================================
+   MODAL STYLES
+   ============================================ */
+
+:root {
+    --modal-overlay-bg: rgba(0, 0, 0, 0.7);
+    --modal-bg: #ffffff;
+    --modal-border-radius: 12px;
+    --modal-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    --modal-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --modal-header-bg: linear-gradient(135deg, #f5f2e8 0%, #ece6d6 100%);
+    --modal-header-color: var(--deep-navy, #0f1d2e);
+    --modal-close-color: var(--deep-navy, #0f1d2e);
+    --modal-close-hover: var(--gold, #d4af37);
+}
+
+/* Modal Overlay */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--modal-overlay-bg);
+    z-index: 9998;
+    opacity: 0;
+    visibility: hidden;
+    transition: var(--modal-transition);
+    backdrop-filter: blur(4px);
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Modal Wrapper - Centers modal on screen */
+.modal-wrapper {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transition: var(--modal-transition);
+    pointer-events: none;
+}
+
+.modal-wrapper.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+}
+
+/* Modal Container */
+.modal-container {
+    background: var(--modal-bg);
+    border-radius: var(--modal-border-radius);
+    box-shadow: var(--modal-shadow);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+}
+
+/* Modal Sizes */
+.modal-sm .modal-container {
+    width: 90%;
+    max-width: 400px;
+}
+
+.modal-md .modal-container {
+    width: 90%;
+    max-width: 500px;
+}
+
+.modal-lg .modal-container {
+    width: 90%;
+    max-width: 700px;
+}
+
+.modal-xl .modal-container {
+    width: 90%;
+    max-width: 900px;
+}
+
+/* Modal Close Button */
+.modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--modal-close-color);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.modal-close:hover {
+    background: var(--modal-close-hover);
+    color: var(--deep-navy, #0f1d2e);
+    transform: rotate(90deg);
+}
+
+.modal-close:focus {
+    outline: 2px solid var(--gold, #d4af37);
+    outline-offset: 2px;
+}
+
+/* Modal Header */
+.modal-header {
+    background: var(--modal-header-bg);
+    color: var(--modal-header-color);
+    padding: 20px 24px;
+    position: relative;
+}
+
+.modal-title {
+    margin: 0;
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--deep-navy, #0f1d2e);
+}
+
+/* Modal Body */
+.modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Modal Footer */
+.modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    background: #f8f9fa;
+}
+
+/* Modal Responsive */
+@media (max-width: 768px) {
+    .modal-wrapper {
+        width: 95%;
+    }
+
+    .modal-sm .modal-container,
+    .modal-md .modal-container,
+    .modal-lg .modal-container,
+    .modal-xl .modal-container {
+        width: 100%;
+        max-width: none;
+        max-height: 95vh;
+    }
+
+    .modal-header {
+        padding: 16px 20px;
+    }
+
+    .modal-title {
+        font-size: 18px;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .modal-footer {
+        padding: 12px 20px;
+        flex-direction: column;
+    }
+
+    .modal-footer button,
+    .modal-footer a {
+        width: 100%;
+    }
+}
+
+/* Animation for modal content */
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-wrapper.active .modal-container {
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+    overflow: hidden;
+}
+
+/* ============================================
+   ALERT STYLES
+   ============================================ */
+
+:root {
+    --alert-border-radius: 12px;
+    --alert-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --alert-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --alert-padding: 16px 20px;
+    --alert-font-size: 14px;
+}
+
+/* Alert Wrapper - Centers alert on screen */
+.alert-wrapper {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    width: 100%;
+    max-width: 600px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.alert-wrapper.alert-top {
+    top: 20px;
+}
+
+.alert-wrapper.alert-bottom {
+    bottom: 20px;
+}
+
+.alert-wrapper.alert-top-left {
+    top: 20px;
+    left: 20px;
+    transform: none;
+    max-width: 400px;
+}
+
+.alert-wrapper.alert-top-right {
+    top: 20px;
+    right: 20px;
+    left: auto;
+    transform: none;
+    max-width: 400px;
+}
+
+.alert-wrapper.alert-bottom-left {
+    bottom: 20px;
+    left: 20px;
+    transform: none;
+    max-width: 400px;
+}
+
+.alert-wrapper.alert-bottom-right {
+    bottom: 20px;
+    right: 20px;
+    left: auto;
+    transform: none;
+    max-width: 400px;
+}
+
+/* Alert Container */
+.alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: var(--alert-padding);
+    border-radius: var(--alert-border-radius);
+    background: var(--alert-bg);
+    border-left: 4px solid var(--alert-border);
+    color: var(--alert-color);
+    box-shadow: var(--alert-shadow);
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: var(--alert-transition);
+    position: relative;
+    overflow: hidden;
+}
+
+.alert.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.alert.hide {
+    opacity: 0;
+    transform: translateY(-20px);
+}
+
+/* Alert Icon */
+.alert-icon {
+    flex-shrink: 0;
+    font-size: 20px;
+    margin-top: 2px;
+}
+
+/* Alert Content */
+.alert-content {
+    flex: 1;
+    font-size: var(--alert-font-size);
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.alert-content strong {
+    font-weight: 600;
+}
+
+/* Alert Close Button */
+.alert-close {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: currentColor;
+    opacity: 0.6;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    padding: 0;
+    margin-top: -4px;
+}
+
+.alert-close:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.alert-close:focus {
+    outline: 2px solid var(--alert-border);
+    outline-offset: 2px;
+}
+
+/* Alert Type Specific Styles */
+.alert-success {
+    --alert-bg: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    --alert-border: #28a745;
+    --alert-color: #155724;
+}
+
+.alert-error {
+    --alert-bg: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    --alert-border: #dc3545;
+    --alert-color: #721c24;
+}
+
+.alert-warning {
+    --alert-bg: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    --alert-border: #ffc107;
+    --alert-color: #856404;
+}
+
+.alert-info {
+    --alert-bg: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+    --alert-border: #17a2b8;
+    --alert-color: #0c5460;
+}
+
+/* Alert Animation */
+@keyframes alertSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes alertSlideOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+}
+
+.alert.show {
+    animation: alertSlideIn 0.3s ease-out forwards;
+}
+
+.alert.hide {
+    animation: alertSlideOut 0.3s ease-out forwards;
+}
+
+/* Multiple Alerts Stacking */
+.alert-wrapper .alert + .alert {
+    margin-top: 12px;
+}
+
+/* Alert Responsive */
+@media (max-width: 768px) {
+    .alert-wrapper {
+        left: 10px;
+        right: 10px;
+        width: auto;
+        max-width: none;
+        transform: none;
+    }
+
+    .alert-wrapper.alert-top-left,
+    .alert-wrapper.alert-top-right,
+    .alert-wrapper.alert-bottom-left,
+    .alert-wrapper.alert-bottom-right {
+        left: 10px;
+        right: 10px;
+        max-width: none;
+    }
+
+    .alert {
+        padding: 14px 16px;
+        font-size: 13px;
+    }
+
+    .alert-icon {
+        font-size: 18px;
+    }
+}
+
+/* ============================================
+   320px SCREEN OPTIMIZATIONS
+   ============================================ */
+
+/* Modal 320px Optimizations */
+@media (max-width: 320px) {
+    /* Modal Overlay - Full Screen */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+    
+    /* Modal Wrapper - Full Screen */
+    .modal-wrapper {
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        transform: none;
+        position: fixed;
+    }
+    
+    .modal-wrapper.active {
+        transform: none;
+    }
+    
+    /* All modal sizes become full screen */
+    .modal-sm .modal-container,
+    .modal-md .modal-container,
+    .modal-lg .modal-container,
+    .modal-xl .modal-container {
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        border-radius: 0;
+        margin: 0;
+    }
+    
+    /* Modal Header - Compact */
+    .modal-header {
+        padding: 12px 16px;
+        background: var(--modal-header-bg);
+    }
+    
+    .modal-title {
+        font-size: 16px;
+        line-height: 1.3;
+        padding-right: 40px; /* Space for close button */
+    }
+    
+    /* Modal Close Button - Adjusted Position */
+    .modal-close {
+        top: 8px;
+        right: 8px;
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+    
+    .modal-close:focus {
+        outline-width: 2px;
+    }
+    
+    /* Modal Body - Scrollable */
+    .modal-body {
+        padding: 12px 16px;
+        font-size: 12px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Modal Footer - Stacked Buttons */
+    .modal-footer {
+        padding: 12px 16px;
+        flex-direction: column;
+        gap: 8px;
+        background: #f8f9fa;
+        border-top: 1px solid #e0e0e0;
+    }
+    
+    .modal-footer button,
+    .modal-footer a,
+    .modal-footer .btn {
+        width: 100%;
+        padding: 10px 16px;
+        font-size: 12px;
+        margin: 0;
+        text-align: center;
+    }
+    
+    /* Form elements in modals */
+    .modal-body .form-group {
+        margin-bottom: 16px;
+    }
+    
+    .modal-body .form-control {
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+    
+    .modal-body label {
+        font-size: 12px;
+        margin-bottom: 6px;
+    }
+    
+    /* Tables in modals */
+    .modal-body .table {
+        font-size: 10px;
+    }
+    
+    .modal-body .table th,
+    .modal-body .table td {
+        padding: 6px 8px;
+    }
+}
+
+/* Alert 320px Optimizations */
+@media (max-width: 320px) {
+    /* Alert Wrapper - Full Width */
+    .alert-wrapper {
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: none;
+        transform: none;
+        padding: 0 8px;
+    }
+    
+    .alert-wrapper.alert-top {
+        top: 8px;
+    }
+    
+    .alert-wrapper.alert-bottom {
+        bottom: 8px;
+    }
+    
+    /* All alert positions become centered full-width */
+    .alert-wrapper.alert-top-left,
+    .alert-wrapper.alert-top-right,
+    .alert-wrapper.alert-bottom-left,
+    .alert-wrapper.alert-bottom-right {
+        left: 0;
+        right: 0;
+        max-width: none;
+        padding: 0 8px;
+        transform: none;
+    }
+    
+    /* Alert Container - Compact */
+    .alert {
+        padding: 10px 12px;
+        font-size: 11px;
+        line-height: 1.4;
+        border-radius: 8px;
+    }
+    
+    /* Alert Icon - Smaller */
+    .alert-icon {
+        font-size: 16px;
+        flex-shrink: 0;
+        margin-top: 1px;
+    }
+    
+    /* Alert Content - Compact */
+    .alert-content {
+        font-size: 11px;
+        line-height: 1.4;
+    }
+    
+    /* Alert Close Button - Compact */
+    .alert-close {
+        width: 20px;
+        height: 20px;
+        font-size: 14px;
+        margin-top: -2px;
+    }
+    
+    /* Multiple alerts spacing */
+    .alert-wrapper .alert + .alert {
+        margin-top: 8px;
+    }
+    
+    /* Animation adjustments */
+    .alert.show {
+        animation: alertSlideIn 0.25s ease-out forwards;
+    }
+    
+    .alert.hide {
+        animation: alertSlideOut 0.25s ease-out forwards;
+    }
+}
+
+/* Touch-friendly targets on 320px */
+@media (max-width: 320px) {
+    /* Increase tap targets for buttons */
+    .modal-close,
+    .alert-close {
+        min-width: 44px;
+        min-height: 44px;
+    }
+    
+    .modal-footer button,
+    .modal-footer a {
+        min-height: 44px;
+    }
+}
