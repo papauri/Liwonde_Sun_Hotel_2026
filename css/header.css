@@ -1,0 +1,885 @@
+/**
+ * Hotel Website - Header Styles
+ * Dedicated stylesheet for all header, navbar, and navigation components
+ * 
+ * Responsive Breakpoints:
+ * - 1500px+: Full desktop navbar (current look preserved)
+ * - 1200-1499px: Full desktop navbar with adjusted spacing
+ * - 1199px and below: Mobile header with hamburger menu
+ * - 320-767px: Extra small screen optimizations
+ */
+
+/* ============================================
+   CSS CUSTOM PROPERTIES
+   ============================================ */
+:root {
+    --header-bg: linear-gradient(135deg, rgba(20, 20, 20, 0.95), rgba(40, 40, 40, 0.95));
+    --header-bg-mobile: rgba(20, 20, 20, 0.98);
+    --header-scrolled-bg: rgba(10, 10, 10, 0.98);
+    --nav-link-color: #e0e0e0;
+    --nav-link-hover: #d4af37;
+    --nav-link-active: #d4af37;
+    --gold: #d4af37;
+    --deep-navy: #0a1929;
+    --menu-overlay-bg: rgba(0, 0, 0, 0.95);
+    --menu-overlay-blur: 10px;
+}
+
+/* ============================================
+   BASE HEADER STYLES (1500px+)
+   ============================================ */
+
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+    background: var(--header-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+    transition: padding 0.3s ease, background 0.3s ease;
+    padding: 16px 24px;
+}
+
+.header.scrolled {
+    padding: 8px 16px;
+    background: var(--header-scrolled-bg);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1600px;
+    margin: 0 auto;
+    position: relative;
+}
+
+/* ============================================
+   LOGO STYLES
+   ============================================ */
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    transition: transform 0.3s ease;
+    z-index: 1002;
+    position: relative;
+}
+
+.logo:hover {
+    transform: translateY(-2px);
+}
+
+.logo-image {
+    height: 28px;
+    width: auto;
+    object-fit: contain;
+}
+
+.logo-text {
+    display: inline-block;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    background: linear-gradient(135deg, #d4af37 0%, #f4d03f 50%, #d4af37 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    position: relative;
+    transition: transform 0.3s ease;
+}
+
+.logo-text::before {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #d4af37, transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.logo:hover .logo-text {
+    transform: scale(1.05);
+}
+
+.logo:hover .logo-text::before {
+    opacity: 1;
+}
+
+.logo-hotel-icon {
+    margin-left: 8px;
+    width: 18px;
+    height: 18px;
+    fill: #d4af37;
+    transition: transform 0.3s ease;
+}
+
+.logo:hover .logo-hotel-icon {
+    transform: translateY(-2px);
+}
+
+.logo-icon {
+    font-size: 22px;
+    color: #d4af37;
+}
+
+/* Hide mobile separate elements on desktop (1500px+) */
+.logo-hotel-icon-link,
+.logo-text-link {
+    display: none;
+}
+
+/* ============================================
+   NAVIGATION MENU STYLES
+   ============================================ */
+
+.nav-menu {
+    display: flex;
+    align-items: center;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    gap: 4px;
+}
+
+.nav-item {
+    position: relative;
+}
+
+.nav-link {
+    display: block;
+    padding: 12px 18px;
+    color: var(--nav-link-color);
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    transition: color 0.3s ease, transform 0.3s ease, background 0.3s ease;
+    position: relative;
+    border-radius: 8px;
+}
+
+/* Luxury underline effect */
+.nav-link::before {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%) scaleX(0);
+    width: 80%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #d4af37, transparent);
+    transition: transform 0.3s ease;
+}
+
+/* Glow effect on hover */
+.nav-link::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 0;
+    height: 0;
+    background: radial-gradient(circle, rgba(212, 175, 55, 0.15), transparent 70%);
+    transition: width 0.3s ease, height 0.3s ease;
+    border-radius: 50%;
+    z-index: -1;
+}
+
+.nav-link:hover::before,
+.nav-link.active::before {
+    transform: translateX(-50%) scaleX(1);
+}
+
+.nav-link:hover::after {
+    width: 120%;
+    height: 200%;
+}
+
+.nav-link:hover {
+    color: var(--nav-link-hover);
+}
+
+.nav-link.active {
+    color: var(--nav-link-active);
+    background: rgba(212, 175, 55, 0.15);
+}
+
+/* Supreme Premium CTA Button */
+.nav-item-cta {
+    margin-left: 20px;
+}
+
+.nav-cta {
+    display: inline-block;
+    padding: 12px 28px;
+    background: linear-gradient(135deg, #d4af37 0%, #c49b2e 100%);
+    color: #0a1929;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.5px;
+    border-radius: 50px;
+    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.nav-cta::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s ease;
+}
+
+.nav-cta:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+}
+
+.nav-cta:hover::before {
+    left: 100%;
+}
+
+/* ============================================
+   MOBILE MENU BUTTON
+   ============================================ */
+
+.mobile-menu-btn {
+    display: none;
+    position: fixed;
+    right: 1rem;
+    top: 1rem;
+    width: 44px;
+    height: 44px;
+    background: rgba(212, 175, 55, 0.15);
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    border-radius: 12px;
+    cursor: pointer;
+    z-index: 1003;
+    transition: background 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+    align-items: center;
+    justify-content: center;
+}
+
+.mobile-menu-btn:hover {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.35) 0%, rgba(212, 175, 55, 0.2) 100%);
+    border-color: rgba(212, 175, 55, 0.5);
+}
+
+.mobile-menu-btn.active {
+    background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%);
+    border-color: var(--gold);
+}
+
+.menu-icon {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 24px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-icon span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: var(--gold);
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}
+
+.menu-icon span:nth-child(2) {
+    width: 75%;
+}
+
+.menu-icon span:nth-child(3) {
+    width: 100%;
+}
+
+.mobile-menu-btn:hover .menu-icon span:nth-child(2) {
+    width: 100%;
+}
+
+.mobile-menu-btn.active .menu-icon span {
+    background: var(--deep-navy);
+}
+
+/* Hamburger animation when menu open */
+.mobile-menu-btn.active .menu-icon span:nth-child(1) {
+    transform: rotate(45deg) translate(6px, 6px);
+}
+
+.mobile-menu-btn.active .menu-icon span:nth-child(2) {
+    opacity: 0;
+    transform: translateX(-10px);
+}
+
+.mobile-menu-btn.active .menu-icon span:nth-child(3) {
+    transform: rotate(-45deg) translate(6px, -6px);
+}
+
+/* ============================================
+   DESKTOP 1200-1499px BREAKPOINT
+   Fix overlapping, match 1500px appearance
+   ============================================ */
+
+@media (min-width: 1200px) and (max-width: 1499px) {
+    .header {
+        padding: 14px 20px;
+    }
+
+    .navbar {
+        max-width: 1400px;
+    }
+
+    /* Hide mobile separate elements on desktop */
+    .logo-hotel-icon-link,
+    .logo-text-link {
+        display: none;
+    }
+
+    /* Show desktop logo */
+    .logo {
+        display: flex;
+    }
+
+    /* Reduce nav item spacing to fit 8 items */
+    .nav-link {
+        padding: 10px 14px;
+        font-size: 0.9rem;
+    }
+
+    /* Scale down logo text slightly */
+    .logo-text {
+        font-size: 1.35rem;
+    }
+
+    /* Adjust CTA button */
+    .nav-item-cta {
+        margin-left: 12px;
+    }
+
+    .nav-cta {
+        padding: 10px 22px;
+        font-size: 0.9rem;
+    }
+
+    /* Reduce gap between nav items */
+    .nav-menu {
+        gap: 2px;
+    }
+}
+
+/* ============================================
+   MOBILE 1199px AND BELOW BREAKPOINT
+   Mobile header with hamburger menu
+   ============================================ */
+
+@media (max-width: 1199px) {
+    .header {
+        padding: 12px 16px;
+        background: var(--header-bg-mobile);
+        min-height: 60px;
+    }
+
+    .navbar {
+        justify-content: space-between;
+        min-height: 60px;
+    }
+
+    /* Hide desktop nav menu */
+    .nav-menu {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100vh;
+        background: var(--menu-overlay-bg);
+        backdrop-filter: blur(var(--menu-overlay-blur));
+        -webkit-backdrop-filter: blur(var(--menu-overlay-blur));
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 1001;
+        isolation: isolate;
+        padding: 80px 0 40px;
+    }
+
+    .nav-menu.active {
+        display: flex;
+        left: 0;
+    }
+
+    /* Brightness overlay for mobile menu when open */
+    .nav-menu::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        opacity: 1;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+        z-index: -1;
+    }
+
+    /* Brightness effect when mobile menu is open */
+    .nav-menu.active::after {
+        opacity: 0;
+    }
+
+    .nav-menu.active .nav-item,
+    .nav-menu.active .nav-link {
+        position: relative;
+        z-index: 1;
+    }
+
+    .nav-menu.active .nav-item {
+        width: 100%;
+        text-align: center;
+        opacity: 0;
+        transform: translateY(-20px);
+        animation: slideInItem 0.4s ease forwards;
+    }
+
+    .nav-menu.active .nav-item:nth-child(1) { animation-delay: 0.05s; }
+    .nav-menu.active .nav-item:nth-child(2) { animation-delay: 0.1s; }
+    .nav-menu.active .nav-item:nth-child(3) { animation-delay: 0.15s; }
+    .nav-menu.active .nav-item:nth-child(4) { animation-delay: 0.2s; }
+    .nav-menu.active .nav-item:nth-child(5) { animation-delay: 0.25s; }
+    .nav-menu.active .nav-item:nth-child(6) { animation-delay: 0.3s; }
+    .nav-menu.active .nav-item:nth-child(7) { animation-delay: 0.35s; }
+    .nav-menu.active .nav-item:nth-child(8) { animation-delay: 0.4s; }
+
+    .nav-menu.active .nav-link {
+        display: block;
+        padding: 16px 24px;
+        font-size: 1.25rem;
+        color: #e0e0e0;
+    }
+
+    /* Active page highlight (mobile full-screen menu) - 3D moving through effect */
+    .nav-menu.active .nav-link.active {
+        background: linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.08) 50%, rgba(212, 175, 55, 0.2) 100%);
+        color: #ffd700;
+        box-shadow:
+            0 4px 15px rgba(212, 175, 55, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+        transform: translateX(10px) scale(1.02);
+        transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* Animated shine effect moving through active link */
+    .nav-menu.active .nav-link.active::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.3) 50%,
+            transparent 100%);
+        animation: shineMove 2s ease-in-out infinite;
+    }
+
+    @keyframes shineMove {
+        0% { left: -100%; }
+        50% { left: 100%; }
+        100% { left: 100%; }
+    }
+
+    .nav-menu.active .nav-link::before {
+        display: none;
+    }
+
+    .nav-menu.active .nav-link:hover::before,
+    .nav-menu.active .nav-link.active::before {
+        display: none;
+    }
+
+    /* Keep shine effect for active links, hide for non-active */
+    .nav-menu.active .nav-link:not(.active)::after {
+        display: none;
+    }
+
+    .nav-menu.active .nav-item-cta {
+        margin: 40px 20px 0;
+        opacity: 0;
+        animation: slideUpCta 0.5s ease 0.4s forwards;
+    }
+
+    .nav-menu.active .nav-cta {
+        display: block;
+        width: 100%;
+        max-width: 320px;
+        margin: 0 auto;
+        text-align: center;
+        padding: 18px 32px;
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        background: linear-gradient(135deg, #d4af37 0%, #f4d03f 50%, #d4af37 100%);
+        color: #0a1929;
+        border: none;
+        border-radius: 50px;
+        box-shadow:
+            0 8px 25px rgba(212, 175, 55, 0.5),
+            0 4px 10px rgba(0, 0, 0, 0.3),
+            inset 0 2px 0 rgba(255, 255, 255, 0.4),
+            inset 0 -2px 0 rgba(0, 0, 0, 0.2);
+        transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* 3D depth effect */
+    .nav-menu.active .nav-cta::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(180deg,
+            rgba(255, 255, 255, 0.3) 0%,
+            transparent 50%,
+            rgba(0, 0, 0, 0.1) 100%);
+        border-radius: 50px;
+        pointer-events: none;
+    }
+
+    /* Animated shine effect */
+    .nav-menu.active .nav-cta::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.5) 50%,
+            transparent 100%);
+        transition: left 0.6s ease;
+        border-radius: 50px;
+    }
+
+    .nav-menu.active .nav-cta:hover {
+        transform: translateY(-4px) scale(1.05);
+        box-shadow:
+            0 12px 35px rgba(212, 175, 55, 0.6),
+            0 6px 15px rgba(0, 0, 0, 0.4),
+            inset 0 2px 0 rgba(255, 255, 255, 0.5),
+            inset 0 -2px 0 rgba(0, 0, 0, 0.2);
+    }
+
+    .nav-menu.active .nav-cta:hover::after {
+        left: 100%;
+    }
+
+    .nav-menu.active .nav-cta:active {
+        transform: translateY(-2px) scale(1.02);
+        box-shadow:
+            0 6px 20px rgba(212, 175, 55, 0.5),
+            0 3px 8px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.3),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+    }
+
+    /* Hide desktop logo structure on mobile */
+    .logo {
+        display: none;
+    }
+
+    /* Hotel icon link - far left */
+    .logo-hotel-icon-link {
+        position: fixed;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 1002;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .logo-hotel-icon {
+        width: 18px;
+        height: 18px;
+        fill: #d4af37;
+        transition: transform 0.3s ease;
+    }
+
+    .logo-hotel-icon:hover {
+        transform: translateY(-2px);
+    }
+
+    /* Logo text link - centered */
+    .logo-text-link {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .logo-text {
+        font-size: 1.4rem;
+        white-space: nowrap;
+        display: inline-block;
+        font-weight: 500;
+        letter-spacing: 1px;
+        background: linear-gradient(180deg, #ffd700 0%, #d4af37 50%, #b8860b 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        position: relative;
+        transition: all 0.3s ease;
+    }
+
+    /* Subtle hover effect for logo text */
+    .logo-text-link:hover .logo-text {
+        transform: translateY(-1px);
+    }
+
+    /* Show mobile menu button */
+    .mobile-menu-btn {
+        display: flex;
+    }
+}
+
+/* ============================================
+   SMALL MOBILE 320-767px BREAKPOINT
+   Extra small screen optimizations
+   ============================================ */
+
+@media (max-width: 767px) {
+    .header {
+        padding: 10px 12px;
+        min-height: 56px;
+    }
+
+    .navbar {
+        min-height: 56px;
+    }
+
+    /* Minimalist logo text for small mobile */
+    .logo-text {
+        font-size: 1.2rem;
+        font-weight: 500;
+        letter-spacing: 0.8px;
+    }
+
+    .logo-text-link:hover .logo-text {
+        transform: translateY(-1px);
+    }
+
+    /* Reduce hotel icon size */
+    .logo-hotel-icon-link {
+        left: 0.75rem;
+    }
+
+    .logo-hotel-icon {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* Reduce hamburger button size */
+    .mobile-menu-btn {
+        width: 40px;
+        height: 40px;
+        right: 0.75rem;
+        top: 0.75rem;
+    }
+
+    .menu-icon {
+        width: 20px;
+        height: 18px;
+        gap: 4px;
+    }
+
+    .menu-icon span {
+        height: 2px;
+    }
+
+    /* Adjust mobile menu padding */
+    .nav-menu {
+        padding: 70px 0 30px;
+    }
+
+    .nav-menu.active .nav-link {
+        padding: 14px 20px;
+        font-size: 1.1rem;
+    }
+
+    .nav-menu.active .nav-item-cta {
+        margin: 30px 16px 0;
+    }
+
+    .nav-menu.active .nav-cta {
+        padding: 16px 24px;
+        font-size: 1rem;
+        max-width: 280px;
+    }
+}
+
+/* ============================================
+   EXTRA SMALL 320px BREAKPOINT
+   Minimum screen size optimizations
+   ============================================ */
+
+@media (max-width: 320px) {
+    .header {
+        min-height: 52px;
+        padding: 8px 10px;
+    }
+
+    .navbar {
+        min-height: 48px;
+    }
+
+    .logo-hotel-icon-link {
+        left: 0.5rem;
+    }
+
+    .logo-text {
+        font-size: 1.1rem;
+        font-weight: 500;
+        letter-spacing: 0.6px;
+    }
+
+    .logo-text-link:hover .logo-text {
+        transform: translateY(-1px);
+    }
+
+    .logo-hotel-icon {
+        width: 14px;
+        height: 14px;
+    }
+
+    .mobile-menu-btn {
+        position: fixed;
+        right: 0.5rem;
+        top: 0.75rem;
+        width: 36px;
+        height: 36px;
+    }
+
+    .menu-icon {
+        width: 18px;
+        height: 16px;
+    }
+
+    .nav-menu.active .nav-link {
+        padding: 12px 16px;
+        font-size: 1rem;
+    }
+
+    .nav-menu.active .nav-item-cta {
+        margin: 25px 12px 0;
+    }
+
+    .nav-menu.active .nav-cta {
+        padding: 14px 20px;
+        font-size: 0.95rem;
+        max-width: 260px;
+        letter-spacing: 0.8px;
+    }
+}
+
+/* ============================================
+   HIGH DPI / RETINA DISPLAYS
+   ============================================ */
+
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .header {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+}
+
+/* ============================================
+   SAFE AREA SUPPORT (iOS notch)
+   ============================================ */
+
+@supports (padding: env(safe-area-inset-left)) {
+    .header {
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes slideInItem {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUpCta {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+    .header {
+        position: static;
+        background: white;
+        box-shadow: none;
+        border-bottom: 1px solid #ccc;
+    }
+
+    .mobile-menu-btn,
+    .nav-menu {
+        display: none !important;
+    }
+}

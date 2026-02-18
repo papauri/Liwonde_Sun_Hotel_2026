@@ -1,0 +1,1417 @@
+/**
+ * Admin Responsive CSS
+ * Comprehensive mobile-friendly styles for ALL admin pages
+ * Breakpoints: 1024px (tablet), 768px (mobile), 480px (small mobile), 360px (mini)
+ */
+
+/* ============================================
+   MOBILE NAVIGATION TOGGLE
+   ============================================ */
+.admin-nav-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.admin-nav-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   TABLET BREAKPOINT (1024px)
+   ============================================ */
+@media (max-width: 1024px) {
+    /* Calendar: Make cells tighter */
+    .calendar-day {
+        min-height: 70px !important;
+        padding: 4px !important;
+    }
+
+    .calendar-day .day-number {
+        font-size: 12px;
+    }
+
+    .booking-indicator {
+        font-size: 10px !important;
+        padding: 2px 4px !important;
+    }
+
+    /* Booking table: horizontal scroll */
+    .booking-table {
+        min-width: 1000px !important;
+    }
+
+    /* Accounting section grid */
+    .section-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ============================================
+   MOBILE BREAKPOINT (768px)
+   ============================================ */
+@media (max-width: 768px) {
+    /* --- ADMIN HEADER --- */
+    .admin-header {
+        padding: 10px 16px !important;
+        gap: 8px;
+    }
+
+    .admin-header h1 {
+        font-size: 16px;
+    }
+
+    .admin-header .user-info {
+        gap: 12px;
+    }
+
+    .admin-header .user-name {
+        font-size: 12px;
+    }
+
+    .admin-header .user-role {
+        font-size: 10px;
+        padding: 3px 8px;
+    }
+
+    .btn-logout {
+        padding: 6px 14px;
+        font-size: 12px;
+    }
+
+    /* Show hamburger toggle */
+    .admin-nav-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* --- ADMIN NAV - Collapsible on mobile --- */
+    .admin-nav {
+        max-height: 0 !important;
+        overflow: hidden !important;
+        transition: max-height 0.3s ease !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+    }
+
+    .admin-nav.nav-open {
+        max-height: 600px !important;
+        overflow-y: auto !important;
+        padding: 8px 16px !important;
+    }
+
+    .admin-nav ul {
+        flex-direction: column !important;
+        gap: 2px !important;
+    }
+
+    .admin-nav li {
+        display: block !important;
+    }
+
+    .admin-nav a {
+        padding: 12px 16px !important;
+        border-radius: 8px !important;
+        border-bottom: none !important;
+        font-size: 14px !important;
+    }
+
+    .admin-nav a:hover,
+    .admin-nav a.active {
+        background: rgba(212, 175, 55, 0.1) !important;
+        border-bottom: none !important;
+    }
+
+    .admin-nav a i {
+        width: 24px;
+        text-align: center;
+    }
+
+    /* --- CONTENT AREA --- */
+    .content {
+        padding: 16px !important;
+    }
+
+    /* --- PAGE HEADERS --- */
+    .page-header,
+    .page-header-row {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+    }
+
+    .page-title {
+        font-size: 22px !important;
+    }
+
+    /* --- STAT GRIDS --- */
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 12px !important;
+    }
+
+    .stat-card {
+        padding: 16px !important;
+    }
+
+    .stat-card .stat-value,
+    .stat-card .number {
+        font-size: 24px !important;
+    }
+
+    .stat-card .stat-label,
+    .stat-card h3 {
+        font-size: 12px !important;
+    }
+
+    /* --- TABLES: Enable horizontal scroll --- */
+    .table-container,
+    .bookings-section {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .table-responsive {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Scroll indicator shadow */
+    .table-container::after,
+    .bookings-section::after {
+        content: '';
+        position: sticky;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 30px;
+        background: linear-gradient(to left, rgba(0, 0, 0, 0.06), transparent);
+        pointer-events: none;
+        flex-shrink: 0;
+    }
+
+    /* --- BOOKING TABLE OVERRIDES --- */
+    .booking-table th[style],
+    .booking-table td[style] {
+        padding: 8px 10px !important;
+    }
+
+    .booking-table th {
+        font-size: 11px !important;
+        white-space: nowrap !important;
+    }
+
+    .booking-table td {
+        font-size: 12px !important;
+    }
+
+    /* Override inline th widths on mobile */
+    .booking-table th[style*="width"] {
+        width: auto !important;
+        min-width: 80px;
+    }
+
+    .booking-table th[style*="400px"] {
+        min-width: 200px !important;
+    }
+
+    /* --- BOOKINGS TOOLBAR (override inline styles) --- */
+    .bookings-toolbar {
+        flex-direction: column !important;
+        gap: 12px !important;
+        padding: 12px 16px !important;
+    }
+
+    .bookings-toolbar form {
+        flex-direction: column !important;
+        width: 100% !important;
+        gap: 10px !important;
+    }
+
+    .bookings-toolbar form > div,
+    .bookings-toolbar form > input,
+    .bookings-toolbar form > select,
+    .bookings-toolbar form > button,
+    .bookings-toolbar form > a {
+        width: 100% !important;
+        min-width: unset !important;
+        flex: unset !important;
+        box-sizing: border-box !important;
+    }
+
+    .bookings-toolbar > div {
+        width: 100% !important;
+        flex-direction: column !important;
+    }
+
+    .bookings-toolbar > div > a {
+        width: 100% !important;
+        text-align: center !important;
+        box-sizing: border-box !important;
+    }
+
+    /* --- QUICK ACTIONS --- */
+    .quick-actions {
+        flex-wrap: wrap !important;
+    }
+
+    .quick-action {
+        font-size: 11px !important;
+        padding: 6px 10px !important;
+    }
+
+    /* --- FILTER FORMS (payments, etc.) --- */
+    .filter-form {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+
+    .filter-actions {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+    }
+
+    .filter-actions .btn,
+    .filter-actions button,
+    .filter-actions a {
+        flex: 1;
+        text-align: center;
+        min-width: 100px;
+    }
+
+    /* --- SUMMARY CARDS (payments, accounting) --- */
+    .summary-cards {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 12px !important;
+    }
+
+    /* --- ROOM MANAGEMENT --- */
+    .room-cards-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    .form-row-3 {
+        grid-template-columns: 1fr !important;
+    }
+
+    .room-card-actions {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+    }
+
+    .room-card-actions .btn-action {
+        flex: 1 1 calc(50% - 4px);
+        text-align: center;
+        justify-content: center;
+    }
+
+    /* --- CALENDAR --- */
+    .calendar-header {
+        flex-direction: column !important;
+        text-align: center;
+        gap: 12px !important;
+    }
+
+    .calendar-nav a {
+        padding: 8px 14px !important;
+        font-size: 13px !important;
+    }
+
+    .calendar-grid {
+        grid-template-columns: repeat(7, 1fr) !important;
+        gap: 1px !important;
+    }
+
+    .calendar-day {
+        min-height: 50px !important;
+        padding: 3px !important;
+        font-size: 11px !important;
+    }
+
+    .calendar-day .day-number {
+        font-size: 11px !important;
+    }
+
+    .booking-indicator {
+        font-size: 8px !important;
+        padding: 1px 3px !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .calendar-day-header {
+        font-size: 10px !important;
+        padding: 6px 2px !important;
+    }
+
+    .legend {
+        gap: 10px !important;
+        font-size: 11px !important;
+    }
+
+    .legend-item {
+        font-size: 11px !important;
+    }
+
+    /* Room-specific calendar sections */
+    .room-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px;
+    }
+
+    /* --- CONFERENCE MANAGEMENT --- */
+    .room-list {
+        grid-template-columns: 1fr !important;
+    }
+
+    .form-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .room-form-section .form-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .room-actions {
+        flex-direction: column !important;
+    }
+
+    .room-actions .btn,
+    .room-actions button {
+        width: 100% !important;
+    }
+
+    .enquiry-details .detail-row {
+        flex-direction: column !important;
+        gap: 4px;
+    }
+
+    /* --- ACCOUNTING DASHBOARD --- */
+    .accounting-header {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px;
+    }
+
+    .date-filter {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+
+    .date-filter input,
+    .date-filter select,
+    .date-filter button {
+        width: 100% !important;
+    }
+
+    .section-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* --- PERMISSIONS GRID --- */
+    .perm-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .permissions-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px;
+    }
+
+    .perm-actions {
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .perm-actions button,
+    .perm-actions a {
+        width: 100%;
+        text-align: center;
+    }
+
+    /* --- TODAY CHECKINS / CONFERENCE SECTIONS --- */
+    .today-checkins-section {
+        padding: 16px !important;
+        margin-bottom: 20px !important;
+    }
+
+    .today-checkins-section h3,
+    .section-title {
+        font-size: 18px !important;
+    }
+
+    /* --- MODALS (override inline styles) --- */
+    .modal-content[style*="max-width"] {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 10px !important;
+        border-radius: 12px !important;
+    }
+
+    .modal-overlay {
+        padding: 10px !important;
+    }
+
+    /* --- DASHBOARD ACTIVITY LOG (override inline styles) --- */
+    .table[style*="font-size"] {
+        font-size: 12px !important;
+    }
+
+    .table th[style*="padding"],
+    .table td[style*="padding"] {
+        padding: 8px 10px !important;
+    }
+
+    .table th[style*="font-size"] {
+        font-size: 10px !important;
+    }
+
+    /* --- TABS --- */
+    .tabs-header {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .tabs-header::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab-button {
+        padding: 10px 12px !important;
+        font-size: 12px !important;
+    }
+
+    /* --- CHECKBOX ROWS --- */
+    .checkbox-row {
+        flex-direction: column !important;
+        gap: 12px !important;
+    }
+
+    /* --- REVIEW CARDS --- */
+    .review-header {
+        flex-direction: column !important;
+        gap: 8px;
+    }
+
+    .review-actions {
+        flex-direction: column !important;
+    }
+
+    .review-actions button,
+    .review-actions a {
+        width: 100% !important;
+    }
+
+    /* --- INVOICES & PAYMENT DETAILS --- */
+    .invoice-details-grid,
+    .payment-info-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* --- GALLERY MANAGEMENT --- */
+    .gallery-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    /* --- GENERIC CARD IMPROVEMENTS --- */
+    .card {
+        padding: 16px !important;
+    }
+
+    /* --- BUTTONS --- */
+    .btn-add {
+        width: 100% !important;
+        text-align: center;
+        justify-content: center;
+    }
+
+    /* Booking Settings / Other forms */
+    .form-actions {
+        flex-direction: column !important;
+    }
+
+    .form-actions button,
+    .form-actions a {
+        width: 100% !important;
+    }
+}
+
+/* ============================================
+   SMALL MOBILE BREAKPOINT (480px)
+   ============================================ */
+@media (max-width: 480px) {
+    /* --- CONTENT --- */
+    .content {
+        padding: 12px !important;
+    }
+
+    /* --- HEADER --- */
+    .admin-header {
+        padding: 8px 12px !important;
+    }
+
+    .admin-header h1 {
+        font-size: 14px !important;
+    }
+
+    .admin-header .user-info {
+        gap: 8px !important;
+    }
+
+    .admin-header .user-name {
+        display: none; /* Hide username on very small screens */
+    }
+
+    .btn-logout {
+        padding: 6px 10px !important;
+        font-size: 11px !important;
+    }
+
+    /* --- STAT GRIDS --- */
+    .stats-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .stat-card .stat-value,
+    .stat-card .number {
+        font-size: 22px !important;
+    }
+
+    /* --- SUMMARY CARDS --- */
+    .summary-cards {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* --- PAGE TITLE --- */
+    .page-title {
+        font-size: 20px !important;
+    }
+
+    .section-title {
+        font-size: 16px !important;
+    }
+
+    /* --- QUICK ACTIONS - Collapse text, show icons --- */
+    .quick-action {
+        padding: 6px 8px !important;
+        font-size: 10px !important;
+    }
+
+    /* --- CALENDAR on small mobile --- */
+    .calendar-day {
+        min-height: 40px !important;
+        padding: 2px !important;
+    }
+
+    .calendar-day .day-number {
+        font-size: 10px !important;
+    }
+
+    .booking-indicator {
+        font-size: 0 !important; /* Hide text */
+        width: 8px !important;
+        height: 8px !important;
+        border-radius: 50% !important;
+        padding: 0 !important;
+        display: inline-block !important;
+        margin: 1px !important;
+        min-height: 0 !important;
+    }
+
+    .calendar-day-header {
+        font-size: 9px !important;
+    }
+
+    /* Calendar nav */
+    .calendar-nav {
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .calendar-nav a {
+        padding: 8px 12px !important;
+        font-size: 12px !important;
+        text-align: center !important;
+    }
+
+    .calendar-actions {
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .calendar-actions button,
+    .calendar-actions a {
+        width: 100% !important;
+    }
+
+    /* --- TABS (icon only on mobile) --- */
+    .tab-button span:not(.tab-count) {
+        display: none !important;
+    }
+
+    .tab-button {
+        padding: 10px 8px !important;
+    }
+
+    .tab-button i {
+        font-size: 16px !important;
+    }
+
+    .tab-count {
+        font-size: 10px !important;
+        padding: 2px 5px !important;
+    }
+
+    /* --- BOOKINGS TOOLBAR --- */
+    .bookings-toolbar {
+        padding: 10px 12px !important;
+    }
+
+    /* --- TABLES card layout for small screens --- */
+    .table:not(.booking-table) thead {
+        display: none !important;
+    }
+
+    .table:not(.booking-table) tbody {
+        display: block !important;
+    }
+
+    .table:not(.booking-table) tr {
+        display: block !important;
+        margin-bottom: 12px !important;
+        border: 1px solid var(--border-color, #dee2e6) !important;
+        border-radius: 8px !important;
+        background: white !important;
+        padding: 12px !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .table:not(.booking-table) td {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 6px 0 !important;
+        border: none !important;
+        border-bottom: 1px solid #f0f0f0 !important;
+        font-size: 12px !important;
+        text-align: right;
+    }
+
+    .table:not(.booking-table) td:last-child {
+        border-bottom: none !important;
+    }
+
+    .table:not(.booking-table) td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--navy, #0A1929);
+        margin-right: 12px;
+        flex-shrink: 0;
+        text-align: left;
+        font-size: 11px;
+    }
+
+    /* --- ROOM CARD ACTIONS --- */
+    .room-card-actions {
+        gap: 4px !important;
+    }
+
+    .room-card-actions .btn-action {
+        flex: 1 1 calc(50% - 4px) !important;
+        font-size: 10px !important;
+        padding: 6px 8px !important;
+    }
+
+    /* --- GALLERY --- */
+    .gallery-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* --- PICTURES --- */
+    .pictures-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* --- BADGES --- */
+    .badge {
+        font-size: 9px !important;
+        padding: 3px 8px !important;
+    }
+
+    /* --- FORMS COMPACT --- */
+    .form-group label {
+        font-size: 13px !important;
+    }
+
+    .form-control {
+        padding: 8px 10px !important;
+        font-size: 13px !important;
+    }
+
+    /* --- MODAL IMPROVEMENTS --- */
+    .modal-content {
+        padding: 16px !important;
+    }
+
+    .modal-header {
+        padding: 12px 16px !important;
+    }
+
+    .modal-title {
+        font-size: 16px !important;
+    }
+
+    .modal-body {
+        padding: 12px 16px !important;
+    }
+
+    .modal-footer {
+        padding: 12px 16px !important;
+        flex-direction: column !important;
+    }
+
+    .modal-footer button,
+    .modal-footer a {
+        width: 100% !important;
+    }
+
+    /* --- PAGINATION --- */
+    .pagination {
+        flex-wrap: wrap !important;
+        gap: 4px !important;
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+    }
+
+    /* --- REVIEW CARDS --- */
+    .category-ratings {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+
+    /* --- CONFERENCE ENQUIRY --- */
+    .detail-row {
+        flex-direction: column !important;
+        gap: 4px !important;
+    }
+
+    .detail-row .detail-label {
+        font-size: 11px !important;
+    }
+
+    .detail-row .detail-value {
+        font-size: 13px !important;
+    }
+
+    /* --- GYM INQUIRIES --- */
+    .inquiry-card {
+        padding: 16px !important;
+    }
+
+    /* --- BOOKING DETAILS VIEW --- */
+    .booking-details-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .booking-info-card {
+        padding: 16px !important;
+    }
+
+    /* --- CONFERENCE ROOM META ITEMS --- */
+    .room-meta {
+        gap: 8px !important;
+        font-size: 12px !important;
+    }
+
+    .room-meta-item {
+        font-size: 12px !important;
+    }
+}
+
+/* ============================================
+   MINI SCREENS (360px and below)
+   ============================================ */
+@media (max-width: 360px) {
+    .content {
+        padding: 8px !important;
+    }
+
+    .admin-header h1 {
+        font-size: 13px !important;
+    }
+
+    .admin-header h1 i {
+        display: none; /* Hide icon on tiny screens */
+    }
+
+    .btn-logout span {
+        display: none; /* Icon only */
+    }
+
+    /* Calendar: completely minimized */
+    .calendar-day {
+        min-height: 32px !important;
+    }
+
+    .calendar-day .day-number {
+        font-size: 9px !important;
+    }
+
+    .calendar-day-header {
+        font-size: 8px !important;
+    }
+
+    /* Stat cards: minimal */
+    .stat-card {
+        padding: 12px !important;
+    }
+
+    .stat-card .stat-value,
+    .stat-card .number {
+        font-size: 20px !important;
+    }
+
+    .stat-card .stat-icon {
+        width: 36px !important;
+        height: 36px !important;
+    }
+
+    .stat-card .stat-icon i {
+        font-size: 16px !important;
+    }
+
+    /* Page title */
+    .page-title {
+        font-size: 18px !important;
+    }
+
+    /* Forms */
+    .form-group label {
+        font-size: 12px !important;
+    }
+
+    .form-control {
+        font-size: 12px !important;
+    }
+
+    /* Tables in card mode */
+    .table:not(.booking-table) td {
+        font-size: 11px !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        text-align: left !important;
+    }
+
+    .table:not(.booking-table) td::before {
+        font-size: 10px !important;
+        margin-bottom: 2px;
+    }
+}
+
+/* ============================================
+   TOUCH-FRIENDLY TARGETS
+   ============================================ */
+@media (max-width: 768px) {
+    /* Ensure minimum 44px tap targets per WCAG */
+    .quick-action,
+    .btn,
+    .btn-sm,
+    .btn-action,
+    .tab-button,
+    .pagination a,
+    .pagination span {
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    /* Make table action buttons easier to tap */
+    .quick-action {
+        margin-bottom: 4px !important;
+    }
+
+    /* Larger form inputs on mobile */
+    .form-control,
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="date"],
+    input[type="number"],
+    input[type="search"],
+    select,
+    textarea {
+        min-height: 42px;
+        font-size: 16px !important; /* Prevents iOS zoom */
+    }
+
+    /* Links in tables */
+    .table a {
+        padding: 2px 0;
+    }
+}
+
+/* ============================================
+   UTILITY: HORIZONTAL SCROLL TABLES
+   ============================================ */
+.table-scroll-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -16px;
+    padding: 0 16px;
+}
+
+@media (max-width: 768px) {
+    /* Auto-wrap any wide table */
+    .table[style*="min-width"],
+    table[style*="min-width"] {
+        display: table;
+    }
+
+    /* Force table containers to scroll */
+    .bookings-section,
+    .table-container {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* ============================================
+   SAFE AREA SUPPORT (notch phones)
+   ============================================ */
+@supports (padding: env(safe-area-inset-left)) {
+    @media (max-width: 768px) {
+        .admin-header {
+            padding-left: max(16px, env(safe-area-inset-left)) !important;
+            padding-right: max(16px, env(safe-area-inset-right)) !important;
+        }
+
+        .admin-nav {
+            padding-left: max(16px, env(safe-area-inset-left)) !important;
+            padding-right: max(16px, env(safe-area-inset-right)) !important;
+        }
+
+        .content {
+            padding-left: max(16px, env(safe-area-inset-left)) !important;
+            padding-right: max(16px, env(safe-area-inset-right)) !important;
+        }
+    }
+}
+
+/* ============================================
+   PRINT ADJUSTMENTS (admin pages)
+   ============================================ */
+@media print {
+    .admin-header,
+    .admin-nav,
+    .admin-nav-toggle,
+    .quick-actions,
+    .btn-logout,
+    .form-actions,
+    .room-card-actions,
+    .review-actions {
+        display: none !important;
+    }
+
+    .content {
+        padding: 0 !important;
+    }
+
+    .table {
+        font-size: 10px !important;
+    }
+
+    .modal,
+    .modal-overlay,
+    .modal-wrapper {
+        display: none !important;
+    }
+}
+
+/* ============================================
+   SMOOTH SCROLLING & OVERSCROLL
+   ============================================ */
+@media (max-width: 768px) {
+    .admin-nav,
+    .tabs-header,
+    .table-responsive,
+    .bookings-section {
+        overscroll-behavior-x: contain;
+    }
+
+    /* Smooth scroll for anchor links */
+    html {
+        scroll-behavior: smooth;
+    }
+}
+
+/* ============================================
+   LANDSCAPE PHONE ADJUSTMENTS
+   ============================================ */
+@media (max-width: 768px) and (orientation: landscape) {
+    .admin-header {
+        padding: 6px 16px !important;
+    }
+
+    .admin-header h1 {
+        font-size: 14px !important;
+    }
+
+    /* Calendar in landscape gets more columns */
+    .calendar-day {
+        min-height: 45px !important;
+    }
+
+    /* Stats grid side-by-side in landscape */
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    .summary-cards {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    /* Modal smaller height */
+    .modal-content {
+        max-height: 85vh !important;
+    }
+}
+
+/* ============================================
+   ACCOUNTING DASHBOARD MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .accounting-header .quick-actions {
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .accounting-header .quick-actions a,
+    .accounting-header .quick-actions button {
+        width: 100% !important;
+        text-align: center;
+    }
+
+    .payment-method-item,
+    .outstanding-item {
+        flex-direction: column !important;
+        gap: 8px;
+        padding: 12px !important;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .payment-method-item .method-info,
+    .outstanding-item .guest-info {
+        width: 100%;
+    }
+
+    .payment-method-item .method-amount,
+    .outstanding-item .amount {
+        width: 100%;
+        text-align: left;
+    }
+}
+
+/* ============================================
+   BOOKING DETAILS PAGE MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .booking-detail-header {
+        flex-direction: column !important;
+        gap: 12px;
+    }
+
+    .booking-detail-actions {
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .booking-detail-actions .btn,
+    .booking-detail-actions a {
+        width: 100% !important;
+        text-align: center;
+    }
+
+    .guest-info-grid,
+    .room-details-grid,
+    .payment-summary-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .detail-pair {
+        flex-direction: column !important;
+        gap: 4px;
+    }
+}
+
+/* ============================================
+   MENU MANAGEMENT MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .menu-categories {
+        flex-direction: column !important;
+    }
+
+    .menu-category-tab {
+        width: 100% !important;
+        text-align: center;
+    }
+
+    .menu-items-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .menu-item-card {
+        flex-direction: column !important;
+    }
+
+    .menu-item-image {
+        width: 100% !important;
+        height: 200px !important;
+    }
+}
+
+/* ============================================
+   GYM INQUIRIES MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .inquiries-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .inquiry-card .inquiry-header {
+        flex-direction: column !important;
+        gap: 8px;
+    }
+
+    .inquiry-card .inquiry-actions {
+        flex-direction: column !important;
+    }
+
+    .inquiry-card .inquiry-actions button,
+    .inquiry-card .inquiry-actions a {
+        width: 100% !important;
+    }
+}
+
+/* ============================================
+   BLOCKED DATES MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .blocked-dates-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .blocked-date-card {
+        padding: 16px !important;
+    }
+}
+
+/* ============================================
+   API KEYS & SETTINGS MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .settings-grid,
+    .api-keys-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .settings-card,
+    .api-key-card {
+        padding: 16px !important;
+    }
+
+    .api-key-value {
+        font-size: 11px !important;
+        word-break: break-all;
+    }
+}
+
+/* ============================================
+   CREATE/EDIT BOOKING MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .booking-form-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .room-selection-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .guest-details-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    .date-range-picker {
+        flex-direction: column !important;
+    }
+
+    .date-range-picker input {
+        width: 100% !important;
+    }
+
+    .price-summary {
+        padding: 16px !important;
+    }
+}
+
+/* ============================================
+   THEME MANAGEMENT MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .theme-preview-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .color-pickers-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    .font-options-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .color-pickers-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ============================================
+   CACHE MANAGEMENT MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .cache-stats-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .cache-actions {
+        flex-direction: column !important;
+    }
+
+    .cache-actions button {
+        width: 100% !important;
+    }
+}
+
+/* ============================================
+   PAYMENT-DETAILS PAGE MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    /* Override minmax(400px) which overflows on mobile */
+    .details-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .payment-summary-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .payment-item {
+        flex-direction: column !important;
+        gap: 4px;
+        align-items: flex-start !important;
+    }
+
+    .detail-row {
+        flex-direction: column !important;
+        gap: 4px;
+    }
+}
+
+/* ============================================
+   PAYMENT-ADD PAGE MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    /* payment-add has zero @media queries */
+    .calc-row {
+        flex-direction: column !important;
+        gap: 8px;
+    }
+
+    .calc-row .calc-label {
+        width: 100% !important;
+    }
+
+    .calc-row .calc-value {
+        width: 100% !important;
+        text-align: left !important;
+    }
+}
+
+/* ============================================
+   EDIT-BOOKING PAGE MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .btn-bar {
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .btn-bar .btn,
+    .btn-bar a,
+    .btn-bar button {
+        width: 100% !important;
+        text-align: center;
+    }
+}
+
+/* ============================================
+   INVOICES PAGE MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .invoice-card {
+        padding: 16px !important;
+    }
+
+    .invoice-header {
+        flex-direction: column !important;
+        gap: 8px;
+    }
+
+    .invoice-actions {
+        flex-direction: column !important;
+    }
+
+    .invoice-actions .btn,
+    .invoice-actions a {
+        width: 100% !important;
+        text-align: center;
+    }
+}
+
+/* ============================================
+   TENTATIVE BOOKINGS MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .action-buttons {
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .action-buttons .btn,
+    .action-buttons button,
+    .action-buttons a {
+        width: 100% !important;
+        text-align: center;
+    }
+}
