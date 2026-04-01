@@ -19,6 +19,7 @@ require_once 'config/database.php';
 require_once 'includes/page-guard.php';
 require_once 'config/email.php';
 require_once 'includes/validation.php';
+require_once 'includes/countries-data.php';
 
 // Send security headers
 sendSecurityHeaders();
@@ -76,20 +77,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        // Validate guest_phone
-        $phone_validation = validatePhone($_POST['guest_phone'] ?? '');
+        // Validate guest_phone (combine dial code + local number)
+        $full_guest_phone = trim($_POST['guest_phone_code'] ?? '+265') . trim($_POST['guest_phone_number'] ?? '');
+        $phone_validation = validatePhone($full_guest_phone);
         if (!$phone_validation['valid']) {
             $validation_errors['guest_phone'] = $phone_validation['error'];
         } else {
             $sanitized_data['guest_phone'] = $phone_validation['sanitized'];
         }
         
-        // Validate guest_country (optional)
-        $country_validation = validateText($_POST['guest_country'] ?? '', 0, 100, false);
-        if (!$country_validation['valid']) {
-            $validation_errors['guest_country'] = $country_validation['error'];
+        // Validate guest_country (required dropdown selection)
+        $country_value = trim($_POST['guest_country'] ?? '');
+        if (empty($country_value)) {
+            $validation_errors['guest_country'] = 'Please select your country';
         } else {
-            $sanitized_data['guest_country'] = sanitizeString($country_validation['value'], 100);
+            $sanitized_data['guest_country'] = sanitizeString($country_value, 100);
         }
         
         // Validate guest_address (optional)
@@ -446,6 +448,7 @@ try {
     <link rel="stylesheet" href="css/header.css">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/footer.css">
+    <link rel="stylesheet" href="css/form-validation.css">
     <link rel="stylesheet" href="booking-new-styles.css">
     <!-- Flatpickr CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -478,7 +481,7 @@ try {
             <?php showAlert($error_message, 'error'); ?>
         <?php endif; ?>
 
-        <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF'] . (isset($_GET['room_id']) ? '?room_id=' . (int)$_GET['room_id'] : '')); ?>" class="booking-form-card" id="bookingForm">
+        <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF'] . (isset($_GET['room_id']) ? '?room_id=' . (int)$_GET['room_id'] : '')); ?>" class="booking-form-card validate-form" id="bookingForm">
             <?php echo getCsrfField(); ?>
             <!-- Room Selection (hidden if pre-selected) -->
             <?php if (!$preselected_room): ?>
@@ -587,12 +590,33 @@ try {
                         <input type="email" id="guest_email" name="guest_email" class="form-control" required value="<?php echo isset($_POST['guest_email']) ? htmlspecialchars($_POST['guest_email']) : ''; ?>">
                     </div>
                     <div class="form-group">
-                        <label for="guest_phone" class="required">Phone Number</label>
-                        <input type="tel" id="guest_phone" name="guest_phone" class="form-control" required value="<?php echo isset($_POST['guest_phone']) ? htmlspecialchars($_POST['guest_phone']) : ''; ?>">
+                        <label for="guest_phone_number" class="required">Phone Number</label>
+                        <div class="phone-input-group">
+                            <select name="guest_phone_code" id="guest_phone_code" class="phone-code-select" required>
+                                <?php foreach ($countries as $c): ?>
+                                <option value="<?php echo htmlspecialchars($c['code']); ?>"
+                                    <?php echo ((isset($_POST['guest_phone_code']) ? $_POST['guest_phone_code'] : '+265') === $c['code']) ? 'selected' : ''; ?>>
+                                    <?php echo $c['flag'] . ' ' . htmlspecialchars($c['code']); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <input type="tel" id="guest_phone_number" name="guest_phone_number"
+                                   class="form-control phone-number-input" required
+                                   placeholder="e.g. 991234567"
+                                   value="<?php echo isset($_POST['guest_phone_number']) ? htmlspecialchars($_POST['guest_phone_number']) : ''; ?>">
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="guest_country">Country</label>
-                        <input type="text" id="guest_country" name="guest_country" class="form-control" value="<?php echo isset($_POST['guest_country']) ? htmlspecialchars($_POST['guest_country']) : ''; ?>">
+                        <label for="guest_country" class="required">Country</label>
+                        <select id="guest_country" name="guest_country" class="form-control" required>
+                            <option value="">Select country...</option>
+                            <?php foreach ($countries as $c): ?>
+                            <option value="<?php echo htmlspecialchars($c['name']); ?>"
+                                <?php echo (isset($_POST['guest_country']) && $_POST['guest_country'] === $c['name']) ? 'selected' : ''; ?>>
+                                <?php echo $c['flag'] . ' ' . htmlspecialchars($c['name']); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                 </div>
                 <div class="form-group">
@@ -736,6 +760,7 @@ try {
     <script src="js/modal.js"></script>
     <script src="js/main.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="js/form-validation.js"></script>
     <script>
         // Site settings
         const emailReservations = '<?php echo $email_reservations_esc; ?>';

@@ -21,6 +21,7 @@ require_once 'config/email.php';
 require_once 'includes/modal.php';
 require_once 'includes/validation.php';
 require_once 'includes/section-headers.php';
+require_once 'includes/countries-data.php';
 
 // Send security headers
 sendSecurityHeaders();
@@ -92,7 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Validate phone
-        $phone_validation = validatePhone($_POST['phone'] ?? '');
+        $full_phone = trim($_POST['phone_code'] ?? '+265') . trim($_POST['phone_number'] ?? '');
+        $phone_validation = validatePhone($full_phone);
         if (!$phone_validation['valid']) {
             $validation_errors['phone'] = $phone_validation['error'];
         } else {
@@ -323,6 +325,7 @@ function resolveConferenceImage(?string $imagePath): string
     <link rel="stylesheet" href="css/header.css">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/footer.css">
+    <link rel="stylesheet" href="css/form-validation.css">
     <style>
         .conference-rooms-section {
             padding: 90px 0;
@@ -563,6 +566,11 @@ function resolveConferenceImage(?string $imagePath): string
             color: var(--navy);
         }
 
+        .form-group label.required::after {
+            content: ' *';
+            color: #dc3545;
+        }
+
         .form-group input,
         .form-group select,
         .form-group textarea {
@@ -579,6 +587,27 @@ function resolveConferenceImage(?string $imagePath): string
         .form-group textarea:focus {
             outline: none;
             border-color: var(--gold);
+        }
+
+        /* Phone group — prevent global width:100% from collapsing flex layout */
+        .phone-input-group {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            gap: 8px;
+            align-items: stretch;
+        }
+        .phone-input-group > select {
+            width: 130px !important;
+            flex: 0 0 130px !important;
+            min-width: 130px !important;
+            max-width: 130px !important;
+            padding: 10px 8px !important;
+        }
+        .phone-input-group > input[type="tel"] {
+            flex: 1 1 auto !important;
+            width: auto !important;
+            min-width: 80px !important;
+            max-width: none !important;
         }
 
         .form-row {
@@ -839,8 +868,16 @@ function resolveConferenceImage(?string $imagePath): string
 
     <!-- Inquiry Modal -->
     <?php
+    // Pre-build phone code options for embedding in modal string
+    $phoneCodeOptions = '';
+    foreach ($countries as $c) {
+        $selected = ((isset($_POST['phone_code']) ? $_POST['phone_code'] : '+265') === $c['code']) ? ' selected' : '';
+        $phoneCodeOptions .= '<option value="' . htmlspecialchars($c['code']) . '"' . $selected . '>'
+                           . $c['flag'] . ' ' . htmlspecialchars($c['code']) . '</option>';
+    }
+
     $modalContent = '
-        <form method="POST" action="" id="inquiryForm">
+        <form method="POST" action="" id="inquiryForm" class="validate-form">
             ' . getCsrfField() . '
             <input type="hidden" name="conference_room_id" id="selectedRoomId">
             
@@ -851,47 +888,53 @@ function resolveConferenceImage(?string $imagePath): string
  
             <div class="form-row">
                 <div class="form-group">
-                    <label>Company Name *</label>
-                    <input type="text" name="company_name" required>
+                    <label class="required">Company Name</label>
+                    <input type="text" name="company_name" id="company_name" required>
                 </div>
                 <div class="form-group">
-                    <label>Contact Person *</label>
-                    <input type="text" name="contact_person" required>
-                </div>
-            </div>
- 
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Email *</label>
-                    <input type="email" name="email" required>
-                </div>
-                <div class="form-group">
-                    <label>Phone *</label>
-                    <input type="tel" name="phone" required>
+                    <label class="required">Contact Person</label>
+                    <input type="text" name="contact_person" id="contact_person" required>
                 </div>
             </div>
  
             <div class="form-group">
-                <label>Event Date *</label>
+                    <label class="required">Email</label>
+                    <input type="email" name="email" id="conf_email" required>
+                </div>
+                <div class="form-group">
+                    <label class="required">Phone</label>
+                    <div class="phone-input-group">
+                        <select name="phone_code" id="phone_code" class="phone-code-select" required>
+                            ' . $phoneCodeOptions . '
+                        </select>
+                        <input type="tel" name="phone_number" id="phone_number"
+                               class="phone-number-input" required
+                               placeholder="e.g. 991234567"
+                               value="' . htmlspecialchars($_POST['phone_number'] ?? '') . '">
+                    </div>
+                </div>
+ 
+            <div class="form-group">
+                <label class="required">Event Date</label>
                 <input type="date" name="event_date" id="event_date" min="' . date('Y-m-d') . '" required>
                 <small class="field-error" id="event_date_error" style="color: #dc3545; display: none;"></small>
             </div>
   
             <div class="form-row">
                 <div class="form-group">
-                    <label>Start Time *</label>
+                    <label class="required">Start Time</label>
                     <input type="time" name="start_time" id="start_time" required>
                     <small class="field-error" id="start_time_error" style="color: #dc3545; display: none;"></small>
                 </div>
                 <div class="form-group">
-                    <label>End Time *</label>
+                    <label class="required">End Time</label>
                     <input type="time" name="end_time" id="end_time" required>
                 </div>
             </div>
  
             <div class="form-row">
                 <div class="form-group">
-                    <label>Number of Attendees *</label>
+                    <label class="required">Number of Attendees</label>
                     <input type="number" name="number_of_attendees" min="1" required>
                 </div>
                 <div class="form-group">
@@ -974,6 +1017,7 @@ function resolveConferenceImage(?string $imagePath): string
     <?php include 'includes/footer.php'; ?>
     <script src="js/modal.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/form-validation.js"></script>
     <script>
         // Inquiry Modal - target by specific ID, not generic selector
         const inquiryModal = document.getElementById('inquiryModal');

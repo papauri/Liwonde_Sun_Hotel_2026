@@ -6,6 +6,7 @@ require_once 'includes/validation.php';
 require_once 'includes/modal.php';
 require_once 'includes/image-proxy-helper.php';
 require_once 'includes/section-headers.php';
+require_once 'includes/countries-data.php';
 
 // Start session for any session-based functionality
 if (session_status() === PHP_SESSION_NONE) {
@@ -100,7 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gym_booking_form'])) 
     }
     
     // Validate phone
-    $phone_validation = validatePhone($_POST['phone'] ?? '');
+    $full_phone = trim($_POST['phone_code'] ?? '+265') . trim($_POST['phone_number'] ?? '');
+    $phone_validation = validatePhone($full_phone);
     if (!$phone_validation['valid']) {
         $validation_errors['phone'] = $phone_validation['error'];
     } else {
@@ -286,6 +288,8 @@ try {
     <link rel="stylesheet" href="css/header.css">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/footer.css">
+    <link rel="stylesheet" href="css/form-validation.css">
+    <link rel="stylesheet" href="css/form-validation.css">
     
     <!-- Structured Data - Sports Activity Location Schema -->
     <script type="application/ld+json">
@@ -686,37 +690,50 @@ try {
                 <h3>Request a Session</h3>
                 <p>Complete form and our team will confirm your booking via email.</p>
             </div>
-            <form method="POST" class="booking-form" novalidate>
+            <form method="POST" class="booking-form validate-form" novalidate>
                 <input type="hidden" name="gym_booking_form" value="1">
                 <div class="form-grid">
                     <div class="form-group">
-                        <label for="full_name">Full Name *</label>
+                        <label for="full_name" class="required">Full Name</label>
                         <input type="text" id="full_name" name="full_name" required>
                     </div>
                     <div class="form-group">
-                        <label for="email">Email *</label>
+                        <label for="email" class="required">Email</label>
                         <input type="email" id="email" name="email" required>
                     </div>
                     <div class="form-group">
-                        <label for="phone">Phone *</label>
-                        <input type="tel" id="phone" name="phone" required>
+                        <label for="phone_number" class="required">Phone</label>
+                        <div class="phone-input-group">
+                            <select name="phone_code" id="phone_code" class="phone-code-select" required>
+                                <?php foreach ($countries as $c): ?>
+                                <option value="<?php echo htmlspecialchars($c['code']); ?>"
+                                    <?php echo ((isset($_POST['phone_code']) ? $_POST['phone_code'] : '+265') === $c['code']) ? 'selected' : ''; ?>>
+                                    <?php echo $c['flag'] . ' ' . htmlspecialchars($c['code']); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <input type="tel" id="phone_number" name="phone_number"
+                                   class="phone-number-input" required
+                                   placeholder="e.g. 991234567"
+                                   value="<?php echo isset($_POST['phone_number']) ? htmlspecialchars($_POST['phone_number']) : ''; ?>">
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="guests">Guests</label>
                         <input type="number" id="guests" name="guests" min="1" max="10" placeholder="1">
                     </div>
                     <div class="form-group">
-                        <label for="preferred_date">Preferred Date *</label>
+                        <label for="preferred_date" class="required">Preferred Date</label>
                         <input type="date" id="preferred_date" name="preferred_date" min="<?php echo date('Y-m-d'); ?>" required>
                         <small class="field-error" id="preferred_date_error" style="color: #dc3545; display: none;"></small>
                     </div>
                     <div class="form-group">
-                        <label for="preferred_time">Preferred Time *</label>
+                        <label for="preferred_time" class="required">Preferred Time</label>
                         <input type="time" id="preferred_time" name="preferred_time" required>
                         <small class="field-error" id="preferred_time_error" style="color: #dc3545; display: none;"></small>
                     </div>
                     <div class="form-group full">
-                        <label for="package_choice">Select Package *</label>
+                        <label for="package_choice" class="required">Select Package</label>
                         <select id="package_choice" name="package_choice" required>
                             <option value="">Choose a package</option>
                             <?php foreach ($gymPackages as $pkg): ?>
@@ -751,6 +768,7 @@ try {
     <!-- Scripts -->
     <script src="js/modal.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/form-validation.js"></script>
     <script>
         // Page loader
         window.addEventListener('load', function() {

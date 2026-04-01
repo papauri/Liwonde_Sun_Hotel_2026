@@ -1,0 +1,294 @@
+/**
+ * Form Validation Styles
+ * Real-time validation feedback and error messaging
+ */
+
+/* Error/Success state styling */
+.field-error,
+input.field-error,
+select.field-error,
+textarea.field-error {
+    border-color: #dc3545 !important;
+    background-color: rgba(220, 53, 69, 0.05) !important;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.1) !important;
+}
+
+.field-error:focus,
+input.field-error:focus,
+select.field-error:focus,
+textarea.field-error:focus {
+    border-color: #c82333 !important;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.15) !important;
+}
+
+.field-success,
+input.field-success,
+select.field-success,
+textarea.field-success {
+    border-color: #28a745 !important;
+    background-color: rgba(40, 167, 69, 0.03) !important;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.08) !important;
+}
+
+.field-success:focus,
+input.field-success:focus,
+select.field-success:focus,
+textarea.field-success:focus {
+    border-color: #218838 !important;
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.12) !important;
+}
+
+/* Error message styling */
+.field-error-message {
+    display: block;
+    color: #dc3545;
+    font-size: 12px;
+    font-weight: 500;
+    margin-top: 5px;
+    animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Form error banner */
+.form-error-banner {
+    display: none;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 8px;
+    color: #721c24;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    font-weight: 500;
+    animation: slideDown 0.3s ease-out;
+}
+
+/* Field validation indicator icons */
+.form-group {
+    position: relative;
+}
+
+.form-group input.field-error::before,
+.form-group input.field-success::before {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    pointer-events: none;
+}
+
+.form-group input.field-error::after {
+    content: "⚠";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #dc3545;
+    font-size: 16px;
+    pointer-events: none;
+}
+
+.form-group input.field-success::after {
+    content: "✓";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #28a745;
+    font-size: 16px;
+    font-weight: bold;
+    pointer-events: none;
+}
+
+/* Input padding adjustment to accommodate icons */
+.form-group input.field-error,
+.form-group input.field-success {
+    padding-right: 38px;
+}
+
+/* Required field indicator */
+.form-group label::after {
+    content: "";
+    display: none;
+}
+
+.form-group label[for*="required"]::after,
+.form-group input:required + label::after,
+.form-group input:required ~ label::after {
+    content: " *";
+    color: #dc3545;
+    font-weight: bold;
+}
+
+/* Disabled form fields */
+.form-group input:disabled,
+.form-group select:disabled,
+.form-group textarea:disabled {
+    background-color: #e9ecef;
+    color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Focus states for accessibility */
+.form-group input:focus:invalid,
+.form-group select:focus:invalid,
+.form-group textarea:focus:invalid {
+    border-color: #dc3545;
+    outline: none;
+}
+
+.form-group input:focus:valid,
+.form-group select:focus:valid,
+.form-group textarea:focus:valid {
+    border-color: #28a745;
+    outline: none;
+}
+
+/* Loading state for submit button */
+button[type="submit"]:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+button[type="submit"].is-loading::after {
+    content: "";
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-left: 8px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .field-error-message {
+        font-size: 11px;
+    }
+
+    .form-error-banner {
+        font-size: 13px;
+        padding: 10px 14px;
+    }
+}
+
+/* Print styles - hide validation states */
+@media print {
+    .field-error,
+    .field-success,
+    .field-error-message,
+    .form-error-banner {
+        display: none;
+    }
+}
+
+/* ============================================================
+   Phone Input Group — code dropdown + number input side-by-side
+   ============================================================ */
+.phone-input-group {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 8px;
+    align-items: stretch;
+    width: 100%;
+}
+
+/* Fixed-width dial code select — override any page-level width:100% rules */
+.phone-input-group > .phone-code-select,
+.phone-input-group .phone-code-select {
+    flex: 0 0 130px !important;
+    width: 130px !important;
+    min-width: 130px !important;
+    max-width: 130px !important;
+    box-sizing: border-box !important;
+    padding: 10px 8px !important;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    appearance: auto;
+    -webkit-appearance: auto;
+    line-height: 1.4;
+}
+
+.phone-input-group .phone-code-select:focus {
+    outline: none;
+    border-color: #80bdff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+}
+
+/* Number input fills remaining space — override form-control width:100% */
+.phone-input-group > .phone-number-input,
+.phone-input-group .phone-number-input {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 80px !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+}
+
+/* Apply error/success border to both parts of the phone group */
+.phone-input-group .field-error,
+.phone-input-group .field-success {
+    padding-right: inherit !important;
+}
+
+.phone-input-group .phone-code-select.field-error,
+.phone-input-group .phone-number-input.field-error {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.1) !important;
+}
+
+.phone-input-group .phone-code-select.field-success,
+.phone-input-group .phone-number-input.field-success {
+    border-color: #28a745 !important;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.08) !important;
+}
+
+/* Country dropdown and phone code select — caret arrow */
+select.form-control,
+.phone-code-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px !important;
+}
+
+/* Required label asterisk — works for any page loading form-validation.css */
+.form-group label.required::after {
+    content: ' *';
+    color: #dc3545;
+    font-weight: bold;
+}
+
+@media (max-width: 480px) {
+    .phone-input-group > .phone-code-select,
+    .phone-input-group .phone-code-select {
+        flex: 0 0 105px !important;
+        width: 105px !important;
+        min-width: 105px !important;
+        max-width: 105px !important;
+        font-size: 13px;
+    }
+}
