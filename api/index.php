@@ -258,6 +258,10 @@ class ApiResponse {
     }
 }
 
+// Only run the routing block when index.php is called directly.
+// When other API files require_once this file, they only need the classes above.
+if (realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) :
+
 // Initialize API
 try {
     // Start timing
@@ -357,3 +361,5 @@ try {
     
     ApiResponse::error('Internal server error', 500, $e->getMessage());
 }
+
+endif; // realpath check

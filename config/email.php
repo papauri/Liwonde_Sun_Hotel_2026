@@ -54,6 +54,79 @@ $is_localhost = isset($_SERVER['HTTP_HOST']) && (
 $development_mode = $is_localhost && $email_development_mode;
 
 /**
+ * Configure SMTP transport from database settings.
+ * Supports ssl, tls, or no encryption.
+ */
+function configureSmtpTransport(PHPMailer $mail) {
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
+
+    if (empty($smtp_host) || empty($smtp_port) || empty($smtp_username) || empty($smtp_password)) {
+        throw new Exception('SMTP is not fully configured. Please set host, port, username, and password in booking settings.');
+    }
+
+    $mail->isSMTP();
+    $mail->Host = $smtp_host;
+    $mail->SMTPAuth = true;
+    $mail->Username = $smtp_username;
+    $mail->Password = $smtp_password;
+    $mail->Port = (int)$smtp_port;
+    $mail->Timeout = max(5, (int)$smtp_timeout);
+
+    $secure = strtolower(trim((string)$smtp_secure));
+    if ($secure === 'ssl') {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+    } elseif ($secure === 'tls') {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+    } else {
+        // Explicitly disable TLS negotiation for plain SMTP servers (e.g., port 25/26).
+        $mail->SMTPSecure = '';
+        $mail->SMTPAutoTLS = false;
+    }
+
+    if ($smtp_debug > 0) {
+        $mail->SMTPDebug = (int)$smtp_debug;
+    }
+}
+
+/**
+ * Apply sender/recipient headers consistently.
+ */
+function configureMailRecipients(PHPMailer $mail, $to, $toName) {
+    global $email_from_name, $email_from_email, $email_admin_email, $email_bcc_admin, $smtp_username;
+
+    $fromAddress = filter_var($email_from_email, FILTER_VALIDATE_EMAIL) ? $email_from_email : $smtp_username;
+    $fromName = !empty($email_from_name) ? $email_from_name : 'Website';
+
+    $mail->setFrom($fromAddress, $fromName);
+    $mail->addAddress($to, $toName);
+    $mail->addReplyTo($fromAddress, $fromName);
+
+    if ($email_bcc_admin && !empty($email_admin_email) && filter_var($email_admin_email, FILTER_VALIDATE_EMAIL)) {
+        $mail->addBCC($email_admin_email);
+    }
+}
+
+/**
+ * Resolve a department admin recipient email with backward-compatible fallbacks.
+ */
+function resolveDepartmentAdminEmail($emailSettingKey, $legacySettingKey = '') {
+    global $email_admin_email;
+
+    $recipient = trim((string)getEmailSetting($emailSettingKey, ''));
+    if (!filter_var($recipient, FILTER_VALIDATE_EMAIL) && $legacySettingKey !== '') {
+        $recipient = trim((string)getSetting($legacySettingKey, ''));
+    }
+    if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+        $recipient = trim((string)getSetting('email_main', ''));
+    }
+    if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+        $recipient = trim((string)$email_admin_email);
+    }
+
+    return $recipient;
+}
+
+/**
  * Send email using PHPMailer
  * 
  * @param string $to Recipient email
@@ -64,9 +137,7 @@ $development_mode = $is_localhost && $email_development_mode;
  * @return array Result array with success status and message
  */
 function sendEmail($to, $toName, $subject, $htmlBody, $textBody = '') {
-    global $email_from_name, $email_from_email, $email_admin_email;
-    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
-    global $email_bcc_admin, $development_mode, $email_log_enabled, $email_preview_enabled;
+    global $development_mode, $email_log_enabled, $email_preview_enabled, $smtp_password;
     
     // If in development mode and no password or preview enabled, show preview
     if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
@@ -76,30 +147,9 @@ function sendEmail($to, $toName, $subject, $htmlBody, $textBody = '') {
     try {
         // Create PHPMailer instance
         $mail = new PHPMailer(true);
-        
-        // Server settings
-        $mail->isSMTP();
-        $mail->Host = $smtp_host;
-        $mail->SMTPAuth = true;
-        $mail->Username = $smtp_username;
-        $mail->Password = $smtp_password;
-        $mail->SMTPSecure = $smtp_secure;
-        $mail->Port = $smtp_port;
-        $mail->Timeout = $smtp_timeout;
-        
-        if ($smtp_debug > 0) {
-            $mail->SMTPDebug = $smtp_debug;
-        }
-        
-        // Recipients
-        $mail->setFrom($smtp_username, $email_from_name);
-        $mail->addAddress($to, $toName);
-        $mail->addReplyTo($email_from_email, $email_from_name);
-        
-        // Add BCC for admin if enabled
-        if ($email_bcc_admin && !empty($email_admin_email)) {
-            $mail->addBCC($email_admin_email);
-        }
+
+        configureSmtpTransport($mail);
+        configureMailRecipients($mail, $to, $toName);
         
         // Content
         $mail->isHTML(true);
@@ -870,14 +920,8 @@ function sendConferenceAdminNotificationEmail($data) {
         $currency_symbol = getSetting('currency_symbol');
         $total_amount = $data['total_amount'] ? number_format($data['total_amount'], 0) : 'To be determined';
         
-        // Get conference email with fallback to main contact email
-        $conference_email = getSetting('conference_email');
-        if (empty($conference_email) || !filter_var($conference_email, FILTER_VALIDATE_EMAIL)) {
-            $conference_email = getSetting('email_main');
-        }
-        if (empty($conference_email) || !filter_var($conference_email, FILTER_VALIDATE_EMAIL)) {
-            $conference_email = $email_admin_email;
-        }
+        // Resolve conference recipient from email_settings first, then legacy settings.
+        $conference_email = resolveDepartmentAdminEmail('conference_admin_email', 'conference_email');
         
         // Prepare template data
         $template_data = [
@@ -1493,9 +1537,7 @@ function sendBookingCancelledEmail($booking, $cancellation_reason = '') {
  * Send email with CC recipients
  */
 function sendEmailWithCC($to, $toName, $subject, $htmlBody, $textBody = '', $ccEmails = []) {
-    global $email_from_name, $email_from_email, $email_admin_email;
-    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
-    global $email_bcc_admin, $development_mode, $email_log_enabled, $email_preview_enabled;
+    global $development_mode, $email_log_enabled, $email_preview_enabled, $smtp_password;
     
     // If in development mode and no password or preview enabled, show preview
     if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
@@ -1505,36 +1547,15 @@ function sendEmailWithCC($to, $toName, $subject, $htmlBody, $textBody = '', $ccE
     try {
         // Create PHPMailer instance
         $mail = new PHPMailer(true);
-        
-        // Server settings
-        $mail->isSMTP();
-        $mail->Host = $smtp_host;
-        $mail->SMTPAuth = true;
-        $mail->Username = $smtp_username;
-        $mail->Password = $smtp_password;
-        $mail->SMTPSecure = $smtp_secure;
-        $mail->Port = $smtp_port;
-        $mail->Timeout = $smtp_timeout;
-        
-        if ($smtp_debug > 0) {
-            $mail->SMTPDebug = $smtp_debug;
-        }
-        
-        // Recipients
-        $mail->setFrom($smtp_username, $email_from_name);
-        $mail->addAddress($to, $toName);
-        $mail->addReplyTo($email_from_email, $email_from_name);
+
+        configureSmtpTransport($mail);
+        configureMailRecipients($mail, $to, $toName);
         
         // Add CC recipients
         if (!empty($ccEmails)) {
             foreach ($ccEmails as $ccEmail) {
                 $mail->addCC($ccEmail);
             }
-        }
-        
-        // Add BCC for admin if enabled
-        if ($email_bcc_admin && !empty($email_admin_email)) {
-            $mail->addBCC($email_admin_email);
         }
         
         // Content
@@ -1579,25 +1600,23 @@ function sendEmailWithCC($to, $toName, $subject, $htmlBody, $textBody = '', $ccE
  * Get CC emails from settings
  */
 function getCCEmails() {
-    global $pdo;
-    
     try {
-        $stmt = $pdo->query("SELECT email_value FROM email_settings WHERE email_key = 'cc_emails' LIMIT 1");
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($result && !empty($result['email_value'])) {
-            $emails = json_decode($result['email_value'], true);
-            if (is_array($emails) && !empty($emails)) {
-                return array_filter($emails, function($email) {
-                    return filter_var($email, FILTER_VALIDATE_EMAIL);
-                });
-            }
+        // Stored as a comma/semicolon/newline separated list in email_settings.setting_value
+        $raw = getEmailSetting('invoice_recipients', '');
+        if (empty($raw)) {
+            return [];
         }
+
+        $candidates = preg_split('/[\s,;]+/', $raw, -1, PREG_SPLIT_NO_EMPTY);
+        $valid = array_filter($candidates, function($email) {
+            return filter_var($email, FILTER_VALIDATE_EMAIL);
+        });
+
+        return array_values(array_unique($valid));
     } catch (Exception $e) {
         error_log("Error getting CC emails: " . $e->getMessage());
+        return [];
     }
-    
-    return [];
 }
 
 /**
@@ -2374,11 +2393,20 @@ function sendGymBookingEmail($data) {
             </p>
         </div>';
         
+        // Add reference number if available
+        if (!empty($data['reference'])) {
+            $htmlBody = '
+            <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 15px; margin: 0 0 20px 0; border-radius: 10px; text-align: center;">
+                <p style="color: #666; margin: 0 0 5px 0; font-size: 14px;">Your Reference Number:</p>
+                <p style="color: #D4AF37; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 1px;">' . htmlspecialchars($data['reference']) . '</p>
+            </div>' . $htmlBody;
+        }
+        
         // Send email
         return sendEmail(
             $data['email'],
             $data['name'],
-            'Gym Booking Request Received - ' . htmlspecialchars($site_name),
+            'Gym Booking Request Received - ' . htmlspecialchars($site_name) . (!empty($data['reference']) ? ' [' . $data['reference'] . ']' : ''),
             $htmlBody
         );
         
@@ -2403,14 +2431,8 @@ function sendGymAdminNotificationEmail($data) {
     try {
         $site_name = getSetting('site_name');
         
-        // Get gym email with fallback to main contact email
-        $gym_email = getSetting('gym_email');
-        if (empty($gym_email) || !filter_var($gym_email, FILTER_VALIDATE_EMAIL)) {
-            $gym_email = getSetting('email_main');
-        }
-        if (empty($gym_email) || !filter_var($gym_email, FILTER_VALIDATE_EMAIL)) {
-            $gym_email = $email_admin_email;
-        }
+        // Resolve gym recipient from email_settings first, then legacy settings.
+        $gym_email = resolveDepartmentAdminEmail('gym_admin_email', 'gym_email');
         
         // Prepare email content
         $htmlBody = '
@@ -2475,10 +2497,23 @@ function sendGymAdminNotificationEmail($data) {
             </div>';
         }
         
+        // Add reference number if available
+        if (!empty($data['reference'])) {
+            $htmlBody .= '
+            <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 15px; margin: 20px 0; border-radius: 10px; text-align: center;">
+                <p style="color: #666; margin: 0 0 5px 0; font-size: 14px;">Reference Number:</p>
+                <p style="color: #D4AF37; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 1px;">' . htmlspecialchars($data['reference']) . '</p>
+            </div>';
+        }
+        
         $htmlBody .= '
         <div style="text-align: center; margin-top: 30px;">
+            <a href="' . htmlspecialchars($email_site_url) . '/admin/gym-inquiries.php"
+               style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; margin-right: 10px;">
+                View in Admin Panel
+            </a>
             <a href="mailto:' . htmlspecialchars($data['email']) . '"
-               style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
+               style="display: inline-block; background: #0A1929; color: #D4AF37; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
                 Reply to Customer
             </a>
         </div>';
@@ -2487,12 +2522,150 @@ function sendGymAdminNotificationEmail($data) {
         return sendEmail(
             $gym_email,
             'Gym Team',
-            'New Gym Booking Request - ' . htmlspecialchars($data['name']),
+            'New Gym Booking Request - ' . htmlspecialchars($data['name']) . (!empty($data['reference']) ? ' [' . $data['reference'] . ']' : ''),
             $htmlBody
         );
         
     } catch (Exception $e) {
         error_log("Send Gym Admin Notification Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Send restaurant reservation confirmation email to customer.
+ */
+function sendRestaurantReservationEmail($data) {
+    global $email_site_name, $email_site_url;
+
+    try {
+        $htmlBody = '
+        <h1 style="color: #0A1929; text-align: center;">Restaurant Reservation Request Received</h1>
+        <p>Thank you for your reservation request at <strong>' . htmlspecialchars($email_site_name) . '</strong>.</p>
+
+        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #0A1929; margin-top: 0;">Reservation Details</h2>
+
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Reference:</span>
+                <span style="color: #D4AF37; font-weight: bold;">' . htmlspecialchars($data['reference']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Name:</span>
+                <span style="color: #333;">' . htmlspecialchars($data['name']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Date:</span>
+                <span style="color: #333;">' . htmlspecialchars($data['preferred_date']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Time:</span>
+                <span style="color: #333;">' . htmlspecialchars($data['preferred_time']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
+                <span style="font-weight: bold; color: #0A1929;">Guests:</span>
+                <span style="color: #333;">' . (int)$data['guests'] . '</span>
+            </div>
+        </div>
+
+        <p>Our team will contact you shortly to confirm availability.</p>
+
+        <p style="text-align: center; margin-top: 25px;">
+            <a href="' . htmlspecialchars($email_site_url) . '/restaurant.php" style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Restaurant Page</a>
+        </p>';
+
+        return sendEmail(
+            $data['email'],
+            $data['name'],
+            'Restaurant Reservation Request - ' . htmlspecialchars($email_site_name) . ' [' . $data['reference'] . ']',
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log("Send Restaurant Reservation Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Send restaurant reservation notification email to restaurant/admin.
+ */
+function sendRestaurantAdminNotificationEmail($data) {
+    global $email_admin_email;
+
+    try {
+        $restaurant_email = trim((string)getEmailSetting('restaurant_admin_email', ''));
+        if (!filter_var($restaurant_email, FILTER_VALIDATE_EMAIL)) {
+            $restaurant_email = trim((string)getSetting('email_restaurant', ''));
+        }
+        if (!filter_var($restaurant_email, FILTER_VALIDATE_EMAIL)) {
+            $restaurant_email = trim((string)getSetting('restaurant_email', ''));
+        }
+        if (!filter_var($restaurant_email, FILTER_VALIDATE_EMAIL)) {
+            $restaurant_email = trim((string)getSetting('email_main', ''));
+        }
+        if (!filter_var($restaurant_email, FILTER_VALIDATE_EMAIL)) {
+            $restaurant_email = trim((string)$email_admin_email);
+        }
+
+        $htmlBody = '
+        <h1 style="color: #0A1929; text-align: center;">New Restaurant Reservation Request</h1>
+        <p>A new reservation request has been submitted from the restaurant page.</p>
+
+        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #0A1929; margin-top: 0;">Request Details</h2>
+
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Reference:</span>
+                <span style="color: #D4AF37; font-weight: bold;">' . htmlspecialchars($data['reference']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Name:</span>
+                <span style="color: #333;">' . htmlspecialchars($data['name']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Email:</span>
+                <span style="color: #333;">' . htmlspecialchars($data['email']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Phone:</span>
+                <span style="color: #333;">' . htmlspecialchars($data['phone']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Date:</span>
+                <span style="color: #333;">' . htmlspecialchars($data['preferred_date']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Time:</span>
+                <span style="color: #333;">' . htmlspecialchars($data['preferred_time']) . '</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Guests:</span>
+                <span style="color: #333;">' . (int)$data['guests'] . '</span>
+            </div>
+            <div style="padding: 10px 0; border-bottom: 1px solid #ddd;">
+                <span style="font-weight: bold; color: #0A1929;">Occasion:</span>
+                <span style="color: #333;"> ' . htmlspecialchars($data['occasion'] ?? '') . '</span>
+            </div>
+            <div style="padding: 10px 0;">
+                <span style="font-weight: bold; color: #0A1929;">Special Requests:</span>
+                <div style="color: #333; margin-top: 6px;">' . nl2br(htmlspecialchars($data['special_requests'] ?? '')) . '</div>
+            </div>
+        </div>';
+
+        return sendEmail(
+            $restaurant_email,
+            'Restaurant Team',
+            'New Restaurant Reservation - ' . htmlspecialchars($data['name']) . ' [' . $data['reference'] . ']',
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log("Send Restaurant Admin Notification Email Error: " . $e->getMessage());
         return [
             'success' => false,
             'message' => $e->getMessage()

@@ -163,6 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gym_booking_form'])) 
         }
         $bookingError = implode('; ', $error_messages);
     } else {
+        // Set success and generate reference after validation passes
+        $bookingSuccess = true;
+        $bookingReference = 'GYM-' . strtoupper(substr(uniqid(), -8));
+        
         // Prepare booking data for email functions
         $booking_data = [
             'name' => $sanitized_data['full_name'],
@@ -172,15 +176,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gym_booking_form'])) 
             'preferred_time' => $sanitized_data['preferred_time'],
             'package_choice' => $sanitized_data['package_choice'],
             'guests' => $sanitized_data['guests'] ?? 1,
-            'goals' => $sanitized_data['goals'] ?? ''
+            'goals' => $sanitized_data['goals'] ?? '',
+            'reference' => $bookingReference
         ];
         
         // Log booking data for diagnostics
         error_log("Gym booking data prepared: " . print_r($booking_data, true));
-        
-        // Set success and generate reference after validation passes
-        $bookingSuccess = true;
-        $bookingReference = 'GYM-' . strtoupper(substr(uniqid(), -8));
         
         // Save inquiry to database
         try {
