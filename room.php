@@ -275,7 +275,7 @@ try {
 
             <!-- Room Details Section - Moved below gallery -->
             <aside class="room-detail-info room-detail-info--horizontal" aria-label="Room details">
-                <div class="room-detail-header">
+                <div class="room-detail-header" id="book_now">
                     <h2 class="room-detail-title">About the Room</h2>
                     <a class="btn btn-primary btn-booking" href="booking.php?room_id=<?php echo $room['id']; ?>">
                         <i class="fas fa-calendar-check"></i> Book Now

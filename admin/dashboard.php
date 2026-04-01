@@ -46,6 +46,23 @@ try {
     $today_conf_stmt->execute([$today]);
     $today_conferences = $today_conf_stmt->fetch(PDO::FETCH_ASSOC)['count'];
 
+    // New gym inquiries
+    $gym_new_stmt = $pdo->query("SELECT COUNT(*) as count FROM gym_inquiries WHERE status = 'new'");
+    $new_gym_inquiries = $gym_new_stmt->fetch(PDO::FETCH_ASSOC)['count'];
+
+    // Total gym inquiries (all statuses)
+    $gym_total_stmt = $pdo->query("SELECT COUNT(*) as count FROM gym_inquiries");
+    $total_gym_inquiries = $gym_total_stmt->fetch(PDO::FETCH_ASSOC)['count'];
+
+    // Recent gym inquiries (last 10)
+    $recent_gym_stmt = $pdo->query("
+        SELECT id, reference_number, name, email, phone, membership_type, preferred_date, preferred_time, guests, status, created_at
+        FROM gym_inquiries
+        ORDER BY created_at DESC
+        LIMIT 10
+    ");
+    $recent_gym_inquiries = $recent_gym_stmt->fetchAll(PDO::FETCH_ASSOC);
+
     // Recent bookings (last 10)
     $recent_stmt = $pdo->query("
         SELECT b.*, r.name as room_name,
@@ -291,6 +308,15 @@ $currency_symbol = getSetting('currency_symbol');
                     </div>
                     <div class="stat-value"><?php echo $expired_bookings; ?></div>
                     <div class="stat-label">Expired (24h)</div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-dumbbell"></i>
+                    </div>
+                    <div class="stat-value"><?php echo $new_gym_inquiries; ?></div>
+                    <div class="stat-label">New Gym Inquiries</div>
+                    <small style="color:#999; font-size:11px;"><?php echo $total_gym_inquiries; ?> total</small>
                 </div>
             </div>
 
@@ -635,6 +661,58 @@ $currency_symbol = getSetting('currency_symbol');
                         </td>
                     </tr>
                     <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Recent Gym Inquiries -->
+        <h3 class="section-title mt-4">Recent Gym Inquiries</h3>
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Reference</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Membership</th>
+                        <th>Preferred Date</th>
+                        <th>Guests</th>
+                        <th>Status</th>
+                        <th>Submitted</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($recent_gym_inquiries)): ?>
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <i class="fas fa-dumbbell"></i>
+                            <p>No gym inquiries yet</p>
+                        </td>
+                    </tr>
+                    <?php else: ?>
+                    <?php foreach ($recent_gym_inquiries as $gym): ?>
+                    <tr>
+                        <td><strong><?php echo htmlspecialchars($gym['reference_number']); ?></strong></td>
+                        <td><?php echo htmlspecialchars($gym['name']); ?></td>
+                        <td><?php echo htmlspecialchars($gym['email']); ?></td>
+                        <td><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $gym['membership_type']))); ?></td>
+                        <td><?php echo $gym['preferred_date'] ? date('M j, Y', strtotime($gym['preferred_date'])) : 'N/A'; ?></td>
+                        <td><?php echo (int) $gym['guests']; ?></td>
+                        <td>
+                            <span class="badge badge-<?php echo $gym['status']; ?>">
+                                <?php echo ucfirst($gym['status']); ?>
+                            </span>
+                        </td>
+                        <td style="font-size:12px; color:#888;">
+                            <?php echo date('M j, g:ia', strtotime($gym['created_at'])); ?>
+                        </td>
+                        <td>
+                            <a href="gym-inquiries.php" class="btn btn-primary btn-sm">Manage</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>

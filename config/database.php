@@ -95,6 +95,11 @@ function getSetting($key, $default = '') {
         return $cachedValue;
     }
     
+    // If no database connection, return default
+    if ($pdo === null) {
+        return $default;
+    }
+    
     try {
         $stmt = $pdo->prepare("SELECT setting_value FROM site_settings WHERE setting_key = ?");
         $stmt->execute([$key]);
@@ -280,6 +285,9 @@ function updateEmailSetting($key, $value, $description = null, $is_encrypted = f
         if (isset($_SITE_SETTINGS[$key])) {
             unset($_SITE_SETTINGS[$key]);
         }
+
+        // Clear file cache for this email setting so changes are visible immediately.
+        deleteCache("email_setting_{$key}");
         
         return true;
     } catch (PDOException $e) {

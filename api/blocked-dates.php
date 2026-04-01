@@ -30,18 +30,18 @@ require_once __DIR__ . '/../config/database.php';
 // Include API authentication
 require_once __DIR__ . '/index.php';
 
-// Initialize API auth
-$apiAuth = new ApiAuth($pdo);
-
-// Authenticate request
-$authResult = $apiAuth->authenticate();
-if (!$authResult['success']) {
-    ApiResponse::error($authResult['message'], 401);
-    exit;
+// GET requests (reading blocked dates for calendar display) are public.
+// POST / PUT / DELETE (modifying blocked dates) require admin API authentication.
+$admin_user = null;
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    $apiAuth = new ApiAuth($pdo);
+    $authResult = $apiAuth->authenticate();
+    if (!$authResult['success']) {
+        ApiResponse::error($authResult['message'], 401);
+        exit;
+    }
+    $admin_user = $authResult['user'];
 }
-
-// Get authenticated admin user
-$admin_user = $authResult['user'];
 
 /**
  * Send JSON response

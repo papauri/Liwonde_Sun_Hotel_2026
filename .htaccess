@@ -101,4 +101,10 @@ Options -Indexes
     
     # Dynamic Robots.txt
     RewriteRule ^robots\.txt$ robots.php [L]
+    
+    # Favicon - redirect legacy .ico/.png requests to SVG
+    RewriteRule ^favicon\.ico$ favicon.svg [L,T=image/svg+xml]
+    RewriteRule ^favicon-32x32\.png$ favicon.svg [L,T=image/svg+xml]
+    RewriteRule ^favicon-16x16\.png$ favicon.svg [L,T=image/svg+xml]
+    RewriteRule ^apple-touch-icon\.png$ /images/logo/logo.jpg [L]
 </IfModule>

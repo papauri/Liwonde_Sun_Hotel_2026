@@ -1,8 +1,176 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+require_once 'config/security.php';
 require_once 'config/database.php';
 require_once 'config/base-url.php';
+require_once 'config/email.php';
 require_once 'includes/page-guard.php';
+require_once 'includes/validation.php';
 require_once 'includes/section-headers.php';
+
+sendSecurityHeaders();
+
+$reservation_success = false;
+$reservation_error = '';
+$reservation_reference = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restaurant_reservation_form'])) {
+    try {
+        requireCsrfValidation();
+
+        $validation_errors = [];
+        $sanitized_data = [];
+
+        $name_validation = validateName($_POST['full_name'] ?? '', 2, true);
+        if (!$name_validation['valid']) {
+            $validation_errors['full_name'] = $name_validation['error'];
+        } else {
+            $sanitized_data['full_name'] = sanitizeString($name_validation['value'], 100);
+        }
+
+        $email_validation = validateEmail($_POST['email'] ?? '');
+        if (!$email_validation['valid']) {
+            $validation_errors['email'] = $email_validation['error'];
+        } else {
+            $sanitized_data['email'] = trim((string)($_POST['email'] ?? ''));
+        }
+
+        $phone_validation = validatePhone($_POST['phone'] ?? '');
+        if (!$phone_validation['valid']) {
+            $validation_errors['phone'] = $phone_validation['error'];
+        } else {
+            $sanitized_data['phone'] = $phone_validation['sanitized'];
+        }
+
+        // Validate date and time with restaurant-specific rules
+        $min_advance_days = (int)getSetting('restaurant_min_advance_days', 1);
+        $booking_buffer = (int)getSetting('booking_time_buffer_minutes', 60);
+        
+        // Calculate minimum buffer minutes based on advance days requirement
+        // If min_advance_days is 1, no same-day bookings. If 2, no bookings within 2 days, etc.
+        $buffer_minutes = $booking_buffer;
+        if ($min_advance_days > 0) {
+            $buffer_minutes = max($booking_buffer, $min_advance_days * 24 * 60);
+        }
+        
+        $datetime_validation = validateDateTime(
+            $_POST['preferred_date'] ?? '',
+            $_POST['preferred_time'] ?? '',
+            false,
+            $buffer_minutes
+        );
+        if (!$datetime_validation['valid']) {
+            $validation_errors['preferred_date'] = $datetime_validation['error'];
+        } else {
+            $sanitized_data['preferred_date'] = $datetime_validation['datetime']->format('Y-m-d');
+            $sanitized_data['preferred_time'] = $datetime_validation['datetime']->format('H:i');
+            
+            // Now validate that the reservation time falls within restaurant operating hours
+            $reservation_time = $datetime_validation['datetime']->format('H:i');
+            
+            // Get restaurant operating hours from settings
+            $breakfast_start = getSetting('restaurant_breakfast_start', '06:00');
+            $breakfast_end = getSetting('restaurant_breakfast_end', '10:00');
+            $lunch_start = getSetting('restaurant_lunch_start', '12:00');
+            $lunch_end = getSetting('restaurant_lunch_end', '15:00');
+            $dinner_start = getSetting('restaurant_dinner_start', '18:00');
+            $dinner_end = getSetting('restaurant_dinner_end', '22:00');
+            
+            // Check if reservation time falls within any service period
+            $is_within_hours = (
+                ($reservation_time >= $breakfast_start && $reservation_time < $breakfast_end) ||
+                ($reservation_time >= $lunch_start && $reservation_time < $lunch_end) ||
+                ($reservation_time >= $dinner_start && $reservation_time < $dinner_end)
+            );
+            
+            if (!$is_within_hours) {
+                $validation_errors['preferred_time'] = 'Reservation time is outside restaurant operating hours. Please select a time between: Breakfast (' . $breakfast_start . '-' . $breakfast_end . '), Lunch (' . $lunch_start . '-' . $lunch_end . '), or Dinner (' . $dinner_start . '-' . $dinner_end . ')';
+            }
+        }
+
+        $guests_validation = validateNumber($_POST['guests'] ?? '', 1, 20, true);
+        if (!$guests_validation['valid']) {
+            $validation_errors['guests'] = $guests_validation['error'];
+        } else {
+            $sanitized_data['guests'] = (int)$guests_validation['value'];
+        }
+
+        $occasion_validation = validateText($_POST['occasion'] ?? '', 0, 120, false);
+        if (!$occasion_validation['valid']) {
+            $validation_errors['occasion'] = $occasion_validation['error'];
+        } else {
+            $sanitized_data['occasion'] = sanitizeString($occasion_validation['value'], 120);
+        }
+
+        $requests_validation = validateText($_POST['special_requests'] ?? '', 0, 1000, false);
+        if (!$requests_validation['valid']) {
+            $validation_errors['special_requests'] = $requests_validation['error'];
+        } else {
+            $sanitized_data['special_requests'] = sanitizeString($requests_validation['value'], 1000);
+        }
+
+        if (!empty($validation_errors)) {
+            $error_messages = [];
+            foreach ($validation_errors as $field => $message) {
+                $error_messages[] = ucfirst(str_replace('_', ' ', $field)) . ': ' . $message;
+            }
+            throw new Exception(implode('; ', $error_messages));
+        }
+
+        $reservation_reference = 'REST-' . strtoupper(substr(uniqid(), -8));
+        $reservation_data = [
+            'reference' => $reservation_reference,
+            'name' => $sanitized_data['full_name'],
+            'email' => $sanitized_data['email'],
+            'phone' => $sanitized_data['phone'],
+            'preferred_date' => $sanitized_data['preferred_date'],
+            'preferred_time' => $sanitized_data['preferred_time'],
+            'guests' => $sanitized_data['guests'],
+            'occasion' => $sanitized_data['occasion'],
+            'special_requests' => $sanitized_data['special_requests']
+        ];
+
+        $customer_result = sendRestaurantReservationEmail($reservation_data);
+        if (!$customer_result['success']) {
+            error_log('Failed to send restaurant customer email: ' . $customer_result['message']);
+        }
+
+        $admin_result = sendRestaurantAdminNotificationEmail($reservation_data);
+        if (!$admin_result['success']) {
+            error_log('Failed to send restaurant admin email: ' . $admin_result['message']);
+        }
+
+        // Insert reservation into database
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO restaurant_inquiries 
+                (reference_number, name, email, phone, preferred_date, preferred_time, guests, occasion, special_requests, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $reservation_reference,
+                $sanitized_data['full_name'],
+                $sanitized_data['email'],
+                $sanitized_data['phone'],
+                $sanitized_data['preferred_date'],
+                $sanitized_data['preferred_time'],
+                $sanitized_data['guests'],
+                $sanitized_data['occasion'] ?? '',
+                $sanitized_data['special_requests'] ?? '',
+                'new'
+            ]);
+        } catch (PDOException $e) {
+            error_log('Failed to save restaurant reservation to database: ' . $e->getMessage());
+        }
+
+        $reservation_success = true;
+    } catch (Exception $e) {
+        $reservation_error = $e->getMessage();
+    }
+}
 
 // AJAX Endpoint - Handle menu data requests
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
@@ -666,6 +834,108 @@ try {
                 height: 190px;
             }
         }
+
+        .reservation-section {
+            background: #ffffff;
+            border-top: 1px solid var(--japandi-border);
+            border-bottom: 1px solid var(--japandi-border);
+        }
+        .reservation-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+        .reservation-card {
+            background: #fff;
+            border: 1px solid var(--japandi-border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--japandi-shadow);
+        }
+        .reservation-card h3 {
+            margin-top: 0;
+            font-family: 'Playfair Display', serif;
+            color: #0A1929;
+        }
+        .reservation-form .form-group {
+            margin-bottom: 14px;
+        }
+        .reservation-form label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #0A1929;
+        }
+        .reservation-form .form-control {
+            width: 100%;
+            padding: 11px 12px;
+            border-radius: 8px;
+            border: 1px solid #d9d9d9;
+            font-size: 15px;
+            font-family: 'Poppins', sans-serif;
+        }
+        .reservation-alert {
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            font-size: 14px;
+        }
+        .reservation-alert.success {
+            background: #e8f7ee;
+            border: 1px solid #bfe8cf;
+            color: #1f7a44;
+        }
+        .reservation-alert.error {
+            background: #fdecec;
+            border: 1px solid #f3c0c0;
+            color: #9b1c1c;
+        }
+        
+        /* Real-time validation error message styling */
+        .error-message {
+            display: none;
+            color: #d32f2f;
+            font-size: 12px;
+            margin-top: 4px;
+            padding: 4px 0;
+            font-weight: 500;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        .form-control.invalid {
+            border-color: #d32f2f;
+            background-color: #fff8f8;
+        }
+        
+        .form-control.valid {
+            border-color: #4caf50;
+        }
+        
+        .contact-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 12px;
+        }
+        .contact-list li {
+            color: #333;
+            line-height: 1.6;
+        }
+        .contact-list i {
+            color: var(--japandi-accent);
+            margin-right: 8px;
+            width: 18px;
+        }
+        @media (max-width: 900px) {
+            .reservation-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -815,6 +1085,105 @@ try {
                     <div class="experience-icon"><i class="fas fa-sun"></i></div>
                     <h3>Alfresco Dining</h3>
                     <p>Dine under the stars on our terrace with breathtaking views of the surrounding landscape</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="book" class="reservation-section section-padding">
+        <div class="container">
+            <div class="reservation-grid">
+                <div class="reservation-card">
+                    <h3>Reserve A Table</h3>
+
+                    <?php if ($reservation_success): ?>
+                        <div class="reservation-alert success">
+                            Reservation request sent successfully. Reference: <strong><?php echo htmlspecialchars($reservation_reference); ?></strong>. We will contact you shortly.
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($reservation_error)): ?>
+                        <div class="reservation-alert error">
+                            <?php echo htmlspecialchars($reservation_error); ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <form method="POST" class="reservation-form" action="restaurant.php#book" id="restaurantReservationForm">
+                        <?php echo getCsrfField(); ?>
+                        <input type="hidden" name="restaurant_reservation_form" value="1">
+                        
+                        <!-- Hidden settings for client-side validation -->
+                        <input type="hidden" id="minAdvanceDays" value="<?php echo htmlspecialchars(getSetting('restaurant_min_advance_days', '1')); ?>">
+                        <input type="hidden" id="breakfastStart" value="<?php echo htmlspecialchars(getSetting('restaurant_breakfast_start', '06:00')); ?>">
+                        <input type="hidden" id="breakfastEnd" value="<?php echo htmlspecialchars(getSetting('restaurant_breakfast_end', '10:00')); ?>">
+                        <input type="hidden" id="lunchStart" value="<?php echo htmlspecialchars(getSetting('restaurant_lunch_start', '12:00')); ?>">
+                        <input type="hidden" id="lunchEnd" value="<?php echo htmlspecialchars(getSetting('restaurant_lunch_end', '15:00')); ?>">
+                        <input type="hidden" id="dinnerStart" value="<?php echo htmlspecialchars(getSetting('restaurant_dinner_start', '18:00')); ?>">
+                        <input type="hidden" id="dinnerEnd" value="<?php echo htmlspecialchars(getSetting('restaurant_dinner_end', '22:00')); ?>">
+
+                        <div class="form-group">
+                            <label for="full_name">Full Name</label>
+                            <input class="form-control" type="text" id="full_name" name="full_name" required value="<?php echo htmlspecialchars($_POST['full_name'] ?? ''); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input class="form-control" type="email" id="email" name="email" required value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="phone">Phone</label>
+                            <input class="form-control" type="text" id="phone" name="phone" required value="<?php echo htmlspecialchars($_POST['phone'] ?? ''); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="preferred_date">Preferred Date</label>
+                            <input class="form-control" type="date" id="preferred_date" name="preferred_date" required value="<?php echo htmlspecialchars($_POST['preferred_date'] ?? ''); ?>" min="<?php 
+                                $minAdvanceDays = (int)getSetting('restaurant_min_advance_days', 1);
+                                $minDate = new DateTime();
+                                $minDate->modify("+{$minAdvanceDays} days");
+                                echo $minDate->format('Y-m-d');
+                            ?>">
+                            <div class="error-message" id="dateError"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="preferred_time">Preferred Time</label>
+                            <input class="form-control" type="time" id="preferred_time" name="preferred_time" required value="<?php echo htmlspecialchars($_POST['preferred_time'] ?? ''); ?>">
+                            <div class="error-message" id="timeError"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="guests">Guests</label>
+                            <input class="form-control" type="number" id="guests" name="guests" min="1" max="20" required value="<?php echo htmlspecialchars($_POST['guests'] ?? '2'); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="occasion">Occasion (Optional)</label>
+                            <input class="form-control" type="text" id="occasion" name="occasion" value="<?php echo htmlspecialchars($_POST['occasion'] ?? ''); ?>" placeholder="Birthday, Anniversary, Business dinner...">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="special_requests">Special Requests (Optional)</label>
+                            <textarea class="form-control" id="special_requests" name="special_requests" rows="4" placeholder="Dietary requirements, seating preference, accessibility needs...\"><?php echo htmlspecialchars($_POST['special_requests'] ?? ''); ?></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Submit Reservation</button>
+                    </form>
+                </div>
+
+                <div class="reservation-card" id="contact">
+                    <h3>Restaurant Contact</h3>
+                    <p style="margin-top: 0; color: #555; line-height: 1.8;">
+                        For same-day reservations, private dining, or event dining, contact our team directly.
+                    </p>
+                    <ul class="contact-list">
+                        <li><i class="fas fa-envelope"></i><a href="mailto:<?php echo htmlspecialchars(getSetting('email_restaurant', getSetting('email_main', ''))); ?>"><?php echo htmlspecialchars(getSetting('email_restaurant', getSetting('email_main', ''))); ?></a></li>
+                        <li><i class="fas fa-phone"></i><a href="tel:<?php echo htmlspecialchars(preg_replace('/[^0-9+]/', '', getSetting('phone_main', ''))); ?>"><?php echo htmlspecialchars(getSetting('phone_main', '')); ?></a></li>
+                        <li><i class="fas fa-clock"></i>Breakfast: 6:30 AM - 10:00 AM</li>
+                        <li><i class="fas fa-clock"></i>Lunch: 12:00 PM - 2:30 PM</li>
+                        <li><i class="fas fa-clock"></i>Dinner: 6:30 PM - 10:00 PM</li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -1035,6 +1404,212 @@ try {
                 }, 500);
             }
         });
+        
+        // ====================
+        // Restaurant Reservation Form Validation
+        // ====================
+        
+        const restaurantForm = document.getElementById('restaurantReservationForm');
+        const preferredDateInput = document.getElementById('preferred_date');
+        const preferredTimeInput = document.getElementById('preferred_time');
+        const dateError = document.getElementById('dateError');
+        const timeError = document.getElementById('timeError');
+        
+        // Get restaurant settings from hidden inputs
+        const minAdvanceDays = parseInt(document.getElementById('minAdvanceDays').value) || 1;
+        const breakfastStart = document.getElementById('breakfastStart').value || '06:00';
+        const breakfastEnd = document.getElementById('breakfastEnd').value || '10:00';
+        const lunchStart = document.getElementById('lunchStart').value || '12:00';
+        const lunchEnd = document.getElementById('lunchEnd').value || '15:00';
+        const dinnerStart = document.getElementById('dinnerStart').value || '18:00';
+        const dinnerEnd = document.getElementById('dinnerEnd').value || '22:00';
+        
+        /**
+         * Validate the preferred date against minimum advance days requirement
+         */
+        function validateReservationDate(dateString) {
+            if (!dateString) {
+                return { valid: false, error: 'Please select a date' };
+            }
+            
+            const selectedDate = new Date(dateString + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            // Calculate minimum allowed date
+            const minDate = new Date(today);
+            minDate.setDate(minDate.getDate() + minAdvanceDays);
+            
+            // Check if date is in the past
+            if (selectedDate < today) {
+                return { valid: false, error: '❌ Date cannot be in the past' };
+            }
+            
+            // Check if date meets minimum advance requirement
+            if (selectedDate < minDate) {
+                if (minAdvanceDays === 1) {
+                    return { valid: false, error: '❌ Same-day reservations are not available. Please select a date at least tomorrow.' };
+                } else {
+                    return { valid: false, error: `❌ Reservations require at least ${minAdvanceDays} days in advance. Please select a later date.` };
+                }
+            }
+            
+            return { valid: true, error: '' };
+        }
+        
+        /**
+         * Validate if the reservation time falls within operating hours
+         */
+        function validateReservationTime(timeString) {
+            if (!timeString) {
+                return { valid: false, error: 'Please select a time' };
+            }
+            
+            const isWithinHours = (
+                (timeString >= breakfastStart && timeString < breakfastEnd) ||
+                (timeString >= lunchStart && timeString < lunchEnd) ||
+                (timeString >= dinnerStart && timeString < dinnerEnd)
+            );
+            
+            if (!isWithinHours) {
+                return {
+                    valid: false,
+                    error: `❌ Time outside restaurant hours. Available: Breakfast ${breakfastStart}-${breakfastEnd}, Lunch ${lunchStart}-${lunchEnd}, Dinner ${dinnerStart}-${dinnerEnd}`
+                };
+            }
+            
+            return { valid: true, error: '' };
+        }
+        
+        /**
+         * Display error message for a field
+         */
+        function showFieldError(inputElement, errorElement, message) {
+            if (message) {
+                inputElement.classList.add('invalid');
+                inputElement.classList.remove('valid');
+                errorElement.textContent = message;
+                errorElement.classList.add('show');
+            } else {
+                inputElement.classList.remove('invalid');
+                inputElement.classList.add('valid');
+                errorElement.textContent = '';
+                errorElement.classList.remove('show');
+            }
+        }
+        
+        /**
+         * Clear field styling
+         */
+        function clearFieldStyling(inputElement, errorElement) {
+            inputElement.classList.remove('invalid', 'valid');
+            errorElement.textContent = '';
+            errorElement.classList.remove('show');
+        }
+        
+        // Validate date on change and blur
+        if (preferredDateInput) {
+            preferredDateInput.addEventListener('change', function() {
+                const validation = validateReservationDate(this.value);
+                if (validation.valid) {
+                    showFieldError(this, dateError, '');
+                } else {
+                    showFieldError(this, dateError, validation.error);
+                }
+                // Also validate time if it's already filled (in case it's now invalid with the new date)
+                if (preferredTimeInput.value) {
+                    const timeValidation = validateReservationTime(preferredTimeInput.value);
+                    if (timeValidation.valid) {
+                        showFieldError(preferredTimeInput, timeError, '');
+                    } else {
+                        showFieldError(preferredTimeInput, timeError, timeValidation.error);
+                    }
+                }
+            });
+            
+            preferredDateInput.addEventListener('blur', function() {
+                if (this.value) {
+                    const validation = validateReservationDate(this.value);
+                    if (!validation.valid) {
+                        showFieldError(this, dateError, validation.error);
+                    }
+                }
+            });
+        }
+        
+        // Validate time on change and blur
+        if (preferredTimeInput) {
+            preferredTimeInput.addEventListener('change', function() {
+                const validation = validateReservationTime(this.value);
+                if (validation.valid) {
+                    showFieldError(this, timeError, '');
+                } else {
+                    showFieldError(this, timeError, validation.error);
+                }
+            });
+            
+            preferredTimeInput.addEventListener('blur', function() {
+                if (this.value) {
+                    const validation = validateReservationTime(this.value);
+                    if (!validation.valid) {
+                        showFieldError(this, timeError, validation.error);
+                    }
+                }
+            });
+            
+            // Real-time validation as user types
+            preferredTimeInput.addEventListener('input', function() {
+                if (this.value) {
+                    const validation = validateReservationTime(this.value);
+                    if (validation.valid) {
+                        showFieldError(this, timeError, '');
+                    } else {
+                        // Don't show error while user is still typing
+                        if (this.value.indexOf(':') > -1) {
+                            showFieldError(this, timeError, validation.error);
+                        }
+                    }
+                } else {
+                    clearFieldStyling(this, timeError);
+                }
+            });
+        }
+        
+        // Validate form before submission
+        if (restaurantForm) {
+            restaurantForm.addEventListener('submit', function(e) {
+                let hasErrors = false;
+                
+                // Validate date
+                if (preferredDateInput.value) {
+                    const dateValidation = validateReservationDate(preferredDateInput.value);
+                    if (!dateValidation.valid) {
+                        showFieldError(preferredDateInput, dateError, dateValidation.error);
+                        hasErrors = true;
+                    }
+                }
+                
+                // Validate time
+                if (preferredTimeInput.value) {
+                    const timeValidation = validateReservationTime(preferredTimeInput.value);
+                    if (!timeValidation.valid) {
+                        showFieldError(preferredTimeInput, timeError, timeValidation.error);
+                        hasErrors = true;
+                    }
+                }
+                
+                // Prevent submission if there are errors
+                if (hasErrors) {
+                    e.preventDefault();
+                    
+                    // Scroll to first error
+                    const firstError = restaurantForm.querySelector('.error-message.show');
+                    if (firstError) {
+                        firstError.closest('.form-group').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            });
+        }
     </script>
 
     <?php include 'includes/scroll-to-top.php'; ?>

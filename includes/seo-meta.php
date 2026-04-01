@@ -123,10 +123,9 @@ foreach ($disallowed_paths as $path) {
 <!-- Additional SEO Meta Tags -->
 <meta name="theme-color" content="<?php echo htmlspecialchars($theme_color); ?>">
 <meta name="msapplication-TileColor" content="<?php echo htmlspecialchars($theme_color); ?>">
-<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="/images/logo/logo.jpg">
 
 <?php
 // Structured Data (JSON-LD)

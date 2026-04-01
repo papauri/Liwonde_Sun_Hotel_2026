@@ -18,7 +18,7 @@ function isCacheEnabled($type = null) {
     try {
         // Check global setting from database
         global $pdo;
-        if (!$pdo) {
+        if (!isset($pdo) || $pdo === null) {
             return CACHE_ENABLED;
         }
         

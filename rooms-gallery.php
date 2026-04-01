@@ -116,7 +116,7 @@ try {
                                     <?php endif; ?>
 
                                     <div class="room-tile__actions">
-                                        <a class="btn btn-primary" href="room.php?room=<?php echo urlencode($room['slug']); ?>#book">View & Book</a>
+                                        <a class="btn btn-primary" href="room.php?room=<?php echo urlencode($room['slug']); ?>#book_now">View & Book</a>
                                     </div>
                                 </div>
                             </article>

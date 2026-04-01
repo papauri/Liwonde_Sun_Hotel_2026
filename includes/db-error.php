@@ -1,9 +1,12 @@
 <?php
-try {
-    require_once __DIR__ . '/../config/database.php';
-    $siteName = getSetting('site_name');
-} catch (Exception $e) {
-    // DB is down - site name will be empty
+// Safely get site name without causing another error when $pdo is null
+$siteName = 'Our Hotel';
+if (isset($pdo) && $pdo !== null) {
+    try {
+        $siteName = getSetting('site_name', $siteName);
+    } catch (Throwable $e) {
+        // DB is down or getSetting failed - use default
+    }
 }
 ?>
 <!DOCTYPE html>

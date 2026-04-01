@@ -18,6 +18,11 @@ $message = '';
 $messageType = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // CSRF validation for all POST actions
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        $message = 'Invalid security token. Please try again.';
+        $messageType = 'error';
+    } else {
     $action = $_POST['action'] ?? '';
     
     if ($action === 'block_date') {
@@ -42,19 +47,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif ($action === 'unblock_date') {
-        $id = (int)$_POST['id'] ?? 0;
+        $id = (int)($_POST['id'] ?? 0);
         
         if ($id > 0) {
-            // Get blocked date details
-            $blocked_dates = getBlockedDates(null, null, null);
-            $target_date = null;
-            
-            foreach ($blocked_dates as $bd) {
-                if ($bd['id'] == $id) {
-                    $target_date = $bd;
-                    break;
-                }
-            }
+            // Fetch the blocked date record directly by its primary key
+            $bd_stmt = $pdo->prepare("SELECT id, room_id, block_date FROM room_blocked_dates WHERE id = ?");
+            $bd_stmt->execute([$id]);
+            $target_date = $bd_stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($target_date) {
                 $result = unblockRoomDate($target_date['room_id'], $target_date['block_date']);
@@ -96,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+    } // end CSRF validation else
 }
 
 // Get filter parameters
@@ -481,6 +481,7 @@ $site_name = getSetting('site_name');
                                         </td>
                                         <td>
                                             <form method="POST" class="d-inline">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action" value="unblock_date">
                                                 <input type="hidden" name="id" value="<?php echo $bd['id']; ?>">
                                                 <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to unblock this date?');">
@@ -510,6 +511,7 @@ $site_name = getSetting('site_name');
                 </div>
                 <div class="modal-body">
                     <form method="POST">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="block_date">
                         
                         <div class="mb-3">
@@ -569,6 +571,7 @@ $site_name = getSetting('site_name');
                 </div>
                 <div class="modal-body">
                     <form method="POST" id="blockRangeForm">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="block_multiple">
                         <input type="hidden" name="dates" id="selectedDatesArray">
                         

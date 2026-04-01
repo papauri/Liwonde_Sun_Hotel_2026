@@ -41,6 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
                     $update = $pdo->prepare("UPDATE bookings SET status = 'confirmed', is_tentative = 0, updated_at = NOW() WHERE id = ?");
                     $update->execute([$booking_id]);
                     
+                    // Decrement room availability (same as standard confirm action)
+                    $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available - 1 WHERE id = ? AND rooms_available > 0")
+                        ->execute([$booking_data['room_id']]);
+                    
                     // Log the conversion
                     try {
                         $log_stmt = $pdo->prepare("

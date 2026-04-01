@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Feb 11, 2026 at 11:39 AM
--- Server version: 8.0.44-cll-lve
--- PHP Version: 8.4.17
+-- Generation Time: Apr 01, 2026 at 09:42 PM
+-- Server version: 8.0.45-cll-lve
+-- PHP Version: 8.4.18
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -111,7 +111,13 @@ INSERT INTO `admin_activity_log` (`id`, `user_id`, `username`, `action`, `detail
 (19, 1, 'admin', 'login_success', 'Role: admin', '216.234.217.244', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/29.0 Chrome/136.0.0.0 Mobile Safari/537.36', '2026-02-10 18:28:32'),
 (20, 1, 'admin', 'login_failed', 'Wrong password (attempt 1/5)', '216.234.217.244', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/29.0 Chrome/136.0.0.0 Mobile Safari/537.36', '2026-02-10 19:34:16'),
 (21, 1, 'admin', 'login_success', 'Role: admin', '216.234.217.244', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/29.0 Chrome/136.0.0.0 Mobile Safari/537.36', '2026-02-10 19:34:41'),
-(22, 1, 'admin', 'login_success', 'Role: admin', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '2026-02-11 09:02:45');
+(22, 1, 'admin', 'login_success', 'Role: admin', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '2026-02-11 09:02:45'),
+(23, 1, 'admin', 'login_success', 'Role: admin', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-18 22:36:24'),
+(24, 1, 'admin', 'login_failed', 'Wrong password (attempt 1/5)', '216.234.217.126', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-18 05:43:17'),
+(25, 1, 'admin', 'login_success', 'Role: admin', '216.234.217.126', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-18 05:44:23'),
+(26, 1, 'admin', 'login_success', 'Role: admin', '102.70.105.136', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-18 07:17:05'),
+(27, 1, 'admin', 'login_success', 'Role: admin', '216.234.217.222', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-18 17:21:56'),
+(28, 1, 'admin', 'login_success', 'Role: admin', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-04-01 14:28:28');
 
 -- --------------------------------------------------------
 
@@ -138,7 +144,7 @@ CREATE TABLE `admin_users` (
 --
 
 INSERT INTO `admin_users` (`id`, `username`, `email`, `password_hash`, `full_name`, `role`, `is_active`, `last_login`, `created_at`, `updated_at`, `failed_login_attempts`) VALUES
-(1, 'admin', 'johnpaulchirwa@gmail.com', '$2y$10$OFHlFcgoqltOd7X6Z3IqVeg0961Adk9LxyfW8UBBfENSawMRZ3fF6', 'System Administrator', 'admin', 1, '2026-02-11 09:02:45', '2026-01-20 19:08:40', '2026-02-11 09:02:45', 0),
+(1, 'admin', 'johnpaulchirwa@gmail.com', '$2y$10$OFHlFcgoqltOd7X6Z3IqVeg0961Adk9LxyfW8UBBfENSawMRZ3fF6', 'System Administrator', 'admin', 1, '2026-04-01 14:28:28', '2026-01-20 19:08:40', '2026-04-01 14:28:28', 0),
 (2, 'receptionist', 'reception@liwondesunhotel.com', '$2y$10$OFHlFcgoqltOd7X6Z3IqVeg0961Adk9LxyfW8UBBfENSawMRZ3fF6', 'Front Desk', 'receptionist', 1, '2026-02-07 13:45:29', '2026-01-20 19:08:40', '2026-02-07 13:45:29', 0);
 
 -- --------------------------------------------------------
@@ -241,10 +247,12 @@ CREATE TABLE `bookings` (
 --
 
 INSERT INTO `bookings` (`id`, `booking_reference`, `room_id`, `guest_name`, `guest_email`, `guest_phone`, `guest_country`, `guest_address`, `number_of_guests`, `check_in_date`, `check_out_date`, `number_of_nights`, `total_amount`, `amount_paid`, `amount_due`, `vat_rate`, `vat_amount`, `total_with_vat`, `last_payment_date`, `special_requests`, `status`, `is_tentative`, `tentative_expires_at`, `deposit_required`, `deposit_amount`, `deposit_paid`, `deposit_paid_at`, `reminder_sent`, `reminder_sent_at`, `converted_to_confirmed_at`, `expired_at`, `tentative_notes`, `payment_status`, `payment_amount`, `payment_date`, `created_at`, `updated_at`, `expires_at`, `converted_from_tentative`, `occupancy_type`) VALUES
-(26, 'LSH20262435', 4, 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ireland', '10 Lois na Coille\r\nBallykilmurray, Tullamore', 2, '2026-02-08', '2026-02-11', 3, 405000.00, 471825.00, 0.00, 16.50, 66825.00, 471825.00, '2026-02-07', '', 'checked-in', 0, '2026-02-07 17:02:29', 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'paid', 0.00, NULL, '2026-02-05 14:05:05', '2026-02-08 19:10:31', NULL, 0, 'double'),
-(27, 'LSH20262851', 5, 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ireland', '10 Lois na Coille\r\nBallykilmurray, Tullamore', 2, '2026-02-11', '2026-02-19', 8, 920000.00, 1071800.00, 0.00, 16.50, 151800.00, 1071800.00, '2026-02-07', '', 'confirmed', 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'paid', 0.00, NULL, '2026-02-07 00:19:44', '2026-02-07 00:22:33', NULL, 0, 'double'),
-(28, 'LSH20264267', 2, 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ireland', '10 Lois na Coille\r\nBallykilmurray, Tullamore', 2, '2026-02-09', '2026-02-13', 4, 660000.00, 0.00, 0.00, 0.00, 0.00, 0.00, NULL, '', 'pending', 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'unpaid', 0.00, NULL, '2026-02-08 00:36:43', '2026-02-08 00:36:43', NULL, 0, 'double'),
-(29, 'LSH20260424', 2, 'Pamela', 'pmsukwa77@gmail.com', '0888747023', 'Malawi', '31078 Blantyre', 2, '2026-02-14', '2026-02-15', 1, 165000.00, 192225.00, 0.00, 16.50, 27225.00, 192225.00, '2026-02-10', 'Early check- in', 'checked-in', 0, '2026-02-12 11:44:20', 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'paid', 0.00, NULL, '2026-02-10 11:44:20', '2026-02-10 11:46:40', NULL, 0, 'double');
+(33, 'LSH20267686', 2, 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ireland', '10 Lois na Coille\r\nBallykilmurray, Tullamore', 2, '2026-02-21', '2026-02-22', 1, 165000.00, 0.00, 0.00, 0.00, 0.00, 0.00, NULL, 'Test bookings@liwondesunhotel.com', 'pending', 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'unpaid', 0.00, NULL, '2026-02-18 22:37:42', '2026-02-18 22:37:42', NULL, 0, 'double'),
+(34, 'LSH20265385', 2, 'Jay Kuzemba', 'jaykuzemba41@gmail.com', '0998097151', 'Malawi', 'Machinga', 2, '2026-02-21', '2026-02-28', 7, 1155000.00, 0.00, 0.00, 0.00, 0.00, 0.00, NULL, '', 'pending', 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'unpaid', 0.00, NULL, '2026-02-20 08:45:28', '2026-02-20 08:45:28', NULL, 0, 'double'),
+(35, 'LSH20260151', 2, 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ireland', '10 Lois na Coille\r\nBallykilmurray, Tullamore', 2, '2026-04-03', '2026-04-04', 1, 165000.00, 0.00, 0.00, 0.00, 0.00, 0.00, NULL, '', 'pending', 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'unpaid', 0.00, NULL, '2026-04-01 20:14:22', '2026-04-01 20:14:22', NULL, 0, 'double'),
+(36, 'LSH20263100', 2, 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ireland', '10 Lois na Coille\r\nBallykilmurray, Tullamore', 2, '2026-04-04', '2026-04-06', 2, 330000.00, 0.00, 0.00, 0.00, 0.00, 0.00, NULL, '', 'pending', 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'unpaid', 0.00, NULL, '2026-04-01 20:20:05', '2026-04-01 20:20:05', NULL, 0, 'double'),
+(37, 'LSH20264527', 4, 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ireland', '10 Lois na Coille\r\nBallykilmurray, Tullamore', 2, '2026-04-11', '2026-04-17', 6, 810000.00, 0.00, 0.00, 0.00, 0.00, 0.00, NULL, '', 'pending', 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'unpaid', 0.00, NULL, '2026-04-01 20:24:40', '2026-04-01 20:24:40', NULL, 0, 'double'),
+(38, 'LSH20262980', 4, 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ireland', '10 Lois na Coille\r\nBallykilmurray, Tullamore', 2, '2026-04-09', '2026-04-11', 2, 270000.00, 0.00, 0.00, 0.00, 0.00, 0.00, NULL, '', 'pending', 0, NULL, 0, NULL, 0, NULL, 0, NULL, NULL, NULL, NULL, 'unpaid', 0.00, NULL, '2026-04-01 20:40:45', '2026-04-01 20:40:45', NULL, 0, 'double');
 
 -- --------------------------------------------------------
 
@@ -361,7 +369,7 @@ CREATE TABLE `conference_rooms` (
 --
 
 INSERT INTO `conference_rooms` (`id`, `name`, `description`, `capacity`, `size_sqm`, `daily_rate`, `amenities`, `image_path`, `is_active`, `display_order`, `created_at`, `updated_at`) VALUES
-(1, 'Njobvu Room', 'Large conference space for seminars, workshops, and corporate events. Can be divided for smaller groups.', 250, 35.00, 400000.00, 'Video Conferencing, Smart TV, Whiteboard, High-Speed WiFi, Coffee Service, Sweets, Projector hire', 'images/conference/Conference_Room1.jpeg', 1, 1, '2026-01-20 22:35:58', '2026-02-09 11:44:39'),
+(1, 'Njobvu Room', 'Large conference space for seminars, workshops, and corporate events. Can be divided for smaller groups.', 250, 35.00, 280000.00, 'Video Conferencing, Smart TV, Whiteboard, High-Speed WiFi, Coffee Service, Sweets, Projector hire', 'images/conference/Conference_Room1.jpeg', 1, 1, '2026-01-20 22:35:58', '2026-03-18 07:21:54'),
 (2, 'Kasupe Room', 'Small meeting room suitable for business meetings and presentations. Includes basic presentation equipment.', 120, 200.00, 200000.00, 'Stage & Podium, Professional Sound System, Projection Screen, WiFi, Air Conditioning, Breakout Rooms', 'images/conference/kasupe.jpeg', 1, 2, '2026-01-20 22:35:58', '2026-02-09 11:46:36'),
 (3, 'Gwape Room', 'Meeting room with nice views. Good for training sessions and medium-sized gatherings.', 30, 60.00, 150000.00, 'Projector & Screen, Video Conferencing, Whiteboard, WiFi, Lake View, Terrace Access', 'images/conference/lakeside-room.jpg', 1, 3, '2026-01-20 22:35:58', '2026-02-09 11:46:41');
 
@@ -396,7 +404,17 @@ INSERT INTO `cookie_consent_log` (`id`, `ip_address`, `user_agent`, `consent_lev
 (10, '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'all', '2026-02-10 10:52:38'),
 (11, '216.234.217.230', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/29.0 Chrome/136.0.0.0 Mobile Safari/537.36', 'all', '2026-02-10 11:40:33'),
 (12, '102.70.96.91', 'Mozilla/5.0 (Android 10; Mobile; rv:147.0) Gecko/147.0 Firefox/147.0', 'all', '2026-02-10 18:18:38'),
-(13, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'all', '2026-02-11 11:14:34');
+(13, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'all', '2026-02-11 11:14:34'),
+(14, '137.115.5.18', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'all', '2026-02-11 18:49:53'),
+(15, '105.234.176.89', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'all', '2026-02-12 06:50:24'),
+(16, '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', 'all', '2026-02-18 22:36:54'),
+(17, '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', 'all', '2026-02-20 09:51:15'),
+(18, '216.234.217.126', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'all', '2026-03-18 05:42:03'),
+(19, '216.234.217.126', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'all', '2026-03-18 05:47:37'),
+(20, '102.70.105.178', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36', 'all', '2026-03-18 07:10:11'),
+(21, '102.70.105.136', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'all', '2026-03-18 07:12:25'),
+(22, '216.234.217.222', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'all', '2026-03-18 17:19:22'),
+(23, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'all', '2026-04-01 14:25:32');
 
 -- --------------------------------------------------------
 
@@ -564,21 +582,21 @@ CREATE TABLE `email_settings` (
 --
 
 INSERT INTO `email_settings` (`id`, `setting_key`, `setting_value`, `setting_group`, `description`, `is_encrypted`, `created_at`, `updated_at`) VALUES
-(1, 'smtp_password', '2:1c003835715c7a9a:Y72xf7agVITsio1WTOTy+w==', 'smtp', '', 1, '2026-01-27 09:51:05', '2026-01-27 11:30:08'),
-(2, 'email_development_mode', '0', 'general', '', 0, '2026-01-27 09:51:06', '2026-01-27 11:30:08'),
-(3, 'smtp_host', 'mail.promanaged-it.com', 'smtp', '', 0, '2026-01-27 09:51:06', '2026-01-27 11:30:07'),
-(4, 'smtp_port', '465', 'smtp', '', 0, '2026-01-27 09:51:06', '2026-01-27 11:30:07'),
-(5, 'smtp_username', 'info@promanaged-it.com', 'smtp', '', 0, '2026-01-27 09:51:07', '2026-01-27 11:30:08'),
-(6, 'smtp_secure', 'ssl', 'smtp', '', 0, '2026-01-27 09:51:07', '2026-01-27 11:30:08'),
+(1, 'smtp_password', '', 'smtp', '', 0, '2026-01-27 09:51:05', '2026-04-01 20:40:15'),
+(2, 'email_development_mode', '0', 'general', '', 0, '2026-01-27 09:51:06', '2026-04-01 20:40:15'),
+(3, 'smtp_host', 'mail.promanaged-it.com', 'smtp', '', 0, '2026-01-27 09:51:06', '2026-04-01 20:40:14'),
+(4, 'smtp_port', '26', 'smtp', '', 0, '2026-01-27 09:51:06', '2026-04-01 20:40:14'),
+(5, 'smtp_username', 'info@promanaged-it.com', 'smtp', '', 0, '2026-01-27 09:51:07', '2026-04-01 20:40:15'),
+(6, 'smtp_secure', '', 'smtp', '', 0, '2026-01-27 09:51:07', '2026-04-01 20:40:15'),
 (7, 'smtp_timeout', '30', 'smtp', 'SMTP connection timeout in seconds', 0, '2026-01-27 09:51:08', '2026-01-27 09:51:08'),
 (8, 'smtp_debug', '0', 'smtp', 'SMTP debug level (0-4)', 0, '2026-01-27 09:51:08', '2026-01-27 09:51:08'),
-(9, 'email_from_name', 'Liwonde Sun Hotel', 'general', '', 0, '2026-01-27 09:51:09', '2026-01-27 11:30:08'),
-(10, 'email_from_email', 'info@liwondesunhotel.com', 'general', '', 0, '2026-01-27 09:51:09', '2026-01-27 11:30:08'),
-(11, 'email_admin_email', 'admin@liwondesunhotel.com', 'general', '', 0, '2026-01-27 09:51:10', '2026-01-27 11:30:08'),
-(12, 'email_bcc_admin', '1', 'general', '', 0, '2026-01-27 09:51:10', '2026-01-27 11:30:08'),
-(13, 'email_log_enabled', '1', 'general', '', 0, '2026-01-27 09:51:11', '2026-01-27 11:30:08'),
-(14, 'email_preview_enabled', '1', 'general', '', 0, '2026-01-27 09:51:11', '2026-01-27 11:30:08'),
-(147, 'invoice_recipients', 'accounts@promanaged-it.com', 'invoicing', 'accounts@promanaged-it.com', 0, '2026-01-27 16:00:35', '2026-02-05 14:01:26'),
+(9, 'email_from_name', 'Liwonde Sun Hotel', 'general', '', 0, '2026-01-27 09:51:09', '2026-04-01 20:40:15'),
+(10, 'email_from_email', 'info@promanaged-it.com', 'general', '', 0, '2026-01-27 09:51:09', '2026-04-01 20:40:15'),
+(11, 'email_admin_email', 'info@promanaged-it.com', 'general', '', 0, '2026-01-27 09:51:10', '2026-04-01 20:40:15'),
+(12, 'email_bcc_admin', '1', 'general', '', 0, '2026-01-27 09:51:10', '2026-04-01 20:40:15'),
+(13, 'email_log_enabled', '1', 'general', '', 0, '2026-01-27 09:51:11', '2026-04-01 20:40:15'),
+(14, 'email_preview_enabled', '1', 'general', '', 0, '2026-01-27 09:51:11', '2026-04-01 20:40:15'),
+(147, 'invoice_recipients', 'info@promanaged-it.com', 'invoicing', 'info@promanaged-it.com', 0, '2026-01-27 16:00:35', '2026-04-01 20:22:59'),
 (148, 'send_invoice_emails', '1', 'invoicing', 'Send invoice emails when payment is marked as paid (1=yes, 0=no)', 0, '2026-01-27 16:00:35', '2026-01-27 16:00:35');
 
 -- --------------------------------------------------------
@@ -965,6 +983,16 @@ CREATE TABLE `gym_inquiries` (
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `gym_inquiries`
+--
+
+INSERT INTO `gym_inquiries` (`id`, `reference_number`, `name`, `email`, `phone`, `membership_type`, `preferred_date`, `preferred_time`, `guests`, `message`, `consent`, `status`, `created_at`, `updated_at`) VALUES
+(6, 'GYM-20F5ADA9', 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ultimate Wellness', '2026-03-20', '19:20:00', 1, '', 1, 'new', '2026-03-18 07:19:43', '2026-03-18 07:19:43'),
+(7, 'GYM-B0F156F3', 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Ultimate Wellness', '2026-04-09', '04:29:00', 1, '', 1, 'new', '2026-04-01 14:26:23', '2026-04-01 14:26:23'),
+(8, 'GYM-1FA0BC33', 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Rejuvenation Retreat', '2026-04-03', '02:56:00', 1, '', 1, 'new', '2026-04-01 14:55:54', '2026-04-01 14:55:54'),
+(9, 'GYM-C3556E43', 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', '0860081635', 'Rejuvenation Retreat', '2026-04-02', '08:13:00', 1, '', 1, 'new', '2026-04-01 20:12:37', '2026-04-01 20:12:37');
+
 -- --------------------------------------------------------
 
 --
@@ -1024,7 +1052,7 @@ CREATE TABLE `hero_slides` (
 --
 
 INSERT INTO `hero_slides` (`id`, `title`, `subtitle`, `description`, `image_path`, `video_path`, `video_type`, `primary_cta_text`, `primary_cta_link`, `secondary_cta_text`, `secondary_cta_link`, `is_active`, `display_order`, `created_at`, `updated_at`) VALUES
-(1, 'Welcome to Liwonde Sun Hotel', 'Your Comfortable Stay in Malawi', 'Enjoy a pleasant and affordable stay with us. Clean rooms, friendly service, and great value for money.', 'images/hero/slide1.jpg', NULL, NULL, 'Book a Room', '#book', 'View Rooms', '#rooms', 1, 1, '2026-01-20 07:55:39', '2026-02-07 02:40:52'),
+(1, 'Welcome to Liwonde Sun Hotel', 'Your Comfortable Stay in Malawi', 'Enjoy a pleasant and affordable stay with us. Clean rooms, friendly service, and great value for money.', 'images/hero/slide1.jpg', NULL, NULL, 'Book a Room', 'booking.php', 'View Rooms', '#rooms', 1, 1, '2026-01-20 07:55:39', '2026-02-18 22:58:30'),
 (2, 'Beautiful River Views', 'Scenic Surroundings', 'Wake up to lovely views of the Shire River and enjoy the peaceful atmosphere of our hotel.', 'images/hero/slide2.jpg', NULL, NULL, 'See Gallery', '#gallery', 'Plan Your Stay', '#contact', 1, 2, '2026-01-20 07:55:39', '2026-02-07 02:40:52'),
 (3, 'Good Food & Drinks', 'Tasty Local & International Cuisine', 'Enjoy satisfying meals prepared with care. Our restaurant offers a variety of dishes at reasonable prices.', 'images/hero/slide3.jpg', NULL, NULL, 'View Menu', '#facilities', 'Contact Us', '#contact', 1, 3, '2026-01-20 07:55:39', '2026-02-07 02:40:52'),
 (4, 'Relax and Unwind', 'Comfortable Facilities', 'Take a dip in our pool, work out in the gym, or simply relax in our comfortable common areas.', 'images/hero/slide4.jpg', NULL, NULL, 'Explore Facilities', '#facilities', 'Book Now', '#book', 1, 4, '2026-01-20 07:55:39', '2026-02-07 02:40:52');
@@ -1349,7 +1377,8 @@ CREATE TABLE `reviews` (
 INSERT INTO `reviews` (`id`, `booking_id`, `room_id`, `review_type`, `guest_name`, `guest_email`, `rating`, `title`, `comment`, `service_rating`, `cleanliness_rating`, `location_rating`, `value_rating`, `status`, `created_at`, `updated_at`) VALUES
 (1, NULL, NULL, 'general', 'Test User', 'test@example.com', 5, 'Excellent Stay', 'This was a wonderful experience at the hotel. The service was outstanding and the room was very clean.', NULL, NULL, NULL, NULL, 'approved', '2026-01-27 14:47:18', '2026-01-27 22:45:26'),
 (2, NULL, NULL, 'general', 'John Doe', 'john@example.com', 4, 'Great Room', 'The room was spacious and comfortable. Staff was very helpful.', 5, 5, 4, 4, 'approved', '2026-01-27 14:48:28', '2026-01-27 15:29:21'),
-(6, NULL, NULL, 'room', 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', 4, 'tessssssssssssssssssssssssss', 'tessssssssssssssssssssssssss', 1, 3, 3, 2, 'approved', '2026-02-04 02:20:53', '2026-02-04 02:22:16');
+(6, NULL, NULL, 'room', 'JOHN-PAUL CHIRWA', 'johnpaulchirwa@gmail.com', 4, 'tessssssssssssssssssssssssss', 'tessssssssssssssssssssssssss', 1, 3, 3, 2, 'approved', '2026-02-04 02:20:53', '2026-02-04 02:22:16'),
+(7, NULL, NULL, 'general', 'test', 'test@test.com', 3, 'test test', 'testtesttesttesttesttesttesttesttesttesttesttesttesttesttest', 3, 5, 4, 3, 'pending', '2026-02-12 07:46:27', '2026-02-12 07:46:27');
 
 -- --------------------------------------------------------
 
@@ -1506,7 +1535,29 @@ INSERT INTO `session_logs` (`id`, `session_id`, `ip_address`, `device_type`, `br
 (17, 'creg0oud31dh6l122jd5b97ahi', '74.125.208.33', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php?room_id=2', '', 'Mountain View, California, United States', '2026-02-10 11:41:52', '2026-02-10 11:41:52', 1, 'pending'),
 (18, 'beprqfnf15dug0bv43p4gio3im', '66.102.9.105', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php?room_id=2', '', 'Mountain View, California, United States', '2026-02-10 11:41:52', '2026-02-10 11:41:52', 1, 'pending'),
 (19, 'haf5ckq4u83mkkqnudkccnhvh7', '66.249.83.2', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php?room_id=2', '', 'Mountain View, California, United States', '2026-02-10 11:41:53', '2026-02-10 11:41:53', 1, 'pending'),
-(20, 'u6b1a48kmaoajnj1kvrt00i4sc', '216.234.217.230', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php?room_id=2', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '2026-02-10 11:41:57', '2026-02-10 13:03:31', 2, 'all');
+(20, 'u6b1a48kmaoajnj1kvrt00i4sc', '216.234.217.230', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php?room_id=2', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '2026-02-10 11:41:57', '2026-02-10 13:03:31', 2, 'all'),
+(22, '918b7ku7auifvrflioa95bm1ic', '137.115.5.18', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php?room_id=2', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '2026-02-11 18:52:42', '2026-02-11 19:02:00', 3, 'all'),
+(25, 'qk8sac1h7hata6agcscn8irr48', '105.234.176.89', 'desktop', 'Chrome', 'Windows 10/11', '/hotelsmw/booking.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '2026-02-12 07:22:42', '2026-02-12 07:24:03', 2, 'all'),
+(26, 's8f3p6fb7ms52c3sunb27pfqcp', '216.68.10.135', 'desktop', 'Chrome', 'Windows 10/11', '/hotelsmw/booking.php', 'www.google.com', 'Cincinnati, Ohio, United States', '2026-02-12 07:22:47', '2026-02-12 07:22:47', 1, 'pending'),
+(28, '8t08bs5b7orithpmqs4dua275e', '105.234.176.89', 'desktop', 'Chrome', 'Windows 10/11', '/hotelsmw/gym.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '2026-02-12 07:45:35', '2026-02-12 07:51:27', 3, 'all'),
+(31, 'qdtr0l912iqn215kjt1g1p5dfm', '51.37.179.253', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '2026-02-17 22:58:09', '2026-02-17 22:59:23', 4, 'all'),
+(32, '05dhpkd7c12ulm929sdv7m8v27', '142.250.32.35', 'mobile', 'Chrome', 'Android', '/hotelsmw/conference.php', '', 'Mountain View, California, United States', '2026-02-17 22:58:11', '2026-02-17 22:58:11', 1, 'pending'),
+(33, 'tug2vtb2neeg4r57dhc691vo8r', '142.250.32.35', 'mobile', 'Chrome', 'Android', '/hotelsmw/conference.php', '', 'Mountain View, California, United States', '2026-02-17 22:58:11', '2026-02-17 22:58:11', 1, 'pending'),
+(34, 'gkj4lki7cjh3idovn3enqb5ojl', '142.250.32.36', 'mobile', 'Chrome', 'Android', '/hotelsmw/conference.php', '', 'Mountain View, California, United States', '2026-02-17 22:58:11', '2026-02-17 22:58:11', 1, 'pending'),
+(37, 'j7432dq12uqdh918a4lq28hcva', '142.250.32.35', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php', '', 'Mountain View, California, United States', '2026-02-17 22:59:15', '2026-02-17 22:59:15', 1, 'pending'),
+(38, 'cec7dk9ko6l9d3k4letcof0p3u', '142.250.32.34', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php', '', 'Mountain View, California, United States', '2026-02-17 22:59:16', '2026-02-17 22:59:16', 1, 'pending'),
+(39, 'civuqma35vil7b8ao7aj3p3pa7', '66.102.8.33', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php', '', 'Mountain View, California, United States', '2026-02-17 22:59:16', '2026-02-17 22:59:16', 1, 'pending'),
+(41, '3he71qbipv4vugm7dr3mmo9pq5', '51.37.179.253', 'desktop', 'Chrome', 'Windows 10/11', '/liwondesunhotel/booking.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '2026-02-18 22:37:11', '2026-02-18 23:04:48', 4, 'all'),
+(45, '87l26352bq2dfoatfsgjhs2eqa', '102.70.94.81', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php', 'promanaged-it.com', 'Blantyre, Southern Region, Malawi', '2026-02-20 08:43:34', '2026-02-20 08:44:55', 2, 'all'),
+(46, 'h99tg4hkuf33n1d7elhbp1mg0q', '142.250.32.34', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php', '', 'Mountain View, California, United States', '2026-02-20 08:43:46', '2026-02-20 08:43:46', 1, 'pending'),
+(47, 'itnouop9ojg3ub2jse1jbnbblu', '66.102.8.33', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php', '', 'Mountain View, California, United States', '2026-02-20 08:43:47', '2026-02-20 08:43:47', 1, 'pending'),
+(48, 'hjgchtl4d2docvp3nhkicjeag9', '66.102.8.34', 'mobile', 'Chrome', 'Android', '/hotelsmw/booking.php', '', 'Mountain View, California, United States', '2026-02-20 08:43:47', '2026-02-20 08:43:47', 1, 'pending'),
+(50, '73v6u0p31n9i8vji7p054jngmu', '51.37.179.253', 'desktop', 'Chrome', 'Windows 10/11', '/liwondesunhotel/gym.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '2026-02-20 09:53:11', '2026-02-20 09:53:11', 1, 'all'),
+(51, 'bgkqkc6rc31j6bdl2iote74kv1', '51.37.179.253', 'desktop', 'Chrome', 'Windows 10/11', '/hotelsmw/booking.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '2026-02-23 22:55:54', '2026-02-23 22:55:54', 1, 'pending'),
+(52, '0t0vqoo0l8rl72idf8c7nfvnmg', '102.70.105.136', 'desktop', 'Chrome', 'Windows 10/11', '/liwondesunhotel/conference.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '2026-03-18 07:18:59', '2026-03-18 07:22:02', 5, 'all'),
+(57, '8pjqdj91hisce20ogj9co55lt1', '216.234.217.222', 'desktop', 'Chrome', 'Windows 10/11', '/liwondesunhotel/gym.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '2026-03-18 17:21:07', '2026-03-18 17:21:07', 1, 'all'),
+(58, 'blrjki4m67rahrtrpvijorg73d', '::1', 'desktop', 'Chrome', 'Windows 10/11', '/booking.php', 'localhost', 'Local', '2026-04-01 14:25:57', '2026-04-01 20:19:50', 6, 'all'),
+(61, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'desktop', 'Chrome', 'Windows 10/11', '/booking.php', 'localhost', 'Local', '2026-04-01 14:55:07', '2026-04-01 20:40:30', 9, '{\"version\":\"1.0\",\"ti');
 
 -- --------------------------------------------------------
 
@@ -1585,7 +1636,7 @@ INSERT INTO `site_settings` (`id`, `setting_key`, `setting_value`, `setting_grou
 (27, 'check_in_time', '2:00 PM', 'booking', '2026-01-27 12:02:11', NULL, NULL),
 (28, 'check_out_time', '11:00 AM', 'booking', '2026-01-27 12:02:11', NULL, NULL),
 (29, 'booking_change_policy', 'If you need to make any changes, please contact us at least 48 hours before your arrival.', 'booking', '2026-01-27 12:02:11', NULL, NULL),
-(30, 'email_main', 'info@liwondesunhotel.com', 'contact', '2026-02-05 12:26:03', NULL, NULL),
+(30, 'email_main', 'info@promanaged-it.com', 'contact', '2026-04-01 15:02:36', NULL, NULL),
 (32, 'vat_enabled', '1', 'accounting', '2026-01-30 00:09:59', NULL, NULL),
 (33, 'vat_rate', '16.5', 'accounting', '2026-01-30 00:09:59', NULL, NULL),
 (34, 'vat_number', 'MW123456789', 'accounting', '2026-01-30 00:09:59', NULL, NULL),
@@ -1601,28 +1652,28 @@ INSERT INTO `site_settings` (`id`, `setting_key`, `setting_value`, `setting_grou
 (80, 'tentative_deposit_percent', '20', 'bookings', '2026-02-01 16:32:10', NULL, NULL),
 (81, 'tentative_deposit_required', '0', 'bookings', '2026-02-01 16:32:10', NULL, NULL),
 (82, 'tentative_block_availability', '1', 'bookings', '2026-02-01 16:32:10', NULL, NULL),
-(90, 'whatsapp_number', '+265888860670', 'contact', '2026-02-01 19:09:42', NULL, NULL),
+(90, 'whatsapp_number', '+265 987 654 321', 'contact', '2026-02-18 22:35:44', NULL, NULL),
 (102, 'footer_credits', '© 2026 Liwonde Sun Hotel.', 'general', '2026-02-02 00:33:02', NULL, NULL),
 (103, 'footer_design_credit', 'Powered by ProManaged IT', 'general', '2026-02-02 00:33:08', NULL, NULL),
 (104, 'footer_share_title', 'Share', 'general', '2026-02-02 00:32:07', NULL, NULL),
 (105, 'footer_connect_title', 'Connect With Us', 'general', '2026-02-02 00:32:07', NULL, NULL),
 (106, 'footer_contact_title', 'Contact Information', 'general', '2026-02-02 00:32:07', NULL, NULL),
 (107, 'footer_policies_title', 'Policies', 'general', '2026-02-02 00:32:07', NULL, NULL),
-(108, 'conference_email', 'johnpaulchira@gmail.com', 'contact', '2026-02-03 00:06:33', NULL, NULL),
-(109, 'gym_email', 'johnpaulchira@gmail.com', 'contact', '2026-02-03 00:06:38', NULL, NULL),
+(108, 'conference_email', 'bookings@liwondesunhotel.com', 'contact', '2026-02-18 22:34:04', NULL, NULL),
+(109, 'gym_email', 'bookings@liwondesunhotel.com', 'contact', '2026-02-18 22:34:06', NULL, NULL),
 (112, 'pending_duration_hours', '24', 'booking', '2026-02-03 00:29:35', NULL, NULL),
 (113, 'tentative_grace_period_hours', '0', 'booking', '2026-02-03 00:29:35', NULL, NULL),
 (114, 'admin_notification_email', '', 'email', '2026-02-03 00:29:35', NULL, NULL),
 (115, 'booking_time_buffer_minutes', '60', 'booking', '2026-02-03 17:49:20', NULL, NULL),
 (117, 'theme_color', '#0A1929', 'general', '2026-02-04 13:56:24', NULL, NULL),
 (118, 'default_keywords', 'hotel malawi, liwonde accommodation, budget hotel, affordable stay, malawi lodging', 'general', '2026-02-07 02:40:53', NULL, NULL),
-(120, 'phone_reception', '0883 500 304', 'contact', '2026-02-04 21:24:01', NULL, NULL),
-(121, 'phone_cell1', '0998 864 377', 'contact', '2026-02-04 21:24:01', NULL, NULL),
-(122, 'phone_cell2', '0882 363 765', 'contact', '2026-02-04 21:24:01', NULL, NULL),
-(123, 'phone_alternate1', '0983 825 196', 'contact', '2026-02-04 21:24:01', NULL, NULL),
-(124, 'phone_alternate2', '0999 877 796', 'contact', '2026-02-04 21:24:01', NULL, NULL),
-(125, 'phone_alternate3', '0888 353 540', 'contact', '2026-02-04 21:24:01', NULL, NULL),
-(126, 'email_restaurant', 'liwondesunhotel@gmail.com', 'contact', '2026-02-04 21:24:01', NULL, NULL),
+(120, 'phone_reception', '+265 987 654 321', 'contact', '2026-02-18 22:35:56', NULL, NULL),
+(121, 'phone_cell1', '+265 987 654 321', 'contact', '2026-02-18 22:35:58', NULL, NULL),
+(122, 'phone_cell2', '+265 987 654 321', 'contact', '2026-02-18 22:35:59', NULL, NULL),
+(123, 'phone_alternate1', '+265 987 654 321', 'contact', '2026-02-18 22:36:01', NULL, NULL),
+(124, 'phone_alternate2', '+265 987 654 321', 'contact', '2026-02-18 22:36:04', NULL, NULL),
+(125, 'phone_alternate3', '+265 987 654 321', 'contact', '2026-02-18 22:36:07', NULL, NULL),
+(126, 'email_restaurant', 'bookings@liwondesunhotel.com', 'contact', '2026-02-18 22:34:12', NULL, NULL),
 (127, 'cache_email_enabled', '1', NULL, '2026-02-05 17:24:35', NULL, NULL),
 (128, 'cache_settings_enabled', '1', NULL, '2026-02-05 17:24:38', NULL, NULL),
 (129, 'cache_rooms_enabled', '1', NULL, '2026-02-07 12:49:46', NULL, NULL),
@@ -1691,7 +1742,58 @@ INSERT INTO `site_visitors` (`id`, `session_id`, `ip_address`, `user_agent`, `de
 (18, 'beprqfnf15dug0bv43p4gio3im', '66.102.9.105', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/booking.php?room_id=2', NULL, 1, NULL, '2026-02-10 11:41:52'),
 (19, 'haf5ckq4u83mkkqnudkccnhvh7', '66.249.83.2', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/booking.php?room_id=2', NULL, 1, NULL, '2026-02-10 11:41:53'),
 (20, 'u6b1a48kmaoajnj1kvrt00i4sc', '216.234.217.230', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/29.0 Chrome/136.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/room.php?room=executive-suite', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/booking.php?room_id=2', NULL, 1, NULL, '2026-02-10 11:41:57'),
-(21, 'u6b1a48kmaoajnj1kvrt00i4sc', '216.234.217.230', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/29.0 Chrome/136.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/room.php?room=executive-suite', 'promanaged-it.com', NULL, '/hotelsmw/booking.php?room_id=2', NULL, 1, NULL, '2026-02-10 13:03:31');
+(21, 'u6b1a48kmaoajnj1kvrt00i4sc', '216.234.217.230', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/29.0 Chrome/136.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/room.php?room=executive-suite', 'promanaged-it.com', NULL, '/hotelsmw/booking.php?room_id=2', NULL, 1, NULL, '2026-02-10 13:03:31'),
+(22, '918b7ku7auifvrflioa95bm1ic', '137.115.5.18', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/room.php?room=executive-suite', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/booking.php?room_id=2', NULL, 1, NULL, '2026-02-11 18:52:42'),
+(23, '918b7ku7auifvrflioa95bm1ic', '137.115.5.18', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/booking.php?room_id=2', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/booking.php?room_id=2', NULL, 0, NULL, '2026-02-11 19:01:06'),
+(24, '918b7ku7auifvrflioa95bm1ic', '137.115.5.18', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/booking.php?room_id=2', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/booking.php?room_id=2', NULL, 0, NULL, '2026-02-11 19:01:59'),
+(25, 'qk8sac1h7hata6agcscn8irr48', '105.234.176.89', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/hotelsmw/', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-12 07:22:42'),
+(26, 's8f3p6fb7ms52c3sunb27pfqcp', '216.68.10.135', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://www.google.com/', 'www.google.com', 'Cincinnati, Ohio, United States', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-12 07:22:47'),
+(27, 'qk8sac1h7hata6agcscn8irr48', '105.234.176.89', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/hotelsmw/booking.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/booking.php', NULL, 0, NULL, '2026-02-12 07:24:03'),
+(28, '8t08bs5b7orithpmqs4dua275e', '105.234.176.89', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/hotelsmw/', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/submit-review.php', NULL, 1, NULL, '2026-02-12 07:45:35'),
+(29, '8t08bs5b7orithpmqs4dua275e', '105.234.176.89', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/hotelsmw/events.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/conference.php', NULL, 0, NULL, '2026-02-12 07:50:22'),
+(30, '8t08bs5b7orithpmqs4dua275e', '105.234.176.89', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/hotelsmw/conference.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/hotelsmw/gym.php', NULL, 0, NULL, '2026-02-12 07:51:27'),
+(31, 'qdtr0l912iqn215kjt1g1p5dfm', '51.37.179.253', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/events.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/hotelsmw/conference.php', NULL, 1, NULL, '2026-02-17 22:58:09'),
+(32, '05dhpkd7c12ulm929sdv7m8v27', '142.250.32.35', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/conference.php', NULL, 1, NULL, '2026-02-17 22:58:11'),
+(33, 'tug2vtb2neeg4r57dhc691vo8r', '142.250.32.35', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/conference.php', NULL, 1, NULL, '2026-02-17 22:58:11'),
+(34, 'gkj4lki7cjh3idovn3enqb5ojl', '142.250.32.36', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/conference.php', NULL, 1, NULL, '2026-02-17 22:58:11'),
+(35, 'qdtr0l912iqn215kjt1g1p5dfm', '51.37.179.253', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/hotelsmw/gym.php', NULL, 0, NULL, '2026-02-17 22:58:45'),
+(36, 'qdtr0l912iqn215kjt1g1p5dfm', '51.37.179.253', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/gym.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/hotelsmw/booking.php', NULL, 0, NULL, '2026-02-17 22:59:14'),
+(37, 'j7432dq12uqdh918a4lq28hcva', '142.250.32.35', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-17 22:59:15'),
+(38, 'cec7dk9ko6l9d3k4letcof0p3u', '142.250.32.34', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-17 22:59:16'),
+(39, 'civuqma35vil7b8ao7aj3p3pa7', '66.102.8.33', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-17 22:59:16'),
+(40, 'qdtr0l912iqn215kjt1g1p5dfm', '51.37.179.253', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/hotelsmw/booking.php', NULL, 0, NULL, '2026-02-17 22:59:23'),
+(41, '3he71qbipv4vugm7dr3mmo9pq5', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/hotelsmw/', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-18 22:37:11'),
+(42, '3he71qbipv4vugm7dr3mmo9pq5', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/index.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/liwondesunhotel/booking.php', NULL, 0, NULL, '2026-02-18 22:58:11'),
+(43, '3he71qbipv4vugm7dr3mmo9pq5', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/hotelsmw/index.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/hotelsmw/booking.php', NULL, 0, NULL, '2026-02-18 22:59:02'),
+(44, '3he71qbipv4vugm7dr3mmo9pq5', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/index.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/liwondesunhotel/booking.php', NULL, 0, NULL, '2026-02-18 23:04:48'),
+(45, '87l26352bq2dfoatfsgjhs2eqa', '102.70.94.81', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/', 'promanaged-it.com', 'Blantyre, Southern Region, Malawi', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-20 08:43:34'),
+(46, 'h99tg4hkuf33n1d7elhbp1mg0q', '142.250.32.34', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-20 08:43:46'),
+(47, 'itnouop9ojg3ub2jse1jbnbblu', '66.102.8.33', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-20 08:43:47'),
+(48, 'hjgchtl4d2docvp3nhkicjeag9', '66.102.8.34', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 (compatible; Google-Read-Aloud; +https://support.google.com/webmasters/answer/1061943)', 'mobile', 'Chrome', 'Android', '', '', 'Mountain View, California, United States', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-20 08:43:47'),
+(49, '87l26352bq2dfoatfsgjhs2eqa', '102.70.94.81', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36', 'mobile', 'Chrome', 'Android', 'https://promanaged-it.com/hotelsmw/booking.php', 'promanaged-it.com', 'Blantyre, Southern Region, Malawi', '/hotelsmw/booking.php', NULL, 0, NULL, '2026-02-20 08:44:55'),
+(50, '73v6u0p31n9i8vji7p054jngmu', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/restaurant.php', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/liwondesunhotel/gym.php', NULL, 1, NULL, '2026-02-20 09:53:11'),
+(51, 'bgkqkc6rc31j6bdl2iote74kv1', '51.37.179.253', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/hotelsmw/', 'promanaged-it.com', 'Dublin, Leinster, Ireland', '/hotelsmw/booking.php', NULL, 1, NULL, '2026-02-23 22:55:54'),
+(52, '0t0vqoo0l8rl72idf8c7nfvnmg', '102.70.105.136', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/restaurant.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/liwondesunhotel/gym.php', NULL, 1, NULL, '2026-03-18 07:18:59'),
+(53, '0t0vqoo0l8rl72idf8c7nfvnmg', '102.70.105.136', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/gym.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/liwondesunhotel/gym.php', NULL, 0, NULL, '2026-03-18 07:19:43'),
+(54, '0t0vqoo0l8rl72idf8c7nfvnmg', '102.70.105.136', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/restaurant.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/liwondesunhotel/gym.php', NULL, 0, NULL, '2026-03-18 07:20:32'),
+(55, '0t0vqoo0l8rl72idf8c7nfvnmg', '102.70.105.136', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/gym.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/liwondesunhotel/conference.php', NULL, 0, NULL, '2026-03-18 07:20:40'),
+(56, '0t0vqoo0l8rl72idf8c7nfvnmg', '102.70.105.136', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/gym.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/liwondesunhotel/conference.php', NULL, 0, NULL, '2026-03-18 07:22:01'),
+(57, '8pjqdj91hisce20ogj9co55lt1', '216.234.217.222', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'https://promanaged-it.com/liwondesunhotel/restaurant.php', 'promanaged-it.com', 'Lilongwe, Central Region, Malawi', '/liwondesunhotel/gym.php', NULL, 1, NULL, '2026-03-18 17:21:07'),
+(58, 'blrjki4m67rahrtrpvijorg73d', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/', 'localhost', 'Local', '/conference.php', NULL, 1, NULL, '2026-04-01 14:25:57'),
+(59, 'blrjki4m67rahrtrpvijorg73d', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/conference.php', 'localhost', 'Local', '/gym.php', NULL, 0, NULL, '2026-04-01 14:26:00'),
+(60, 'blrjki4m67rahrtrpvijorg73d', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/gym.php', 'localhost', 'Local', '/gym.php', NULL, 0, NULL, '2026-04-01 14:26:24'),
+(61, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/', 'localhost', 'Local', '/gym.php', NULL, 1, NULL, '2026-04-01 14:55:07'),
+(62, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/gym.php', 'localhost', 'Local', '/gym.php', NULL, 0, NULL, '2026-04-01 14:55:26'),
+(63, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/gym.php', 'localhost', 'Local', '/gym.php', NULL, 0, NULL, '2026-04-01 14:55:55'),
+(64, 'blrjki4m67rahrtrpvijorg73d', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/', 'localhost', 'Local', '/gym.php', NULL, 0, NULL, '2026-04-01 20:12:16'),
+(65, 'blrjki4m67rahrtrpvijorg73d', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/gym.php', 'localhost', 'Local', '/gym.php', NULL, 0, NULL, '2026-04-01 20:12:38'),
+(66, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/', 'localhost', 'Local', '/booking.php', NULL, 0, NULL, '2026-04-01 20:14:05'),
+(67, 'blrjki4m67rahrtrpvijorg73d', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/rooms-gallery.php', 'localhost', 'Local', '/booking.php', NULL, 0, NULL, '2026-04-01 20:19:50'),
+(68, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/index.php', 'localhost', 'Local', '/booking.php', NULL, 0, NULL, '2026-04-01 20:24:08'),
+(69, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/index.php', 'localhost', 'Local', '/booking.php', NULL, 0, NULL, '2026-04-01 20:24:56'),
+(70, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/index.php', 'localhost', 'Local', '/booking.php', NULL, 0, NULL, '2026-04-01 20:28:00'),
+(71, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/index.php', 'localhost', 'Local', '/booking.php', NULL, 0, NULL, '2026-04-01 20:30:29'),
+(72, 'ofmd8k935d73m2rqpp1fh1divb', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', 'desktop', 'Chrome', 'Windows 10/11', 'http://localhost:8000/index.php', 'localhost', 'Local', '/booking.php', NULL, 0, NULL, '2026-04-01 20:40:30');
 
 -- --------------------------------------------------------
 
@@ -1709,18 +1811,6 @@ CREATE TABLE `tentative_booking_log` (
   `performed_by` int UNSIGNED DEFAULT NULL COMMENT 'Admin user ID, or NULL for system',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Audit log for tentative booking actions';
-
---
--- Dumping data for table `tentative_booking_log`
---
-
-INSERT INTO `tentative_booking_log` (`id`, `booking_id`, `action`, `previous_expires_at`, `new_expires_at`, `action_reason`, `performed_by`, `created_at`) VALUES
-(1, 26, '', NULL, '2026-02-07 14:06:06', NULL, 2, '2026-02-05 14:06:06'),
-(2, 26, '', NULL, '2026-02-07 17:00:37', NULL, 2, '2026-02-05 17:00:37'),
-(3, 26, '', NULL, '2026-02-07 17:01:46', NULL, 2, '2026-02-05 17:01:46'),
-(4, 26, '', NULL, '2026-02-07 17:02:29', NULL, 2, '2026-02-05 17:02:29'),
-(5, 26, 'converted', NULL, NULL, 'Converted from tentative to confirmed by admin', 2, '2026-02-06 15:28:30'),
-(6, 29, 'converted', NULL, NULL, 'Converted from tentative to confirmed by admin', 1, '2026-02-10 11:45:36');
 
 -- --------------------------------------------------------
 
@@ -2260,7 +2350,7 @@ ALTER TABLE `about_us`
 -- AUTO_INCREMENT for table `admin_activity_log`
 --
 ALTER TABLE `admin_activity_log`
-  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
 
 --
 -- AUTO_INCREMENT for table `admin_users`
@@ -2284,7 +2374,7 @@ ALTER TABLE `api_usage_logs`
 -- AUTO_INCREMENT for table `bookings`
 --
 ALTER TABLE `bookings`
-  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=39;
 
 --
 -- AUTO_INCREMENT for table `booking_notes`
@@ -2314,7 +2404,7 @@ ALTER TABLE `conference_rooms`
 -- AUTO_INCREMENT for table `cookie_consent_log`
 --
 ALTER TABLE `cookie_consent_log`
-  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=24;
 
 --
 -- AUTO_INCREMENT for table `drink_menu`
@@ -2326,7 +2416,7 @@ ALTER TABLE `drink_menu`
 -- AUTO_INCREMENT for table `email_settings`
 --
 ALTER TABLE `email_settings`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=149;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=185;
 
 --
 -- AUTO_INCREMENT for table `events`
@@ -2386,7 +2476,7 @@ ALTER TABLE `gym_features`
 -- AUTO_INCREMENT for table `gym_inquiries`
 --
 ALTER TABLE `gym_inquiries`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `gym_packages`
@@ -2464,7 +2554,7 @@ ALTER TABLE `restaurant_gallery`
 -- AUTO_INCREMENT for table `reviews`
 --
 ALTER TABLE `reviews`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `review_responses`
@@ -2494,7 +2584,7 @@ ALTER TABLE `section_headers`
 -- AUTO_INCREMENT for table `session_logs`
 --
 ALTER TABLE `session_logs`
-  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=73;
 
 --
 -- AUTO_INCREMENT for table `site_pages`
@@ -2512,7 +2602,7 @@ ALTER TABLE `site_settings`
 -- AUTO_INCREMENT for table `site_visitors`
 --
 ALTER TABLE `site_visitors`
-  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=73;
 
 --
 -- AUTO_INCREMENT for table `tentative_booking_log`
