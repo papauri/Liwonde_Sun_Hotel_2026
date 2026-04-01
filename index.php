@@ -119,6 +119,7 @@ foreach ($footer_links_raw as $link) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
     <meta name="theme-color" content="#0A1929">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="format-detection" content="telephone=yes">
@@ -155,6 +156,9 @@ foreach ($footer_links_raw as $link) {
     <!-- Modal Component -->
     <script src="js/modal.js" defer></script>
     
+    <!-- Form Validation -->
+    <script src="js/form-validation.js" defer></script>
+    
     <!-- JavaScript -->
     <script src="js/main.js" defer></script>
     
@@ -169,6 +173,7 @@ foreach ($footer_links_raw as $link) {
     <link rel="stylesheet" href="css/header.css">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/footer.css">
+    <link rel="stylesheet" href="css/form-validation.css">
     
     <!-- Structured Data - Local Business -->
     <script type="application/ld+json">

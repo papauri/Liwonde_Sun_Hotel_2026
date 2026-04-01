@@ -10,6 +10,7 @@ require_once 'config/email.php';
 require_once 'includes/page-guard.php';
 require_once 'includes/validation.php';
 require_once 'includes/section-headers.php';
+require_once 'includes/countries-data.php';
 
 sendSecurityHeaders();
 
@@ -38,7 +39,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restaurant_reservatio
             $sanitized_data['email'] = trim((string)($_POST['email'] ?? ''));
         }
 
-        $phone_validation = validatePhone($_POST['phone'] ?? '');
+        $full_phone = trim($_POST['phone_code'] ?? '+265') . trim($_POST['phone_number'] ?? '');
+        $phone_validation = validatePhone($full_phone);
         if (!$phone_validation['valid']) {
             $validation_errors['phone'] = $phone_validation['error'];
         } else {
@@ -358,6 +360,7 @@ try {
     <link rel="stylesheet" href="css/header.css">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/footer.css">
+    <link rel="stylesheet" href="css/form-validation.css">
     
     <!-- Structured Data - Restaurant Schema -->
     <script type="application/ld+json">
@@ -1108,7 +1111,7 @@ try {
                         </div>
                     <?php endif; ?>
 
-                    <form method="POST" class="reservation-form" action="restaurant.php#book" id="restaurantReservationForm">
+                    <form method="POST" class="reservation-form validate-form" action="restaurant.php#book" id="restaurantReservationForm">
                         <?php echo getCsrfField(); ?>
                         <input type="hidden" name="restaurant_reservation_form" value="1">
                         
@@ -1122,22 +1125,34 @@ try {
                         <input type="hidden" id="dinnerEnd" value="<?php echo htmlspecialchars(getSetting('restaurant_dinner_end', '22:00')); ?>">
 
                         <div class="form-group">
-                            <label for="full_name">Full Name</label>
+                            <label for="full_name" class="required">Full Name</label>
                             <input class="form-control" type="text" id="full_name" name="full_name" required value="<?php echo htmlspecialchars($_POST['full_name'] ?? ''); ?>">
                         </div>
 
                         <div class="form-group">
-                            <label for="email">Email</label>
+                            <label for="email" class="required">Email</label>
                             <input class="form-control" type="email" id="email" name="email" required value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
                         </div>
 
                         <div class="form-group">
-                            <label for="phone">Phone</label>
-                            <input class="form-control" type="text" id="phone" name="phone" required value="<?php echo htmlspecialchars($_POST['phone'] ?? ''); ?>">
+                            <label for="phone_number" class="required">Phone</label>
+                            <div class="phone-input-group">
+                                <select name="phone_code" id="phone_code" class="phone-code-select" required>
+                                    <?php foreach ($countries as $c): ?>
+                                    <option value="<?php echo htmlspecialchars($c['code']); ?>"
+                                        <?php echo ((isset($_POST['phone_code']) ? $_POST['phone_code'] : '+265') === $c['code']) ? 'selected' : ''; ?>>
+                                        <?php echo $c['flag'] . ' ' . htmlspecialchars($c['code']); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input class="form-control phone-number-input" type="tel" id="phone_number" name="phone_number" required
+                                    placeholder="e.g. 991234567"
+                                    value="<?php echo htmlspecialchars($_POST['phone_number'] ?? ''); ?>">
+                            </div>
                         </div>
 
                         <div class="form-group">
-                            <label for="preferred_date">Preferred Date</label>
+                            <label for="preferred_date" class="required">Preferred Date</label>
                             <input class="form-control" type="date" id="preferred_date" name="preferred_date" required value="<?php echo htmlspecialchars($_POST['preferred_date'] ?? ''); ?>" min="<?php 
                                 $minAdvanceDays = (int)getSetting('restaurant_min_advance_days', 1);
                                 $minDate = new DateTime();
@@ -1148,13 +1163,13 @@ try {
                         </div>
 
                         <div class="form-group">
-                            <label for="preferred_time">Preferred Time</label>
+                            <label for="preferred_time" class="required">Preferred Time</label>
                             <input class="form-control" type="time" id="preferred_time" name="preferred_time" required value="<?php echo htmlspecialchars($_POST['preferred_time'] ?? ''); ?>">
                             <div class="error-message" id="timeError"></div>
                         </div>
 
                         <div class="form-group">
-                            <label for="guests">Guests</label>
+                            <label for="guests" class="required">Number of Guests</label>
                             <input class="form-control" type="number" id="guests" name="guests" min="1" max="20" required value="<?php echo htmlspecialchars($_POST['guests'] ?? '2'); ?>">
                         </div>
 
@@ -1195,6 +1210,7 @@ try {
     <!-- Scripts -->
     <script src="js/modal.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/form-validation.js"></script>
     <script>
         // Currency settings (from PHP)
         const currencySymbol = '<?php echo $currency_symbol; ?>';
