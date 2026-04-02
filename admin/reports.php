@@ -47,6 +47,7 @@ $repeatGuests = [];
 $conferenceStats = [];
 $conferenceRoomStats = [];
 $recentBookings = [];
+$manualReleaseAudit = [];
 $reviewStats = [];
 $gymInquiryStats = [];
 
@@ -287,6 +288,15 @@ try {
     ");
     $recentBookingsStmt->execute([$start_date, $end_date]);
     $recentBookings = $recentBookingsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 13b. Manual room release audit entries (traceability: who/when/reason)
+    try {
+        $manualReleaseStmt = $pdo->prepare("\n            SELECT cl.booking_reference, cl.guest_email, cl.cancellation_date, cl.cancellation_reason,\n                   au.full_name as admin_full_name, au.username as admin_username\n            FROM cancellation_log cl\n            LEFT JOIN admin_users au ON cl.cancelled_by = au.id\n            WHERE cl.booking_type = 'room'\n              AND cl.cancellation_date >= ?\n              AND cl.cancellation_date < DATE_ADD(?, INTERVAL 1 DAY)\n              AND cl.cancellation_reason LIKE 'Manual room release%'\n            ORDER BY cl.cancellation_date DESC\n            LIMIT 50\n        ");
+        $manualReleaseStmt->execute([$start_date, $end_date]);
+        $manualReleaseAudit = $manualReleaseStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        $manualReleaseAudit = [];
+    }
 
     // ============================================
     // OCCUPANCY TAB QUERIES
@@ -1193,6 +1203,28 @@ try {
                                 <td><?php echo $bk['number_of_nights']; ?></td>
                                 <td><?php echo $currency_symbol . ' ' . number_format($bk['total_amount'], 2); ?></td>
                                 <td><span class="badge-sm badge-<?php echo htmlspecialchars($bk['status']); ?>"><?php echo ucfirst(str_replace('-', ' ', htmlspecialchars($bk['status']))); ?></span></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            </div>
+
+            <div class="report-section">
+                <h2><i class="fas fa-clipboard-list"></i> Manual Room Release Audit</h2>
+                <?php if (empty($manualReleaseAudit)): ?>
+                    <div class="empty-state"><i class="fas fa-clipboard-check"></i><p>No manual room releases logged in this period</p></div>
+                <?php else: ?>
+                    <table class="report-table">
+                        <thead><tr><th>When</th><th>Booking Ref</th><th>Guest Email</th><th>Released By</th><th>Reason</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($manualReleaseAudit as $entry): ?>
+                            <tr>
+                                <td><?php echo date('M j, Y H:i', strtotime($entry['cancellation_date'])); ?></td>
+                                <td><?php echo htmlspecialchars($entry['booking_reference']); ?></td>
+                                <td><?php echo htmlspecialchars($entry['guest_email'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($entry['admin_full_name'] ?: ($entry['admin_username'] ?: 'Unknown')); ?></td>
+                                <td><?php echo htmlspecialchars($entry['cancellation_reason'] ?? ''); ?></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>

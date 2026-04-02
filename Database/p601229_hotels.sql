@@ -239,7 +239,7 @@ CREATE TABLE `bookings` (
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `expires_at` datetime DEFAULT NULL COMMENT 'When tentative booking expires (NULL for non-tentative bookings)',
   `converted_from_tentative` tinyint(1) DEFAULT '0' COMMENT 'Whether this booking was converted from tentative status (1=yes, 0=no)',
-  `occupancy_type` enum('single','double','triple') COLLATE utf8mb4_unicode_ci DEFAULT 'double' COMMENT 'Occupancy type for pricing'
+  `occupancy_type` enum('single','double','child') COLLATE utf8mb4_unicode_ci DEFAULT 'double' COMMENT 'Occupancy type for pricing'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -1431,14 +1431,14 @@ CREATE TABLE `rooms` (
   `video_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Video MIME type',
   `price_single_occupancy` decimal(10,2) DEFAULT NULL COMMENT 'Price for single occupancy (1 guest)',
   `price_double_occupancy` decimal(10,2) DEFAULT NULL COMMENT 'Price for double occupancy (2 guests)',
-  `price_triple_occupancy` decimal(10,2) DEFAULT NULL COMMENT 'Price for triple occupancy (3 guests)'
+  `price_child_occupancy` decimal(10,2) DEFAULT NULL COMMENT 'Price for child occupancy (3 guests)'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `rooms`
 --
 
-INSERT INTO `rooms` (`id`, `name`, `slug`, `description`, `short_description`, `price_per_night`, `size_sqm`, `max_guests`, `rooms_available`, `total_rooms`, `bed_type`, `image_url`, `badge`, `amenities`, `is_featured`, `is_active`, `display_order`, `created_at`, `updated_at`, `video_path`, `video_type`, `price_single_occupancy`, `price_double_occupancy`, `price_triple_occupancy`) VALUES
+INSERT INTO `rooms` (`id`, `name`, `slug`, `description`, `short_description`, `price_per_night`, `size_sqm`, `max_guests`, `rooms_available`, `total_rooms`, `bed_type`, `image_url`, `badge`, `amenities`, `is_featured`, `is_active`, `display_order`, `created_at`, `updated_at`, `video_path`, `video_type`, `price_single_occupancy`, `price_double_occupancy`, `price_child_occupancy`) VALUES
 (2, 'Executive Suite', 'executive-suite', 'Comfortable suite with separate sitting area. Includes a desk for work, TV, WiFi, coffee/tea facilities, and mini fridge. Good for business travelers or those wanting extra space.', 'Spacious room with work area', 130000.00, 60, 2, 4, 5, 'King Bed', 'images/rooms/ExecutiveRoom.jpeg', NULL, 'King Bed,Work Desk,Butler Service,Living Area,Smart TV,High-Speed WiFi,Coffee Machine,Mini Bar,Safe', 1, 1, 2, '2026-01-19 20:22:49', '2026-02-08 00:35:43', NULL, NULL, 130000.00, 165000.00, 165000.00),
 (4, 'Deluxe Room', 'deluxe-room', 'Comfortable room with en-suite bathroom. Features a comfortable bed, TV, WiFi, and basic amenities. Clean and well-maintained for a good night\'s sleep.', 'Comfortable room with private bathroom', 100000.00, 45, 2, 4, 5, 'King Bed', 'images/rooms/Deluxe_Room.jpg', 'Popular', 'King Bed,Jacuzzi Tub,Living Area,Marble Bathroom,Premium Bedding,Smart TV,Mini Bar,Free WiFi', 1, 1, 4, '2026-01-19 20:22:49', '2026-02-08 00:35:51', NULL, NULL, 100000.00, 135000.00, 135000.00),
 (5, 'Standard Room', 'standard-room', 'Simple, clean room with everything you need. Comfortable bed, TV, and WiFi. Perfect for budget travelers looking for a good value.', 'Simple, affordable accommodation', 85000.00, 35, 2, 3, 5, 'King Bed', 'images/rooms/family_suite.jpg', NULL, 'King Bed,City View,Balcony,Smart TV,Free WiFi,Coffee Machine,Safe,Climate Control', 1, 1, 5, '2026-01-19 20:22:49', '2026-02-08 00:35:58', NULL, NULL, 85000.00, 115000.00, 115000.00);

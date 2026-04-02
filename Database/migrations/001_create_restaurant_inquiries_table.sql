@@ -1,4 +1,4 @@
--- Migration: Create restaurant_inquiries table
+- Migration: Create restaurant_inquiries table
 -- Date: 2026-04-02
 -- Description: Table to store restaurant reservation inquiries
 

@@ -22,8 +22,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($action === 'convert') {
-            // Get booking details
-            $stmt = $pdo->prepare("SELECT * FROM bookings WHERE id = ?");
+            // Get booking details with room metadata for email templates
+            $stmt = $pdo->prepare("
+                SELECT b.*, r.name as room_name, r.slug as room_slug
+                FROM bookings b
+                LEFT JOIN rooms r ON b.room_id = r.id
+                WHERE b.id = ?
+            ");
             $stmt->execute([$booking_id]);
             $booking = $stmt->fetch(PDO::FETCH_ASSOC);
             
@@ -34,10 +39,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($booking['status'] !== 'tentative' || $booking['is_tentative'] != 1) {
                 throw new Exception('This is not a tentative booking');
             }
+
+            if (!empty($booking['tentative_expires_at']) && strtotime($booking['tentative_expires_at']) <= time()) {
+                throw new Exception('This tentative booking has already expired and cannot be converted');
+            }
+
+            $pdo->beginTransaction();
+
+            $reserve_error = null;
+            if (!reserveRoomForDateRange($booking['room_id'], $booking['check_in_date'], $booking['check_out_date'], $booking_id, $reserve_error)) {
+                throw new Exception($reserve_error ?: 'Room capacity reached for selected dates.');
+            }
             
             // Convert to confirmed
-            $update_stmt = $pdo->prepare("UPDATE bookings SET status = 'confirmed', is_tentative = 0 WHERE id = ?");
+            $update_stmt = $pdo->prepare("
+                UPDATE bookings
+                SET status = 'confirmed',
+                    is_tentative = 0,
+                    tentative_expires_at = NULL,
+                    updated_at = NOW()
+                WHERE id = ? AND status = 'tentative' AND is_tentative = 1
+            ");
             $update_stmt->execute([$booking_id]);
+
+            if ($update_stmt->rowCount() === 0) {
+                throw new Exception('Tentative booking state changed. Please refresh and try again.');
+            }
             
             // Log the conversion
             $log_stmt = $pdo->prepare("
@@ -50,6 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $user['id'],
                 'Converted from tentative to confirmed by admin'
             ]);
+
+            $pdo->commit();
             
             // Send conversion email
             require_once '../config/email.php';
@@ -70,9 +99,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$booking) {
                 throw new Exception('Booking not found');
             }
+
+            if ($booking['status'] !== 'tentative' && (int)$booking['is_tentative'] !== 1) {
+                throw new Exception('Only tentative bookings can be cancelled from this page');
+            }
+
+            $pdo->beginTransaction();
             
             // Cancel booking
-            $update_stmt = $pdo->prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?");
+            $update_stmt = $pdo->prepare("
+                UPDATE bookings
+                SET status = 'cancelled',
+                    is_tentative = 0,
+                    tentative_expires_at = NULL,
+                    updated_at = NOW()
+                WHERE id = ?
+            ");
             $update_stmt->execute([$booking_id]);
             
             // Log the cancellation
@@ -86,11 +128,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $user['id'],
                 'Cancelled by admin'
             ]);
+
+            $pdo->commit();
             
             $message = 'Tentative booking cancelled successfully.';
         }
 
     } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $error = 'Error: ' . $e->getMessage();
     }
 }

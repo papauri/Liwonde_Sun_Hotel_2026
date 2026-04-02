@@ -109,7 +109,13 @@ try {
                 b.status
             FROM bookings b
             WHERE b.room_id = ?
-            AND b.status IN ('pending', 'confirmed', 'checked-in')
+            AND (
+                b.status IN ('pending', 'confirmed', 'checked-in')
+                OR (
+                    (b.status = 'tentative' OR b.is_tentative = 1)
+                    AND (b.tentative_expires_at IS NULL OR b.tentative_expires_at > NOW())
+                )
+            )
             AND (
                 (b.check_in_date < ? AND b.check_out_date > ?) OR
                 (b.check_in_date >= ? AND b.check_in_date < ?)
@@ -155,7 +161,13 @@ try {
                 b.status
             FROM bookings b
             WHERE b.room_id = ?
-            AND b.status IN ('pending', 'confirmed', 'checked-in')
+            AND (
+                b.status IN ('pending', 'confirmed', 'checked-in')
+                OR (
+                    (b.status = 'tentative' OR b.is_tentative = 1)
+                    AND (b.tentative_expires_at IS NULL OR b.tentative_expires_at > NOW())
+                )
+            )
             AND (
                 (b.check_in_date < ? AND b.check_out_date > ?) OR
                 (b.check_in_date >= ? AND b.check_in_date < ?)
