@@ -742,72 +742,581 @@ function getPageLoader(string $page_slug): ?string {
 }
 
 /**
+ * Check whether a given table has a column.
+ */
+function hasTableColumn($table_name, $column_name) {
+    global $pdo;
+
+    try {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM `" . str_replace('`', '``', $table_name) . "` LIKE ?");
+        $stmt->execute([$column_name]);
+        if ((bool)$stmt->fetch(PDO::FETCH_ASSOC)) {
+            return true;
+        }
+
+        // Fallback for environments where SHOW COLUMNS is restricted but SELECT is allowed.
+        $pdo->query("SELECT `" . str_replace('`', '``', $column_name) . "` FROM `" . str_replace('`', '``', $table_name) . "` LIMIT 0");
+        return true;
+    } catch (PDOException $e) {
+        return false;
+    }
+}
+
+/**
+ * Normalize occupancy values.
+ */
+function normalizeOccupancyType($occupancy_type) {
+    $value = strtolower(trim((string)$occupancy_type));
+
+    if (in_array($value, ['single', 'double', 'child'], true)) {
+        return $value;
+    }
+
+    return 'double';
+}
+
+/**
+ * Resolve child occupancy price.
+ */
+function getRoomChildOccupancyPrice(array $room) {
+    if (!empty($room['price_child_occupancy'])) {
+        return (float)$room['price_child_occupancy'];
+    }
+
+    return null;
+}
+
+/**
+ * Ensure child occupancy schema exists.
+ */
+function ensureChildOccupancyInfrastructure() {
+    global $pdo;
+
+    static $checked = false;
+    if ($checked) {
+        return true;
+    }
+
+    try {
+        if (!hasTableColumn('rooms', 'price_child_occupancy')) {
+            try {
+                $pdo->exec("ALTER TABLE rooms ADD COLUMN price_child_occupancy DECIMAL(10,2) NULL AFTER price_double_occupancy");
+            } catch (PDOException $e) {
+                $is_duplicate_column = stripos($e->getMessage(), 'Duplicate column name') !== false;
+                if (!$is_duplicate_column && !hasTableColumn('rooms', 'price_child_occupancy')) {
+                    throw $e;
+                }
+            }
+        }
+
+        try {
+            $pdo->exec("ALTER TABLE bookings MODIFY COLUMN occupancy_type ENUM('single','double','child') NOT NULL DEFAULT 'double'");
+        } catch (PDOException $e) {
+            // Ignore managed-host DDL restrictions; runtime normalization remains active.
+        }
+
+        $checked = true;
+        return true;
+    } catch (PDOException $e) {
+        error_log('Error ensuring child occupancy infrastructure: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Ensure room unit infrastructure exists (table + columns used by booking/blocking).
+ */
+function ensureRoomUnitInfrastructure() {
+    global $pdo;
+
+    static $checked = false;
+    if ($checked) {
+        return true;
+    }
+
+    try {
+        try {
+            $pdo->exec("\n                CREATE TABLE IF NOT EXISTS room_units (\n                    id INT AUTO_INCREMENT PRIMARY KEY,\n                    room_id INT NOT NULL,\n                    unit_code VARCHAR(50) NOT NULL,\n                    unit_label VARCHAR(120) NOT NULL,\n                    is_active TINYINT(1) NOT NULL DEFAULT 1,\n                    notes VARCHAR(255) NULL,\n                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n                    UNIQUE KEY uniq_room_unit_code (room_id, unit_code),\n                    INDEX idx_room_active (room_id, is_active)\n                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci\n            ");
+        } catch (PDOException $e) {
+            // Some hosts block CREATE privilege even for IF NOT EXISTS.
+            // Continue only if the table is already present.
+            $existing_table_stmt = $pdo->query("SHOW TABLES LIKE 'room_units'");
+            if (!$existing_table_stmt || $existing_table_stmt->rowCount() === 0) {
+                throw $e;
+            }
+        }
+
+        if (!hasTableColumn('bookings', 'room_unit_id')) {
+            try {
+                $pdo->exec("ALTER TABLE bookings ADD COLUMN room_unit_id INT NULL AFTER room_id");
+            } catch (PDOException $e) {
+                $is_duplicate_column = stripos($e->getMessage(), 'Duplicate column name') !== false;
+                if (!$is_duplicate_column && !hasTableColumn('bookings', 'room_unit_id')) {
+                    throw $e;
+                }
+            }
+            try {
+                $pdo->exec("ALTER TABLE bookings ADD INDEX idx_booking_room_unit (room_unit_id)");
+            } catch (PDOException $e) {
+                // Ignore duplicate-index and restricted DDL scenarios.
+            }
+        }
+
+        if (!hasTableColumn('bookings', 'room_unit_assignment_source')) {
+            try {
+                $pdo->exec("ALTER TABLE bookings ADD COLUMN room_unit_assignment_source VARCHAR(20) NULL AFTER room_unit_id");
+            } catch (PDOException $e) {
+                $is_duplicate_column = stripos($e->getMessage(), 'Duplicate column name') !== false;
+                if (!$is_duplicate_column && !hasTableColumn('bookings', 'room_unit_assignment_source')) {
+                    throw $e;
+                }
+            }
+        }
+
+        if (!hasTableColumn('room_blocked_dates', 'room_unit_id')) {
+            try {
+                $pdo->exec("ALTER TABLE room_blocked_dates ADD COLUMN room_unit_id INT NULL AFTER room_id");
+            } catch (PDOException $e) {
+                $is_duplicate_column = stripos($e->getMessage(), 'Duplicate column name') !== false;
+                if (!$is_duplicate_column && !hasTableColumn('room_blocked_dates', 'room_unit_id')) {
+                    throw $e;
+                }
+            }
+            try {
+                $pdo->exec("ALTER TABLE room_blocked_dates ADD INDEX idx_blocked_room_unit_date (room_unit_id, block_date)");
+            } catch (PDOException $e) {
+                // Ignore duplicate-index and restricted DDL scenarios.
+            }
+        }
+
+        $checked = true;
+        return true;
+    } catch (PDOException $e) {
+        error_log('Error ensuring room unit infrastructure: ' . $e->getMessage());
+
+        // Fallback: if schema already exists but DDL failed due privileges, continue.
+        try {
+            $table_exists_stmt = $pdo->query("SHOW TABLES LIKE 'room_units'");
+            $table_exists = $table_exists_stmt && $table_exists_stmt->rowCount() > 0;
+
+            if ($table_exists
+                && hasTableColumn('bookings', 'room_unit_id')
+                && hasTableColumn('room_blocked_dates', 'room_unit_id')) {
+                $checked = true;
+                return true;
+            }
+        } catch (PDOException $ignored) {
+            // Keep original failure result.
+        }
+
+        return false;
+    }
+}
+
+/**
+ * Keep room units aligned to a room's total_rooms count.
+ */
+function syncRoomUnitsForRoom($room_id, $target_total_rooms = null) {
+    global $pdo;
+
+    if (!ensureRoomUnitInfrastructure()) {
+        return false;
+    }
+
+    try {
+        $room_stmt = $pdo->prepare("SELECT id, name, total_rooms, rooms_available FROM rooms WHERE id = ? LIMIT 1");
+        $room_stmt->execute([$room_id]);
+        $room = $room_stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$room) {
+            return false;
+        }
+
+        $target = $target_total_rooms !== null ? (int)$target_total_rooms : (int)$room['total_rooms'];
+        $room_total = (int)($room['total_rooms'] ?? 0);
+        $room_available = (int)($room['rooms_available'] ?? 0);
+
+        if ($target <= 0) {
+            $target = max($room_total, $room_available, 1);
+        }
+        if ($target < 0) {
+            $target = 0;
+        }
+
+        $units_stmt = $pdo->prepare("SELECT id, unit_code FROM room_units WHERE room_id = ? ORDER BY id ASC");
+        $units_stmt->execute([$room_id]);
+        $existing_units = $units_stmt->fetchAll(PDO::FETCH_ASSOC);
+        $existing_count = count($existing_units);
+
+        if ($existing_count < $target) {
+            $insert_stmt = $pdo->prepare("\n                INSERT INTO room_units (room_id, unit_code, unit_label, is_active)\n                VALUES (?, ?, ?, 1)\n            ");
+
+            for ($i = $existing_count + 1; $i <= $target; $i++) {
+                $unit_code = (string)$i;
+                $unit_label = $room['name'] . ' ' . $i;
+                $insert_stmt->execute([$room_id, $unit_code, $unit_label]);
+            }
+        }
+
+        $active_stmt = $pdo->prepare("SELECT id FROM room_units WHERE room_id = ? ORDER BY id ASC");
+        $active_stmt->execute([$room_id]);
+        $all_units = $active_stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        foreach ($all_units as $index => $unit_id) {
+            $is_active = ($index < $target) ? 1 : 0;
+            $update_stmt = $pdo->prepare("UPDATE room_units SET is_active = ? WHERE id = ?");
+            $update_stmt->execute([$is_active, $unit_id]);
+        }
+
+        return true;
+    } catch (PDOException $e) {
+        error_log('Error syncing room units: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Get candidate room units that are free in a date range.
+ */
+function getAvailableRoomUnitsForDateRange($room_id, $check_in_date, $check_out_date, $exclude_booking_id = null) {
+    global $pdo;
+
+    if (!ensureRoomUnitInfrastructure()) {
+        return [];
+    }
+
+    try {
+        syncRoomUnitsForRoom($room_id);
+
+        $units_stmt = $pdo->prepare("\n            SELECT id, room_id, unit_code, unit_label\n            FROM room_units\n            WHERE room_id = ? AND is_active = 1\n            ORDER BY id ASC\n        ");
+        $units_stmt->execute([$room_id]);
+        $units = $units_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($units)) {
+            return [];
+        }
+
+        // Global room-type or hotel-wide blocks make all units unavailable for those dates.
+        $global_block_stmt = $pdo->prepare("\n            SELECT COUNT(*)\n            FROM room_blocked_dates\n            WHERE block_date >= ? AND block_date < ?\n              AND room_unit_id IS NULL\n              AND (room_id = ? OR room_id IS NULL)\n        ");
+        $global_block_stmt->execute([$check_in_date, $check_out_date, $room_id]);
+        if ((int)$global_block_stmt->fetchColumn() > 0) {
+            return [];
+        }
+
+        $available_units = [];
+
+        foreach ($units as $unit) {
+            $unit_block_stmt = $pdo->prepare("\n                SELECT COUNT(*)\n                FROM room_blocked_dates\n                WHERE block_date >= ? AND block_date < ?\n                  AND room_unit_id = ?\n            ");
+            $unit_block_stmt->execute([$check_in_date, $check_out_date, $unit['id']]);
+            if ((int)$unit_block_stmt->fetchColumn() > 0) {
+                continue;
+            }
+
+            $booking_sql = "\n                SELECT COUNT(*)\n                FROM bookings\n                WHERE room_id = ?\n                  AND room_unit_id = ?\n                  AND status IN ('pending', 'tentative', 'confirmed', 'checked-in')\n                  AND NOT (check_out_date <= ? OR check_in_date >= ?)\n            ";
+            $booking_params = [$room_id, $unit['id'], $check_in_date, $check_out_date];
+
+            if ($exclude_booking_id) {
+                $booking_sql .= " AND id != ?";
+                $booking_params[] = $exclude_booking_id;
+            }
+
+            $booking_stmt = $pdo->prepare($booking_sql);
+            $booking_stmt->execute($booking_params);
+
+            if ((int)$booking_stmt->fetchColumn() === 0) {
+                $available_units[] = $unit;
+            }
+        }
+
+        return $available_units;
+    } catch (PDOException $e) {
+        error_log('Error finding available room units: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Allocate a room unit automatically or by a preferred unit id.
+ * Returns unit id, null (legacy aggregate fallback), or false on failure.
+ */
+function allocateRoomUnitForBooking($room_id, $check_in_date, $check_out_date, $preferred_room_unit_id = null, $exclude_booking_id = null, &$error = null) {
+    global $pdo;
+
+    $error = null;
+
+    if (!ensureRoomUnitInfrastructure()) {
+        return null;
+    }
+
+    try {
+        syncRoomUnitsForRoom($room_id);
+
+        $units_count_stmt = $pdo->prepare("SELECT COUNT(*) FROM room_units WHERE room_id = ? AND is_active = 1");
+        $units_count_stmt->execute([$room_id]);
+        $active_units_count = (int)$units_count_stmt->fetchColumn();
+
+        if ($active_units_count === 0) {
+            return null;
+        }
+
+        $available_units = getAvailableRoomUnitsForDateRange($room_id, $check_in_date, $check_out_date, $exclude_booking_id);
+        if (empty($available_units)) {
+            $error = 'No individual room unit is available for the selected dates.';
+            return false;
+        }
+
+        if ($preferred_room_unit_id !== null) {
+            $preferred_room_unit_id = (int)$preferred_room_unit_id;
+            foreach ($available_units as $unit) {
+                if ((int)$unit['id'] === $preferred_room_unit_id) {
+                    return $preferred_room_unit_id;
+                }
+            }
+
+            $error = 'The selected room unit is not available for the selected dates.';
+            return false;
+        }
+
+        return (int)$available_units[0]['id'];
+    } catch (PDOException $e) {
+        error_log('Error allocating room unit: ' . $e->getMessage());
+        $error = 'Could not allocate a room unit. Please try again.';
+        return false;
+    }
+}
+
+/**
+ * Analyze room_unit_id backfill for active bookings and optionally apply updates.
+ */
+function analyzeActiveBookingRoomUnitBackfill($limit = 500, $apply_updates = false) {
+    global $pdo;
+
+    $response = [
+        'success' => false,
+        'mode' => $apply_updates ? 'apply' : 'preview',
+        'processed' => 0,
+        'updated' => 0,
+        'skipped' => 0,
+        'skipped_references' => [],
+        'updatable_records' => [],
+        'skipped_records' => [],
+        'message' => ''
+    ];
+
+    if (!ensureRoomUnitInfrastructure()) {
+        $response['message'] = 'Room unit infrastructure is not available.';
+        return $response;
+    }
+
+    try {
+        $limit = max(1, (int)$limit);
+
+        $status_sql = "'pending','tentative','confirmed','checked-in'";
+        $bookings_stmt = $pdo->prepare("\n            SELECT id, booking_reference, room_id, check_in_date, check_out_date\n            FROM bookings\n            WHERE room_unit_id IS NULL\n              AND status IN ({$status_sql})\n            ORDER BY room_id ASC, check_in_date ASC, id ASC\n            LIMIT {$limit}\n        ");
+        $bookings_stmt->execute();
+        $bookings = $bookings_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $response['processed'] = count($bookings);
+        if (empty($bookings)) {
+            $response['success'] = true;
+            $response['message'] = 'No active bookings require room unit backfill.';
+            return $response;
+        }
+
+        // Track allocations made in this run to avoid assigning the same unit to overlapping ranges.
+        $session_assignments = [];
+
+        foreach ($bookings as $booking) {
+            $room_id = (int)$booking['room_id'];
+            $booking_id = (int)$booking['id'];
+            $check_in_date = $booking['check_in_date'];
+            $check_out_date = $booking['check_out_date'];
+            $skip_reason = null;
+
+            syncRoomUnitsForRoom($room_id);
+
+            $units_stmt = $pdo->prepare("\n                SELECT id, unit_label\n                FROM room_units\n                WHERE room_id = ? AND is_active = 1\n                ORDER BY id ASC\n            ");
+            $units_stmt->execute([$room_id]);
+            $units = $units_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($units)) {
+                $response['skipped']++;
+                $skip_reason = 'No active units available for this room type';
+                if (count($response['skipped_references']) < 20) {
+                    $response['skipped_references'][] = $booking['booking_reference'];
+                }
+                if (count($response['skipped_records']) < 100) {
+                    $response['skipped_records'][] = [
+                        'booking_id' => $booking_id,
+                        'booking_reference' => $booking['booking_reference'],
+                        'room_id' => $room_id,
+                        'check_in_date' => $check_in_date,
+                        'check_out_date' => $check_out_date,
+                        'reason' => $skip_reason
+                    ];
+                }
+                continue;
+            }
+
+            $chosen_unit_id = null;
+            $chosen_unit_label = null;
+
+            foreach ($units as $unit) {
+                $unit_id = (int)$unit['id'];
+
+                // Skip if blocked at unit, room-type, or global level for any day in the booking range.
+                $blocked_stmt = $pdo->prepare("\n                    SELECT COUNT(*)\n                    FROM room_blocked_dates\n                    WHERE block_date >= ? AND block_date < ?\n                      AND (\n                            room_unit_id = ?\n                            OR (room_unit_id IS NULL AND (room_id = ? OR room_id IS NULL))\n                          )\n                ");
+                $blocked_stmt->execute([$check_in_date, $check_out_date, $unit_id, $room_id]);
+                if ((int)$blocked_stmt->fetchColumn() > 0) {
+                    $skip_reason = 'All candidate units are blocked for one or more dates';
+                    continue;
+                }
+
+                // Ensure no overlap with already-assigned bookings in DB.
+                $conflict_stmt = $pdo->prepare("\n                    SELECT COUNT(*)\n                    FROM bookings\n                    WHERE room_id = ?\n                      AND room_unit_id = ?\n                      AND id != ?\n                      AND status IN ({$status_sql})\n                      AND NOT (check_out_date <= ? OR check_in_date >= ?)\n                ");
+                $conflict_stmt->execute([$room_id, $unit_id, $booking_id, $check_in_date, $check_out_date]);
+                if ((int)$conflict_stmt->fetchColumn() > 0) {
+                    $skip_reason = 'All candidate units overlap existing assigned bookings';
+                    continue;
+                }
+
+                // Ensure no overlap with assignments made earlier in this same backfill pass.
+                $has_session_conflict = false;
+                if (!empty($session_assignments[$unit_id])) {
+                    foreach ($session_assignments[$unit_id] as $range) {
+                        if (!($range['check_out'] <= $check_in_date || $range['check_in'] >= $check_out_date)) {
+                            $has_session_conflict = true;
+                            break;
+                        }
+                    }
+                }
+
+                if ($has_session_conflict) {
+                    $skip_reason = 'All candidate units conflict with assignments chosen in this pass';
+                    continue;
+                }
+
+                $chosen_unit_id = $unit_id;
+                $chosen_unit_label = $unit['unit_label'];
+                break;
+            }
+
+            if ($chosen_unit_id === null) {
+                $response['skipped']++;
+                if (count($response['skipped_references']) < 20) {
+                    $response['skipped_references'][] = $booking['booking_reference'];
+                }
+                if (count($response['skipped_records']) < 100) {
+                    $response['skipped_records'][] = [
+                        'booking_id' => $booking_id,
+                        'booking_reference' => $booking['booking_reference'],
+                        'room_id' => $room_id,
+                        'check_in_date' => $check_in_date,
+                        'check_out_date' => $check_out_date,
+                        'reason' => $skip_reason ?: 'No eligible unit found'
+                    ];
+                }
+                continue;
+            }
+
+            if (count($response['updatable_records']) < 100) {
+                $response['updatable_records'][] = [
+                    'booking_id' => $booking_id,
+                    'booking_reference' => $booking['booking_reference'],
+                    'room_id' => $room_id,
+                    'check_in_date' => $check_in_date,
+                    'check_out_date' => $check_out_date,
+                    'assigned_unit_id' => $chosen_unit_id,
+                    'assigned_unit_label' => $chosen_unit_label
+                ];
+            }
+
+            if (!$apply_updates) {
+                $response['updated']++;
+                if (!isset($session_assignments[$chosen_unit_id])) {
+                    $session_assignments[$chosen_unit_id] = [];
+                }
+                $session_assignments[$chosen_unit_id][] = [
+                    'check_in' => $check_in_date,
+                    'check_out' => $check_out_date
+                ];
+                continue;
+            }
+
+            $update_stmt = $pdo->prepare("\n                UPDATE bookings\n                SET room_unit_id = ?, room_unit_assignment_source = 'auto', updated_at = CURRENT_TIMESTAMP\n                WHERE id = ? AND room_unit_id IS NULL\n            ");
+            $update_stmt->execute([$chosen_unit_id, $booking_id]);
+
+            if ($update_stmt->rowCount() > 0) {
+                $response['updated']++;
+                if (!isset($session_assignments[$chosen_unit_id])) {
+                    $session_assignments[$chosen_unit_id] = [];
+                }
+                $session_assignments[$chosen_unit_id][] = [
+                    'check_in' => $check_in_date,
+                    'check_out' => $check_out_date
+                ];
+            } else {
+                $response['skipped']++;
+                if (count($response['skipped_references']) < 20) {
+                    $response['skipped_references'][] = $booking['booking_reference'];
+                }
+                if (count($response['skipped_records']) < 100) {
+                    $response['skipped_records'][] = [
+                        'booking_id' => $booking_id,
+                        'booking_reference' => $booking['booking_reference'],
+                        'room_id' => $room_id,
+                        'check_in_date' => $check_in_date,
+                        'check_out_date' => $check_out_date,
+                        'reason' => 'Update did not apply (booking may have been modified concurrently)'
+                    ];
+                }
+            }
+        }
+
+        $response['success'] = true;
+        if ($apply_updates) {
+            $response['message'] = "Backfill complete: {$response['updated']} updated, {$response['skipped']} skipped.";
+        } else {
+            $response['message'] = "Preview complete: {$response['updated']} can be updated, {$response['skipped']} would be skipped.";
+        }
+        return $response;
+    } catch (PDOException $e) {
+        error_log('Error backfilling booking room units: ' . $e->getMessage());
+        $response['message'] = $apply_updates
+            ? 'Database error during room unit backfill.'
+            : 'Database error during backfill preview.';
+        return $response;
+    }
+}
+
+/**
+ * Preview room_unit_id backfill without persisting changes.
+ */
+function previewActiveBookingRoomUnitBackfill($limit = 500) {
+    return analyzeActiveBookingRoomUnitBackfill($limit, false);
+}
+
+/**
+ * Backfill room_unit_id for existing active bookings where a valid unit can be assigned.
+ */
+function backfillActiveBookingRoomUnits($limit = 500) {
+    return analyzeActiveBookingRoomUnitBackfill($limit, true);
+}
+
+/**
  * Helper function to check room availability
  * Returns true if room is available, false if booked or blocked
  */
-function isRoomAvailable($room_id, $check_in_date, $check_out_date, $exclude_booking_id = null) {
-    global $pdo;
-    try {
-        // First check if there are any rooms available at all
-        $room_stmt = $pdo->prepare("SELECT rooms_available, total_rooms FROM rooms WHERE id = ?");
-        $room_stmt->execute([$room_id]);
-        $room = $room_stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$room || $room['rooms_available'] <= 0) {
-            return false; // No rooms available
-        }
-        
-        // Check for blocked dates (both room-specific and global blocks)
-        $blocked_sql = "
-            SELECT COUNT(*) as blocked_dates
-            FROM room_blocked_dates
-            WHERE block_date >= ? AND block_date < ?
-            AND (room_id = ? OR room_id IS NULL)
-        ";
-        $blocked_stmt = $pdo->prepare($blocked_sql);
-        $blocked_stmt->execute([$check_in_date, $check_out_date, $room_id]);
-        $blocked_result = $blocked_stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($blocked_result['blocked_dates'] > 0) {
-            return false; // Date is blocked
-        }
-        
-        // Then check for overlapping bookings
-        $sql = "
-            SELECT COUNT(*) as bookings
-            FROM bookings
-            WHERE room_id = ?
-            AND status IN ('pending', 'confirmed', 'checked-in')
-            AND NOT (check_out_date <= ? OR check_in_date >= ?)
-        ";
-        $params = [$room_id, $check_in_date, $check_out_date];
-        
-        // Exclude a specific booking (useful when updating existing bookings)
-        if ($exclude_booking_id) {
-            $sql .= " AND id != ?";
-            $params[] = $exclude_booking_id;
-        }
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        // Check if number of overlapping bookings is less than available rooms
-        $overlapping_bookings = $result['bookings'];
-        $rooms_available = $room['rooms_available'];
-        
-        return $overlapping_bookings < $rooms_available;
-    } catch (PDOException $e) {
-        error_log("Error checking room availability: " . $e->getMessage());
-        return false; // Assume unavailable on error
-    }
+function isRoomAvailable($room_id, $check_in_date, $check_out_date, $exclude_booking_id = null, $preferred_room_unit_id = null) {
+    $availability = checkRoomAvailability($room_id, $check_in_date, $check_out_date, $exclude_booking_id, $preferred_room_unit_id);
+    return !empty($availability['available']);
 }
 
 /**
  * Enhanced function to check room availability with detailed conflict information
  * Returns array with availability status and conflict details
  */
-function checkRoomAvailability($room_id, $check_in_date, $check_out_date, $exclude_booking_id = null) {
+function checkRoomAvailability($room_id, $check_in_date, $check_out_date, $exclude_booking_id = null, $preferred_room_unit_id = null) {
     global $pdo;
     
     $result = [
@@ -895,6 +1404,36 @@ function checkRoomAvailability($room_id, $check_in_date, $check_out_date, $exclu
             return $result;
         }
         
+        // Prefer unit-aware availability when room units are configured.
+        $units_available = getAvailableRoomUnitsForDateRange($room_id, $check_in_date, $check_out_date, $exclude_booking_id);
+        if (!empty($units_available)) {
+            $result['room_units_available'] = count($units_available);
+            $result['available_units'] = $units_available;
+
+            if ($preferred_room_unit_id !== null) {
+                $preferred_room_unit_id = (int)$preferred_room_unit_id;
+                $selected = null;
+                foreach ($units_available as $unit) {
+                    if ((int)$unit['id'] === $preferred_room_unit_id) {
+                        $selected = $unit;
+                        break;
+                    }
+                }
+
+                if (!$selected) {
+                    $result['available'] = false;
+                    $result['error'] = 'Selected room unit is not available for the chosen dates';
+                    return $result;
+                }
+
+                $result['suggested_room_unit_id'] = (int)$selected['id'];
+                $result['suggested_room_unit_label'] = $selected['unit_label'];
+            } else {
+                $result['suggested_room_unit_id'] = (int)$units_available[0]['id'];
+                $result['suggested_room_unit_label'] = $units_available[0]['unit_label'];
+            }
+        }
+
         // Check for overlapping bookings
         $sql = "
             SELECT
@@ -906,7 +1445,13 @@ function checkRoomAvailability($room_id, $check_in_date, $check_out_date, $exclu
                 guest_name
             FROM bookings
             WHERE room_id = ?
-            AND status IN ('pending', 'confirmed', 'checked-in')
+            AND (
+                status IN ('pending', 'confirmed', 'checked-in')
+                OR (
+                    (status = 'tentative' OR is_tentative = 1)
+                    AND (tentative_expires_at IS NULL OR tentative_expires_at > NOW())
+                )
+            )
             AND NOT (check_out_date <= ? OR check_in_date >= ?)
         ";
         $params = [$room_id, $check_in_date, $check_out_date];
@@ -1111,7 +1656,7 @@ function validateBookingWithAvailability($data, $exclude_booking_id = null) {
  * Get blocked dates for a specific room or all rooms
  * Returns array of blocked date records
  */
-function getBlockedDates($room_id = null, $start_date = null, $end_date = null) {
+function getBlockedDates($room_id = null, $start_date = null, $end_date = null, $room_unit_id = null) {
     global $pdo;
     
     try {
@@ -1120,6 +1665,8 @@ function getBlockedDates($room_id = null, $start_date = null, $end_date = null) 
                 rbd.id,
                 rbd.room_id,
                 r.name as room_name,
+                rbd.room_unit_id,
+                ru.unit_label as room_unit_label,
                 rbd.block_date,
                 rbd.block_type,
                 rbd.reason,
@@ -1128,6 +1675,7 @@ function getBlockedDates($room_id = null, $start_date = null, $end_date = null) 
                 rbd.created_at
             FROM room_blocked_dates rbd
             LEFT JOIN rooms r ON rbd.room_id = r.id
+            LEFT JOIN room_units ru ON rbd.room_unit_id = ru.id
             LEFT JOIN admin_users au ON rbd.created_by = au.id
             WHERE 1=1
         ";
@@ -1147,8 +1695,13 @@ function getBlockedDates($room_id = null, $start_date = null, $end_date = null) 
             $sql .= " AND rbd.block_date <= ?";
             $params[] = $end_date;
         }
+
+        if ($room_unit_id !== null) {
+            $sql .= " AND (rbd.room_unit_id = ? OR rbd.room_unit_id IS NULL)";
+            $params[] = $room_unit_id;
+        }
         
-        $sql .= " ORDER BY rbd.block_date ASC, rbd.room_id ASC";
+        $sql .= " ORDER BY rbd.block_date ASC, rbd.room_id ASC, rbd.room_unit_id ASC";
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -1200,7 +1753,13 @@ function getAvailableDates($room_id, $start_date, $end_date) {
             SELECT DISTINCT DATE(check_in_date) as date
             FROM bookings
             WHERE room_id = ?
-            AND status IN ('pending', 'confirmed', 'checked-in')
+            AND (
+                status IN ('pending', 'confirmed', 'checked-in')
+                OR (
+                    (status = 'tentative' OR is_tentative = 1)
+                    AND (tentative_expires_at IS NULL OR tentative_expires_at > NOW())
+                )
+            )
             AND check_in_date <= ?
             AND check_out_date > ?
         ";
@@ -1252,7 +1811,7 @@ function getAvailableDates($room_id, $start_date, $end_date) {
  * Block a specific date for a room or all rooms
  * Returns true on success, false on failure
  */
-function blockRoomDate($room_id, $block_date, $block_type = 'manual', $reason = null, $created_by = null) {
+function blockRoomDate($room_id, $block_date, $block_type = 'manual', $reason = null, $created_by = null, $room_unit_id = null) {
     global $pdo;
     
     try {
@@ -1262,13 +1821,36 @@ function blockRoomDate($room_id, $block_date, $block_type = 'manual', $reason = 
             $block_type = 'manual';
         }
         
+        if ($room_unit_id !== null) {
+            $room_unit_id = (int)$room_unit_id;
+            $unit_stmt = $pdo->prepare("SELECT room_id FROM room_units WHERE id = ? LIMIT 1");
+            $unit_stmt->execute([$room_unit_id]);
+            $unit_room_id = $unit_stmt->fetchColumn();
+
+            if (!$unit_room_id) {
+                return false;
+            }
+
+            if ($room_id === null) {
+                $room_id = (int)$unit_room_id;
+            }
+        }
+
         // Check if date is already blocked
         $check_sql = "
             SELECT id FROM room_blocked_dates
             WHERE room_id " . ($room_id === null ? "IS NULL" : "= ?") . "
+            AND room_unit_id " . ($room_unit_id === null ? "IS NULL" : "= ?") . "
             AND block_date = ?
         ";
-        $check_params = $room_id === null ? [$block_date] : [$room_id, $block_date];
+        $check_params = [];
+        if ($room_id !== null) {
+            $check_params[] = $room_id;
+        }
+        if ($room_unit_id !== null) {
+            $check_params[] = $room_unit_id;
+        }
+        $check_params[] = $block_date;
         
         $check_stmt = $pdo->prepare($check_sql);
         $check_stmt->execute($check_params);
@@ -1279,11 +1861,15 @@ function blockRoomDate($room_id, $block_date, $block_type = 'manual', $reason = 
                 UPDATE room_blocked_dates
                 SET block_type = ?, reason = ?, created_by = ?
                 WHERE room_id " . ($room_id === null ? "IS NULL" : "= ?") . "
+                AND room_unit_id " . ($room_unit_id === null ? "IS NULL" : "= ?") . "
                 AND block_date = ?
             ";
             $update_params = [$block_type, $reason, $created_by];
             if ($room_id !== null) {
                 $update_params[] = $room_id;
+            }
+            if ($room_unit_id !== null) {
+                $update_params[] = $room_unit_id;
             }
             $update_params[] = $block_date;
             
@@ -1293,11 +1879,11 @@ function blockRoomDate($room_id, $block_date, $block_type = 'manual', $reason = 
         
         // Insert new blocked date
         $sql = "
-            INSERT INTO room_blocked_dates (room_id, block_date, block_type, reason, created_by)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO room_blocked_dates (room_id, room_unit_id, block_date, block_type, reason, created_by)
+            VALUES (?, ?, ?, ?, ?, ?)
         ";
         $stmt = $pdo->prepare($sql);
-        return $stmt->execute([$room_id, $block_date, $block_type, $reason, $created_by]);
+        return $stmt->execute([$room_id, $room_unit_id, $block_date, $block_type, $reason, $created_by]);
     } catch (PDOException $e) {
         error_log("Error blocking room date: " . $e->getMessage());
         return false;
@@ -1308,16 +1894,24 @@ function blockRoomDate($room_id, $block_date, $block_type = 'manual', $reason = 
  * Unblock a specific date for a room or all rooms
  * Returns true on success, false on failure
  */
-function unblockRoomDate($room_id, $block_date) {
+function unblockRoomDate($room_id, $block_date, $room_unit_id = null) {
     global $pdo;
     
     try {
         $sql = "
             DELETE FROM room_blocked_dates
             WHERE room_id " . ($room_id === null ? "IS NULL" : "= ?") . "
+            AND room_unit_id " . ($room_unit_id === null ? "IS NULL" : "= ?") . "
             AND block_date = ?
         ";
-        $params = $room_id === null ? [$block_date] : [$room_id, $block_date];
+        $params = [];
+        if ($room_id !== null) {
+            $params[] = $room_id;
+        }
+        if ($room_unit_id !== null) {
+            $params[] = $room_unit_id;
+        }
+        $params[] = $block_date;
         
         $stmt = $pdo->prepare($sql);
         return $stmt->execute($params);
@@ -1331,11 +1925,11 @@ function unblockRoomDate($room_id, $block_date) {
  * Block multiple dates for a room or all rooms
  * Returns number of dates blocked
  */
-function blockRoomDates($room_id, $dates, $block_type = 'manual', $reason = null, $created_by = null) {
+function blockRoomDates($room_id, $dates, $block_type = 'manual', $reason = null, $created_by = null, $room_unit_id = null) {
     $blocked_count = 0;
     
     foreach ($dates as $date) {
-        if (blockRoomDate($room_id, $date, $block_type, $reason, $created_by)) {
+        if (blockRoomDate($room_id, $date, $block_type, $reason, $created_by, $room_unit_id)) {
             $blocked_count++;
         }
     }
@@ -1347,11 +1941,11 @@ function blockRoomDates($room_id, $dates, $block_type = 'manual', $reason = null
  * Unblock multiple dates for a room or all rooms
  * Returns number of dates unblocked
  */
-function unblockRoomDates($room_id, $dates) {
+function unblockRoomDates($room_id, $dates, $room_unit_id = null) {
     $unblocked_count = 0;
     
     foreach ($dates as $date) {
-        if (unblockRoomDate($room_id, $date)) {
+        if (unblockRoomDate($room_id, $date, $room_unit_id)) {
             $unblocked_count++;
         }
     }
@@ -2036,11 +2630,13 @@ function ensureBookingAdditionalChargesTable() {
 function recalculateRoomBookingFinancials($booking_id) {
     global $pdo;
 
+    ensureChildOccupancyInfrastructure();
+
     if (!ensureBookingAdditionalChargesTable()) {
         throw new Exception('Could not initialize booking charges storage.');
     }
 
-    $booking_stmt = $pdo->prepare("SELECT b.*, r.price_per_night, r.price_single_occupancy, r.price_double_occupancy, r.price_triple_occupancy FROM bookings b LEFT JOIN rooms r ON b.room_id = r.id WHERE b.id = ?");
+    $booking_stmt = $pdo->prepare("SELECT b.*, r.* FROM bookings b LEFT JOIN rooms r ON b.room_id = r.id WHERE b.id = ?");
     $booking_stmt->execute([$booking_id]);
     $booking = $booking_stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -2049,15 +2645,18 @@ function recalculateRoomBookingFinancials($booking_id) {
     }
 
     $nights = max(1, (int)$booking['number_of_nights']);
-    $occupancy_type = $booking['occupancy_type'] ?? 'double';
+    $occupancy_type = normalizeOccupancyType($booking['occupancy_type'] ?? 'double');
 
     $night_rate = (float)$booking['price_per_night'];
     if ($occupancy_type === 'single' && !empty($booking['price_single_occupancy'])) {
         $night_rate = (float)$booking['price_single_occupancy'];
     } elseif ($occupancy_type === 'double' && !empty($booking['price_double_occupancy'])) {
         $night_rate = (float)$booking['price_double_occupancy'];
-    } elseif ($occupancy_type === 'triple' && !empty($booking['price_triple_occupancy'])) {
-        $night_rate = (float)$booking['price_triple_occupancy'];
+    } elseif ($occupancy_type === 'child') {
+        $child_rate = getRoomChildOccupancyPrice($booking);
+        if ($child_rate !== null) {
+            $night_rate = $child_rate;
+        }
     }
 
     $room_base_amount = round($night_rate * $nights, 2);

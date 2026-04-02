@@ -7,6 +7,8 @@
 
 require_once 'config/database.php';
 
+ensureChildOccupancyInfrastructure();
+
 header('Content-Type: application/json');
 
 // Rate limiting: max 30 availability checks per minute per session
@@ -77,7 +79,7 @@ try {
     // Check if room exists and is active
     $roomStmt = $pdo->prepare("
         SELECT id, name, price_per_night, price_single_occupancy, price_double_occupancy, 
-               price_triple_occupancy, max_guests, rooms_available, total_rooms
+                   price_child_occupancy, max_guests, rooms_available, total_rooms
         FROM rooms 
         WHERE id = ? AND is_active = 1
     ");
@@ -107,10 +109,13 @@ try {
                 'price_per_night' => (float)$room['price_per_night'],
                 'price_single_occupancy' => (float)($room['price_single_occupancy'] ?? $room['price_per_night']),
                 'price_double_occupancy' => (float)($room['price_double_occupancy'] ?? $room['price_per_night']),
-                'price_triple_occupancy' => (float)($room['price_triple_occupancy'] ?? $room['price_per_night']),
+                'price_child_occupancy' => (float)(getRoomChildOccupancyPrice($room) ?? $room['price_per_night']),
                 'max_guests' => (int)$room['max_guests'],
                 'rooms_available' => (int)$room['rooms_available']
             ],
+            'room_units_available' => (int)($availability['room_units_available'] ?? 0),
+            'suggested_room_unit_id' => isset($availability['suggested_room_unit_id']) ? (int)$availability['suggested_room_unit_id'] : null,
+            'suggested_room_unit_label' => $availability['suggested_room_unit_label'] ?? null,
             'nights' => $nights,
             'total' => $total,
             'message' => 'Room is available for your selected dates'

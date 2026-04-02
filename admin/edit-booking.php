@@ -7,6 +7,31 @@
 require_once __DIR__ . '/admin-init.php';
 require_once __DIR__ . '/../includes/validation.php';
 
+ensureChildOccupancyInfrastructure();
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'available_units') {
+    header('Content-Type: application/json');
+
+    $room_id = isset($_GET['room_id']) ? (int)$_GET['room_id'] : 0;
+    $check_in = $_GET['check_in_date'] ?? '';
+    $check_out = $_GET['check_out_date'] ?? '';
+    $exclude_booking_id = isset($_GET['exclude_booking_id']) ? (int)$_GET['exclude_booking_id'] : null;
+
+    if ($room_id <= 0 || empty($check_in) || empty($check_out)) {
+        echo json_encode(['success' => false, 'message' => 'room_id, check_in_date and check_out_date are required']);
+        exit;
+    }
+
+    if (!ensureRoomUnitInfrastructure()) {
+        echo json_encode(['success' => false, 'message' => 'Room unit infrastructure is not available']);
+        exit;
+    }
+
+    $units = getAvailableRoomUnitsForDateRange($room_id, $check_in, $check_out, $exclude_booking_id);
+    echo json_encode(['success' => true, 'units' => $units]);
+    exit;
+}
+
 $booking_id = intval($_GET['id'] ?? 0);
 if ($booking_id <= 0) {
     header('Location: bookings.php');
@@ -39,7 +64,9 @@ try {
 // Fetch all active rooms
 try {
     $rooms_stmt = $pdo->query("SELECT id, name, price_per_night, total_rooms, rooms_available, max_guests, size_sqm,
-                                      single_price, double_price, triple_price
+                                      price_single_occupancy AS single_price,
+                                      price_double_occupancy AS double_price,
+                                      price_child_occupancy AS child_price
                                FROM rooms WHERE is_active = 1 ORDER BY display_order, name");
     $rooms = $rooms_stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
@@ -64,7 +91,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
         $guest_phone = trim($_POST['guest_phone'] ?? '');
         $guest_country = trim($_POST['guest_country'] ?? '');
         $number_of_guests = intval($_POST['number_of_guests'] ?? 1);
-        $occupancy_type = $_POST['occupancy_type'] ?? 'single';
+        $requested_room_unit_id = isset($_POST['room_unit_id']) && $_POST['room_unit_id'] !== '' ? (int)$_POST['room_unit_id'] : null;
+        $occupancy_type = normalizeOccupancyType($_POST['occupancy_type'] ?? 'single');
         $special_requests = trim($_POST['special_requests'] ?? '');
         $total_amount = floatval($_POST['total_amount'] ?? 0);
         $admin_notes = trim($_POST['booking_notes'] ?? '');
@@ -86,6 +114,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
         
         if (empty($error)) {
             try {
+                if (!ensureRoomUnitInfrastructure()) {
+                    throw new Exception('Could not initialize room unit allocation system.');
+                }
                 $pdo->beginTransaction();
                 
                 $number_of_nights = (strtotime($check_out) - strtotime($check_in)) / 86400;
@@ -114,8 +145,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
                 if ($number_of_guests != $booking['number_of_guests']) {
                     $changes['number_of_guests'] = ['old' => $booking['number_of_guests'], 'new' => $number_of_guests];
                 }
-                if ($occupancy_type !== ($booking['occupancy_type'] ?? 'single')) {
-                    $changes['occupancy_type'] = ['old' => ucfirst($booking['occupancy_type'] ?? 'single'), 'new' => ucfirst($occupancy_type)];
+                if ($occupancy_type !== normalizeOccupancyType($booking['occupancy_type'] ?? 'single')) {
+                    $changes['occupancy_type'] = ['old' => ucfirst(normalizeOccupancyType($booking['occupancy_type'] ?? 'single')), 'new' => ucfirst($occupancy_type)];
                 }
                 if (abs($total_amount - (float)$booking['total_amount']) > 0.01) {
                     $changes['total_amount'] = ['old' => $currency_sym . ' ' . number_format($booking['total_amount'], 0), 'new' => $currency_sym . ' ' . number_format($total_amount, 0)];
@@ -131,6 +162,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
                 }
 
                 $dates_changed = ($check_in !== $booking['check_in_date'] || $check_out !== $booking['check_out_date']);
+                $current_room_unit_id = isset($booking['room_unit_id']) && $booking['room_unit_id'] !== null ? (int)$booking['room_unit_id'] : null;
+                $unit_changed = ($requested_room_unit_id !== null && $requested_room_unit_id !== $current_room_unit_id);
+                $allocated_room_unit_id = $current_room_unit_id;
+                $room_unit_assignment_source = $booking['room_unit_assignment_source'] ?? null;
                 
                 if (($room_changed || $dates_changed) && in_array($booking['status'], ['confirmed', 'checked-in'])) {
                     $capacity_error = null;
@@ -149,6 +184,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
                         }
                     }
                 }
+
+                if (empty($error) && ($room_changed || $dates_changed || $unit_changed)) {
+                    $allocation_error = null;
+                    $allocated_room_unit_id = allocateRoomUnitForBooking(
+                        $room_id,
+                        $check_in,
+                        $check_out,
+                        $requested_room_unit_id,
+                        $booking_id,
+                        $allocation_error
+                    );
+
+                    if ($allocated_room_unit_id === false) {
+                        $pdo->rollBack();
+                        $error = $allocation_error ?: 'Could not allocate a room unit for the updated booking.';
+                    } else {
+                        $room_unit_assignment_source = $requested_room_unit_id !== null ? 'manual' : 'auto';
+                    }
+                }
                 
                 if (empty($error)) {
                     // Track old total for refund processing
@@ -165,6 +219,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
                     $update = $pdo->prepare("
                         UPDATE bookings SET
                             room_id = ?,
+                            room_unit_id = ?,
+                            room_unit_assignment_source = ?,
                             guest_name = ?,
                             guest_email = ?,
                             guest_phone = ?,
@@ -182,7 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
                         WHERE id = ?
                     ");
                     $update->execute([
-                        $room_id, $guest_name, $guest_email, $guest_phone, $guest_country,
+                        $room_id, $allocated_room_unit_id, $room_unit_assignment_source, $guest_name, $guest_email, $guest_phone, $guest_country,
                         $check_in, $check_out, $number_of_nights, $number_of_guests,
                         $occupancy_type, $total_amount, $vat_amount, $special_requests,
                         $admin_notes, $booking_id
@@ -366,7 +422,7 @@ if (!$booking) {
                                     data-price="<?php echo $room['price_per_night']; ?>"
                                     data-single="<?php echo $room['single_price'] ?? $room['price_per_night']; ?>"
                                     data-double="<?php echo $room['double_price'] ?? $room['price_per_night']; ?>"
-                                    data-triple="<?php echo $room['triple_price'] ?? $room['price_per_night']; ?>"
+                                    data-child="<?php echo $room['child_price'] ?? $room['price_per_night']; ?>"
                                     data-max-guests="<?php echo $room['max_guests']; ?>"
                                     data-available="<?php echo $room['rooms_available']; ?>"
                                     <?php echo $room['id'] == $booking['room_id'] ? 'selected' : ''; ?>>
@@ -378,11 +434,17 @@ if (!$booking) {
                     </select>
                 </div>
                 <div class="form-group">
+                    <label for="room_unit_id">Preferred Room Unit (Optional)</label>
+                    <select id="room_unit_id" name="room_unit_id">
+                        <option value="">Auto-assign first available unit</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label for="occupancy_type">Occupancy Type</label>
                     <select id="occupancy_type" name="occupancy_type" onchange="updatePricing()">
                         <option value="single" <?php echo $booking['occupancy_type'] === 'single' ? 'selected' : ''; ?>>Single</option>
                         <option value="double" <?php echo $booking['occupancy_type'] === 'double' ? 'selected' : ''; ?>>Double</option>
-                        <option value="triple" <?php echo $booking['occupancy_type'] === 'triple' ? 'selected' : ''; ?>>Triple</option>
+                        <option value="child" <?php echo $booking['occupancy_type'] === 'child' ? 'selected' : ''; ?>>Child</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -451,6 +513,51 @@ if (!$booking) {
     const currencySymbol = '<?php echo $currency_symbol; ?>';
     const vatEnabled = <?php echo $vatEnabled ? 'true' : 'false'; ?>;
     const vatRate = <?php echo $vatRate; ?>;
+    const bookingId = <?php echo (int)$booking_id; ?>;
+    const initialRoomUnitId = '<?php echo htmlspecialchars((string)($booking['room_unit_id'] ?? ''), ENT_QUOTES); ?>';
+
+    async function loadAvailableUnits() {
+        const roomId = parseInt(document.getElementById('room_id').value, 10);
+        const checkIn = document.getElementById('check_in_date').value;
+        const checkOut = document.getElementById('check_out_date').value;
+        const select = document.getElementById('room_unit_id');
+        const previousValue = select.value || initialRoomUnitId;
+
+        select.innerHTML = '<option value="">Auto-assign first available unit</option>';
+
+        if (!roomId || !checkIn || !checkOut) {
+            return;
+        }
+
+        try {
+            const params = new URLSearchParams({
+                action: 'available_units',
+                room_id: String(roomId),
+                check_in_date: checkIn,
+                check_out_date: checkOut,
+                exclude_booking_id: String(bookingId)
+            });
+
+            const response = await fetch('edit-booking.php?' + params.toString(), { credentials: 'same-origin' });
+            const data = await response.json();
+
+            if (!data.success || !Array.isArray(data.units)) {
+                return;
+            }
+
+            data.units.forEach(unit => {
+                const option = document.createElement('option');
+                option.value = unit.id;
+                option.textContent = unit.unit_label || ('Unit #' + unit.id);
+                if (String(unit.id) === String(previousValue)) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error loading room units:', error);
+        }
+    }
 
     function updatePricing() {
         const roomSelect = document.getElementById('room_id');
@@ -468,7 +575,7 @@ if (!$booking) {
         
         if (occupancy === 'single' && selected.dataset.single) rate = parseFloat(selected.dataset.single);
         else if (occupancy === 'double' && selected.dataset.double) rate = parseFloat(selected.dataset.double);
-        else if (occupancy === 'triple' && selected.dataset.triple) rate = parseFloat(selected.dataset.triple);
+        else if (occupancy === 'child' && selected.dataset.child) rate = parseFloat(selected.dataset.child);
         
         const total = nights * rate;
         
@@ -481,6 +588,8 @@ if (!$booking) {
             const vat = total * (vatRate / (100 + vatRate));
             document.getElementById('calcVatInfo').textContent = 'VAT (' + vatRate + '%): ' + currencySymbol + ' ' + vat.toFixed(2);
         }
+
+        loadAvailableUnits();
     }
 
     // Update max guests when room changes
@@ -493,6 +602,11 @@ if (!$booking) {
         if (parseInt(guestsInput.value) > maxGuests) {
             guestsInput.value = maxGuests;
         }
+        loadAvailableUnits();
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAvailableUnits();
     });
 </script>
 

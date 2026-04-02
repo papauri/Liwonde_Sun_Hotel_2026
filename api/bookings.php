@@ -83,6 +83,7 @@ try {
     // Sanitize and validate data
     $bookingData = [
         'room_id' => (int)$input['room_id'],
+        'room_unit_id' => isset($input['room_unit_id']) && $input['room_unit_id'] !== '' ? (int)$input['room_unit_id'] : null,
         'guest_name' => trim($input['guest_name']),
         'guest_email' => trim($input['guest_email']),
         'guest_phone' => trim($input['guest_phone']),
@@ -141,7 +142,7 @@ try {
     
     // Check availability using existing function from config/database.php
     // isRoomAvailable() is already loaded via config/database.php
-    $available = isRoomAvailable($bookingData['room_id'], $bookingData['check_in_date'], $bookingData['check_out_date']);
+    $available = isRoomAvailable($bookingData['room_id'], $bookingData['check_in_date'], $bookingData['check_out_date'], null, $bookingData['room_unit_id']);
     
     if (!$available) {
         ApiResponse::error('This room is not available for the selected dates. Please choose different dates.', 409);
@@ -172,22 +173,41 @@ try {
     }
     
     // Start transaction
+    if (!ensureRoomUnitInfrastructure()) {
+        throw new Exception('Could not initialize room unit allocation system.');
+    }
     $pdo->beginTransaction();
     
     try {
+        $allocationError = null;
+        $allocatedRoomUnitId = allocateRoomUnitForBooking(
+            $bookingData['room_id'],
+            $bookingData['check_in_date'],
+            $bookingData['check_out_date'],
+            $bookingData['room_unit_id'],
+            null,
+            $allocationError
+        );
+        if ($allocatedRoomUnitId === false) {
+            throw new Exception($allocationError ?: 'Could not allocate a room unit for this booking.');
+        }
+        $roomUnitAssignmentSource = $bookingData['room_unit_id'] !== null ? 'manual' : 'auto';
+
         // Insert booking
         $insertStmt = $pdo->prepare("
             INSERT INTO bookings (
-                booking_reference, room_id, guest_name, guest_email, guest_phone,
+                booking_reference, room_id, room_unit_id, room_unit_assignment_source, guest_name, guest_email, guest_phone,
                 guest_country, guest_address, number_of_guests, check_in_date,
                 check_out_date, number_of_nights, total_amount, special_requests, status,
                 is_tentative, tentative_expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
         $insertStmt->execute([
             $bookingReference,
             $bookingData['room_id'],
+            $allocatedRoomUnitId,
+            $roomUnitAssignmentSource,
             $bookingData['guest_name'],
             $bookingData['guest_email'],
             $bookingData['guest_phone'],
@@ -214,6 +234,7 @@ try {
             'id' => $bookingId,
             'booking_reference' => $bookingReference,
             'room_id' => $bookingData['room_id'],
+            'room_unit_id' => $allocatedRoomUnitId,
             'guest_name' => $bookingData['guest_name'],
             'guest_email' => $bookingData['guest_email'],
             'guest_phone' => $bookingData['guest_phone'],

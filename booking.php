@@ -21,6 +21,8 @@ require_once 'config/email.php';
 require_once 'includes/validation.php';
 require_once 'includes/countries-data.php';
 
+ensureChildOccupancyInfrastructure();
+
 // Send security headers
 sendSecurityHeaders();
 
@@ -196,15 +198,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $number_of_nights = $validation_result['availability']['nights'];
         
         // Determine pricing based on occupancy type
-        $occupancy_type = $_POST['occupancy_type'] ?? 'double';
+        $occupancy_type = normalizeOccupancyType($_POST['occupancy_type'] ?? 'double');
         
         // Get the correct price based on occupancy
         if ($occupancy_type === 'single' && !empty($room['price_single_occupancy'])) {
             $room_price = $room['price_single_occupancy'];
         } elseif ($occupancy_type === 'double' && !empty($room['price_double_occupancy'])) {
             $room_price = $room['price_double_occupancy'];
-        } elseif ($occupancy_type === 'triple' && !empty($room['price_triple_occupancy'])) {
-            $room_price = $room['price_triple_occupancy'];
+        } elseif ($occupancy_type === 'child') {
+            $child_room_price = getRoomChildOccupancyPrice($room);
+            if ($child_room_price === null) {
+                throw new Exception('Child occupancy pricing is not configured for the selected room.');
+            }
+            $room_price = $child_room_price;
         } else {
             // Fallback to default price
             $room_price = $room['price_per_night'];
@@ -245,6 +251,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Insert booking with transaction for data integrity
+        if (!ensureRoomUnitInfrastructure()) {
+            throw new Exception('Could not initialize room unit allocation system.');
+        }
         $pdo->beginTransaction(); // Start transaction
         
         try {
@@ -254,17 +263,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception($capacity_error ?: 'Room is no longer available for the selected dates.');
             }
 
+            $requested_room_unit_id = (isset($_POST['room_unit_id']) && $_POST['room_unit_id'] !== '')
+                ? (int)$_POST['room_unit_id']
+                : null;
+            $allocation_error = null;
+            $allocated_room_unit_id = allocateRoomUnitForBooking(
+                $room_id,
+                $check_in_date,
+                $check_out_date,
+                $requested_room_unit_id,
+                null,
+                $allocation_error
+            );
+
+            if ($allocated_room_unit_id === false) {
+                throw new Exception($allocation_error ?: 'Could not allocate a room unit for this booking.');
+            }
+            $room_unit_assignment_source = $requested_room_unit_id !== null ? 'manual' : 'auto';
+
             $insert_stmt = $pdo->prepare("
                 INSERT INTO bookings (
-                    booking_reference, room_id, guest_name, guest_email, guest_phone,
+                    booking_reference, room_id, room_unit_id, room_unit_assignment_source, guest_name, guest_email, guest_phone,
                     guest_country, guest_address, number_of_guests, check_in_date,
                     check_out_date, number_of_nights, total_amount, special_requests, status,
                     is_tentative, tentative_expires_at, occupancy_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             $insert_stmt->execute([
-                $booking_reference, $room_id, $guest_name, $guest_email, $guest_phone,
+                $booking_reference, $room_id, $allocated_room_unit_id, $room_unit_assignment_source, $guest_name, $guest_email, $guest_phone,
                 $guest_country, $guest_address, $number_of_guests, $check_in_date,
                 $check_out_date, $number_of_nights, $total_amount, $special_requests,
                 $booking_status, $is_tentative, $tentative_expires_at, $occupancy_type
@@ -281,6 +308,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'id' => $new_booking_id,
                 'booking_reference' => $booking_reference,
                 'room_id' => $room_id,
+                'room_unit_id' => $allocated_room_unit_id,
                 'guest_name' => $guest_name,
                 'guest_email' => $guest_email,
                 'guest_phone' => $guest_phone,
@@ -371,7 +399,7 @@ $preselected_room_id = isset($_GET['room_id']) ? (int)$_GET['room_id'] : null;
 $preselected_room = null;
 
 // Fetch available rooms for booking form with all details needed for validation
-$rooms_stmt = $pdo->query("SELECT id, name, price_per_night, price_single_occupancy, price_double_occupancy, price_triple_occupancy, max_guests, rooms_available, total_rooms, short_description, image_url FROM rooms WHERE is_active = 1 ORDER BY display_order ASC");
+$rooms_stmt = $pdo->query("SELECT id, name, price_per_night, price_single_occupancy, price_double_occupancy, price_child_occupancy, max_guests, rooms_available, total_rooms, short_description, image_url FROM rooms WHERE is_active = 1 ORDER BY display_order ASC");
 $available_rooms = $rooms_stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Build rooms data for JavaScript with occupancy pricing
@@ -384,7 +412,8 @@ foreach ($available_rooms as $room) {
         'price_per_night' => (float)$room['price_per_night'],
         'price_single_occupancy' => (float)($room['price_single_occupancy'] ?? $room['price_per_night']),
         'price_double_occupancy' => (float)($room['price_double_occupancy'] ?? $room['price_per_night'] * 1.2),
-        'price_triple_occupancy' => (float)($room['price_triple_occupancy'] ?? $room['price_per_night'] * 1.4),
+        'price_child_occupancy' => ($room['price_child_occupancy'] !== null ? (float)$room['price_child_occupancy'] : null),
+        'has_child_occupancy' => ($room['price_child_occupancy'] !== null),
         'rooms_available' => (int)$room['rooms_available'],
         'total_rooms' => (int)$room['total_rooms']
     ];
@@ -699,15 +728,18 @@ try {
                                 <span style="font-size: 12px; color: #666;">2 Guests</span>
                                 <span id="doublePriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
                             </label>
-                            <label style="flex: 1; min-width: 100px; cursor: pointer; padding: 12px; border: 2px solid #ddd; border-radius: 8px; text-align: center; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; gap: 5px;" id="tripleOccupancyLabel">
-                                <input type="radio" name="occupancy_type" value="triple" style="margin: 0;">
-                                <strong style="color: var(--navy);">Triple</strong>
+                            <label style="flex: 1; min-width: 100px; cursor: pointer; padding: 12px; border: 2px solid #ddd; border-radius: 8px; text-align: center; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; gap: 5px;" id="childOccupancyLabel">
+                                <input type="radio" name="occupancy_type" value="child" style="margin: 0;">
+                                <strong style="color: var(--navy);">Child</strong>
                                 <span style="font-size: 12px; color: #666;">3 Guests</span>
-                                <span id="triplePriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
+                                <span id="childPriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
                             </label>
                         </div>
                         <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
                             <i class="fas fa-info-circle"></i> Prices vary based on occupancy type
+                        </small>
+                        <small id="childOccupancyUnavailableNote" style="display: none; color: #b26a00; font-size: 12px; margin-top: 5px;">
+                            <i class="fas fa-exclamation-circle"></i> Child occupancy is not available for this room.
                         </small>
                     </div>
                     
@@ -887,7 +919,7 @@ try {
                     updateSummary();
                     
                     // Update visual styling for selected occupancy
-                    ['single', 'double', 'triple'].forEach(type => {
+                    ['single', 'double', 'child'].forEach(type => {
                         const label = document.getElementById(type + 'OccupancyLabel');
                         if (label) {
                             label.style.borderColor = this.value === type ? 'var(--gold)' : '#ddd';
@@ -913,8 +945,10 @@ try {
                 newPrice = selectedRoom.price_single_occupancy;
             } else if (occupancyType === 'double') {
                 newPrice = selectedRoom.price_double_occupancy;
-            } else if (occupancyType === 'triple') {
-                newPrice = selectedRoom.price_triple_occupancy;
+            } else if (occupancyType === 'child') {
+                newPrice = selectedRoom.has_child_occupancy && selectedRoom.price_child_occupancy !== null
+                    ? selectedRoom.price_child_occupancy
+                    : selectedRoom.price_double_occupancy;
             } else {
                 newPrice = selectedRoom.price_per_night;
             }
@@ -929,7 +963,11 @@ try {
             
             const singlePrice = document.getElementById('singlePriceDisplay');
             const doublePrice = document.getElementById('doublePriceDisplay');
-            const triplePrice = document.getElementById('triplePriceDisplay');
+            const childPrice = document.getElementById('childPriceDisplay');
+            const childLabel = document.getElementById('childOccupancyLabel');
+            const childRadio = document.querySelector('input[name="occupancy_type"][value="child"]');
+            const childUnavailableNote = document.getElementById('childOccupancyUnavailableNote');
+            const hasChildPrice = room.has_child_occupancy && room.price_child_occupancy !== null;
             
             if (singlePrice) {
                 singlePrice.textContent = currencySymbol + room.price_single_occupancy.toLocaleString();
@@ -937,8 +975,23 @@ try {
             if (doublePrice) {
                 doublePrice.textContent = currencySymbol + room.price_double_occupancy.toLocaleString();
             }
-            if (triplePrice) {
-                triplePrice.textContent = currencySymbol + room.price_triple_occupancy.toLocaleString();
+            if (childLabel && childRadio) {
+                childLabel.style.display = hasChildPrice ? 'flex' : 'none';
+                childRadio.disabled = !hasChildPrice;
+            }
+            if (childUnavailableNote) {
+                childUnavailableNote.style.display = hasChildPrice ? 'none' : 'block';
+            }
+            if (childPrice && hasChildPrice) {
+                childPrice.textContent = currencySymbol + room.price_child_occupancy.toLocaleString();
+            }
+
+            if (!hasChildPrice && childRadio && childRadio.checked) {
+                const doubleRadio = document.querySelector('input[name="occupancy_type"][value="double"]');
+                if (doubleRadio) {
+                    doubleRadio.checked = true;
+                    doubleRadio.dispatchEvent(new Event('change'));
+                }
             }
         }
         
@@ -1161,15 +1214,17 @@ try {
                         pricePerNight = selectedRoom.price_single_occupancy;
                     } else if (occupancyType === 'double') {
                         pricePerNight = selectedRoom.price_double_occupancy;
-                    } else if (occupancyType === 'triple') {
-                        pricePerNight = selectedRoom.price_triple_occupancy;
+                    } else if (occupancyType === 'child') {
+                        pricePerNight = selectedRoom.has_child_occupancy && selectedRoom.price_child_occupancy !== null
+                            ? selectedRoom.price_child_occupancy
+                            : selectedRoom.price_double_occupancy;
                     } else {
                         pricePerNight = selectedRoom.price_per_night;
                     }
                     
                     const total = pricePerNight * nights;
                     
-                    document.getElementById('summaryRoom').textContent = selectedRoomName + ' (' + (occupancyType === 'single' ? 'Single' : occupancyType === 'double' ? 'Double' : 'Triple') + ' Occupancy)';
+                    document.getElementById('summaryRoom').textContent = selectedRoomName + ' (' + (occupancyType === 'single' ? 'Single' : occupancyType === 'double' ? 'Double' : 'Child') + ' Occupancy)';
                     document.getElementById('summaryCheckIn').textContent = checkInDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     document.getElementById('summaryCheckOut').textContent = checkOutDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     document.getElementById('summaryNights').textContent = nights + (nights === 1 ? ' night' : ' nights');
@@ -1215,8 +1270,14 @@ try {
                 occupancyRadios[1].checked = true; // Double occupancy
                 occupancyRadios[1].dispatchEvent(new Event('change'));
             } else if (guestCount >= 3) {
-                occupancyRadios[2].checked = true; // Triple occupancy
-                occupancyRadios[2].dispatchEvent(new Event('change'));
+                const childRadio = occupancyRadios[2];
+                if (childRadio && !childRadio.disabled) {
+                    childRadio.checked = true; // Child occupancy
+                    childRadio.dispatchEvent(new Event('change'));
+                } else {
+                    occupancyRadios[1].checked = true; // Fallback to Double occupancy
+                    occupancyRadios[1].dispatchEvent(new Event('change'));
+                }
             }
             
             checkGuestCapacity();
@@ -1243,3 +1304,4 @@ try {
     <?php include 'includes/scroll-to-top.php'; ?>
 </body>
 </html>
+
