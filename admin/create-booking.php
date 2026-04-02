@@ -121,6 +121,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_booking'])) {
         
         // Insert booking
         $pdo->beginTransaction();
+
+        // Final write-time guard to avoid overbooking on concurrent admin actions.
+        $capacity_error = null;
+        if (!hasRoomDateCapacity($room_id, $check_in_date, $check_out_date, null, $capacity_error)) {
+            throw new Exception($capacity_error ?: 'Room is no longer available for the selected dates.');
+        }
         
         $insert = $pdo->prepare("
             INSERT INTO bookings (
@@ -142,8 +148,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_booking'])) {
         
         // If confirmed, decrement room availability
         if ($booking_status === 'confirmed') {
-            $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available - 1 WHERE id = ? AND rooms_available > 0")
-                ->execute([$room_id]);
+            $reserve_error = null;
+            if (!reserveRoomForDateRange($room_id, $check_in_date, $check_out_date, null, $reserve_error)) {
+                throw new Exception($reserve_error ?: 'Could not reserve room inventory for this booking.');
+            }
         }
         
         // If paid, create payment record
@@ -185,6 +193,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_booking'])) {
         // Log creation source
         $pdo->prepare("INSERT INTO booking_notes (booking_id, note_text, created_by) VALUES (?, ?, ?)")
             ->execute([$new_booking_id, 'Booking created manually by admin (' . ($user['full_name'] ?? $user['username']) . ')', $user['id']]);
+
+        recalculateRoomBookingFinancials($new_booking_id);
         
         $pdo->commit();
         

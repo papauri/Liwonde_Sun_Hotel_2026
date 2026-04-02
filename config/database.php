@@ -1914,3 +1914,621 @@ function canConvertTentativeBooking($booking_id) {
         ];
     }
 }
+
+/**
+ * Check date-range capacity for a room while holding a row lock on the room.
+ * IMPORTANT: Call this from inside an active transaction for concurrency safety.
+ */
+function hasRoomDateCapacity($room_id, $check_in_date, $check_out_date, $exclude_booking_id = null, &$error = null) {
+    global $pdo;
+
+    $error = null;
+
+    try {
+        $room_stmt = $pdo->prepare("SELECT id, name, total_rooms, rooms_available, is_active FROM rooms WHERE id = ? FOR UPDATE");
+        $room_stmt->execute([$room_id]);
+        $room = $room_stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$room || (int)$room['is_active'] !== 1) {
+            $error = 'Selected room is not available.';
+            return false;
+        }
+
+        $sql = "
+            SELECT COUNT(*)
+            FROM bookings
+            WHERE room_id = ?
+              AND status IN ('pending', 'tentative', 'confirmed', 'checked-in')
+              AND NOT (check_out_date <= ? OR check_in_date >= ?)
+        ";
+
+        $params = [$room_id, $check_in_date, $check_out_date];
+        if ($exclude_booking_id) {
+            $sql .= " AND id != ?";
+            $params[] = $exclude_booking_id;
+        }
+
+        $count_stmt = $pdo->prepare($sql);
+        $count_stmt->execute($params);
+        $overlap_count = (int)$count_stmt->fetchColumn();
+
+        if ($overlap_count >= (int)$room['total_rooms']) {
+            $error = 'Room capacity reached for the selected dates. Please choose different dates or another room type.';
+            return false;
+        }
+
+        return true;
+    } catch (PDOException $e) {
+        error_log('Error checking room date capacity: ' . $e->getMessage());
+        $error = 'Could not verify room capacity. Please try again.';
+        return false;
+    }
+}
+
+/**
+ * Reserve one physical room inventory slot for a date range.
+ * IMPORTANT: Call this from inside an active transaction.
+ */
+function reserveRoomForDateRange($room_id, $check_in_date, $check_out_date, $exclude_booking_id = null, &$error = null) {
+    global $pdo;
+
+    if (!hasRoomDateCapacity($room_id, $check_in_date, $check_out_date, $exclude_booking_id, $error)) {
+        return false;
+    }
+
+    try {
+        $reserve_stmt = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available - 1 WHERE id = ? AND rooms_available > 0");
+        $reserve_stmt->execute([$room_id]);
+
+        if ($reserve_stmt->rowCount() === 0) {
+            $error = 'No physical inventory left for this room type.';
+            return false;
+        }
+
+        return true;
+    } catch (PDOException $e) {
+        error_log('Error reserving room inventory: ' . $e->getMessage());
+        $error = 'Could not reserve room inventory. Please try again.';
+        return false;
+    }
+}
+
+/**
+ * Ensure room-booking additional charges table exists.
+ */
+function ensureBookingAdditionalChargesTable() {
+    global $pdo;
+
+    static $checked = false;
+    if ($checked) {
+        return true;
+    }
+
+    $sql = "
+        CREATE TABLE IF NOT EXISTS booking_additional_charges (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            booking_id INT NOT NULL,
+            charge_type ENUM('menu', 'other', 'levy') NOT NULL DEFAULT 'other',
+            description VARCHAR(255) NOT NULL,
+            amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_by INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_booking_active (booking_id, is_active),
+            INDEX idx_charge_type (charge_type)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ";
+
+    try {
+        $pdo->exec($sql);
+        $checked = true;
+        return true;
+    } catch (PDOException $e) {
+        error_log('Error ensuring booking_additional_charges table: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Recalculate booking financial totals after date changes or additional charges.
+ */
+function recalculateRoomBookingFinancials($booking_id) {
+    global $pdo;
+
+    if (!ensureBookingAdditionalChargesTable()) {
+        throw new Exception('Could not initialize booking charges storage.');
+    }
+
+    $booking_stmt = $pdo->prepare("SELECT b.*, r.price_per_night, r.price_single_occupancy, r.price_double_occupancy, r.price_triple_occupancy FROM bookings b LEFT JOIN rooms r ON b.room_id = r.id WHERE b.id = ?");
+    $booking_stmt->execute([$booking_id]);
+    $booking = $booking_stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$booking) {
+        throw new Exception('Booking not found for financial recalculation.');
+    }
+
+    $nights = max(1, (int)$booking['number_of_nights']);
+    $occupancy_type = $booking['occupancy_type'] ?? 'double';
+
+    $night_rate = (float)$booking['price_per_night'];
+    if ($occupancy_type === 'single' && !empty($booking['price_single_occupancy'])) {
+        $night_rate = (float)$booking['price_single_occupancy'];
+    } elseif ($occupancy_type === 'double' && !empty($booking['price_double_occupancy'])) {
+        $night_rate = (float)$booking['price_double_occupancy'];
+    } elseif ($occupancy_type === 'triple' && !empty($booking['price_triple_occupancy'])) {
+        $night_rate = (float)$booking['price_triple_occupancy'];
+    }
+
+    $room_base_amount = round($night_rate * $nights, 2);
+
+    $charges_stmt = $pdo->prepare("SELECT id, charge_type, amount FROM booking_additional_charges WHERE booking_id = ? AND is_active = 1");
+    $charges_stmt->execute([$booking_id]);
+    $charges = $charges_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $extra_charges_total = 0.0;
+    $levy_charge_id = null;
+    $levy_total = 0.0;
+
+    foreach ($charges as $charge) {
+        $amount = (float)$charge['amount'];
+        if ($charge['charge_type'] === 'levy') {
+            $levy_total += $amount;
+            if ($levy_charge_id === null) {
+                $levy_charge_id = (int)$charge['id'];
+            }
+        } else {
+            $extra_charges_total += $amount;
+        }
+    }
+
+    $levy_enabled = in_array(getSetting('tourist_levy_enabled', '0'), ['1', 1, true, 'true', 'on'], true);
+    $levy_rate = $levy_enabled ? (float)getSetting('tourist_levy_rate', 0) : 0.0;
+
+    if ($levy_charge_id !== null && $levy_enabled && $levy_rate > 0) {
+        $levy_total = round($room_base_amount * ($levy_rate / 100), 2);
+        $levy_update = $pdo->prepare("UPDATE booking_additional_charges SET amount = ?, description = ? WHERE id = ?");
+        $levy_update->execute([$levy_total, 'Tourist levy (' . number_format($levy_rate, 2) . '%)', $levy_charge_id]);
+    }
+
+    $subtotal = round($room_base_amount + $extra_charges_total + $levy_total, 2);
+
+    $vat_enabled = in_array(getSetting('vat_enabled', '0'), ['1', 1, true, 'true', 'on'], true);
+    $vat_rate = $vat_enabled ? (float)getSetting('vat_rate', 0) : 0.0;
+    $vat_amount = round($subtotal * ($vat_rate / 100), 2);
+    $grand_total = round($subtotal + $vat_amount, 2);
+
+    $paid_stmt = $pdo->prepare("SELECT COALESCE(SUM(total_amount), 0) FROM payments WHERE booking_type = 'room' AND booking_id = ? AND payment_status = 'completed' AND deleted_at IS NULL");
+    $paid_stmt->execute([$booking_id]);
+    $amount_paid = round((float)$paid_stmt->fetchColumn(), 2);
+    $amount_due = round(max(0, $grand_total - $amount_paid), 2);
+
+    $last_stmt = $pdo->prepare("SELECT MAX(payment_date) FROM payments WHERE booking_type = 'room' AND booking_id = ? AND payment_status = 'completed' AND deleted_at IS NULL");
+    $last_stmt->execute([$booking_id]);
+    $last_payment_date = $last_stmt->fetchColumn();
+
+    $update_stmt = $pdo->prepare("UPDATE bookings SET total_amount = ?, vat_rate = ?, vat_amount = ?, total_with_vat = ?, amount_paid = ?, amount_due = ?, last_payment_date = ?, updated_at = NOW() WHERE id = ?");
+    $update_stmt->execute([
+        $subtotal,
+        $vat_rate,
+        $vat_amount,
+        $grand_total,
+        $amount_paid,
+        $amount_due,
+        $last_payment_date ?: null,
+        $booking_id
+    ]);
+
+    return [
+        'room_base_amount' => $room_base_amount,
+        'extra_charges_total' => $extra_charges_total,
+        'levy_total' => $levy_total,
+        'subtotal' => $subtotal,
+        'vat_rate' => $vat_rate,
+        'vat_amount' => $vat_amount,
+        'grand_total' => $grand_total,
+        'amount_paid' => $amount_paid,
+        'amount_due' => $amount_due
+    ];
+}
+
+/**
+ * Process refunds when booking amount decreases (shortening, charge removal, etc).
+ * Automatically creates refund payment records if customer overpaid.
+ * IMPORTANT: Uses transaction, call from transaction context or create new one.
+ */
+function processRefundIfNeeded($booking_id, $old_total, $new_total) {
+    global $pdo;
+
+    $old_total = round((float)$old_total, 2);
+    $new_total = round((float)$new_total, 2);
+
+    // Get current booking state
+    $stmt = $pdo->prepare("SELECT amount_paid FROM bookings WHERE id = ?");
+    $stmt->execute([$booking_id]);
+    $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$booking) {
+        throw new Exception('Booking not found');
+    }
+
+    $amount_paid = round((float)$booking['amount_paid'], 2);
+    $refund_amount = 0;
+
+    // Scenario 1: Amount decreased, customer paid more than new total
+    if ($new_total < $old_total && $amount_paid > $new_total) {
+        $refund_amount = round($amount_paid - $new_total, 2);
+    }
+
+    // Only process refund if amount is positive
+    if ($refund_amount > 0.00) {
+        // Create refund payment record
+        $refund_ref = 'REF' . date('Ym') . strtoupper(substr(uniqid(), -6));
+
+        // Calculate refund VAT proportionally
+        $stmt = $pdo->prepare("SELECT vat_rate FROM bookings WHERE id = ?");
+        $stmt->execute([$booking_id]);
+        $vat_rate = (float)$stmt->fetch(PDO::FETCH_ASSOC)['vat_rate'];
+
+        $refund_vat = round($refund_amount * ($vat_rate / 100), 2);
+        $refund_total = $refund_amount + $refund_vat;
+
+        $insert_stmt = $pdo->prepare("
+            INSERT INTO payments (
+                payment_reference, booking_type, booking_id, booking_reference,
+                payment_date, payment_amount, vat_rate, vat_amount, total_amount,
+                payment_method, payment_status, notes, processed_by, receipt_number
+            ) SELECT 
+                ?, 'room', ?, booking_reference,
+                NOW(), ?, ?, ?, ?,
+                'refund', 'pending', CONCAT('Auto-refund: overpayment due to booking modification. Old amount: ', ?, ', New amount: ', ?), NULL, NULL
+            FROM bookings WHERE id = ?
+        ");
+
+        $insert_stmt->execute([
+            $refund_ref,
+            $booking_id,
+            -$refund_amount,     // Negative amount for refund
+            $vat_rate,
+            -$refund_vat,        // Negative VAT
+            -$refund_total,      // Negative total
+            $old_total,
+            $new_total,
+            $booking_id
+        ]);
+
+        return [
+            'refund_created' => true,
+            'refund_reference' => $refund_ref,
+            'refund_amount' => $refund_amount,
+            'refund_vat' => $refund_vat,
+            'refund_total' => $refund_total
+        ];
+    }
+
+    return [
+        'refund_created' => false,
+        'reason' => $refund_amount === 0 ? 'No overpayment detected' : 'Amount increased, no refund due'
+    ];
+}
+
+/**
+ * Process full refund when booking is cancelled.
+ * Creates refund payment records and updates booking.
+ * IMPORTANT: Expects active transaction context.
+ */
+function processBookingCancellationRefund($booking_id, $cancellation_reason = 'Guest cancellation') {
+    global $pdo;
+
+    // Get booking details
+    $stmt = $pdo->prepare("
+        SELECT id, booking_reference, amount_paid, total_with_vat, vat_rate
+        FROM bookings
+        WHERE id = ?
+    ");
+    $stmt->execute([$booking_id]);
+    $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$booking) {
+        throw new Exception('Booking not found');
+    }
+
+    $amount_paid = round((float)$booking['amount_paid'], 2);
+    $vat_rate = round((float)$booking['vat_rate'], 2);
+    $refund_result = [
+        'refund_processed' => false,
+        'messages' => []
+    ];
+
+    // Only process refund if something was paid
+    if ($amount_paid > 0) {
+        // Recalculate VAT for refund
+        $refund_vat = round($amount_paid * ($vat_rate / 100), 2);
+        $refund_total = $amount_paid + $refund_vat;
+
+        // Generate refund reference
+        $refund_ref = 'REF' . date('Ym') . strtoupper(substr(uniqid(), -6));
+
+        // Check for duplicate refund already created
+        $check_stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM payments
+            WHERE booking_type = 'room'
+            AND booking_id = ?
+            AND payment_method = 'refund'
+            AND payment_status IN ('pending', 'completed')
+            AND deleted_at IS NULL
+        ");
+        $check_stmt->execute([$booking_id]);
+        $existing_refund = (int)$check_stmt->fetchColumn();
+
+        if ($existing_refund > 0) {
+            $refund_result['messages'][] = 'Refund already exists for this cancellation';
+            return $refund_result;
+        }
+
+        // Create refund payment record
+        $insert_stmt = $pdo->prepare("
+            INSERT INTO payments (
+                payment_reference, booking_type, booking_id, booking_reference,
+                payment_date, payment_amount, vat_rate, vat_amount, total_amount,
+                payment_method, payment_status, notes, processed_by, created_at
+            ) VALUES (?, 'room', ?, ?, NOW(), ?, ?, ?, ?, 'refund', 'pending', ?, NULL, NOW())
+        ");
+
+        $insert_stmt->execute([
+            $refund_ref,
+            $booking_id,
+            $booking['booking_reference'],
+            -$amount_paid,      // Negative for refund
+            $vat_rate,
+            -$refund_vat,       // Negative VAT
+            -$refund_total,     // Negative total
+            "Cancellation refund: {$cancellation_reason}"
+        ]);
+
+        // Mark all pending/failed payments for this booking as cancelled
+        $cancel_stmt = $pdo->prepare("
+            UPDATE payments
+            SET payment_status = 'cancelled', notes = CONCAT(notes, ' | Cancelled due to booking cancellation')
+            WHERE booking_type = 'room'
+            AND booking_id = ?
+            AND payment_status IN ('pending', 'failed')
+            AND deleted_at IS NULL
+        ");
+        $cancel_stmt->execute([$booking_id]);
+
+        $refund_result['refund_processed'] = true;
+        $refund_result['refund_reference'] = $refund_ref;
+        $refund_result['refund_amount'] = $amount_paid;
+        $refund_result['refund_vat'] = $refund_vat;
+        $refund_result['refund_total'] = $refund_total;
+        $refund_result['messages'][] = "Refund {$refund_ref} created for {$amount_paid}";
+    } else {
+        $refund_result['messages'][] = 'No payment received yet, no refund needed';
+    }
+
+    return $refund_result;
+}
+
+/**
+ * Validate accounting integrity for a booking.
+ * Checks: amount_paid <= total_with_vat, amount_due >= 0, reconciliation
+ * Returns array with validation status and any discrepancies.
+ */
+function validateBookingAccounting($booking_id) {
+    global $pdo;
+
+    $validation = [
+        'valid' => true,
+        'warnings' => [],
+        'errors' => [],
+        'reconciliation' => []
+    ];
+
+    try {
+        // Get booking totals
+        $stmt = $pdo->prepare("
+            SELECT
+                id, booking_reference, total_amount, amount_paid, amount_due,
+                total_with_vat, vat_amount, vat_rate, status
+            FROM bookings
+            WHERE id = ?
+        ");
+        $stmt->execute([$booking_id]);
+        $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$booking) {
+            $validation['valid'] = false;
+            $validation['errors'][] = 'Booking not found';
+            return $validation;
+        }
+
+        $total_with_vat = round((float)$booking['total_with_vat'], 2);
+        $amount_paid = round((float)$booking['amount_paid'], 2);
+        $amount_due = round((float)$booking['amount_due'], 2);
+        $vat_amount = round((float)$booking['vat_amount'], 2);
+        $total_amount = round((float)$booking['total_amount'], 2);
+
+        // Check 1: amount_paid shouldn't exceed total_with_vat
+        if ($amount_paid > $total_with_vat + 0.01) {  // Allow 1 cent rounding
+            $validation['errors'][] = "Amount paid ({$amount_paid}) exceeds total ({$total_with_vat})";
+            $validation['valid'] = false;
+        }
+
+        // Check 2: amount_due should be non-negative
+        if ($amount_due < -0.01) {  // Allow 1 cent rounding
+            $validation['warnings'][] = "Amount due is negative ({$amount_due}), customer is owed a refund";
+        }
+
+        // Check 3: Reconcile amount_due calculation
+        $calculated_due = round($total_with_vat - $amount_paid, 2);
+        if (abs($calculated_due - $amount_due) > 0.01) {
+            $validation['errors'][] = "Amount due mismatch: stored = {$amount_due}, calculated = {$calculated_due}";
+            $validation['valid'] = false;
+        }
+
+        // Check 4: Get actual payments from payments table
+        $payments_stmt = $pdo->prepare("
+            SELECT
+                SUM(CASE WHEN payment_status = 'completed' THEN total_amount ELSE 0 END) as completed_total,
+                SUM(CASE WHEN payment_status = 'pending' THEN total_amount ELSE 0 END) as pending_total,
+                COUNT(*) as payment_count
+            FROM payments
+            WHERE booking_type = 'room'
+            AND booking_id = ?
+            AND deleted_at IS NULL
+        ");
+        $payments_stmt->execute([$booking_id]);
+        $payments = $payments_stmt->fetch(PDO::FETCH_ASSOC);
+
+        $completed_total = round((float)($payments['completed_total'] ?? 0), 2);
+        $pending_total = round((float)($payments['pending_total'] ?? 0), 2);
+
+        // Refunds are negative, so they reduce the total
+        $validation['reconciliation'] = [
+            'booking_amount_paid' => $amount_paid,
+            'payments_table_completed' => $completed_total,
+            'payments_table_pending' => $pending_total,
+            'payment_records' => (int)$payments['payment_count'],
+            'matches' => abs($amount_paid - $completed_total) <= 0.01
+        ];
+
+        // Check 5: If cancelled, verify refund exists
+        if ($booking['status'] === 'cancelled') {
+            $refund_stmt = $pdo->prepare("
+                SELECT COUNT(*) FROM payments
+                WHERE booking_type = 'room'
+                AND booking_id = ?
+                AND payment_method = 'refund'
+                AND deleted_at IS NULL
+            ");
+            $refund_stmt->execute([$booking_id]);
+            $has_refund = (int)$refund_stmt->fetchColumn() > 0;
+
+            if ($amount_paid > 0 && !$has_refund) {
+                $validation['errors'][] = "Booking is cancelled but no refund record found (paid amount: {$amount_paid})";
+                $validation['valid'] = false;
+            }
+        }
+
+        return $validation;
+
+    } catch (PDOException $e) {
+        $validation['valid'] = false;
+        $validation['errors'][] = "Database error: " . $e->getMessage();
+        return $validation;
+    }
+}
+
+/**
+ * Generate comprehensive accounting report for a booking.
+ * Includes payment timeline, refunds, and full reconciliation.
+ */
+function generateBookingAccountingReport($booking_id) {
+    global $pdo;
+
+    $report = [
+        'booking_id' => $booking_id,
+        'generated_at' => date('Y-m-d H:i:s'),
+        'booking_summary' => [],
+        'payment_history' => [],
+        'refund_history' => [],
+        'validation' => []
+    ];
+
+    try {
+        // Get booking summary
+        $stmt = $pdo->prepare("
+            SELECT
+                id, booking_reference, guest_name, guest_email,
+                check_in_date, check_out_date, number_of_nights,
+                total_amount, amount_paid, amount_due, total_with_vat,
+                vat_rate, vat_amount, status, created_at, updated_at
+            FROM bookings
+            WHERE id = ?
+        ");
+        $stmt->execute([$booking_id]);
+        $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$booking) {
+            $report['error'] = 'Booking not found';
+            return $report;
+        }
+
+        $report['booking_summary'] = [
+            'reference' => $booking['booking_reference'],
+            'guest' => $booking['guest_name'],
+            'email' => $booking['guest_email'],
+            'dates' => $booking['check_in_date'] . ' to ' . $booking['check_out_date'],
+            'nights' => (int)$booking['number_of_nights'],
+            'status' => $booking['status'],
+            'created' => $booking['created_at'],
+            'updated' => $booking['updated_at']
+        ];
+
+        // Get all payments (including refunds)
+        $payments_stmt = $pdo->prepare("
+            SELECT
+                id, payment_reference, payment_date, payment_amount,
+                vat_amount, total_amount, payment_status, payment_method,
+                notes, receipt_number, created_at
+            FROM payments
+            WHERE booking_type = 'room'
+            AND booking_id = ?
+            AND deleted_at IS NULL
+            ORDER BY payment_date ASC, created_at ASC
+        ");
+        $payments_stmt->execute([$booking_id]);
+        $payments = $payments_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($payments as $payment) {
+            $entry = [
+                'reference' => $payment['payment_reference'],
+                'date' => $payment['payment_date'],
+                'amount' => (float)$payment['payment_amount'],
+                'vat' => (float)$payment['vat_amount'],
+                'total' => (float)$payment['total_amount'],
+                'status' => $payment['payment_status'],
+                'method' => $payment['payment_method'],
+                'receipt' => $payment['receipt_number'],
+                'notes' => $payment['notes']
+            ];
+
+            if ($payment['payment_method'] === 'refund' || (float)$payment['payment_amount'] < 0) {
+                $report['refund_history'][] = $entry;
+            } else {
+                $report['payment_history'][] = $entry;
+            }
+        }
+
+        // Calculate totals
+        $total_received = array_reduce($report['payment_history'], function($sum, $p) {
+            return $sum + ($p['status'] === 'completed' ? $p['total'] : 0);
+        }, 0);
+
+        $total_refunded = array_reduce($report['refund_history'], function($sum, $p) {
+            return $sum + ($p['status'] === 'completed' ? abs($p['total']) : 0);
+        }, 0);
+
+        $report['summary'] = [
+            'total_amount' => (float)$booking['total_amount'],
+            'total_with_vat' => (float)$booking['total_with_vat'],
+            'vat_rate' => (float)$booking['vat_rate'],
+            'vat_amount' => (float)$booking['vat_amount'],
+            'amount_paid' => (float)$booking['amount_paid'],
+            'amount_due' => (float)$booking['amount_due'],
+            'total_received' => round($total_received, 2),
+            'total_refunded' => round($total_refunded, 2),
+            'net_received' => round($total_received - $total_refunded, 2)
+        ];
+
+        // Validate accounting
+        $report['validation'] = validateBookingAccounting($booking_id);
+
+        return $report;
+
+    } catch (PDOException $e) {
+        $report['error'] = 'Database error: ' . $e->getMessage();
+        return $report;
+    }
+}

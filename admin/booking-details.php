@@ -15,6 +15,8 @@ if (!$booking_id) {
     exit;
 }
 
+ensureBookingAdditionalChargesTable();
+
 // Handle status changes (POST-only for CSRF protection)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
     $action = $_POST['booking_action'];
@@ -37,13 +39,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
                 } elseif ($booking_data['status'] !== 'tentative' || $booking_data['is_tentative'] != 1) {
                     $_SESSION['error_message'] = 'This is not a tentative booking.';
                 } else {
+                    $pdo->beginTransaction();
+
+                    $reserve_error = null;
+                    if (!reserveRoomForDateRange($booking_data['room_id'], $booking_data['check_in_date'], $booking_data['check_out_date'], $booking_id, $reserve_error)) {
+                        throw new PDOException($reserve_error ?: 'Room capacity reached for selected dates.');
+                    }
+
                     // Convert to confirmed
-                    $update = $pdo->prepare("UPDATE bookings SET status = 'confirmed', is_tentative = 0, updated_at = NOW() WHERE id = ?");
+                    $update = $pdo->prepare("UPDATE bookings SET status = 'confirmed', is_tentative = 0, updated_at = NOW() WHERE id = ? AND status = 'tentative'");
                     $update->execute([$booking_id]);
-                    
-                    // Decrement room availability (same as standard confirm action)
-                    $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available - 1 WHERE id = ? AND rooms_available > 0")
-                        ->execute([$booking_data['room_id']]);
+
+                    if ($update->rowCount() === 0) {
+                        throw new PDOException('Tentative booking state changed. Please refresh and try again.');
+                    }
                     
                     // Log the conversion
                     try {
@@ -60,6 +69,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
                     } catch (PDOException $logError) {
                         error_log("Tentative log error: " . $logError->getMessage());
                     }
+
+                    $pdo->commit();
                     
                     // Send conversion email
                     require_once '../config/email.php';
@@ -74,16 +85,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
                 break;
             
             case 'confirm':
-                $stmt = $pdo->prepare("UPDATE bookings SET status = 'confirmed', updated_at = NOW() WHERE id = ? AND status = 'pending'");
-                $stmt->execute([$booking_id]);
-                
-                // Decrement room availability
-                $room_stmt = $pdo->prepare("SELECT room_id FROM bookings WHERE id = ?");
+                $room_stmt = $pdo->prepare("SELECT room_id, check_in_date, check_out_date FROM bookings WHERE id = ? AND status = 'pending'");
                 $room_stmt->execute([$booking_id]);
                 $booking_room = $room_stmt->fetch(PDO::FETCH_ASSOC);
+
                 if ($booking_room) {
-                    $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available - 1 WHERE id = ? AND rooms_available > 0")
-                        ->execute([$booking_room['room_id']]);
+                    $pdo->beginTransaction();
+
+                    $reserve_error = null;
+                    if (!reserveRoomForDateRange($booking_room['room_id'], $booking_room['check_in_date'], $booking_room['check_out_date'], $booking_id, $reserve_error)) {
+                        throw new PDOException($reserve_error ?: 'Room capacity reached for selected dates.');
+                    }
+
+                    $stmt = $pdo->prepare("UPDATE bookings SET status = 'confirmed', updated_at = NOW() WHERE id = ? AND status = 'pending'");
+                    $stmt->execute([$booking_id]);
+
+                    if ($stmt->rowCount() === 0) {
+                        throw new PDOException('Booking state changed. Please refresh and try again.');
+                    }
+
+                    $pdo->commit();
                 }
                 
                 // Send confirmation email
@@ -168,50 +189,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
                 $booking = $booking_stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if ($booking) {
-                    // Update booking status
-                    $stmt = $pdo->prepare("UPDATE bookings SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
-                    $stmt->execute([$booking_id]);
+                    $pdo->beginTransaction();
                     
-                    // Restore room availability
-                    if ($booking['status'] === 'confirmed') {
-                        $update_room = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available + 1 WHERE id = ? AND rooms_available < total_rooms");
-                        $update_room->execute([$booking['room_id']]);
-                    }
-                    
-                    // Send cancellation email
-                    require_once '../config/email.php';
-                    $cancellation_reason = $_POST['cancellation_reason'] ?? 'Cancelled by admin';
-                    $email_result = sendBookingCancelledEmail($booking, $cancellation_reason);
-                    
-                    // Log cancellation to database
-                    $email_sent = $email_result['success'];
-                    $email_status = $email_result['message'];
-                    logCancellationToDatabase(
-                        $booking['id'],
-                        $booking['booking_reference'],
-                        'room',
-                        $booking['guest_email'],
-                        $user['id'],
-                        $cancellation_reason,
-                        $email_sent,
-                        $email_status
-                    );
-                    
-                    // Log cancellation to file
-                    logCancellationToFile(
-                        $booking['booking_reference'],
-                        'room',
-                        $booking['guest_email'],
-                        $user['full_name'] ?? $user['username'],
-                        $cancellation_reason,
-                        $email_sent,
-                        $email_status
-                    );
-                    
-                    if ($email_sent) {
-                        $_SESSION['success_message'] = 'Booking cancelled. Cancellation email sent to guest.';
-                    } else {
-                        $_SESSION['success_message'] = 'Booking cancelled. (Email failed: ' . $email_status . ')';
+                    try {
+                        // Process refund if customer paid anything
+                        $cancellation_reason = $_POST['cancellation_reason'] ?? 'Guest cancellation';
+                        $refund_result = processBookingCancellationRefund($booking_id, $cancellation_reason);
+                        
+                        // Update booking status
+                        $stmt = $pdo->prepare("UPDATE bookings SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
+                        $stmt->execute([$booking_id]);
+                        
+                        // Restore room availability
+                        if ($booking['status'] === 'confirmed') {
+                            $update_room = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available + 1 WHERE id = ? AND rooms_available < total_rooms");
+                            $update_room->execute([$booking['room_id']]);
+                        }
+                        
+                        // Recalculate booking financials to ensure consistency
+                        recalculateRoomBookingFinancials($booking_id);
+                        
+                        $pdo->commit();
+                        
+                        // Send cancellation email
+                        require_once '../config/email.php';
+                        $email_result = sendBookingCancelledEmail($booking, $cancellation_reason);
+                        
+                        // Log cancellation to database
+                        $email_sent = $email_result['success'];
+                        $email_status = $email_result['message'];
+                        logCancellationToDatabase(
+                            $booking['id'],
+                            $booking['booking_reference'],
+                            'room',
+                            $booking['guest_email'],
+                            $user['id'],
+                            $cancellation_reason,
+                            $email_sent,
+                            $email_status
+                        );
+                        
+                        // Log cancellation to file
+                        logCancellationToFile(
+                            $booking['booking_reference'],
+                            'room',
+                            $booking['guest_email'],
+                            $user['full_name'] ?? $user['username'],
+                            $cancellation_reason,
+                            $email_sent,
+                            $email_status
+                        );
+                        
+                        // Build success message with refund info
+                        $success_msg = 'Booking cancelled.';
+                        if ($refund_result['refund_processed']) {
+                            $success_msg .= " Refund {$refund_result['refund_reference']} created for " . $currency_symbol . number_format($refund_result['refund_amount'], 0) . ".";
+                        } elseif ($refund_result['messages']) {
+                            $success_msg .= " " . implode(" ", $refund_result['messages']);
+                        }
+                        
+                        if ($email_sent) {
+                            $success_msg .= " Cancellation email sent to guest.";
+                        } else {
+                            $success_msg .= " (Email failed: " . $email_status . ")";
+                        }
+                        
+                        $_SESSION['success_message'] = $success_msg;
+                        
+                    } catch (Exception $e) {
+                        $pdo->rollBack();
+                        $_SESSION['error_message'] = 'Cancellation failed: ' . $e->getMessage();
+                        error_log("Booking cancellation error: " . $e->getMessage());
                     }
                 } else {
                     $_SESSION['error_message'] = 'Booking not found.';
@@ -219,6 +267,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
                 break;
         }
     } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $_SESSION['error_message'] = 'Action failed. Please try again.';
         error_log("Booking action error: " . $e->getMessage());
     }
@@ -288,6 +339,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_note'])) {
     }
 }
 
+// Handle adding additional charges (menu/other)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_charge'])) {
+    try {
+        $charge_type = $_POST['charge_type'] ?? 'other';
+        $description = trim($_POST['description'] ?? '');
+        $amount = (float)($_POST['amount'] ?? 0);
+
+        if (!in_array($charge_type, ['menu', 'other'], true)) {
+            throw new Exception('Invalid charge type selected.');
+        }
+        if ($description === '') {
+            throw new Exception('Charge description is required.');
+        }
+        if ($amount <= 0) {
+            throw new Exception('Charge amount must be greater than zero.');
+        }
+
+        $pdo->beginTransaction();
+        $insert_charge = $pdo->prepare("INSERT INTO booking_additional_charges (booking_id, charge_type, description, amount, created_by) VALUES (?, ?, ?, ?, ?)");
+        $insert_charge->execute([$booking_id, $charge_type, $description, $amount, $user['id']]);
+
+        recalculateRoomBookingFinancials($booking_id);
+        $pdo->commit();
+
+        $_SESSION['success_message'] = 'Additional charge added successfully.';
+        header("Location: booking-details.php?id=$booking_id");
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $error_message = 'Failed to add charge: ' . $e->getMessage();
+    }
+}
+
+// Handle removing additional charge
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_charge'])) {
+    try {
+        $charge_id = (int)($_POST['charge_id'] ?? 0);
+        if ($charge_id <= 0) {
+            throw new Exception('Invalid charge selected.');
+        }
+
+        $pdo->beginTransaction();
+        $delete_charge = $pdo->prepare("UPDATE booking_additional_charges SET is_active = 0 WHERE id = ? AND booking_id = ?");
+        $delete_charge->execute([$charge_id, $booking_id]);
+
+        recalculateRoomBookingFinancials($booking_id);
+        $pdo->commit();
+
+        $_SESSION['success_message'] = 'Charge removed successfully.';
+        header("Location: booking-details.php?id=$booking_id");
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $error_message = 'Failed to remove charge: ' . $e->getMessage();
+    }
+}
+
+// Handle optional levy toggle for this guest
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_levy'])) {
+    try {
+        $apply_levy = isset($_POST['apply_levy']) ? 1 : 0;
+        $levy_enabled = in_array(getSetting('tourist_levy_enabled', '0'), ['1', 1, true, 'true', 'on'], true);
+        $levy_rate = $levy_enabled ? (float)getSetting('tourist_levy_rate', 0) : 0.0;
+
+        $pdo->beginTransaction();
+
+        if ($apply_levy && $levy_enabled && $levy_rate > 0) {
+            $exists_stmt = $pdo->prepare("SELECT id FROM booking_additional_charges WHERE booking_id = ? AND charge_type = 'levy' AND is_active = 1 LIMIT 1");
+            $exists_stmt->execute([$booking_id]);
+            $existing_levy = $exists_stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$existing_levy) {
+                $insert_levy = $pdo->prepare("INSERT INTO booking_additional_charges (booking_id, charge_type, description, amount, created_by) VALUES (?, 'levy', ?, 0, ?)");
+                $insert_levy->execute([$booking_id, 'Tourist levy (' . number_format($levy_rate, 2) . '%)', $user['id']]);
+            }
+        } else {
+            $remove_levy = $pdo->prepare("UPDATE booking_additional_charges SET is_active = 0 WHERE booking_id = ? AND charge_type = 'levy' AND is_active = 1");
+            $remove_levy->execute([$booking_id]);
+        }
+
+        recalculateRoomBookingFinancials($booking_id);
+        $pdo->commit();
+
+        $_SESSION['success_message'] = $apply_levy ? 'Levy applied for this guest.' : 'Levy removed for this guest.';
+        header("Location: booking-details.php?id=$booking_id");
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $error_message = 'Failed to update levy setting: ' . $e->getMessage();
+    }
+}
+
 // Handle payment status update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_payment'])) {
     $payment_status = $_POST['payment_status'];
@@ -298,10 +447,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_payment'])) {
         $vatEnabled = in_array(getSetting('vat_enabled'), ['1', 1, true, 'true', 'on'], true);
         $vatRate = $vatEnabled ? (float)getSetting('vat_rate') : 0;
         
-        // Calculate amounts
-        $totalAmount = (float)$booking['total_amount'];
-        $vatAmount = $vatEnabled ? ($totalAmount * ($vatRate / 100)) : 0;
-        $totalWithVat = $totalAmount + $vatAmount;
+        // Recalculate before payment updates so new charges/extensions are reflected.
+        $recalculated = recalculateRoomBookingFinancials($booking_id);
+        $totalAmount = (float)$recalculated['subtotal'];
+        $vatAmount = (float)$recalculated['vat_amount'];
+        $totalWithVat = (float)$recalculated['grand_total'];
         
         // Update booking payment status
         $update_stmt = $pdo->prepare("UPDATE bookings SET payment_status = ?, updated_at = NOW() WHERE id = ?");
@@ -331,15 +481,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_payment'])) {
                 $totalWithVat,
                 $user['id']
             ]);
-            
-            // Update booking payment tracking columns
-            $update_amounts = $pdo->prepare("
-                UPDATE bookings
-                SET amount_paid = ?, amount_due = 0, vat_rate = ?, vat_amount = ?,
-                    total_with_vat = ?, last_payment_date = CURDATE()
-                WHERE id = ?
-            ");
-            $update_amounts->execute([$totalWithVat, $vatRate, $vatAmount, $totalWithVat, $booking_id]);
+
+            recalculateRoomBookingFinancials($booking_id);
             
             // Send invoice email
             require_once '../config/invoice.php';
@@ -360,6 +503,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_payment'])) {
     } catch (PDOException $e) {
         $error_message = 'Failed to update payment status: ' . $e->getMessage();
         error_log("Payment update error: " . $e->getMessage());
+    }
+}
+
+try {
+    $charges_stmt = $pdo->prepare("SELECT * FROM booking_additional_charges WHERE booking_id = ? AND is_active = 1 ORDER BY created_at DESC");
+    $charges_stmt->execute([$booking_id]);
+    $booking_charges = $charges_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $booking_charges = [];
+}
+
+$levy_enabled = in_array(getSetting('tourist_levy_enabled', '0'), ['1', 1, true, 'true', 'on'], true);
+$levy_rate = $levy_enabled ? (float)getSetting('tourist_levy_rate', 0) : 0.0;
+$levy_applied = false;
+foreach ($booking_charges as $charge_row) {
+    if (($charge_row['charge_type'] ?? '') === 'levy') {
+        $levy_applied = true;
+        break;
     }
 }
 
@@ -673,6 +834,20 @@ $currency_symbol = getSetting('currency_symbol');
                     </div>
                 </div>
                 <div class="detail-item">
+                    <label>Total With VAT</label>
+                    <div class="value" style="color: var(--navy); font-size: 18px;">
+                        <?php echo $currency_symbol; ?><?php echo number_format((float)($booking['total_with_vat'] ?? $booking['total_amount']), 0); ?>
+                    </div>
+                </div>
+                <div class="detail-item">
+                    <label>Amount Paid</label>
+                    <div class="value"><?php echo $currency_symbol; ?><?php echo number_format((float)($booking['amount_paid'] ?? 0), 0); ?></div>
+                </div>
+                <div class="detail-item">
+                    <label>Amount Due</label>
+                    <div class="value" style="color: #dc3545;"><?php echo $currency_symbol; ?><?php echo number_format((float)($booking['amount_due'] ?? 0), 0); ?></div>
+                </div>
+                <div class="detail-item">
                     <label>Booking Status</label>
                     <div class="value">
                         <span class="status-badge status-<?php echo $booking['status']; ?>">
@@ -746,6 +921,80 @@ $currency_symbol = getSetting('currency_symbol');
                 <div class="value"><?php echo nl2br(htmlspecialchars($booking['special_requests'])); ?></div>
             </div>
             <?php endif; ?>
+
+            <div style="margin-top: 28px; border-top: 1px solid #eee; padding-top: 20px;">
+                <label style="display:block; margin-bottom: 10px; font-weight: 600;">Additional Charges</label>
+
+                <?php if (!empty($booking_charges)): ?>
+                    <div style="margin-bottom: 12px;">
+                        <?php foreach ($booking_charges as $charge): ?>
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:12px; border:1px solid #eee; border-radius:8px; margin-bottom:8px; background:#f9f9f9;">
+                                <div style="flex:1;">
+                                    <strong><?php echo htmlspecialchars(ucfirst($charge['charge_type'])); ?></strong> - <?php echo htmlspecialchars($charge['description']); ?>
+                                    <br><small style="color:#666; margin-top:4px; display:block;">
+                                        <i class="fas fa-user"></i> Added by: <?php echo htmlspecialchars($charge['created_by'] ? 'User #' . $charge['created_by'] : 'System'); ?> 
+                                    </small>
+                                    <small style="color:#666; display:block;">
+                                        <i class="fas fa-calendar"></i> <?php echo date('M j, Y g:i A', strtotime($charge['created_at'])); ?>
+                                    </small>
+                                    <?php if ($charge['updated_at'] && $charge['updated_at'] !== $charge['created_at']): ?>
+                                        <small style="color:#999; display:block;">
+                                            <i class="fas fa-edit"></i> Last updated: <?php echo date('M j, Y g:i A', strtotime($charge['updated_at'])); ?>
+                                        </small>
+                                    <?php endif; ?>
+                                </div>
+                                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                                    <strong style="font-size:16px;"><?php echo $currency_symbol; ?><?php echo number_format((float)$charge['amount'], 0); ?></strong>
+                                    <form method="POST" onsubmit="return confirm('Remove this charge?');">
+                                        <input type="hidden" name="remove_charge" value="1">
+                                        <input type="hidden" name="charge_id" value="<?php echo (int)$charge['id']; ?>">
+                                        <button class="btn btn-danger" style="padding:6px 10px; font-size:12px;" type="submit"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <p style="color:#777; margin-bottom:10px;">No additional charges added yet.</p>
+                <?php endif; ?>
+
+                <form method="POST" style="display:grid; grid-template-columns: 1fr 2fr 1fr auto; gap:10px; align-items:end; margin-bottom:12px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Type</label>
+                        <select name="charge_type" class="form-control" required>
+                            <option value="menu">Menu</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Description</label>
+                        <input type="text" name="description" class="form-control" placeholder="e.g. Room service dinner" required>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Amount</label>
+                        <input type="number" step="0.01" min="0.01" name="amount" class="form-control" required>
+                    </div>
+                    <div>
+                        <button type="submit" name="add_charge" value="1" class="btn btn-primary"><i class="fas fa-plus"></i> Add</button>
+                    </div>
+                </form>
+
+                <form method="POST" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <input type="hidden" name="toggle_levy" value="1">
+                    <label style="display:flex; align-items:center; gap:8px; margin:0;">
+                        <input type="checkbox" name="apply_levy" value="1" <?php echo $levy_applied ? 'checked' : ''; ?> <?php echo (!$levy_enabled || $levy_rate <= 0) ? 'disabled' : ''; ?>>
+                        Apply tourist levy for this guest
+                    </label>
+                    <small style="color:#666;">
+                        <?php if ($levy_enabled && $levy_rate > 0): ?>
+                            Current levy rate: <?php echo number_format($levy_rate, 2); ?>% of room base
+                        <?php else: ?>
+                            Levy is currently disabled in accounting settings.
+                        <?php endif; ?>
+                    </small>
+                    <button type="submit" class="btn" style="background:#f0f0f0; color:#333;"><i class="fas fa-save"></i> Save Levy Option</button>
+                </form>
+            </div>
 
             <div style="margin-top: 32px;">
                 <label style="display: block; margin-bottom: 12px; font-weight: 600;">Quick Actions</label>

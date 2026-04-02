@@ -248,6 +248,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->beginTransaction(); // Start transaction
         
         try {
+            // Final write-time guard to prevent concurrent overbooking.
+            $capacity_error = null;
+            if (!hasRoomDateCapacity($room_id, $check_in_date, $check_out_date, null, $capacity_error)) {
+                throw new Exception($capacity_error ?: 'Room is no longer available for the selected dates.');
+            }
+
             $insert_stmt = $pdo->prepare("
                 INSERT INTO bookings (
                     booking_reference, room_id, guest_name, guest_email, guest_phone,
@@ -264,12 +270,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $booking_status, $is_tentative, $tentative_expires_at, $occupancy_type
             ]);
 
+            $new_booking_id = (int)$pdo->lastInsertId();
+            recalculateRoomBookingFinancials($new_booking_id);
+
             // Commit transaction - booking secured with foreign key constraints!
             $pdo->commit();
 
             // Send email notifications using working email system
             $booking_data = [
-                'id' => $pdo->lastInsertId(),
+                'id' => $new_booking_id,
                 'booking_reference' => $booking_reference,
                 'room_id' => $room_id,
                 'guest_name' => $guest_name,
