@@ -316,6 +316,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $current_status = $current_booking['status'];
                 $room_id = $current_booking['room_id'];
+
+                // Guard: cannot confirm an expired booking (check-out date already past)
+                if ($new_status === 'confirmed') {
+                    $exp_stmt = $pdo->prepare("SELECT check_out_date FROM bookings WHERE id = ?");
+                    $exp_stmt->execute([$booking_id]);
+                    $exp_row = $exp_stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($exp_row && strtotime($exp_row['check_out_date']) < strtotime('today')) {
+                        throw new Exception('Cannot confirm an expired booking - the check-out date has already passed.');
+                    }
+                }
                 
                 // Update booking status
                 $stmt = $pdo->prepare("UPDATE bookings SET status = ? WHERE id = ?");
@@ -542,6 +552,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'Only confirmed bookings can be marked as no-show.';
                 }
             }
+        } elseif ($action === 'delete_booking') {
+            // Only super admin can delete expired bookings
+            if ($user['role'] !== 'admin') {
+                throw new Exception('Only the super admin can delete bookings.');
+            }
+            $booking_id = (int)($_POST['id'] ?? 0);
+            if ($booking_id <= 0) {
+                throw new Exception('Invalid booking id.');
+            }
+            $exp_stmt = $pdo->prepare("SELECT check_out_date, booking_reference FROM bookings WHERE id = ?");
+            $exp_stmt->execute([$booking_id]);
+            $exp_row = $exp_stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$exp_row) {
+                throw new Exception('Booking not found.');
+            }
+            if (strtotime($exp_row['check_out_date']) >= strtotime('today')) {
+                throw new Exception('Only expired bookings (past check-out date) can be deleted.');
+            }
+            $backup_ok = backupRecordBeforeDelete('bookings', $booking_id, 'id', [
+                'reason' => 'expired_booking_cleanup',
+                'booking_reference' => $exp_row['booking_reference'] ?? null,
+                'deleted_by' => $user['id'] ?? null,
+                'deleted_from' => 'admin/bookings.php'
+            ]);
+            if (!$backup_ok) {
+                throw new Exception('Unable to back up booking record. Deletion cancelled.');
+            }
+            $del_stmt = $pdo->prepare("DELETE FROM bookings WHERE id = ?");
+            $del_stmt->execute([$booking_id]);
+            $message = 'Expired booking ' . htmlspecialchars($exp_row['booking_reference']) . ' deleted successfully.';
         }
 
     } catch (Throwable $e) {
@@ -1322,8 +1362,14 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                     $hours_until_expiry = ($expires_at->getTimestamp() - $now->getTimestamp()) / 3600;
                                     $expires_soon = $hours_until_expiry <= 24 && $hours_until_expiry > 0;
                                 }
+                                // Expired: check-out date past, booking not yet finalized
+                                $is_expired = !in_array($booking['status'], ['checked-out', 'cancelled', 'no-show'])
+                                    && strtotime($booking['check_out_date']) < strtotime('today');
                             ?>
-                            <tr <?php echo $is_tentative ? 'style="background: linear-gradient(90deg, rgba(212, 175, 55, 0.05) 0%, white 10%);"' : ''; ?>>
+                            <tr <?php
+                                if ($is_expired) echo 'style="opacity:0.6; background-color:#f0f0f0 !important;"';
+                                elseif ($is_tentative) echo 'style="background: linear-gradient(90deg, rgba(212, 175, 55, 0.05) 0%, white 10%);"';
+                            ?>>
                                 <td>
                                     <strong><?php echo htmlspecialchars($booking['booking_reference']); ?></strong>
                                     <?php if ($is_tentative): ?>
@@ -1351,6 +1397,9 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                     <span class="badge badge-<?php echo $booking['status']; ?>">
                                         <?php echo ucfirst($booking['status']); ?>
                                     </span>
+                                    <?php if ($is_expired): ?>
+                                        <br><span style="background:#6c757d;color:white;font-size:10px;padding:2px 6px;border-radius:4px;display:inline-block;margin-top:3px;">Expired</span>
+                                    <?php endif; ?>
                                     <?php if ($is_tentative && $booking['tentative_expires_at']): ?>
                                         <br><small style="color: #666; font-size: 10px;">
                                             <?php
@@ -1404,12 +1453,14 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                             <i class="fas fa-times"></i> Cancel
                                         </button>
                                     <?php elseif ($booking['status'] === 'pending'): ?>
+                                        <?php if (!$is_expired): ?>
                                         <button class="quick-action confirm" onclick="updateStatus(<?php echo $booking['id']; ?>, 'confirmed')">
                                             <i class="fas fa-check"></i> Confirm
                                         </button>
                                         <button class="quick-action" style="background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%); color: var(--deep-navy);" onclick="makeTentative(<?php echo $booking['id']; ?>)">
                                             <i class="fas fa-clock"></i> Make Tentative
                                         </button>
+                                        <?php endif; ?>
                                         <button class="quick-action cancel" onclick="cancelBooking(<?php echo $booking['id']; ?>, '<?php echo htmlspecialchars($booking['booking_reference'], ENT_QUOTES); ?>')">
                                             <i class="fas fa-times"></i> Cancel
                                         </button>
@@ -1448,6 +1499,11 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                     <?php if ($booking['payment_status'] !== 'paid'): ?>
                                         <button class="quick-action paid" onclick="updatePayment(<?php echo $booking['id']; ?>, 'paid')">
                                             <i class="fas fa-dollar-sign"></i> Paid
+                                        </button>
+                                    <?php endif; ?>
+                                    <?php if ($is_expired && $user['role'] === 'admin'): ?>
+                                        <button class="quick-action" style="background:#dc3545;color:white;" onclick="deleteBooking(<?php echo $booking['id']; ?>, '<?php echo htmlspecialchars($booking['booking_reference'], ENT_QUOTES); ?>')">
+                                            <i class="fas fa-trash"></i> Delete
                                         </button>
                                     <?php endif; ?>
                                 </td>
@@ -1489,7 +1545,8 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                     </thead>
                     <tbody>
                         <?php foreach ($conference_inquiries as $inquiry): ?>
-                            <tr>
+                            <?php $is_conf_expired = !empty($inquiry['event_date']) && strtotime($inquiry['event_date']) < strtotime('today'); ?>
+                            <tr<?php if ($is_conf_expired) echo ' style="opacity:0.6;background-color:#f0f0f0 !important;"'; ?>>
                                 <td><?php echo date('M d, Y', strtotime($inquiry['created_at'])); ?></td>
                                 <td>
                                     <strong><?php echo htmlspecialchars($inquiry['company_name']); ?></strong>
@@ -1500,7 +1557,12 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                     <br><small style="color: #666;"><?php echo htmlspecialchars($inquiry['phone']); ?></small>
                                 </td>
                                 <td><?php echo htmlspecialchars($inquiry['event_type']); ?></td>
-                                <td><?php echo date('M d, Y', strtotime($inquiry['expected_date'])); ?></td>
+                                <td>
+                                    <?php echo !empty($inquiry['event_date']) ? date('M d, Y', strtotime($inquiry['event_date'])) : '&mdash;'; ?>
+                                    <?php if ($is_conf_expired): ?>
+                                        <br><span style="background:#6c757d;color:white;font-size:10px;padding:2px 6px;border-radius:4px;display:inline-block;margin-top:2px;">Expired</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo $inquiry['number_of_attendees']; ?></td>
                                 <td>
                                     <span class="badge badge-<?php echo $inquiry['status']; ?>">
@@ -1954,6 +2016,22 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                 console.error('Error:', error);
                 Alert.show('Error marking as no-show', 'error');
             });
+        }
+
+        function deleteBooking(id, reference) {
+            if (!confirm('PERMANENTLY delete expired booking ' + reference + '?\n\nThis action cannot be undone.')) return;
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = window.location.href;
+            [['action', 'delete_booking'], ['id', id]].forEach(function(pair) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = pair[0];
+                input.value = pair[1];
+                form.appendChild(input);
+            });
+            document.body.appendChild(form);
+            form.submit();
         }
     </script>
     

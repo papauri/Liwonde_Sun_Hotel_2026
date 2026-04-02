@@ -1695,6 +1695,85 @@ function logTentativeBookingAction($booking_id, $action, $details = []) {
 }
 
 /**
+ * Ensure backup table exists for archived hard-deleted records.
+ */
+function ensureDeletedRecordsBackupTable() {
+    global $pdo;
+
+    static $checked = false;
+    if ($checked) {
+        return true;
+    }
+
+    $sql = "
+        CREATE TABLE IF NOT EXISTS deleted_records_backup (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            source_table VARCHAR(100) NOT NULL,
+            source_id VARCHAR(100) NOT NULL,
+            row_data LONGTEXT NOT NULL,
+            metadata LONGTEXT NULL,
+            deleted_by INT NULL,
+            deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_source (source_table, source_id),
+            INDEX idx_deleted_at (deleted_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ";
+
+    try {
+        $pdo->exec($sql);
+        $checked = true;
+        return true;
+    } catch (PDOException $e) {
+        error_log("Error ensuring deleted_records_backup table: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Backup a row before hard delete.
+ */
+function backupRecordBeforeDelete($table, $id, $primaryKey = 'id', $metadata = []) {
+    global $pdo;
+
+    if (!ensureDeletedRecordsBackupTable()) {
+        return false;
+    }
+
+    if (!preg_match('/^[A-Za-z0-9_]+$/', $table) || !preg_match('/^[A-Za-z0-9_]+$/', $primaryKey)) {
+        error_log("Invalid table or primary key passed to backupRecordBeforeDelete");
+        return false;
+    }
+
+    try {
+        $safeTable = str_replace('`', '``', $table);
+        $safePrimary = str_replace('`', '``', $primaryKey);
+
+        $select = $pdo->prepare("SELECT * FROM `{$safeTable}` WHERE `{$safePrimary}` = ? LIMIT 1");
+        $select->execute([$id]);
+        $row = $select->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            return false;
+        }
+
+        $deletedBy = $metadata['deleted_by'] ?? null;
+        $insert = $pdo->prepare("INSERT INTO deleted_records_backup (source_table, source_id, row_data, metadata, deleted_by) VALUES (?, ?, ?, ?, ?)");
+        $insert->execute([
+            $table,
+            (string)$id,
+            json_encode($row),
+            json_encode($metadata),
+            $deletedBy
+        ]);
+
+        return true;
+    } catch (PDOException $e) {
+        error_log("Error backing up deleted record: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Get tentative booking statistics
  * Returns array with statistics
  */
