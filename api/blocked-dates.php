@@ -26,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Include database configuration
 require_once __DIR__ . '/../config/database.php';
+ensureRoomUnitInfrastructure();
 
 // Include API authentication
 require_once __DIR__ . '/index.php';
@@ -115,6 +116,24 @@ function validateBlockedDateData($data, $isUpdate = false) {
             }
         }
     }
+
+    // Validate room_unit_id if provided
+    if (isset($data['room_unit_id']) && $data['room_unit_id'] !== '' && $data['room_unit_id'] !== null) {
+        if (!is_numeric($data['room_unit_id'])) {
+            $errors['room_unit_id'] = 'Room unit ID must be a number';
+        } else {
+            global $pdo;
+            $stmt = $pdo->prepare("SELECT id, room_id FROM room_units WHERE id = ?");
+            $stmt->execute([(int)$data['room_unit_id']]);
+            $room_unit = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$room_unit) {
+                $errors['room_unit_id'] = 'Room unit not found';
+            } elseif (isset($data['room_id']) && $data['room_id'] !== '' && $data['room_id'] !== null && (int)$room_unit['room_id'] !== (int)$data['room_id']) {
+                $errors['room_unit_id'] = 'Room unit does not belong to the selected room';
+            }
+        }
+    }
     
     return [
         'valid' => empty($errors),
@@ -137,13 +156,14 @@ switch ($method) {
     case 'GET':
         // Get blocked dates
         $room_id = isset($_GET['room_id']) ? ($_GET['room_id'] === 'all' ? null : (int)$_GET['room_id']) : null;
+        $room_unit_id = isset($_GET['room_unit_id']) && $_GET['room_unit_id'] !== '' ? (int)$_GET['room_unit_id'] : null;
         $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : null;
         $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : null;
         
         // Get specific blocked date by ID
         if (isset($_GET['id'])) {
             $id = (int)$_GET['id'];
-            $blocked_dates = getBlockedDates(null, null, null);
+            $blocked_dates = getBlockedDates(null, null, null, null);
             $blocked_date = null;
             
             foreach ($blocked_dates as $bd) {
@@ -164,7 +184,7 @@ switch ($method) {
         }
         
         // Get blocked dates with filters
-        $blocked_dates = getBlockedDates($room_id, $start_date, $end_date);
+        $blocked_dates = getBlockedDates($room_id, $start_date, $end_date, $room_unit_id);
         
         sendResponse([
             'success' => true,
@@ -185,17 +205,18 @@ switch ($method) {
             }
             
             $room_id = isset($input['room_id']) && $input['room_id'] !== '' ? (int)$input['room_id'] : null;
+            $room_unit_id = isset($input['room_unit_id']) && $input['room_unit_id'] !== '' ? (int)$input['room_unit_id'] : null;
             $block_date = $input['block_date'];
             $block_type = $input['block_type'] ?? 'manual';
             $reason = $input['reason'] ?? null;
             $created_by = $admin_user['id'];
             
             // Block the date
-            $result = blockRoomDate($room_id, $block_date, $block_type, $reason, $created_by);
+            $result = blockRoomDate($room_id, $block_date, $block_type, $reason, $created_by, $room_unit_id);
             
             if ($result) {
                 // Get the created blocked date
-                $blocked_dates = getBlockedDates($room_id, $block_date, $block_date);
+                $blocked_dates = getBlockedDates($room_id, $block_date, $block_date, $room_unit_id);
                 $created_date = !empty($blocked_dates) ? $blocked_dates[0] : null;
                 
                 sendResponse([
@@ -211,6 +232,7 @@ switch ($method) {
         // Handle multiple dates creation
         elseif (isset($input['dates']) && is_array($input['dates'])) {
             $room_id = isset($input['room_id']) && $input['room_id'] !== '' ? (int)$input['room_id'] : null;
+            $room_unit_id = isset($input['room_unit_id']) && $input['room_unit_id'] !== '' ? (int)$input['room_unit_id'] : null;
             $block_type = $input['block_type'] ?? 'manual';
             $reason = $input['reason'] ?? null;
             $created_by = $admin_user['id'];
@@ -240,7 +262,7 @@ switch ($method) {
             }
             
             // Block the dates
-            $blocked_count = blockRoomDates($room_id, $valid_dates, $block_type, $reason, $created_by);
+            $blocked_count = blockRoomDates($room_id, $valid_dates, $block_type, $reason, $created_by, $room_unit_id);
             
             if ($blocked_count > 0) {
                 sendResponse([
@@ -277,7 +299,7 @@ switch ($method) {
         }
         
         // Get current blocked date
-        $current_dates = getBlockedDates(null, null, null);
+        $current_dates = getBlockedDates(null, null, null, null);
         $current_date = null;
         
         foreach ($current_dates as $bd) {
@@ -293,20 +315,21 @@ switch ($method) {
         
         // Update the blocked date
         $room_id = isset($input['room_id']) && $input['room_id'] !== '' ? (int)$input['room_id'] : null;
+        $room_unit_id = isset($input['room_unit_id']) && $input['room_unit_id'] !== '' ? (int)$input['room_unit_id'] : ($current_date['room_unit_id'] ?? null);
         $block_date = $input['block_date'] ?? $current_date['block_date'];
         $block_type = $input['block_type'] ?? $current_date['block_type'];
         $reason = $input['reason'] ?? $current_date['reason'];
         $created_by = $admin_user['id'];
         
         // First delete the old one
-        unblockRoomDate($current_date['room_id'], $current_date['block_date']);
+        unblockRoomDate($current_date['room_id'], $current_date['block_date'], $current_date['room_unit_id'] ?? null);
         
         // Then create the new one
-        $result = blockRoomDate($room_id, $block_date, $block_type, $reason, $created_by);
+        $result = blockRoomDate($room_id, $block_date, $block_type, $reason, $created_by, $room_unit_id);
         
         if ($result) {
             // Get the updated blocked date
-            $updated_dates = getBlockedDates($room_id, $block_date, $block_date);
+            $updated_dates = getBlockedDates($room_id, $block_date, $block_date, $room_unit_id);
             $updated_date = !empty($updated_dates) ? $updated_dates[0] : null;
             
             sendResponse([
@@ -327,7 +350,7 @@ switch ($method) {
             $id = (int)$_GET['id'];
             
             // Get the blocked date
-            $current_dates = getBlockedDates(null, null, null);
+            $current_dates = getBlockedDates(null, null, null, null);
             $target_date = null;
             
             foreach ($current_dates as $bd) {
@@ -342,7 +365,7 @@ switch ($method) {
             }
             
             // Delete the blocked date
-            $result = unblockRoomDate($target_date['room_id'], $target_date['block_date']);
+            $result = unblockRoomDate($target_date['room_id'], $target_date['block_date'], $target_date['room_unit_id'] ?? null);
             
             if ($result) {
                 sendResponse([
@@ -357,9 +380,10 @@ switch ($method) {
         // Handle multiple dates deletion
         elseif (isset($input['dates']) && is_array($input['dates'])) {
             $room_id = isset($input['room_id']) && $input['room_id'] !== '' ? (int)$input['room_id'] : null;
+            $room_unit_id = isset($input['room_unit_id']) && $input['room_unit_id'] !== '' ? (int)$input['room_unit_id'] : null;
             
             // Unblock the dates
-            $unblocked_count = unblockRoomDates($room_id, $input['dates']);
+            $unblocked_count = unblockRoomDates($room_id, $input['dates'], $room_unit_id);
             
             if ($unblocked_count > 0) {
                 sendResponse([

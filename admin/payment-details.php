@@ -70,9 +70,11 @@ if ($payment['booking_type'] === 'room') {
         SELECT 
             b.*,
             r.name as room_name,
+            ru.unit_label as room_unit_label,
             r.price_per_night
         FROM bookings b
         LEFT JOIN rooms r ON b.room_id = r.id
+        LEFT JOIN room_units ru ON b.room_unit_id = ru.id
         WHERE b.id = ?
     ");
     $bookingStmt->execute([$payment['booking_id']]);
@@ -86,6 +88,7 @@ if ($payment['booking_type'] === 'room') {
             'room' => [
                 'id' => (int)$booking['room_id'],
                 'name' => $booking['room_name'],
+                'unit_label' => $booking['room_unit_label'],
                 'price_per_night' => (float)$booking['price_per_night']
             ],
             'guest' => [
@@ -725,6 +728,7 @@ $dueAmount = $bookingTotalAmount - $paymentSummary['total_paid'];
                     <?php if ($bookingDetails['type'] === 'room'): ?>
                         <p><strong>Reference:</strong> <?php echo htmlspecialchars($bookingDetails['reference']); ?></p>
                         <p><strong>Room:</strong> <?php echo htmlspecialchars($bookingDetails['room']['name']); ?></p>
+                        <p><strong>Room Unit:</strong> <?php echo htmlspecialchars($bookingDetails['room']['unit_label'] ?: 'Auto (legacy booking)'); ?></p>
                         <p><strong>Guest:</strong> <?php echo htmlspecialchars($bookingDetails['guest']['name']); ?></p>
                         <p><strong>Email:</strong> <?php echo htmlspecialchars($bookingDetails['guest']['email']); ?></p>
                         <p><strong>Dates:</strong> <?php echo date('M j, Y', strtotime($bookingDetails['dates']['check_in'])); ?> - <?php echo date('M j, Y', strtotime($bookingDetails['dates']['check_out'])); ?> (<?php echo $bookingDetails['dates']['nights']; ?> nights)</p>

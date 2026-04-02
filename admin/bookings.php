@@ -7,6 +7,21 @@ require_once '../includes/alert.php';
 $message = '';
 $error = '';
 
+if (!ensureRoomUnitInfrastructure()) {
+    $error = 'Room unit infrastructure could not be initialized. Assignment badges may be incomplete.';
+}
+
+function resolveRoomUnitAssignmentSource(array $booking) {
+    $source = strtolower(trim((string)($booking['room_unit_assignment_source'] ?? '')));
+    if ($source === 'auto' || $source === 'manual' || $source === 'released') {
+        return $source;
+    }
+    if (!empty($booking['room_unit_id'])) {
+        return 'auto';
+    }
+    return '';
+}
+
 // Handle booking actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -306,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // Get current booking status and date range before updating
-                $check_stmt = $pdo->prepare("SELECT status, room_id, check_in_date, check_out_date FROM bookings WHERE id = ?");
+                $check_stmt = $pdo->prepare("SELECT status, room_id, room_unit_id, check_in_date, check_out_date FROM bookings WHERE id = ?");
                 $check_stmt->execute([$booking_id]);
                 $current_booking = $check_stmt->fetch(PDO::FETCH_ASSOC);
                 
@@ -329,6 +344,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if ($current_status === 'pending' && $new_status === 'confirmed') {
                     $pdo->beginTransaction();
+
+                    if (empty($current_booking['room_unit_id'])) {
+                        $allocation_error = null;
+                        $allocated_room_unit_id = allocateRoomUnitForBooking(
+                            $room_id,
+                            $current_booking['check_in_date'],
+                            $current_booking['check_out_date'],
+                            null,
+                            $booking_id,
+                            $allocation_error
+                        );
+
+                        if ($allocated_room_unit_id === false) {
+                            throw new Exception($allocation_error ?: 'Could not auto-assign a room unit for this booking.');
+                        }
+
+                        $assign_stmt = $pdo->prepare("UPDATE bookings SET room_unit_id = ?, room_unit_assignment_source = 'auto', updated_at = NOW() WHERE id = ?");
+                        $assign_stmt->execute([$allocated_room_unit_id, $booking_id]);
+                    }
 
                     $reserve_error = null;
                     if (!reserveRoomForDateRange($room_id, $current_booking['check_in_date'], $current_booking['check_out_date'], $booking_id, $reserve_error)) {
@@ -370,7 +404,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                 } elseif ($current_status === 'confirmed' && $new_status === 'cancelled') {
                     // Update booking status
-                    $stmt = $pdo->prepare("UPDATE bookings SET status = ? WHERE id = ?");
+                    $stmt = $pdo->prepare("UPDATE bookings SET status = ?, room_unit_id = NULL, room_unit_assignment_source = 'released', updated_at = NOW() WHERE id = ?");
                     $stmt->execute([$new_status, $booking_id]);
                     $message = 'Booking status updated!';
 
@@ -549,7 +583,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 if ($bk && $bk['status'] === 'confirmed') {
                     // Update status to no-show
-                    $upd = $pdo->prepare("UPDATE bookings SET status = 'no-show', updated_at = NOW() WHERE id = ?");
+                    $upd = $pdo->prepare("UPDATE bookings SET status = 'no-show', room_unit_id = NULL, room_unit_assignment_source = 'released', updated_at = NOW() WHERE id = ?");
                     $upd->execute([$booking_id]);
                     
                     // Restore room availability (was decremented at confirmation)
@@ -561,6 +595,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'Only confirmed bookings can be marked as no-show.';
                 }
             }
+        } elseif ($action === 'release_room') {
+            $booking_id = intval($_POST['id'] ?? 0);
+            $release_reason = trim((string)($_POST['release_reason'] ?? ''));
+            if ($release_reason === '') {
+                $release_reason = 'Manual room release by admin';
+            }
+            if ($booking_id <= 0) {
+                throw new Exception('Invalid booking id for release.');
+            }
+
+            $pdo->beginTransaction();
+
+            $booking_stmt = $pdo->prepare("SELECT id, room_id, status, booking_reference, guest_email FROM bookings WHERE id = ? FOR UPDATE");
+            $booking_stmt->execute([$booking_id]);
+            $booking_row = $booking_stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$booking_row) {
+                throw new Exception('Booking not found.');
+            }
+
+            if (!in_array($booking_row['status'], ['confirmed', 'checked-in'], true)) {
+                throw new Exception('Only confirmed or checked-in bookings can be manually released.');
+            }
+
+            $release_stmt = $pdo->prepare("\n                UPDATE bookings\n                SET status = 'cancelled',\n                    room_unit_id = NULL,\n                    room_unit_assignment_source = 'released',\n                    updated_at = NOW()\n                WHERE id = ?\n                  AND status IN ('confirmed', 'checked-in')\n            ");
+            $release_stmt->execute([$booking_id]);
+
+            if ($release_stmt->rowCount() === 0) {
+                throw new Exception('Booking could not be released because it changed in another session.');
+            }
+
+            $restore_stmt = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available + 1 WHERE id = ? AND rooms_available < total_rooms");
+            $restore_stmt->execute([(int)$booking_row['room_id']]);
+
+            require_once '../config/email.php';
+            $email_status = 'Manual release audit entry (no email sent)';
+            logCancellationToDatabase(
+                (int)$booking_row['id'],
+                $booking_row['booking_reference'],
+                'room',
+                $booking_row['guest_email'] ?? null,
+                $user['id'],
+                $release_reason,
+                false,
+                $email_status
+            );
+            logCancellationToFile(
+                $booking_row['booking_reference'],
+                'room',
+                $booking_row['guest_email'] ?? '',
+                $user['full_name'] ?? $user['username'],
+                $release_reason,
+                false,
+                $email_status
+            );
+
+            $pdo->commit();
+            $message = 'Booking ' . htmlspecialchars($booking_row['booking_reference']) . ' released and room availability restored.';
         } elseif ($action === 'delete_booking') {
             // Only super admin can delete expired bookings
             if ($user['role'] !== 'admin') {
@@ -670,12 +762,15 @@ try {
     
     $stmt = $pdo->prepare("
         SELECT b.*,
-               r.name as room_name,
+             r.name as room_name,
+             ru.unit_label as room_unit_label,
+             COALESCE(NULLIF(b.room_unit_assignment_source, ''), CASE WHEN b.room_unit_id IS NULL THEN NULL ELSE 'auto' END) as room_unit_assignment_source,
                COALESCE(p.payment_status, b.payment_status) as actual_payment_status,
                p.payment_reference,
                p.payment_date as last_payment_date
         FROM bookings b
         LEFT JOIN rooms r ON b.room_id = r.id
+         LEFT JOIN room_units ru ON b.room_unit_id = ru.id
         LEFT JOIN payments p ON b.id = p.booking_id AND p.booking_type = 'room' AND p.status = 'completed'
         {$where_sql}
         ORDER BY b.created_at DESC
@@ -835,6 +930,37 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
         }
         .badge-new { background: #17a2b8; color: white; }
         .badge-contacted { background: #6c757d; color: white; }
+        .room-unit-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #eef4ff;
+            color: #234;
+        }
+        .assignment-chip {
+            display: inline-flex;
+            align-items: center;
+            margin-top: 4px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+        .assignment-chip.auto {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .assignment-chip.manual {
+            background: #fff3cd;
+            color: #856404;
+        }
         .quick-action {
             padding: 6px 14px;
             border: none;
@@ -980,6 +1106,13 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
         }
         .quick-action.cancel:hover {
             background: #c82333;
+        }
+        .quick-action.release {
+            background: #fd7e14;
+            color: white;
+        }
+        .quick-action.release:hover {
+            background: #dc6502;
         }
         /* Tab Navigation Styles */
         .tabs-container {
@@ -1367,6 +1500,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                         <?php foreach ($bookings as $booking): ?>
                             <?php
                                 $is_tentative = ($booking['status'] === 'tentative' || $booking['is_tentative'] == 1);
+                                $unit_assignment_source = resolveRoomUnitAssignmentSource($booking);
                                 $expires_soon = false;
                                 if ($is_tentative && $booking['tentative_expires_at']) {
                                     $expires_at = new DateTime($booking['tentative_expires_at']);
@@ -1392,7 +1526,17 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                     <?php echo htmlspecialchars($booking['guest_name']); ?>
                                     <br><small style="color: #666;"><?php echo htmlspecialchars($booking['guest_phone']); ?></small>
                                 </td>
-                                <td><?php echo htmlspecialchars($booking['room_name']); ?></td>
+                                <td>
+                                    <?php echo htmlspecialchars($booking['room_name']); ?>
+                                    <?php if (!empty($booking['room_unit_label'])): ?>
+                                        <br><span class="room-unit-chip"><i class="fas fa-door-closed"></i> <?php echo htmlspecialchars($booking['room_unit_label']); ?></span>
+                                    <?php endif; ?>
+                                    <?php if ($unit_assignment_source === 'auto'): ?>
+                                        <br><span class="assignment-chip auto">Auto Assigned</span>
+                                    <?php elseif ($unit_assignment_source === 'manual'): ?>
+                                        <br><span class="assignment-chip manual">Manual Unit</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo date('M d, Y', strtotime($booking['check_in_date'])); ?></td>
                                 <td><?php echo date('M d, Y', strtotime($booking['check_out_date'])); ?></td>
                                 <td><?php echo $booking['number_of_nights']; ?></td>
@@ -1506,6 +1650,11 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                         </button>
                                         <button class="quick-action undo-checkin" onclick="updateStatus(<?php echo $booking['id']; ?>, 'cancel-checkin')">
                                             <i class="fas fa-undo"></i> Cancel Check-in
+                                        </button>
+                                    <?php endif; ?>
+                                    <?php if (in_array($booking['status'], ['confirmed', 'checked-in'], true)): ?>
+                                        <button class="quick-action release" onclick="releaseRoom(<?php echo $booking['id']; ?>, '<?php echo htmlspecialchars($booking['booking_reference'], ENT_QUOTES); ?>')">
+                                            <i class="fas fa-unlock"></i> Release Room
                                         </button>
                                     <?php endif; ?>
                                     <?php if ($booking['payment_status'] !== 'paid'): ?>
@@ -2027,6 +2176,33 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             .catch(error => {
                 console.error('Error:', error);
                 Alert.show('Error marking as no-show', 'error');
+            });
+        }
+
+        function releaseRoom(id, reference) {
+            const reason = prompt('Release reason for booking ' + reference + ':', 'Manual room release by admin');
+            if (reason === null) return;
+            if (!confirm('Release booking ' + reference + '? This will cancel the booking and restore room availability.')) return;
+
+            const formData = new FormData();
+            formData.append('action', 'release_room');
+            formData.append('id', id);
+            formData.append('release_reason', (reason || '').trim());
+
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    Alert.show('Error releasing room', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Alert.show('Error releasing room', 'error');
             });
         }
 

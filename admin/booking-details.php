@@ -283,6 +283,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT b.*,
                r.name as room_name,
+             ru.unit_label as room_unit_label,
                r.price_per_night,
                COALESCE(p.payment_status, b.payment_status) as actual_payment_status,
                p.payment_reference,
@@ -293,6 +294,7 @@ try {
                p.total_amount as payment_total_with_vat
         FROM bookings b
         JOIN rooms r ON b.room_id = r.id
+        LEFT JOIN room_units ru ON b.room_unit_id = ru.id
         LEFT JOIN payments p ON b.id = p.booking_id AND p.booking_type = 'room' AND p.status = 'completed'
         WHERE b.id = ?
     ");
@@ -810,6 +812,10 @@ $currency_symbol = getSetting('currency_symbol');
                 <div class="detail-item">
                     <label>Room</label>
                     <div class="value"><?php echo htmlspecialchars($booking['room_name']); ?></div>
+                </div>
+                <div class="detail-item">
+                    <label>Assigned Unit</label>
+                    <div class="value"><?php echo htmlspecialchars($booking['room_unit_label'] ?? 'Auto (legacy booking)'); ?></div>
                 </div>
                 <div class="detail-item">
                     <label>Number of Guests</label>

@@ -32,6 +32,27 @@ function is_ajax_request() {
 $message = '';
 $error = '';
 
+ensureChildOccupancyInfrastructure();
+$room_units_ready = ensureRoomUnitInfrastructure();
+if (!$room_units_ready) {
+    try {
+        $pdo->query("SELECT id FROM room_units LIMIT 1");
+        $room_units_ready = true;
+    } catch (PDOException $e) {
+        $error = 'Room unit infrastructure could not be initialized. Unit assignment data may be unavailable.';
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'preview_backfill') {
+    header('Content-Type: application/json');
+
+    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 500;
+    $result = previewActiveBookingRoomUnitBackfill($limit);
+
+    echo json_encode($result);
+    exit;
+}
+
 // Handle POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -54,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare("
                     UPDATE rooms
                     SET name = ?, description = ?, short_description = ?, price_per_night = ?,
-                        price_single_occupancy = ?, price_double_occupancy = ?, price_triple_occupancy = ?,
+                        price_single_occupancy = ?, price_double_occupancy = ?, price_child_occupancy = ?,
                         size_sqm = ?, max_guests = ?, rooms_available = ?, total_rooms = ?,
                         bed_type = ?, amenities = ?, is_featured = ?, is_active = ?, display_order = ?
                     WHERE id = ?
@@ -66,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_POST['price_per_night'],
                     $_POST['price_single_occupancy'] ?? null,
                     $_POST['price_double_occupancy'] ?? null,
-                    $_POST['price_triple_occupancy'] ?? null,
+                    $_POST['price_child_occupancy'] ?? null,
                     $_POST['size_sqm'] ?? 0,
                     $_POST['max_guests'] ?? 2,
                     $rooms_available,
@@ -78,6 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_POST['display_order'] ?? 0,
                     $_POST['id']
                 ]);
+
+                syncRoomUnitsForRoom((int)$_POST['id'], $total_rooms);
                 
                 require_once __DIR__ . '/../config/cache.php';
                 clearRoomCache();
@@ -219,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $stmt = $pdo->prepare("
                 INSERT INTO rooms (name, description, short_description, price_per_night,
-                    price_single_occupancy, price_double_occupancy, price_triple_occupancy,
+                    price_single_occupancy, price_double_occupancy, price_child_occupancy,
                     size_sqm, max_guests, rooms_available, total_rooms,
                     bed_type, amenities, is_featured, is_active, display_order, video_path, video_type)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -231,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_POST['price_per_night'] ?? 0,
                 $_POST['price_single_occupancy'] ?? null,
                 $_POST['price_double_occupancy'] ?? null,
-                $_POST['price_triple_occupancy'] ?? null,
+                $_POST['price_child_occupancy'] ?? null,
                 $_POST['size_sqm'] ?? 0,
                 $_POST['max_guests'] ?? 2,
                 $_POST['rooms_available'] ?? 1,
@@ -244,6 +267,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $videoPath,
                 $videoType
             ]);
+
+            $new_room_id = (int)$pdo->lastInsertId();
+            $new_total_rooms = (int)($_POST['total_rooms'] ?? 1);
+            syncRoomUnitsForRoom($new_room_id, $new_total_rooms);
             
             require_once __DIR__ . '/../config/cache.php';
             clearRoomCache();
@@ -318,6 +345,120 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+        } elseif ($action === 'update_room_units') {
+            $room_id = (int)($_POST['room_id'] ?? 0);
+            $unit_labels = $_POST['unit_labels'] ?? [];
+
+            if ($room_id <= 0 || !is_array($unit_labels) || empty($unit_labels)) {
+                throw new Exception('Invalid room unit update payload.');
+            }
+
+            if (!$room_units_ready) {
+                throw new Exception('Room unit infrastructure is not available.');
+            }
+
+            $update_stmt = $pdo->prepare("\n                UPDATE room_units\n                SET unit_label = ?\n                WHERE id = ? AND room_id = ?\n            ");
+
+            $updated_count = 0;
+            foreach ($unit_labels as $unit_id => $unit_label) {
+                $unit_id = (int)$unit_id;
+                $unit_label = trim((string)$unit_label);
+                if ($unit_id <= 0 || $unit_label === '') {
+                    continue;
+                }
+
+                $update_stmt->execute([$unit_label, $unit_id, $room_id]);
+                if ($update_stmt->rowCount() > 0) {
+                    $updated_count++;
+                }
+            }
+
+            $message = $updated_count > 0
+                ? 'Room unit labels updated successfully.'
+                : 'No unit label changes were detected.';
+
+            if (is_ajax_request()) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => $message]);
+                exit;
+            }
+
+        } elseif ($action === 'backfill_room_units') {
+            $result = backfillActiveBookingRoomUnits(500);
+            if (!$result['success']) {
+                throw new Exception($result['message'] ?: 'Room unit backfill failed.');
+            }
+
+            $message = $result['message'];
+            if (!empty($result['skipped_references'])) {
+                $message .= ' Skipped refs: ' . implode(', ', $result['skipped_references']);
+            }
+
+            if (is_ajax_request()) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => $message, 'result' => $result]);
+                exit;
+            }
+
+        } elseif ($action === 'release_unit_booking') {
+            $booking_id = (int)($_POST['booking_id'] ?? 0);
+            $release_reason = trim((string)($_POST['release_reason'] ?? ''));
+            if ($release_reason === '') {
+                $release_reason = 'Manual room release from room management';
+            }
+            if ($booking_id <= 0) {
+                throw new Exception('Invalid booking selected for release.');
+            }
+
+            $pdo->beginTransaction();
+
+            $booking_stmt = $pdo->prepare("SELECT id, room_id, status, booking_reference, guest_email FROM bookings WHERE id = ? FOR UPDATE");
+            $booking_stmt->execute([$booking_id]);
+            $booking = $booking_stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$booking) {
+                throw new Exception('Booking not found.');
+            }
+
+            if (!in_array($booking['status'], ['confirmed', 'checked-in'], true)) {
+                throw new Exception('Only confirmed or checked-in bookings can be released here.');
+            }
+
+            $release_stmt = $pdo->prepare("\n                UPDATE bookings\n                SET status = 'cancelled',\n                    room_unit_id = NULL,\n                    room_unit_assignment_source = 'released',\n                    updated_at = NOW()\n                WHERE id = ?\n                  AND status IN ('confirmed', 'checked-in')\n            ");
+            $release_stmt->execute([$booking_id]);
+
+            if ($release_stmt->rowCount() === 0) {
+                throw new Exception('Booking status changed before release. Please refresh and try again.');
+            }
+
+            $restore_stmt = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available + 1 WHERE id = ? AND rooms_available < total_rooms");
+            $restore_stmt->execute([(int)$booking['room_id']]);
+
+            require_once '../config/email.php';
+            $email_status = 'Manual release audit entry (no email sent)';
+            logCancellationToDatabase(
+                (int)$booking['id'],
+                $booking['booking_reference'],
+                'room',
+                $booking['guest_email'] ?? null,
+                $user['id'],
+                $release_reason,
+                false,
+                $email_status
+            );
+            logCancellationToFile(
+                $booking['booking_reference'],
+                'room',
+                $booking['guest_email'] ?? '',
+                $user['full_name'] ?? $user['username'],
+                $release_reason,
+                false,
+                $email_status
+            );
+
+            $pdo->commit();
+            $message = 'Released booking ' . htmlspecialchars($booking['booking_reference']) . '. Room availability was restored.';
+
         } elseif ($action === 'update_order') {
             // Drag-and-drop reorder
             $order = json_decode($_POST['order'] ?? '[]', true);
@@ -354,6 +495,52 @@ try {
 } catch (PDOException $e) {
     $error = 'Error fetching rooms: ' . $e->getMessage();
     $rooms = [];
+}
+
+$room_units_by_room = [];
+if ($room_units_ready) {
+    foreach ($rooms as $room_row) {
+        $room_total_rooms = (int)($room_row['total_rooms'] ?? 0);
+        syncRoomUnitsForRoom((int)$room_row['id'], $room_total_rooms > 0 ? $room_total_rooms : null);
+    }
+
+    try {
+        $units_stmt = $pdo->query("\n            SELECT id, room_id, unit_code, unit_label\n            FROM room_units\n            ORDER BY room_id ASC, id ASC\n        ");
+        $room_units = $units_stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($room_units as $unit_row) {
+            $rid = (int)$unit_row['room_id'];
+            if (!isset($room_units_by_room[$rid])) {
+                $room_units_by_room[$rid] = [];
+            }
+            $room_units_by_room[$rid][] = $unit_row;
+        }
+    } catch (PDOException $e) {
+        $room_units_by_room = [];
+    }
+}
+
+$unit_booking_map = [];
+try {
+    $active_booking_stmt = $pdo->query("\n        SELECT b.id, b.booking_reference, b.room_id, b.room_unit_id, b.status, b.guest_name,\n               b.check_in_date, b.check_out_date,\n               COALESCE(NULLIF(b.room_unit_assignment_source, ''), CASE WHEN b.room_unit_id IS NULL THEN NULL ELSE 'auto' END) as room_unit_assignment_source\n        FROM bookings b\n        WHERE b.room_unit_id IS NOT NULL\n          AND b.status IN ('pending', 'tentative', 'confirmed', 'checked-in')\n        ORDER BY FIELD(b.status, 'checked-in', 'confirmed', 'tentative', 'pending'), b.check_in_date ASC, b.id ASC\n    ");
+    $active_unit_bookings = $active_booking_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($active_unit_bookings as $booking_row) {
+        $unit_id = (int)$booking_row['room_unit_id'];
+        if ($unit_id <= 0 || isset($unit_booking_map[$unit_id])) {
+            continue;
+        }
+        $unit_booking_map[$unit_id] = $booking_row;
+    }
+} catch (PDOException $e) {
+    $unit_booking_map = [];
+}
+
+$unassigned_active_bookings = 0;
+try {
+    $count_stmt = $pdo->query("\n        SELECT COUNT(*)\n        FROM bookings\n        WHERE room_unit_id IS NULL\n          AND status IN ('pending', 'tentative', 'confirmed', 'checked-in')\n    ");
+    $unassigned_active_bookings = (int)$count_stmt->fetchColumn();
+} catch (PDOException $e) {
+    $unassigned_active_bookings = 0;
 }
 
 $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
@@ -446,6 +633,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
             margin-bottom: 12px;
             line-height: 1.4;
             display: -webkit-box;
+            line-clamp: 2;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
@@ -749,6 +937,15 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
         <div class="page-header-row">
             <h2 class="page-title"><i class="fas fa-bed"></i> Manage Hotel Rooms</h2>
             <div style="display:flex; gap:10px; align-items:center;">
+                <button class="btn-action" type="button" onclick="openBackfillPreview()" style="background:#184e77; color:#fff; padding:10px 16px; border-radius:8px;" title="Preview which bookings will be assigned or skipped">
+                    <i class="fas fa-search"></i> Preview Backfill
+                </button>
+                <form method="POST" style="margin:0;">
+                    <input type="hidden" name="action" value="backfill_room_units">
+                    <button class="btn-action" type="submit" style="background:#1f7a4f; color:#fff; padding:10px 16px; border-radius:8px;" title="Assign units to active bookings with missing unit IDs">
+                        <i class="fas fa-random"></i> Backfill Units (<?php echo (int)$unassigned_active_bookings; ?>)
+                    </button>
+                </form>
                 <span style="font-size:12px; color:#999;"><i class="fas fa-arrows-alt"></i> Drag cards to reorder</span>
                 <button class="btn-action" type="button" style="background:var(--gold,#D4AF37); color:var(--deep-navy,#05090F); padding:12px 24px; font-size:14px; border-radius:8px;" onclick="openAddModal()">
                     <i class="fas fa-plus"></i> Add New Room
@@ -766,6 +963,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
         <?php if (!empty($rooms)): ?>
         <div class="room-cards-grid" id="roomsGrid">
             <?php foreach ($rooms as $room): ?>
+            <?php $room_units_for_card = $room_units_by_room[(int)$room['id']] ?? []; ?>
             <div class="room-card" data-id="<?php echo $room['id']; ?>" draggable="true">
                 <div class="drag-handle"><i class="fas fa-grip-vertical"></i></div>
                 <span class="order-badge">#<?php echo $room['display_order']; ?></span>
@@ -806,11 +1004,64 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                         </div>
                     </div>
 
-                    <?php if ($room['price_single_occupancy'] || $room['price_double_occupancy'] || $room['price_triple_occupancy']): ?>
+                    <div class="unit-panel" style="margin:10px 0 12px; padding:10px; border:1px solid #e6e6e6; border-radius:10px; background:#fafafa;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <strong style="font-size:12px; color:#555;"><i class="fas fa-door-closed"></i> Unit Labels</strong>
+                            <span style="font-size:11px; color:#888;"><?php echo count($room_units_for_card); ?> units</span>
+                        </div>
+                        <?php if (!empty($room_units_for_card)): ?>
+                            <form method="POST" class="unit-label-form" style="display:grid; gap:8px;">
+                                <input type="hidden" name="action" value="update_room_units">
+                                <input type="hidden" name="room_id" value="<?php echo (int)$room['id']; ?>">
+                                <?php foreach ($room_units_for_card as $unit_item): ?>
+                                    <label style="display:grid; grid-template-columns:64px 1fr; gap:8px; align-items:center; font-size:11px; color:#666;">
+                                        <span>#<?php echo htmlspecialchars($unit_item['unit_code']); ?></span>
+                                        <input type="text" name="unit_labels[<?php echo (int)$unit_item['id']; ?>]" value="<?php echo htmlspecialchars($unit_item['unit_label']); ?>" style="padding:6px 8px; border:1px solid #ddd; border-radius:6px; font-size:12px;">
+                                    </label>
+                                <?php endforeach; ?>
+                                <button type="submit" class="btn-action" style="background:#2f4a87; color:#fff; padding:7px 10px; border-radius:7px; font-size:12px; justify-self:start;">
+                                    <i class="fas fa-save"></i> Save Unit Labels
+                                </button>
+                            </form>
+
+                            <div style="margin-top:10px; border-top:1px solid #ececec; padding-top:10px; display:grid; gap:8px;">
+                                <strong style="font-size:11px; color:#666;"><i class="fas fa-bed"></i> Unit Occupancy</strong>
+                                <?php foreach ($room_units_for_card as $unit_item): ?>
+                                    <?php $unit_booking = $unit_booking_map[(int)$unit_item['id']] ?? null; ?>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 8px; border:1px solid #ededed; border-radius:7px; background:#fff;">
+                                        <div style="font-size:11px; color:#555;">
+                                            <strong><?php echo htmlspecialchars($unit_item['unit_label']); ?></strong>
+                                            <?php if ($unit_booking): ?>
+                                                <?php $is_auto_unit = strtolower((string)($unit_booking['room_unit_assignment_source'] ?? '')) === 'auto'; ?>
+                                                <?php $is_manual_unit = strtolower((string)($unit_booking['room_unit_assignment_source'] ?? '')) === 'manual'; ?>
+                                                <br>
+                                                <span style="color:#2f4a87; font-weight:600;"><?php echo htmlspecialchars($unit_booking['booking_reference']); ?></span>
+                                                <span style="display:inline-block; margin-left:4px; padding:1px 6px; border-radius:999px; font-size:10px; <?php echo $is_auto_unit ? 'background:#d1ecf1;color:#0c5460;' : ($is_manual_unit ? 'background:#fff3cd;color:#856404;' : 'background:#e9ecef;color:#495057;'); ?>"><?php echo $is_auto_unit ? 'Auto' : ($is_manual_unit ? 'Manual' : 'Assigned'); ?></span>
+                                                <span style="display:inline-block; margin-left:4px; padding:1px 6px; border-radius:999px; font-size:10px; background:#f1f3f5; color:#495057;"><?php echo htmlspecialchars(ucfirst($unit_booking['status'])); ?></span>
+                                            <?php else: ?>
+                                                <br><span style="color:#1e7a4b;">Available</span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if ($unit_booking && in_array($unit_booking['status'], ['confirmed', 'checked-in'], true)): ?>
+                                            <form method="POST" style="margin:0;">
+                                                <button type="button" class="btn-action" style="background:#fd7e14; color:#fff; padding:6px 10px; border-radius:6px; font-size:11px;" onclick="releaseUnitBooking(<?php echo (int)$unit_booking['id']; ?>, '<?php echo htmlspecialchars($unit_booking['booking_reference'], ENT_QUOTES); ?>');">
+                                                    <i class="fas fa-unlock"></i> Release
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <div style="font-size:12px; color:#999;">No units yet. Update room totals to generate units.</div>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($room['price_single_occupancy'] || $room['price_double_occupancy'] || $room['price_child_occupancy']): ?>
                     <div style="font-size:11px; color:#888; margin-bottom:10px;">
                         <?php if ($room['price_single_occupancy']): ?>Single: <?php echo $currency; ?> <?php echo number_format($room['price_single_occupancy'], 0); ?> <?php endif; ?>
                         <?php if ($room['price_double_occupancy']): ?>| Double: <?php echo $currency; ?> <?php echo number_format($room['price_double_occupancy'], 0); ?> <?php endif; ?>
-                        <?php if ($room['price_triple_occupancy']): ?>| Triple: <?php echo $currency; ?> <?php echo number_format($room['price_triple_occupancy'], 0); ?> <?php endif; ?>
+                        <?php if ($room['price_child_occupancy']): ?>| Child: <?php echo $currency; ?> <?php echo number_format($room['price_child_occupancy'], 0); ?> <?php endif; ?>
                     </div>
                     <?php endif; ?>
 
@@ -908,8 +1159,8 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                                 <input type="number" name="price_double_occupancy" id="editPriceDouble" step="0.01" placeholder="Optional">
                             </div>
                             <div class="form-group">
-                                <label>Triple Occupancy Price</label>
-                                <input type="number" name="price_triple_occupancy" id="editPriceTriple" step="0.01" placeholder="Optional">
+                                <label>Child Occupancy Price</label>
+                                <input type="number" name="price_child_occupancy" id="editPriceChild" step="0.01" placeholder="Optional">
                             </div>
                         </div>
                     </div>
@@ -1018,8 +1269,8 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                                 <input type="number" name="price_double_occupancy" step="0.01" placeholder="Optional">
                             </div>
                             <div class="form-group">
-                                <label>Triple Occupancy Price</label>
-                                <input type="number" name="price_triple_occupancy" step="0.01" placeholder="Optional">
+                                <label>Child Occupancy Price</label>
+                                <input type="number" name="price_child_occupancy" step="0.01" placeholder="Optional">
                             </div>
                         </div>
                     </div>
@@ -1086,6 +1337,52 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Backfill Preview Modal -->
+    <div class="modal-overlay" id="backfillPreviewModal">
+        <div class="modal-content" style="max-width:900px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-search"></i> Backfill Preview</h3>
+                <button class="modal-close" type="button" onclick="closeBackfillPreview()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="backfillPreviewStatus" style="margin-bottom:14px; color:#555;">Loading preview...</div>
+
+                <div style="display:grid; grid-template-columns:repeat(4, minmax(120px, 1fr)); gap:10px; margin-bottom:16px;">
+                    <div style="background:#f3f7ff; border:1px solid #dbe7ff; border-radius:8px; padding:10px;">
+                        <div style="font-size:11px; color:#6a7aa0;">Processed</div>
+                        <div id="previewProcessed" style="font-size:18px; font-weight:700; color:#243b7a;">0</div>
+                    </div>
+                    <div style="background:#edf9f1; border:1px solid #d3f1de; border-radius:8px; padding:10px;">
+                        <div style="font-size:11px; color:#4b7a60;">Can Update</div>
+                        <div id="previewUpdatable" style="font-size:18px; font-weight:700; color:#1e7a4b;">0</div>
+                    </div>
+                    <div style="background:#fff7ed; border:1px solid #ffe4c7; border-radius:8px; padding:10px;">
+                        <div style="font-size:11px; color:#9a6f2f;">Would Skip</div>
+                        <div id="previewSkipped" style="font-size:18px; font-weight:700; color:#b0701e;">0</div>
+                    </div>
+                    <div style="background:#f8f8f8; border:1px solid #e8e8e8; border-radius:8px; padding:10px;">
+                        <div style="font-size:11px; color:#666;">Sample Size</div>
+                        <div id="previewSample" style="font-size:18px; font-weight:700; color:#444;">500</div>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                    <div style="border:1px solid #eaeaea; border-radius:8px; padding:10px; max-height:320px; overflow:auto;">
+                        <h4 style="margin:0 0 8px; font-size:13px; color:#1e7a4b;"><i class="fas fa-check"></i> Updatable Bookings (sample)</h4>
+                        <div id="previewUpdatableList" style="font-size:12px; color:#444;">-</div>
+                    </div>
+                    <div style="border:1px solid #eaeaea; border-radius:8px; padding:10px; max-height:320px; overflow:auto;">
+                        <h4 style="margin:0 0 8px; font-size:13px; color:#b0701e;"><i class="fas fa-exclamation-circle"></i> Skipped Bookings (sample)</h4>
+                        <div id="previewSkippedList" style="font-size:12px; color:#444;">-</div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" onclick="closeBackfillPreview()" style="padding:10px 24px; border:1px solid #ddd; border-radius:6px; background:white; cursor:pointer;">Close</button>
+            </div>
         </div>
     </div>
 
@@ -1213,7 +1510,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
         document.getElementById('editPrice').value = room.price_per_night || '';
         document.getElementById('editPriceSingle').value = room.price_single_occupancy || '';
         document.getElementById('editPriceDouble').value = room.price_double_occupancy || '';
-        document.getElementById('editPriceTriple').value = room.price_triple_occupancy || '';
+        document.getElementById('editPriceChild').value = room.price_child_occupancy || '';
         document.getElementById('editSize').value = room.size_sqm || '';
         document.getElementById('editGuests').value = room.max_guests || 2;
         document.getElementById('editBedType').value = room.bed_type || '';
@@ -1236,6 +1533,73 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
     }
     function closeAddModal() {
         document.getElementById('addModal').style.display = 'none';
+    }
+
+    // ===== BACKFILL PREVIEW MODAL =====
+    function openBackfillPreview() {
+        var modal = document.getElementById('backfillPreviewModal');
+        modal.style.display = 'flex';
+        loadBackfillPreview();
+    }
+
+    function closeBackfillPreview() {
+        document.getElementById('backfillPreviewModal').style.display = 'none';
+    }
+
+    function renderBackfillPreviewList(containerId, rows, type) {
+        var container = document.getElementById(containerId);
+        if (!rows || !rows.length) {
+            container.innerHTML = '<div style="color:#999;">No records in this sample.</div>';
+            return;
+        }
+
+        var html = rows.map(function(row) {
+            var line1 = '<strong>' + escapeHtml(row.booking_reference || ('#' + row.booking_id)) + '</strong> '; 
+            line1 += '(' + escapeHtml((row.check_in_date || '') + ' to ' + (row.check_out_date || '')) + ')';
+
+            if (type === 'updatable') {
+                return '<div style="padding:6px 0; border-bottom:1px solid #f1f1f1;">' +
+                    line1 + '<br><span style="color:#1e7a4b;">→ ' + escapeHtml(row.assigned_unit_label || ('Unit #' + row.assigned_unit_id)) + '</span>' +
+                    '</div>';
+            }
+
+            return '<div style="padding:6px 0; border-bottom:1px solid #f1f1f1;">' +
+                line1 + '<br><span style="color:#b0701e;">' + escapeHtml(row.reason || 'Skipped') + '</span>' +
+                '</div>';
+        }).join('');
+
+        container.innerHTML = html;
+    }
+
+    function loadBackfillPreview() {
+        document.getElementById('backfillPreviewStatus').textContent = 'Loading preview...';
+        document.getElementById('previewUpdatableList').innerHTML = '-';
+        document.getElementById('previewSkippedList').innerHTML = '-';
+
+        fetch('room-management.php?action=preview_backfill&limit=500', {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data || !data.success) {
+                document.getElementById('backfillPreviewStatus').textContent = (data && data.message) ? data.message : 'Failed to load preview.';
+                return;
+            }
+
+            document.getElementById('backfillPreviewStatus').textContent = data.message || 'Preview loaded.';
+            document.getElementById('previewProcessed').textContent = String(data.processed || 0);
+            document.getElementById('previewUpdatable').textContent = String(data.updated || 0);
+            document.getElementById('previewSkipped').textContent = String(data.skipped || 0);
+            document.getElementById('previewSample').textContent = '500';
+
+            renderBackfillPreviewList('previewUpdatableList', data.updatable_records || [], 'updatable');
+            renderBackfillPreviewList('previewSkippedList', data.skipped_records || [], 'skipped');
+        })
+        .catch(function() {
+            document.getElementById('backfillPreviewStatus').textContent = 'Error loading preview data.';
+        });
     }
 
     // ===== IMAGE MODAL =====
@@ -1576,6 +1940,35 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
     function escapeHtml(str) {
         if (!str) return '';
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    function releaseUnitBooking(bookingId, reference) {
+        var reason = prompt('Release reason for booking ' + reference + ':', 'Manual room release from room management');
+        if (reason === null) {
+            return;
+        }
+        if (!confirm('Release booking ' + reference + ' from this unit and restore room availability?')) {
+            return;
+        }
+
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = window.location.href;
+
+        [
+            ['action', 'release_unit_booking'],
+            ['booking_id', String(bookingId)],
+            ['release_reason', (reason || '').trim()]
+        ].forEach(function(pair) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = pair[0];
+            input.value = pair[1];
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
     }
     </script>
 
