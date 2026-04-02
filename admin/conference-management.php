@@ -135,6 +135,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['enquiry_action'])) {
         $enquiry = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($action === 'confirm') {
+            // Guard: cannot confirm an expired conference enquiry
+            if ($enquiry && !empty($enquiry['event_date'])
+                && strtotime($enquiry['event_date']) < strtotime('today')) {
+                throw new Exception('Cannot confirm an expired conference enquiry \u2014 the event date has already passed.');
+            }
             $stmt = $pdo->prepare("UPDATE conference_inquiries SET status = 'confirmed' WHERE id = ?");
             $stmt->execute([$enquiry_id]);
             
@@ -263,6 +268,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['enquiry_action'])) {
             $stmt = $pdo->prepare("UPDATE conference_inquiries SET notes = ? WHERE id = ?");
             $stmt->execute([$notes, $enquiry_id]);
             $message = 'Notes updated successfully!';
+        } elseif ($action === 'delete_enquiry') {
+            // Only super admin can delete expired conference enquiries
+            if ($user['role'] !== 'admin') {
+                throw new Exception('Only the super admin can delete conference enquiries.');
+            }
+            $del_stmt = $pdo->prepare("SELECT event_date, inquiry_reference FROM conference_inquiries WHERE id = ?");
+            $del_stmt->execute([$enquiry_id]);
+            $del_row = $del_stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$del_row) {
+                throw new Exception('Enquiry not found.');
+            }
+            if (empty($del_row['event_date']) || strtotime($del_row['event_date']) >= strtotime('today')) {
+                throw new Exception('Only expired conference enquiries (past event date) can be deleted.');
+            }
+            $backup_ok = backupRecordBeforeDelete('conference_inquiries', $enquiry_id, 'id', [
+                'reason' => 'expired_conference_enquiry_cleanup',
+                'inquiry_reference' => $del_row['inquiry_reference'] ?? null,
+                'deleted_by' => $user['id'] ?? null,
+                'deleted_from' => 'admin/conference-management.php'
+            ]);
+            if (!$backup_ok) {
+                throw new Exception('Unable to back up conference enquiry record. Deletion cancelled.');
+            }
+            $stmt = $pdo->prepare("DELETE FROM conference_inquiries WHERE id = ?");
+            $stmt->execute([$enquiry_id]);
+            $message = 'Expired conference enquiry ' . htmlspecialchars($del_row['inquiry_reference']) . ' deleted successfully.';
         }
     } catch (PDOException $e) {
         $error = 'Error updating enquiry: ' . $e->getMessage();
@@ -595,7 +626,8 @@ try {
                         </tr>
                         <?php else: ?>
                         <?php foreach ($conference_enquiries as $enquiry): ?>
-                        <tr>
+                        <?php $is_conf_expired = !empty($enquiry['event_date']) && strtotime($enquiry['event_date']) < strtotime('today'); ?>
+                        <tr<?php if ($is_conf_expired) echo ' style="opacity:0.6;background-color:#f0f0f0 !important;"'; ?>>
                             <td><strong><?php echo htmlspecialchars($enquiry['inquiry_reference']); ?></strong></td>
                             <td><?php echo htmlspecialchars($enquiry['company_name']); ?></td>
                             <td>
@@ -603,7 +635,12 @@ try {
                                 <small><?php echo htmlspecialchars($enquiry['email']); ?></small><br>
                                 <small><?php echo htmlspecialchars($enquiry['phone']); ?></small>
                             </td>
-                            <td><?php echo date('M j, Y', strtotime($enquiry['event_date'])); ?></td>
+                            <td>
+                                <?php echo date('M j, Y', strtotime($enquiry['event_date'])); ?>
+                                <?php if ($is_conf_expired): ?>
+                                    <br><span style="background:#6c757d;color:white;font-size:11px;padding:2px 7px;border-radius:4px;display:inline-block;margin-top:3px;">Expired</span>
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <?php echo date('H:i', strtotime($enquiry['start_time'])); ?> -
                                 <?php echo date('H:i', strtotime($enquiry['end_time'])); ?>
@@ -624,7 +661,7 @@ try {
                             </td>
                             <td>
                                 <div class="quick-actions">
-                                    <?php if ($enquiry['status'] === 'pending'): ?>
+                                    <?php if ($enquiry['status'] === 'pending' && !$is_conf_expired): ?>
                                         <form method="POST" style="display:inline;">
                                             <input type="hidden" name="enquiry_action" value="confirm">
                                             <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
@@ -661,6 +698,15 @@ try {
                                     <button type="button" class="btn btn-primary btn-sm" onclick="showEnquiryDetails(<?php echo htmlspecialchars(json_encode($enquiry)); ?>)">
                                         <i class="fas fa-eye"></i> Details
                                     </button>
+                                    <?php if ($is_conf_expired && $user['role'] === 'admin'): ?>
+                                        <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="enquiry_action" value="delete_enquiry">
+                                            <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
+                                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('PERMANENTLY delete this expired conference enquiry? This cannot be undone.');">
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>

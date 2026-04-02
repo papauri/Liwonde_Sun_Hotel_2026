@@ -22,10 +22,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['inquiry_action'])) {
         
         if ($action === 'update_status') {
             $new_status = $_POST['new_status'] ?? 'new';
+
+            // Guard: cannot mark an expired inquiry as converted
+            $exp_check = $pdo->prepare("SELECT preferred_date FROM gym_inquiries WHERE id = ?");
+            $exp_check->execute([$inquiry_id]);
+            $exp_row = $exp_check->fetch(PDO::FETCH_ASSOC);
+            if ($exp_row && !empty($exp_row['preferred_date'])
+                && strtotime($exp_row['preferred_date']) < strtotime('today')
+                && $new_status === 'converted') {
+                throw new Exception('Cannot mark an expired gym inquiry as converted \u2014 the preferred date has already passed.');
+            }
+
             $stmt = $pdo->prepare("UPDATE gym_inquiries SET status = ? WHERE id = ?");
             $stmt->execute([$new_status, $inquiry_id]);
             $message = 'Inquiry status updated successfully!';
         } elseif ($action === 'delete') {
+            // Guard: only super admin can delete expired inquiries
+            $exp_check = $pdo->prepare("SELECT preferred_date FROM gym_inquiries WHERE id = ?");
+            $exp_check->execute([$inquiry_id]);
+            $exp_row = $exp_check->fetch(PDO::FETCH_ASSOC);
+            if ($exp_row && !empty($exp_row['preferred_date'])
+                && strtotime($exp_row['preferred_date']) < strtotime('today')
+                && $user['role'] !== 'admin') {
+                throw new Exception('Only the super admin can delete expired gym inquiries.');
+            }
+            $backup_ok = backupRecordBeforeDelete('gym_inquiries', $inquiry_id, 'id', [
+                'reason' => 'gym_inquiry_delete',
+                'preferred_date' => $exp_row['preferred_date'] ?? null,
+                'deleted_by' => $user['id'] ?? null,
+                'deleted_from' => 'admin/gym-inquiries.php'
+            ]);
+            if (!$backup_ok) {
+                throw new Exception('Unable to back up gym inquiry record. Deletion cancelled.');
+            }
             $stmt = $pdo->prepare("DELETE FROM gym_inquiries WHERE id = ?");
             $stmt->execute([$inquiry_id]);
             $message = 'Gym inquiry deleted successfully!';
@@ -317,7 +346,8 @@ try {
                     </tr>
                     <?php else: ?>
                     <?php foreach ($gym_inquiries as $inquiry): ?>
-                    <tr>
+                    <?php $is_gym_expired = !empty($inquiry['preferred_date']) && strtotime($inquiry['preferred_date']) < strtotime('today'); ?>
+                    <tr<?php if ($is_gym_expired) echo ' style="opacity:0.6;background-color:#f0f0f0 !important;"'; ?>>
                         <td><strong><?php echo htmlspecialchars($inquiry['reference_number']); ?></strong></td>
                         <td><?php echo htmlspecialchars($inquiry['name']); ?></td>
                         <td>
@@ -331,11 +361,18 @@ try {
                                 <?php if ($inquiry['preferred_time']): ?>
                                     <br><small><?php echo date('H:i', strtotime($inquiry['preferred_time'])); ?></small>
                                 <?php endif; ?>
+                                <?php if ($is_gym_expired): ?>
+                                    <br><span style="background:#6c757d;color:white;font-size:11px;padding:2px 7px;border-radius:4px;display:inline-block;margin-top:3px;">Expired</span>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <em>N/A</em>
                             <?php endif; ?>
                         </td>
                         <td>
+                            <?php if ($is_gym_expired): ?>
+                                <span class="badge badge-<?php echo $inquiry['status']; ?>"><?php echo ucfirst($inquiry['status']); ?></span>
+                                <br><small style="color:#888;font-size:11px;">Status locked (expired)</small>
+                            <?php else: ?>
                             <form method="POST" style="display:inline;">
                                 <input type="hidden" name="inquiry_action" value="update_status">
                                 <input type="hidden" name="inquiry_id" value="<?php echo $inquiry['id']; ?>">
@@ -347,6 +384,7 @@ try {
                                     <option value="cancelled" <?php echo $inquiry['status'] === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
                                 </select>
                             </form>
+                            <?php endif; ?>
                         </td>
                         <td>
                             <small><?php echo date('M j, Y', strtotime($inquiry['created_at'])); ?></small><br>
@@ -357,6 +395,7 @@ try {
                                 <button type="button" class="btn btn-primary btn-sm" onclick="showInquiryDetails(<?php echo htmlspecialchars(json_encode($inquiry)); ?>)">
                                     <i class="fas fa-eye"></i> View
                                 </button>
+                                <?php if (!$is_gym_expired || $user['role'] === 'admin'): ?>
                                 <form method="POST" style="display:inline;">
                                     <input type="hidden" name="inquiry_action" value="delete">
                                     <input type="hidden" name="inquiry_id" value="<?php echo $inquiry['id']; ?>">
@@ -364,6 +403,7 @@ try {
                                         <i class="fas fa-trash"></i> Delete
                                     </button>
                                 </form>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>

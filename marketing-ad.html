@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel Management System - Marketing Ad</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #1a1a2e;
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        .ad-container {
+            width: 1200px;
+            height: 630px;
+            background: linear-gradient(135deg, #0A1929 0%, #1a365d 40%, #2c5282 100%);
+            border-radius: 0;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+        }
+        
+        /* Animated background pattern */
+        .ad-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(212, 175, 55, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        
+        /* Gold accent line */
+        .gold-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, transparent, #d4af37, transparent);
+        }
+        
+        /* Left section - Main content */
+        .left-section {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 45%;
+            padding: 45px 45px 80px 45px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            gap: 15px;
+            z-index: 2;
+        }
+        
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo-icon {
+            width: 55px;
+            height: 55px;
+            background: linear-gradient(135deg, #d4af37, #f0d060);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            color: #0A1929;
+            box-shadow: 0 8px 25px rgba(212, 175, 55, 0.4);
+        }
+        
+        .logo-text {
+            font-family: 'Playfair Display', serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: 1px;
+        }
+        
+        .logo-text span {
+            color: #d4af37;
+        }
+        
+        .main-headline {
+            font-family: 'Playfair Display', serif;
+            font-size: 36px;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.15;
+            margin-bottom: 0;
+        }
+        
+        .main-headline .gold {
+            color: #d4af37;
+            display: block;
+        }
+        
+        .sub-headline {
+            font-size: 15px;
+            color: rgba(255,255,255,0.75);
+            font-weight: 300;
+            line-height: 1.5;
+            margin-bottom: 0;
+        }
+        
+        .cta-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #d4af37, #e8c547);
+            color: #0A1929;
+            padding: 14px 30px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 8px 30px rgba(212, 175, 55, 0.35);
+            width: fit-content;
+        }
+        
+        /* Right section - Feature cards */
+        .right-section {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 55%;
+            padding: 45px 40px 70px 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            z-index: 2;
+            overflow: hidden;
+        }
+        
+        .section-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: #d4af37;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .feature-card {
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 20px 15px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            background: rgba(255,255,255,0.12);
+            transform: translateY(-3px);
+        }
+        
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(212, 175, 55, 0.1));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 12px;
+            font-size: 20px;
+            color: #d4af37;
+        }
+        
+        .feature-card h4 {
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .feature-card p {
+            color: rgba(255,255,255,0.6);
+            font-size: 10px;
+            line-height: 1.4;
+        }
+        
+        /* Bottom stats bar */
+        .stats-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 25, 41, 0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(212, 175, 55, 0.3);
+            padding: 15px 45px;
+            display: flex;
+            justify-content: space-around;
+            z-index: 3;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-family: 'Playfair Display', serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: #d4af37;
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 3px;
+        }
+        
+        /* Decorative elements */
+        .decorative-circle {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            pointer-events: none;
+        }
+        
+        .circle-1 {
+            width: 300px;
+            height: 300px;
+            top: -100px;
+            right: 200px;
+        }
+        
+        .circle-2 {
+            width: 200px;
+            height: 200px;
+            bottom: 50px;
+            left: 400px;
+        }
+        
+        /* Website mockup element */
+        .website-mockup {
+            position: absolute;
+            top: 50%;
+            right: -30px;
+            transform: translateY(-50%);
+            width: 280px;
+            height: 180px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            opacity: 0.3;
+        }
+        
+        .mockup-header {
+            height: 25px;
+            background: rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            gap: 5px;
+        }
+        
+        .mockup-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .mockup-content {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .mockup-line {
+            height: 6px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 3px;
+        }
+        
+        .mockup-line.short { width: 60%; }
+        .mockup-line.medium { width: 80%; }
+        .mockup-line.long { width: 100%; }
+        
+        /* Badge */
+        .badge-new {
+            position: absolute;
+            top: 25px;
+            right: 30px;
+            background: linear-gradient(135deg, #d4af37, #e8c547);
+            color: #0A1929;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            z-index: 3;
+        }
+    </style>
+</head>
+<body>
+    <div class="ad-container">
+        <!-- Gold accent line at top -->
+        <div class="gold-line"></div>
+        
+        <!-- Decorative circles -->
+        <div class="decorative-circle circle-1"></div>
+        <div class="decorative-circle circle-2"></div>
+        
+        <!-- Badge -->
+        <div class="badge-new">Complete Solution</div>
+        
+        <!-- Left Section - Main Content -->
+        <div class="left-section">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i class="fas fa-hotel"></i>
+                </div>
+                <div class="logo-text">Hotel <span>Pro</span> Management</div>
+            </div>
+            
+            <div class="main-headline">
+                More Than A Website.
+                <span class="gold">A Complete Hotel Management System.</span>
+            </div>
+            
+            <div class="sub-headline">
+                From bookings to billing, conferences to restaurants — we build custom hotel management platforms tailored to your unique needs.
+            </div>
+            
+            <div class="cta-button">
+                Transform Your Hotel Operations <i class="fas fa-arrow-right"></i>
+            </div>
+        </div>
+        
+        <!-- Right Section - Feature Cards -->
+        <div class="right-section">
+            <div class="section-label">Built-In Features</div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <h4>Smart Bookings</h4>
+                    <p>Online reservations, auto-confirmations & calendar management</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-credit-card"></i>
+                    </div>
+                    <h4>Payments & Invoicing</h4>
+                    <p>Secure payments, deposits & automated invoices</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <h4>Guest Management</h4>
+                    <p>Check-ins, profiles & guest communication</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-concierge-bell"></i>
+                    </div>
+                    <h4>Restaurant & Bar</h4>
+                    <p>Reservations, menus & room service orders</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-chalkboard-teacher"></i>
+                    </div>
+                    <h4>Conference & Events</h4>
+                    <p>Room bookings, event planning & inquiries</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h4>Analytics & Reports</h4>
+                    <p>Revenue tracking, occupancy & insights</p>
+                </div>
+            </div>
+            
+        </div>
+        
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-number">100%</div>
+                <div class="stat-label">Customizable</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">24/7</div>
+                <div class="stat-label">Admin Access</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">5-Star</div>
+                <div class="stat-label">Guest Reviews</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">SEO</div>
+                <div class="stat-label">Optimized</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
