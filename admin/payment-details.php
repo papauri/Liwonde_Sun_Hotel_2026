@@ -26,27 +26,27 @@ $stmt = $pdo->prepare("
         p.*,
         CASE 
             WHEN p.booking_type = 'room' THEN CONCAT(b.guest_name, ' (', b.booking_reference, ')')
-            WHEN p.booking_type = 'conference' THEN CONCAT(ci.organization_name, ' (', ci.enquiry_reference, ')')
+            WHEN p.booking_type = 'conference' THEN CONCAT(ci.company_name, ' (', ci.inquiry_reference, ')')
             ELSE 'Unknown'
         END as booking_description,
         CASE 
             WHEN p.booking_type = 'room' THEN b.booking_reference
-            WHEN p.booking_type = 'conference' THEN ci.enquiry_reference
+            WHEN p.booking_type = 'conference' THEN ci.inquiry_reference
             ELSE NULL
         END as booking_reference,
         CASE 
             WHEN p.booking_type = 'room' THEN b.guest_name
-            WHEN p.booking_type = 'conference' THEN ci.contact_name
+            WHEN p.booking_type = 'conference' THEN ci.contact_person
             ELSE NULL
         END as customer_name,
         CASE 
             WHEN p.booking_type = 'room' THEN b.guest_email
-            WHEN p.booking_type = 'conference' THEN ci.contact_email
+            WHEN p.booking_type = 'conference' THEN ci.email
             ELSE NULL
         END as customer_email,
         CASE 
             WHEN p.booking_type = 'room' THEN b.guest_phone
-            WHEN p.booking_type = 'conference' THEN ci.contact_phone
+            WHEN p.booking_type = 'conference' THEN ci.phone
             ELSE NULL
         END as customer_phone
     FROM payments p
@@ -118,18 +118,18 @@ if ($payment['booking_type'] === 'room') {
         $bookingDetails = [
             'type' => 'conference',
             'id' => (int)$enquiry['id'],
-            'reference' => $enquiry['enquiry_reference'],
+            'reference' => $enquiry['inquiry_reference'],
             'organization' => [
-                'name' => $enquiry['organization_name'],
-                'contact_person' => $enquiry['contact_name'],
-                'email' => $enquiry['contact_email'],
-                'phone' => $enquiry['contact_phone']
+                'name' => $enquiry['company_name'],
+                'contact_person' => $enquiry['contact_person'],
+                'email' => $enquiry['email'],
+                'phone' => $enquiry['phone']
             ],
             'event' => [
                 'type' => $enquiry['event_type'],
-                'start_date' => $enquiry['start_date'],
-                'end_date' => $enquiry['end_date'],
-                'expected_attendees' => (int)$enquiry['expected_attendees']
+                'start_date' => $enquiry['event_date'],
+                'end_date' => $enquiry['event_date'],
+                'expected_attendees' => (int)$enquiry['number_of_attendees']
             ],
             'amounts' => [
                 'total_amount' => (float)$enquiry['total_amount'],

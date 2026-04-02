@@ -129,33 +129,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
                 if ($guest_phone !== ($booking['guest_phone'] ?? '')) {
                     $changes['guest_phone'] = ['old' => $booking['guest_phone'] ?? '', 'new' => $guest_phone];
                 }
+
+                $dates_changed = ($check_in !== $booking['check_in_date'] || $check_out !== $booking['check_out_date']);
                 
-                if ($room_changed && in_array($booking['status'], ['confirmed', 'checked-in'])) {
-                    // Restore old room availability
-                    $restore = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available + 1 WHERE id = ?");
-                    $restore->execute([$old_room_id]);
-                    
-                    // Check new room availability
-                    $check_avail = $pdo->prepare("SELECT rooms_available FROM rooms WHERE id = ?");
-                    $check_avail->execute([$room_id]);
-                    $new_room = $check_avail->fetch(PDO::FETCH_ASSOC);
-                    
-                    if ($new_room['rooms_available'] <= 0) {
+                if (($room_changed || $dates_changed) && in_array($booking['status'], ['confirmed', 'checked-in'])) {
+                    $capacity_error = null;
+                    if (!hasRoomDateCapacity($room_id, $check_in, $check_out, $booking_id, $capacity_error)) {
                         $pdo->rollBack();
-                        $error = 'Selected room is not available.';
-                    } else {
-                        // Decrement new room availability
-                        $decrement = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available - 1 WHERE id = ?");
-                        $decrement->execute([$room_id]);
+                        $error = $capacity_error ?: 'Selected room is not available for the new dates.';
+                    } elseif ($room_changed) {
+                        // Reserve new room slot first, then release old one.
+                        $reserve_error = null;
+                        if (!reserveRoomForDateRange($room_id, $check_in, $check_out, $booking_id, $reserve_error)) {
+                            $pdo->rollBack();
+                            $error = $reserve_error ?: 'Could not reserve inventory for the selected room.';
+                        } else {
+                            $restore = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available + 1 WHERE id = ? AND rooms_available < total_rooms");
+                            $restore->execute([$old_room_id]);
+                        }
                     }
                 }
                 
                 if (empty($error)) {
+                    // Track old total for refund processing
+                    $old_total_with_vat = (float)$booking['total_with_vat'] ?? $booking['total_amount'];
+                    
                     // Calculate VAT if enabled
                     $vat_amount = 0;
                     if ($vatEnabled && $vatRate > 0) {
                         $vat_amount = round($total_amount * ($vatRate / (100 + $vatRate)), 2);
                     }
+                    
+                    $new_total_with_vat = $total_amount + $vat_amount;
                     
                     $update = $pdo->prepare("
                         UPDATE bookings SET
@@ -182,9 +187,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $booking) {
                         $occupancy_type, $total_amount, $vat_amount, $special_requests,
                         $admin_notes, $booking_id
                     ]);
+
+                    // Keep accounting accurate after extensions/shortenings and room/occupancy edits.
+                    recalculateRoomBookingFinancials($booking_id);
+                    
+                    // Process refund if amount decreased and customer overpaid
+                    $refund_result = null;
+                    if ($new_total_with_vat < $old_total_with_vat) {
+                        try {
+                            $refund_result = processRefundIfNeeded($booking_id, $old_total_with_vat, $new_total_with_vat);
+                        } catch (Exception $e) {
+                            error_log("Refund processing error: " . $e->getMessage());
+                            // Continue even if refund fails, booking was still updated
+                        }
+                    }
                     
                     $pdo->commit();
                     $message = 'Booking updated successfully.';
+                    
+                    // Add refund info to message
+                    if ($refund_result && $refund_result['refund_created']) {
+                        $message .= " Refund " . $refund_result['refund_reference'] . " for " . $currency_sym . number_format($refund_result['refund_amount'], 0) . " created.";
+                    }
                     
                     // Send modification email to guest if there were meaningful changes
                     if (!empty($changes)) {

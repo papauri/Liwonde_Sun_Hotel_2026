@@ -61,8 +61,25 @@ try {
                     b.check_in_date,
                     b.check_out_date,
                     b.total_amount,
+                    b.total_with_vat,
                     b.amount_paid,
                     b.amount_due,
+                    COALESCE((
+                        SELECT SUM(COALESCE(p.payment_amount, 0))
+                        FROM payments p
+                        WHERE p.booking_type = 'room'
+                        AND p.booking_id = b.id
+                        AND p.payment_status = 'completed'
+                        AND p.deleted_at IS NULL
+                    ), 0) as subtotal_paid,
+                    GREATEST(0, COALESCE(b.total_amount, 0) - COALESCE((
+                        SELECT SUM(COALESCE(p.payment_amount, 0))
+                        FROM payments p
+                        WHERE p.booking_type = 'room'
+                        AND p.booking_id = b.id
+                        AND p.payment_status = 'completed'
+                        AND p.deleted_at IS NULL
+                    ), 0)) as subtotal_due,
                     r.name as room_name
                 FROM bookings b
                 LEFT JOIN rooms r ON b.room_id = r.id
@@ -83,8 +100,25 @@ try {
                     b.check_in_date,
                     b.check_out_date,
                     b.total_amount,
+                    b.total_with_vat,
                     b.amount_paid,
                     b.amount_due,
+                    COALESCE((
+                        SELECT SUM(COALESCE(p.payment_amount, 0))
+                        FROM payments p
+                        WHERE p.booking_type = 'room'
+                        AND p.booking_id = b.id
+                        AND p.payment_status = 'completed'
+                        AND p.deleted_at IS NULL
+                    ), 0) as subtotal_paid,
+                    GREATEST(0, COALESCE(b.total_amount, 0) - COALESCE((
+                        SELECT SUM(COALESCE(p.payment_amount, 0))
+                        FROM payments p
+                        WHERE p.booking_type = 'room'
+                        AND p.booking_id = b.id
+                        AND p.payment_status = 'completed'
+                        AND p.deleted_at IS NULL
+                    ), 0)) as subtotal_due,
                     r.name as room_name
                 FROM bookings b
                 LEFT JOIN rooms r ON b.room_id = r.id
@@ -116,8 +150,25 @@ try {
                     ci.start_date,
                     ci.end_date,
                     ci.total_amount,
+                    ci.total_with_vat,
                     ci.amount_paid,
                     ci.amount_due
+                    ,COALESCE((
+                        SELECT SUM(COALESCE(p.payment_amount, 0))
+                        FROM payments p
+                        WHERE p.booking_type = 'conference'
+                        AND p.booking_id = ci.id
+                        AND p.payment_status = 'completed'
+                        AND p.deleted_at IS NULL
+                    ), 0) as subtotal_paid
+                    ,GREATEST(0, COALESCE(ci.total_amount, 0) - COALESCE((
+                        SELECT SUM(COALESCE(p.payment_amount, 0))
+                        FROM payments p
+                        WHERE p.booking_type = 'conference'
+                        AND p.booking_id = ci.id
+                        AND p.payment_status = 'completed'
+                        AND p.deleted_at IS NULL
+                    ), 0)) as subtotal_due
                 FROM conference_inquiries ci
                 WHERE ci.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                 ORDER BY ci.created_at DESC
@@ -137,8 +188,25 @@ try {
                     ci.start_date,
                     ci.end_date,
                     ci.total_amount,
+                    ci.total_with_vat,
                     ci.amount_paid,
                     ci.amount_due
+                    ,COALESCE((
+                        SELECT SUM(COALESCE(p.payment_amount, 0))
+                        FROM payments p
+                        WHERE p.booking_type = 'conference'
+                        AND p.booking_id = ci.id
+                        AND p.payment_status = 'completed'
+                        AND p.deleted_at IS NULL
+                    ), 0) as subtotal_paid
+                    ,GREATEST(0, COALESCE(ci.total_amount, 0) - COALESCE((
+                        SELECT SUM(COALESCE(p.payment_amount, 0))
+                        FROM payments p
+                        WHERE p.booking_type = 'conference'
+                        AND p.booking_id = ci.id
+                        AND p.payment_status = 'completed'
+                        AND p.deleted_at IS NULL
+                    ), 0)) as subtotal_due
                 FROM conference_inquiries ci
                 WHERE (
                     ci.enquiry_reference LIKE ? 
@@ -172,8 +240,11 @@ try {
         }
         // Ensure numeric values
         $booking['total_amount'] = (float)($booking['total_amount'] ?? 0);
+        $booking['total_with_vat'] = (float)($booking['total_with_vat'] ?? $booking['total_amount']);
         $booking['amount_paid'] = (float)($booking['amount_paid'] ?? 0);
         $booking['amount_due'] = (float)($booking['amount_due'] ?? 0);
+        $booking['subtotal_paid'] = (float)($booking['subtotal_paid'] ?? 0);
+        $booking['subtotal_due'] = (float)($booking['subtotal_due'] ?? 0);
     }
     
     echo json_encode(['success' => true, 'bookings' => $bookings]);

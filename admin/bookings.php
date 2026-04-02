@@ -305,8 +305,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Invalid status');
                 }
                 
-                // Get current booking status and room_id before updating
-                $check_stmt = $pdo->prepare("SELECT status, room_id FROM bookings WHERE id = ?");
+                // Get current booking status and date range before updating
+                $check_stmt = $pdo->prepare("SELECT status, room_id, check_in_date, check_out_date FROM bookings WHERE id = ?");
                 $check_stmt->execute([$booking_id]);
                 $current_booking = $check_stmt->fetch(PDO::FETCH_ASSOC);
                 
@@ -327,23 +327,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 
-                // Update booking status
-                $stmt = $pdo->prepare("UPDATE bookings SET status = ? WHERE id = ?");
-                $stmt->execute([$new_status, $booking_id]);
-                $message = 'Booking status updated!';
-                
-                // Handle room availability changes
                 if ($current_status === 'pending' && $new_status === 'confirmed') {
-                    // Booking confirmed: decrement rooms_available
-                    $update_room = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available - 1 WHERE id = ? AND rooms_available > 0");
-                    $update_room->execute([$room_id]);
-                    
-                    if ($update_room->rowCount() === 0) {
-                        // This shouldn't happen if availability checks are working, but handle it
-                        $message .= ' (Warning: Could not update room availability - room may be fully booked)';
-                    } else {
-                        $message .= ' Room availability updated.';
+                    $pdo->beginTransaction();
+
+                    $reserve_error = null;
+                    if (!reserveRoomForDateRange($room_id, $current_booking['check_in_date'], $current_booking['check_out_date'], $booking_id, $reserve_error)) {
+                        throw new Exception($reserve_error ?: 'Room capacity reached for selected dates.');
                     }
+
+                    $stmt = $pdo->prepare("UPDATE bookings SET status = ? WHERE id = ? AND status = 'pending'");
+                    $stmt->execute([$new_status, $booking_id]);
+                    if ($stmt->rowCount() === 0) {
+                        throw new Exception('Booking could not be confirmed because it was changed by another action.');
+                    }
+
+                    $pdo->commit();
+                    $message = 'Booking status updated! Room capacity reserved.';
                     
                     // Send booking confirmed email
                     $booking_stmt = $pdo->prepare("
@@ -370,6 +369,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     
                 } elseif ($current_status === 'confirmed' && $new_status === 'cancelled') {
+                    // Update booking status
+                    $stmt = $pdo->prepare("UPDATE bookings SET status = ? WHERE id = ?");
+                    $stmt->execute([$new_status, $booking_id]);
+                    $message = 'Booking status updated!';
+
                     // Booking cancelled: increment rooms_available
                     $update_room = $pdo->prepare("UPDATE rooms SET rooms_available = rooms_available + 1 WHERE id = ? AND rooms_available < total_rooms");
                     $update_room->execute([$room_id]);
@@ -425,6 +429,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $message .= ' (Email failed: ' . $email_status . ')';
                         }
                     }
+                } else {
+                    // Update booking status
+                    $stmt = $pdo->prepare("UPDATE bookings SET status = ? WHERE id = ?");
+                    $stmt->execute([$new_status, $booking_id]);
+                    $message = 'Booking status updated!';
                 }
             }
 
@@ -585,6 +594,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
     } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $error = 'Error: ' . $e->getMessage();
     }
 }

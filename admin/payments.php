@@ -43,7 +43,7 @@ $sql = "
     LEFT JOIN conference_inquiries ci ON p.booking_type = 'conference' AND p.booking_id = ci.id
 ";
 
-$where_conditions = [];
+$where_conditions = ['p.deleted_at IS NULL'];
 $params = [];
 
 if ($bookingType) {
@@ -76,9 +76,7 @@ if ($endDate) {
     $params[] = $endDate;
 }
 
-if (!empty($where_conditions)) {
-    $sql .= " WHERE " . implode(' AND ', $where_conditions);
-}
+$sql .= " WHERE " . implode(' AND ', $where_conditions);
 
 // Get total count
 $countSql = "
@@ -87,10 +85,7 @@ $countSql = "
     LEFT JOIN bookings b ON p.booking_type = 'room' AND p.booking_id = b.id
     LEFT JOIN conference_inquiries ci ON p.booking_type = 'conference' AND p.booking_id = ci.id
 ";
-
-if (!empty($where_conditions)) {
-    $countSql .= " WHERE " . implode(' AND ', $where_conditions);
-}
+$countSql .= " WHERE " . implode(' AND ', $where_conditions);
 $countStmt = $pdo->prepare($countSql);
 $countStmt->execute($params);
 $total = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];

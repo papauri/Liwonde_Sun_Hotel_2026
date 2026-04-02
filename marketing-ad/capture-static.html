@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marketing Ad PNG</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --emerald: #06d6a0;
+  --coral: #ff6b6b;
+  --electric: #4361ee;
+  --gold: #ffd166;
+  --darker: #050810;
+  --ink: #131b2e;
+  --light: #eef2f7;
+  --muted: #5a6785;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  width: 1600px; height: 900px;
+  background: var(--darker);
+  overflow: hidden;
+  font-family: 'Space Grotesk', sans-serif;
+  color: var(--light);
+  position: relative;
+}
+
+/* Background */
+.bg { position:absolute; inset:0; overflow:hidden; }
+.blob { position:absolute; border-radius:50%; filter:blur(100px); opacity:0.3; }
+.blob-1 { width:600px; height:600px; background:radial-gradient(circle,var(--emerald),transparent 70%); top:-15%; left:-10%; }
+.blob-2 { width:500px; height:500px; background:radial-gradient(circle,var(--electric),transparent 70%); bottom:-10%; right:-8%; }
+.blob-3 { width:400px; height:400px; background:radial-gradient(circle,var(--coral),transparent 70%); top:50%; left:55%; }
+.grid-overlay { position:absolute; inset:0; background-image:
+  linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size:80px 80px; }
+
+/* Layout */
+.layout { position:relative; z-index:10; display:grid; grid-template-columns: 1fr 1fr; height:100vh; padding:50px 60px; gap:40px; align-items:center; }
+
+/* Left */
+.left { padding:20px 40px 20px 60px; }
+.top-badge {
+  display:inline-flex; align-items:center; gap:10px;
+  padding:8px 22px;
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:50px;
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:3px;
+  color:var(--emerald);
+  background:rgba(255,255,255,0.04);
+  margin-bottom:30px;
+}
+
+.hero-title {
+  font-family:'Playfair Display',serif;
+  font-size:72px;
+  font-weight:900;
+  line-height:0.96;
+  margin-bottom:22px;
+}
+.hero-title .line { display:block; overflow:hidden; }
+.gradient-text {
+  background:linear-gradient(135deg,var(--emerald),var(--gold),var(--coral));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.sub {
+  font-size:16px; color:var(--muted); line-height:1.65;
+  max-width:480px; margin-bottom:30px;
+}
+
+.btns { display:flex; gap:14px; }
+.btn-main {
+  display:inline-flex; align-items:center; gap:10px;
+  padding:16px 38px;
+  background:linear-gradient(135deg,var(--emerald),var(--electric));
+  color:white; border:none; border-radius:60px;
+  font-family:inherit; font-size:13px; font-weight:700;
+  text-transform:uppercase; letter-spacing:2px;
+  box-shadow:0 15px 50px rgba(6,214,160,0.25);
+}
+.btn-outline {
+  display:inline-flex; align-items:center; gap:10px;
+  padding:16px 38px;
+  background:transparent;
+  color:var(--light);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:60px;
+  font-family:inherit; font-size:13px; font-weight:600;
+  letter-spacing:2px; text-transform:uppercase;
+}
+
+/* Right - Dashboard Mockup */
+.right { position:relative; }
+.dash-mock {
+  background:var(--ink);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:20px;
+  overflow:hidden;
+  box-shadow:0 60px 160px rgba(0,0,0,0.6);
+}
+.dash-bar {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 18px;
+  background:rgba(0,0,0,0.35);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
+.dd { width:10px; height:10px; border-radius:50%; display:block; }
+.dd:nth-child(1){background:#ff5f57;} .dd:nth-child(2){background:#ffbd2e;} .dd:nth-child(3){background:#28c942;}
+.durl { flex:1; margin-left:10px; padding:7px 14px; background:rgba(255,255,255,0.04); border-radius:8px; font-size:11px; color:var(--muted); font-family:monospace; }
+.dash-body { padding:22px; }
+.dash-metrics {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px;
+}
+.mbox {
+  background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:16px 12px; text-align:center;
+}
+.mval { font-size:22px; font-weight:800; }
+.mval-g { color:var(--emerald); }
+.mval-b { color:var(--electric); }
+.mval-go { color:var(--gold); }
+.mval-c { color:var(--coral); }
+.ml { font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:3px; }
+.listbox { background:rgba(0,0,0,0.15); border:1px solid rgba(255,255,255,0.08); border-radius:14px; overflow:hidden; }
+.lh {
+  display:grid; grid-template-columns:2fr 1fr 1fr 1fr 80px; gap:8px; padding:12px 16px;
+  border-bottom:1px solid rgba(255,255,255,0.08); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--muted);
+}
+.lr {
+  display:grid; grid-template-columns:2fr 1fr 1fr 1fr 80px; gap:8px; padding:12px 16px; font-size:12px;
+}
+.pill { display:inline-block; padding:3px 12px; border-radius:20px; font-size:9px; font-weight:700; }
+.p-ok { background:rgba(6,214,160,0.15); color:var(--emerald); }
+.p-in { background:rgba(67,97,238,0.15); color:var(--electric); }
+.p-wa { background:rgba(255,209,102,0.15); color:var(--gold); }
+
+/* Bottom strip */
+.bottom {
+  position:absolute; bottom:0; left:0; right:0;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:22px 60px;
+  background:rgba(5,8,16,0.85);
+  backdrop-filter:blur(20px);
+  border-top:1px solid rgba(255,255,255,0.06);
+}
+.chip {
+  display:inline-flex; align-items:center; gap:10px;
+  padding:10px 20px;
+  background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:50px;
+}
+.chip i { color:var(--emerald); font-size:14px; }
+.chip span { font-size:12px; font-weight:600; }
+.brand-text { font-size:12px; color:var(--muted); }
+.brand-text strong { color:var(--gold); font-weight:700; }
+
+/* Floating decorations */
+.floater {
+  position:absolute; border-radius:16px;
+  background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.06);
+  backdrop-filter:blur(10px);
+  padding:12px 16px;
+  font-size:10px;
+  color:var(--muted);
+  display:flex; align-items:center; gap:8px;
+}
+.floater i { color:var(--emerald); }
+.f1 { top:30px; right:20px; }
+.f2 { bottom:100px; left:-20px; }
+
+/* Particles for visual interest */
+.particle { position:absolute; border-radius:50%; opacity:0.6; }
+</style>
+</head>
+<body>
+<div class="bg">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+  <div class="grid-overlay"></div>
+  <!-- Particles -->
+  <div class="particle" style="width:4px;height:4px;background:var(--emerald);top:15%;left:85%;opacity:0.5"></div>
+  <div class="particle" style="width:3px;height:3px;background:var(--coral);top:35%;left:45%;opacity:0.4"></div>
+  <div class="particle" style="width:5px;height:5px;background:var(--gold);top:70%;left:75%;opacity:0.5"></div>
+  <div class="particle" style="width:3px;height:3px;background:var(--electric);top:25%;left:55%;opacity:0.4"></div>
+  <div class="particle" style="width:4px;height:4px;background:var(--emerald);top:80%;left:25%;opacity:0.3"></div>
+</div>
+
+<div class="layout">
+  <!-- Left -->
+  <div class="left">
+    <div class="top-badge"><i class="fas fa-crown" style="color:var(--gold)"></i> Premium Accommodation Platforms</div>
+    <h1 class="hero-title">
+      <span class="line">Not Just A</span>
+      <span class="line">Website. A</span>
+      <span class="line"><span class="gradient-text">Management</span></span>
+      <span class="line"><span class="gradient-text">System.</span></span>
+    </h1>
+    <p class="sub">From luxury hotels to boutique B&Bs, resorts to serviced apartments — custom platforms that transform your entire operation.</p>
+    <div class="btns">
+      <div class="btn-main"><i class="fas fa-play-circle"></i> See It Live</div>
+      <div class="btn-outline"><i class="fas fa-comments"></i> Let's Talk</div>
+    </div>
+  </div>
+  
+  <!-- Right -->
+  <div class="right">
+    <!-- Floating badges -->
+    <div class="floater f1"><i class="fas fa-chart-line"></i> +40% Revenue</div>
+    <div class="floater f2"><i class="fas fa-star"></i> 4.9★ Rating</div>
+    
+    <div class="dash-mock">
+      <div class="dash-bar">
+        <span class="dd"></span><span class="dd"></span><span class="dd"></span>
+        <div class="durl">your-property.com/admin</div>
+      </div>
+      <div class="dash-body">
+        <div class="dash-metrics">
+          <div class="mbox"><div class="mval mval-g">47</div><div class="ml">Check-ins</div></div>
+          <div class="mbox"><div class="mval mval-b">92%</div><div class="ml">Occupancy</div></div>
+          <div class="mbox"><div class="mval mval-go">MWK 42.5M</div><div class="ml">Revenue</div></div>
+          <div class="mbox"><div class="mval mval-c">4.9★</div><div class="ml">Rating</div></div>
+        </div>
+        <div class="listbox">
+          <div class="lh"><span>Guest</span><span>Room</span><span>Dates</span><span>Status</span><span>Amount</span></div>
+          <div class="lr"><span style="font-weight:600">Chimwemwe Banda</span><span>Royal Suite</span><span>15–18 Dec</span><span><span class="pill p-ok">Confirmed</span></span><span>MWK 245K</span></div>
+          <div class="lr"><span>Thandiwe Phiri</span><span>Deluxe 305</span><span>16–20 Dec</span><span><span class="pill p-in">Checked In</span></span><span>MWK 180K</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bottom">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <div class="chip"><i class="fas fa-mobile-alt"></i><span>Mobile Ready</span></div>
+    <div class="chip"><i class="fas fa-shield-alt"></i><span>Secure</span></div>
+    <div class="chip"><i class="fas fa-cloud"></i><span>Cloud Hosted</span></div>
+    <div class="chip"><i class="fas fa-headset"></i><span>24/7 Support</span></div>
+  </div>
+  <div class="brand-text"><strong>ProManaged IT</strong> — promanaged-it.com</div>
+</div>
+
+</body>
+</html>

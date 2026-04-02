@@ -13,11 +13,119 @@ $currency_symbol = getSetting('currency_symbol', 'K');
 $today = date('Y-m-d');
 $thisMonth = date('Y-m');
 $thisYear = date('Y');
+$message = '';
+$error = '';
+$vatEnabled = false;
+$vatRate = 0;
+$vatNumber = '';
+$levyEnabled = false;
+$levyRate = 0;
+$menuChargesTotal = 0;
+$otherChargesTotal = 0;
+$levyCollectedTotal = 0;
+$chargesSummary = [];
+$levyComplianceDetails = [];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_levy_settings'])) {
+    try {
+        if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+            throw new Exception('Invalid security token. Please refresh and try again.');
+        }
+
+        $levy_enabled = isset($_POST['tourist_levy_enabled']) ? '1' : '0';
+        $levy_rate = (float)($_POST['tourist_levy_rate'] ?? 0);
+
+        if ($levy_rate < 0 || $levy_rate > 100) {
+            throw new Exception('Tourist levy rate must be between 0 and 100%.');
+        }
+
+        updateSetting('tourist_levy_enabled', $levy_enabled);
+        updateSetting('tourist_levy_rate', number_format($levy_rate, 2, '.', ''));
+
+        $message = 'Tourist levy settings updated successfully.';
+    } catch (Throwable $e) {
+        $error = 'Levy settings update failed: ' . $e->getMessage();
+    }
+}
+
+// Handle CSV export for levy report
+if (isset($_GET['export_levy']) && $_GET['export_levy'] === '1') {
+    $exportStartDate = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
+    $exportEndDate = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t');
+
+    $exportStmt = $pdo->prepare("
+        SELECT
+            b.booking_reference,
+            b.guest_name,
+            b.check_in_date,
+            b.check_out_date,
+            bac.amount as levy_amount,
+            bac.description as levy_description,
+            bac.created_at as levy_applied_date,
+            SUM(CASE WHEN p.payment_status = 'completed' THEN p.total_amount ELSE 0 END) as total_paid
+        FROM bookings b
+        INNER JOIN booking_additional_charges bac ON b.id = bac.booking_id
+        LEFT JOIN payments p ON p.booking_type = 'room' AND p.booking_id = b.id
+        WHERE bac.charge_type = 'levy'
+        AND bac.is_active = 1
+        AND bac.created_at BETWEEN ? AND ?
+        GROUP BY b.id, bac.id
+        ORDER BY b.check_in_date DESC
+    ");
+    $exportStmt->execute([$exportStartDate, $exportEndDate]);
+    $exportData = $exportStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Create CSV output
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=levy-compliance-' . date('Y-m-d') . '.csv');
+    
+    $output = fopen('php://output', 'w');
+    
+    // Add header row
+    fputcsv($output, ['Booking Reference', 'Guest Name', 'Check-In Date', 'Check-Out Date', 'Levy Amount', 'Levy Description', 'Levy Applied Date', 'Total Paid']);
+    
+    // Add data rows
+    foreach ($exportData as $row) {
+        fputcsv($output, [
+            $row['booking_reference'],
+            $row['guest_name'],
+            date('Y-m-d', strtotime($row['check_in_date'])),
+            date('Y-m-d', strtotime($row['check_out_date'])),
+            number_format($row['levy_amount'], 2, '.', ''),
+            $row['levy_description'],
+            date('Y-m-d H:i', strtotime($row['levy_applied_date'])),
+            number_format($row['total_paid'] ?? 0, 2, '.', '')
+        ]);
+    }
+    
+    fclose($output);
+    exit;
+}
+
+// Ensure required tables exist
+ensureBookingAdditionalChargesTable();
 
 // Get date filters - support "all" for no date filtering
 $showAll = isset($_GET['show_all']) && $_GET['show_all'] === '1';
 $startDate = isset($_GET['start_date']) ? $_GET['start_date'] : ($showAll ? '2000-01-01' : date('Y-m-01'));
 $endDate = isset($_GET['end_date']) ? $_GET['end_date'] : ($showAll ? '2099-12-31' : date('Y-m-t'));
+
+// Debug: Check if required tables exist
+$tables_exist = [
+    'payments' => false,
+    'bookings' => false,
+    'conference_inquiries' => false,
+    'booking_additional_charges' => false
+];
+
+try {
+    foreach (array_keys($tables_exist) as $table) {
+        $result = $pdo->query("SHOW TABLES LIKE '$table'")->rowCount();
+        $tables_exist[$table] = ($result > 0);
+    }
+} catch (PDOException $e) {
+    error_log("Table check error: " . $e->getMessage());
+}
 
 // Fetch accounting statistics
 try {
@@ -25,14 +133,14 @@ try {
     $financialStmt = $pdo->prepare("
         SELECT
             COUNT(*) as total_payments,
-            COALESCE(SUM(CASE WHEN payment_status = 'completed' THEN total_amount ELSE 0 END), 0) as total_collected,
-            COALESCE(SUM(CASE WHEN payment_status = 'completed' THEN payment_amount ELSE 0 END), 0) as total_collected_excl_vat,
-            COALESCE(SUM(CASE WHEN payment_status = 'completed' THEN vat_amount ELSE 0 END), 0) as total_vat_collected,
-            COALESCE(SUM(CASE WHEN payment_status = 'pending' THEN total_amount ELSE 0 END), 0) as total_pending,
-            COALESCE(SUM(CASE WHEN payment_status = 'refunded' THEN total_amount ELSE 0 END), 0) as total_refunded,
-            COALESCE(SUM(CASE WHEN payment_status = 'partially_refunded' THEN total_amount ELSE 0 END), 0) as total_partially_refunded
+            COALESCE(SUM(CASE WHEN payment_status = 'completed' THEN COALESCE(total_amount, 0) ELSE 0 END), 0) as total_collected,
+            COALESCE(SUM(CASE WHEN payment_status = 'completed' THEN COALESCE(payment_amount, 0) ELSE 0 END), 0) as total_collected_excl_vat,
+            COALESCE(SUM(CASE WHEN payment_status = 'completed' THEN COALESCE(vat_amount, 0) ELSE 0 END), 0) as total_vat_collected,
+            COALESCE(SUM(CASE WHEN payment_status = 'pending' THEN COALESCE(total_amount, 0) ELSE 0 END), 0) as total_pending,
+            COALESCE(SUM(CASE WHEN payment_status = 'refunded' THEN COALESCE(total_amount, 0) ELSE 0 END), 0) as total_refunded,
+            COALESCE(SUM(CASE WHEN payment_status = 'partially_refunded' THEN COALESCE(total_amount, 0) ELSE 0 END), 0) as total_partially_refunded
         FROM payments
-        WHERE payment_date BETWEEN ? AND ?
+        WHERE COALESCE(payment_date, created_at) BETWEEN ? AND ?
     ");
     $financialStmt->execute([$startDate, $endDate]);
     $financialSummary = $financialStmt->fetch(PDO::FETCH_ASSOC);
@@ -41,13 +149,13 @@ try {
     $roomStmt = $pdo->prepare("
         SELECT
             COUNT(DISTINCT p.booking_id) as total_bookings_with_payments,
-            COALESCE(SUM(CASE WHEN p.payment_status = 'completed' THEN p.total_amount ELSE 0 END), 0) as room_collected,
-            COALESCE(SUM(CASE WHEN p.payment_status = 'completed' THEN p.vat_amount ELSE 0 END), 0) as room_vat_collected,
+            COALESCE(SUM(CASE WHEN p.payment_status = 'completed' THEN COALESCE(p.total_amount, 0) ELSE 0 END), 0) as room_collected,
+            COALESCE(SUM(CASE WHEN p.payment_status = 'completed' THEN COALESCE(p.vat_amount, 0) ELSE 0 END), 0) as room_vat_collected,
             COALESCE(SUM(b.amount_due), 0) as total_room_outstanding
         FROM payments p
         LEFT JOIN bookings b ON p.booking_type = 'room' AND p.booking_id = b.id
         WHERE p.booking_type = 'room'
-        AND p.payment_date BETWEEN ? AND ?
+        AND COALESCE(p.payment_date, p.created_at) BETWEEN ? AND ?
     ");
     $roomStmt->execute([$startDate, $endDate]);
     $roomSummary = $roomStmt->fetch(PDO::FETCH_ASSOC);
@@ -56,13 +164,13 @@ try {
     $confStmt = $pdo->prepare("
         SELECT
             COUNT(DISTINCT p.booking_id) as total_conferences_with_payments,
-            COALESCE(SUM(CASE WHEN p.payment_status = 'completed' THEN p.total_amount ELSE 0 END), 0) as conf_collected,
-            COALESCE(SUM(CASE WHEN p.payment_status = 'completed' THEN p.vat_amount ELSE 0 END), 0) as conf_vat_collected,
+            COALESCE(SUM(CASE WHEN p.payment_status = 'completed' THEN COALESCE(p.total_amount, 0) ELSE 0 END), 0) as conf_collected,
+            COALESCE(SUM(CASE WHEN p.payment_status = 'completed' THEN COALESCE(p.vat_amount, 0) ELSE 0 END), 0) as conf_vat_collected,
             COALESCE(SUM(ci.amount_due), 0) as total_conf_outstanding
         FROM payments p
         LEFT JOIN conference_inquiries ci ON p.booking_type = 'conference' AND p.booking_id = ci.id
         WHERE p.booking_type = 'conference'
-        AND p.payment_date BETWEEN ? AND ?
+        AND COALESCE(p.payment_date, p.created_at) BETWEEN ? AND ?
     ");
     $confStmt->execute([$startDate, $endDate]);
     $confSummary = $confStmt->fetch(PDO::FETCH_ASSOC);
@@ -72,9 +180,9 @@ try {
         SELECT
             payment_method,
             COUNT(*) as count,
-            COALESCE(SUM(CASE WHEN payment_status = 'completed' THEN total_amount ELSE 0 END), 0) as total
+            COALESCE(SUM(CASE WHEN payment_status = 'completed' THEN COALESCE(total_amount, 0) ELSE 0 END), 0) as total
         FROM payments
-        WHERE payment_date BETWEEN ? AND ?
+        WHERE COALESCE(payment_date, created_at) BETWEEN ? AND ?
         GROUP BY payment_method
         ORDER BY total DESC
     ");
@@ -117,13 +225,76 @@ try {
     ");
     $outstandingSummary = $outstandingStmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Charges summary (menu, other, levy)
+    $chargesStmt = $pdo->prepare("
+        SELECT
+            charge_type,
+            COUNT(*) as count,
+            COALESCE(SUM(amount), 0) as total
+        FROM booking_additional_charges
+        WHERE is_active = 1
+        AND created_at BETWEEN ? AND ?
+        GROUP BY charge_type
+    ");
+    $chargesStmt->execute([$startDate, $endDate]);
+    $chargesSummary = $chargesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Initialize charges totals
+    $menuChargesTotal = 0;
+    $otherChargesTotal = 0;
+    $levyCollectedTotal = 0;
+    foreach ($chargesSummary as $charge) {
+        if ($charge['charge_type'] === 'menu') {
+            $menuChargesTotal = $charge['total'];
+        } elseif ($charge['charge_type'] === 'other') {
+            $otherChargesTotal = $charge['total'];
+        } elseif ($charge['charge_type'] === 'levy') {
+            $levyCollectedTotal = $charge['total'];
+        }
+    }
+
+    // Levy compliance report - bookings with levy applied
+    $levyComplianceStmt = $pdo->prepare("
+        SELECT
+            b.id as booking_id,
+            b.booking_reference,
+            b.guest_name,
+            b.check_in_date,
+            b.check_out_date,
+            bac.amount as levy_amount,
+            SUM(CASE WHEN p.payment_status = 'completed' THEN p.total_amount ELSE 0 END) as total_paid
+        FROM bookings b
+        INNER JOIN booking_additional_charges bac ON b.id = bac.booking_id
+        LEFT JOIN payments p ON p.booking_type = 'room' AND p.booking_id = b.id
+        WHERE bac.charge_type = 'levy'
+        AND bac.is_active = 1
+        AND bac.created_at BETWEEN ? AND ?
+        GROUP BY b.id, bac.id
+        ORDER BY b.check_in_date DESC
+    ");
+    $levyComplianceStmt->execute([$startDate, $endDate]);
+    $levyComplianceDetails = $levyComplianceStmt->fetchAll(PDO::FETCH_ASSOC);
+
     // VAT settings - more flexible check
     $vatEnabled = in_array(getSetting('vat_enabled'), ['1', 1, true, 'true', 'on'], true);
     $vatRate = getSetting('vat_rate');
     $vatNumber = getSetting('vat_number');
 
+    $levyEnabled = in_array(getSetting('tourist_levy_enabled', '0'), ['1', 1, true, 'true', 'on'], true);
+    $levyRate = (float)getSetting('tourist_levy_rate', 0);
+
 } catch (PDOException $e) {
-    $error = "Unable to load accounting data.";
+    error_log("Accounting Dashboard Error: " . $e->getMessage());
+    error_log("SQL Error Code: " . $e->getCode());
+    error_log("Table Status: " . json_encode($tables_exist));
+    
+    // Build helpful error message
+    $missing_tables = array_filter($tables_exist, function($exists) { return !$exists; });
+    if (!empty($missing_tables)) {
+        $error = "Database tables missing: " . implode(', ', array_keys($missing_tables));
+    } else {
+        $error = "Database query failed: " . $e->getMessage();
+    }
 }
 
 ?>
@@ -447,6 +618,13 @@ try {
             </form>
         </div>
 
+        <?php if ($message): ?>
+            <div style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:8px;margin-bottom:14px;"><?php echo htmlspecialchars($message); ?></div>
+        <?php endif; ?>
+        <?php if ($error): ?>
+            <div style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:8px;margin-bottom:14px;"><?php echo htmlspecialchars($error); ?></div>
+        <?php endif; ?>
+
         <!-- Quick Actions -->
         <div class="quick-actions" style="margin-bottom: 24px;">
             <a href="payments.php">
@@ -472,6 +650,22 @@ try {
                     <p><strong>VAT Number:</strong> <?php echo htmlspecialchars($vatNumber); ?></p>
                 <?php endif; ?>
             <?php endif; ?>
+            <hr style="border:none;border-top:1px solid rgba(255,255,255,0.25); margin:10px 0;">
+            <p><strong>Tourist Levy:</strong> <?php echo $levyEnabled ? 'Enabled' : 'Disabled'; ?></p>
+            <p><strong>Levy Rate:</strong> <?php echo number_format((float)$levyRate, 2); ?>%</p>
+
+            <form method="POST" style="margin-top:10px; display:grid; gap:8px; max-width:380px;">
+                <input type="hidden" name="save_levy_settings" value="1">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <label style="display:flex; align-items:center; gap:8px; font-weight:500; color:#fff;">
+                    <input type="checkbox" name="tourist_levy_enabled" value="1" <?php echo $levyEnabled ? 'checked' : ''; ?>>
+                    Enable tourist levy
+                </label>
+                <label style="font-weight:500; color:#fff;">Levy Rate (%)</label>
+                <input type="number" step="0.01" min="0" max="100" name="tourist_levy_rate" value="<?php echo htmlspecialchars(number_format((float)$levyRate, 2, '.', '')); ?>" style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;">
+                <small style="opacity:0.9; color:#fff;">This levy is optional per guest and can be toggled on each booking details page.</small>
+                <button type="submit" style="padding:10px 14px; border:none; border-radius:6px; background:#fff; color:var(--deep-navy); font-weight:600; cursor:pointer; width:fit-content;">Save Levy Settings</button>
+            </form>
         </div>
 
         <!-- Financial Summary Stats -->
@@ -520,6 +714,26 @@ try {
                     <?php endif; ?>
                 </div>
             </div>
+
+            <?php if ($menuChargesTotal > 0 || $otherChargesTotal > 0 || $levyCollectedTotal > 0): ?>
+                <div class="stat-card success">
+                    <div class="stat-label">Menu Charges</div>
+                    <div class="stat-value"><?php echo $currency_symbol; ?><?php echo number_format($menuChargesTotal, 0); ?></div>
+                    <div class="stat-sub">Additional menu charges collected</div>
+                </div>
+
+                <div class="stat-card gold">
+                    <div class="stat-label">Other Charges</div>
+                    <div class="stat-value"><?php echo $currency_symbol; ?><?php echo number_format($otherChargesTotal, 0); ?></div>
+                    <div class="stat-sub">Service & miscellaneous charges</div>
+                </div>
+
+                <div class="stat-card primary">
+                    <div class="stat-label">Levy Collected</div>
+                    <div class="stat-value"><?php echo $currency_symbol; ?><?php echo number_format($levyCollectedTotal, 0); ?></div>
+                    <div class="stat-sub">Tourist/hospitality levy</div>
+                </div>
+            <?php endif; ?>
         </div>
 
         <!-- Payment Methods & Outstanding -->
@@ -584,6 +798,57 @@ try {
                 <?php endif; ?>
             </div>
         </div>
+
+        <!-- Levy Compliance Report -->
+        <?php if ($levyEnabled && !empty($levyComplianceDetails)): ?>
+        <div style="margin-top: 32px;">
+            <h3 class="section-title">
+                <i class="fas fa-percent"></i> Levy Compliance Report
+            </h3>
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Booking Reference</th>
+                            <th>Guest Name</th>
+                            <th>Check-In</th>
+                            <th>Check-Out</th>
+                            <th>Levy Amount</th>
+                            <th>Total Paid</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($levyComplianceDetails as $levy): ?>
+                            <tr>
+                                <td><strong><?php echo htmlspecialchars($levy['booking_reference']); ?></strong></td>
+                                <td><?php echo htmlspecialchars($levy['guest_name']); ?></td>
+                                <td><?php echo date('M j, Y', strtotime($levy['check_in_date'])); ?></td>
+                                <td><?php echo date('M j, Y', strtotime($levy['check_out_date'])); ?></td>
+                                <td class="font-weight-bold"><?php echo $currency_symbol; ?><?php echo number_format($levy['levy_amount'], 2); ?></td>
+                                <td><?php echo $currency_symbol; ?><?php echo number_format($levy['total_paid'] ?? 0, 0); ?></td>
+                                <td>
+                                    <a href="booking-details.php?id=<?php echo $levy['booking_id']; ?>" class="btn btn-primary btn-sm">
+                                        <i class="fas fa-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <div style="text-align: center; margin-top: 16px;">
+                <form method="GET" style="display: inline;">
+                    <input type="hidden" name="export_levy" value="1">
+                    <input type="hidden" name="start_date" value="<?php echo htmlspecialchars($startDate); ?>">
+                    <input type="hidden" name="end_date" value="<?php echo htmlspecialchars($endDate); ?>">
+                    <button type="submit" style="padding: 8px 16px; background: var(--navy); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">
+                        <i class="fas fa-download"></i> Export Levy Report (CSV)
+                    </button>
+                </form>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- Recent Payments -->
         <h3 class="section-title">Recent Payments</h3>
