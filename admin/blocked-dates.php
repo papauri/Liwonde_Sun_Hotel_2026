@@ -27,6 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($action === 'block_date') {
         $room_id = !empty($_POST['room_id']) ? (int)$_POST['room_id'] : null;
+        $room_unit_id = !empty($_POST['room_unit_id']) ? (int)$_POST['room_unit_id'] : null;
         $block_date = $_POST['block_date'] ?? '';
         $block_type = $_POST['block_type'] ?? 'manual';
         $reason = $_POST['reason'] ?? null;
@@ -36,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Please select a date to block';
             $messageType = 'error';
         } else {
-            $result = blockRoomDate($room_id, $block_date, $block_type, $reason, $created_by);
+            $result = blockRoomDate($room_id, $block_date, $block_type, $reason, $created_by, $room_unit_id);
             
             if ($result) {
                 $message = 'Date blocked successfully';
@@ -51,12 +52,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($id > 0) {
             // Fetch the blocked date record directly by its primary key
-            $bd_stmt = $pdo->prepare("SELECT id, room_id, block_date FROM room_blocked_dates WHERE id = ?");
+            $bd_stmt = $pdo->prepare("SELECT id, room_id, room_unit_id, block_date FROM room_blocked_dates WHERE id = ?");
             $bd_stmt->execute([$id]);
             $target_date = $bd_stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($target_date) {
-                $result = unblockRoomDate($target_date['room_id'], $target_date['block_date']);
+                $result = unblockRoomDate($target_date['room_id'], $target_date['block_date'], $target_date['room_unit_id'] ?? null);
                 
                 if ($result) {
                     $message = 'Date unblocked successfully';
@@ -72,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'block_multiple') {
         $room_id = !empty($_POST['room_id']) ? (int)$_POST['room_id'] : null;
+        $room_unit_id = !empty($_POST['room_unit_id']) ? (int)$_POST['room_unit_id'] : null;
         $dates_json = $_POST['dates'] ?? '';
         $block_type = $_POST['block_type'] ?? 'manual';
         $reason = $_POST['reason'] ?? null;
@@ -84,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Please select at least one date to block';
             $messageType = 'error';
         } else {
-            $blocked_count = blockRoomDates($room_id, $dates, $block_type, $reason, $created_by);
+            $blocked_count = blockRoomDates($room_id, $dates, $block_type, $reason, $created_by, $room_unit_id);
             
             if ($blocked_count > 0) {
                 $message = "Successfully blocked {$blocked_count} date(s)";
@@ -100,19 +102,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Get filter parameters
 $filter_room_id = isset($_GET['room_id']) ? ($_GET['room_id'] === 'all' ? null : (int)$_GET['room_id']) : null;
+$filter_room_unit_id = isset($_GET['room_unit_id']) ? ($_GET['room_unit_id'] === 'all' ? null : (int)$_GET['room_unit_id']) : null;
 $filter_start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01'); // First day of current month
 $filter_end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t'); // Last day of current month
 
 // Get blocked dates
-$blocked_dates = getBlockedDates($filter_room_id, $filter_start_date, $filter_end_date);
+$blocked_dates = getBlockedDates($filter_room_id, $filter_start_date, $filter_end_date, $filter_room_unit_id);
 
 // Get all rooms for dropdown
 $rooms = getCachedRooms();
 
+$room_units_by_room = [];
+$room_units_ready = ensureRoomUnitInfrastructure();
+if (!$room_units_ready) {
+    try {
+        $pdo->query("SELECT id FROM room_units LIMIT 1");
+        $room_units_ready = true;
+    } catch (PDOException $e) {
+        $room_units_ready = false;
+    }
+}
+
+if ($room_units_ready) {
+    try {
+        $room_units_stmt = $pdo->query("\n            SELECT id, room_id, unit_label\n            FROM room_units\n            ORDER BY room_id ASC, id ASC\n        ");
+        $room_units_rows = $room_units_stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($room_units_rows as $unit_row) {
+            $rid = (int)$unit_row['room_id'];
+            if (!isset($room_units_by_room[$rid])) {
+                $room_units_by_room[$rid] = [];
+            }
+            $room_units_by_room[$rid][] = [
+                'id' => (int)$unit_row['id'],
+                'unit_label' => $unit_row['unit_label']
+            ];
+        }
+    } catch (PDOException $e) {
+        $room_units_by_room = [];
+    }
+}
+
 // Get blocked dates for calendar display
 $calendar_start = date('Y-m-d', strtotime('-3 months'));
 $calendar_end = date('Y-m-d', strtotime('+6 months'));
-$calendar_blocked_dates = getBlockedDates(null, $calendar_start, $calendar_end);
+$calendar_blocked_dates = getBlockedDates(null, $calendar_start, $calendar_end, null);
 
 // Format blocked dates for calendar - simple array of dates
 $blocked_dates_array = [];
@@ -389,15 +422,21 @@ $site_name = getSetting('site_name');
             </div>
             <div class="card-body">
                 <form method="GET" class="row g-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">Room</label>
-                        <select name="room_id" class="form-select">
+                        <select name="room_id" id="filterRoomSelect" class="form-select">
                             <option value="all">All Rooms</option>
                             <?php foreach ($rooms as $room): ?>
                                 <option value="<?php echo $room['id']; ?>" <?php echo $filter_room_id === $room['id'] ? 'selected' : ''; ?>>
                                     <?php echo htmlspecialchars($room['name']); ?>
                                 </option>
                             <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Room Unit</label>
+                        <select name="room_unit_id" id="filterRoomUnitSelect" class="form-select">
+                            <option value="all">All Units</option>
                         </select>
                     </div>
                     <div class="col-md-3">
@@ -438,6 +477,7 @@ $site_name = getSetting('site_name');
                                 <tr>
                                     <th>Date</th>
                                     <th>Room</th>
+                                    <th>Room Unit</th>
                                     <th>Type</th>
                                     <th>Reason</th>
                                     <th>Created By</th>
@@ -459,6 +499,13 @@ $site_name = getSetting('site_name');
                                                 </span>
                                             <?php else: ?>
                                                 <span class="badge bg-dark">All Rooms</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if (!empty($bd['room_unit_id'])): ?>
+                                                <span class="badge bg-primary"><?php echo htmlspecialchars($bd['room_unit_label'] ?? ('Unit #' . $bd['room_unit_id'])); ?></span>
+                                            <?php else: ?>
+                                                <span class="text-muted">All Units</span>
                                             <?php endif; ?>
                                         </td>
                                         <td>
@@ -516,7 +563,7 @@ $site_name = getSetting('site_name');
                         
                         <div class="mb-3">
                             <label class="form-label">Room</label>
-                            <select name="room_id" class="form-select" required>
+                            <select name="room_id" id="singleRoomSelect" class="form-select" required>
                                 <option value="">All Rooms</option>
                                 <?php foreach ($rooms as $room): ?>
                                     <option value="<?php echo $room['id']; ?>">
@@ -525,6 +572,13 @@ $site_name = getSetting('site_name');
                                 <?php endforeach; ?>
                             </select>
                             <small class="text-muted">Select "All Rooms" to block all rooms for this date</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Room Unit (Optional)</label>
+                            <select name="room_unit_id" id="singleRoomUnitSelect" class="form-select">
+                                <option value="">All units in selected room</option>
+                            </select>
                         </div>
                         
                         <div class="mb-3">
@@ -577,7 +631,7 @@ $site_name = getSetting('site_name');
                         
                         <div class="mb-3">
                             <label class="form-label">Room</label>
-                            <select name="room_id" class="form-select" required>
+                            <select name="room_id" id="rangeRoomSelect" class="form-select" required>
                                 <option value="">All Rooms</option>
                                 <?php foreach ($rooms as $room): ?>
                                     <option value="<?php echo $room['id']; ?>">
@@ -586,6 +640,13 @@ $site_name = getSetting('site_name');
                                 <?php endforeach; ?>
                             </select>
                             <small class="text-muted">Select "All Rooms" to block all rooms for these dates</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Room Unit (Optional)</label>
+                            <select name="room_unit_id" id="rangeRoomUnitSelect" class="form-select">
+                                <option value="">All units in selected room</option>
+                            </select>
                         </div>
                         
                         <div class="mb-3">
@@ -637,6 +698,41 @@ $site_name = getSetting('site_name');
     <script>
     // Blocked dates array for disabling in calendar
     const blockedDates = <?php echo json_encode($blocked_dates_array); ?>;
+    const roomUnitsByRoom = <?php echo json_encode($room_units_by_room); ?>;
+    const initialFilterRoomUnitId = '<?php echo htmlspecialchars($filter_room_unit_id !== null ? (string)$filter_room_unit_id : 'all', ENT_QUOTES); ?>';
+
+    function populateUnitSelect(roomSelectId, unitSelectId, allLabel, selectedValue = '') {
+        const roomSelect = document.getElementById(roomSelectId);
+        const unitSelect = document.getElementById(unitSelectId);
+        if (!roomSelect || !unitSelect) {
+            return;
+        }
+
+        const roomId = roomSelect.value;
+        unitSelect.innerHTML = '';
+
+        const defaultOption = document.createElement('option');
+        defaultOption.value = allLabel === 'all' ? 'all' : '';
+        defaultOption.textContent = allLabel === 'all' ? 'All Units' : 'All units in selected room';
+        unitSelect.appendChild(defaultOption);
+
+        if (!roomId || roomId === 'all') {
+            unitSelect.value = defaultOption.value;
+            return;
+        }
+
+        const units = roomUnitsByRoom[roomId] || [];
+        units.forEach(function(unit) {
+            const option = document.createElement('option');
+            option.value = String(unit.id);
+            option.textContent = unit.unit_label || ('Unit #' + unit.id);
+            unitSelect.appendChild(option);
+        });
+
+        if (selectedValue !== '' && selectedValue !== null && selectedValue !== undefined) {
+            unitSelect.value = String(selectedValue);
+        }
+    }
     
     // Initialize single date picker
     flatpickr('#singleDateInput', {
@@ -679,6 +775,20 @@ $site_name = getSetting('site_name');
                 display.innerHTML = '<span class="text-muted">Select start and end dates</span>';
             }
         }
+    });
+
+    populateUnitSelect('filterRoomSelect', 'filterRoomUnitSelect', 'all', initialFilterRoomUnitId);
+    populateUnitSelect('singleRoomSelect', 'singleRoomUnitSelect', '');
+    populateUnitSelect('rangeRoomSelect', 'rangeRoomUnitSelect', '');
+
+    document.getElementById('filterRoomSelect').addEventListener('change', function() {
+        populateUnitSelect('filterRoomSelect', 'filterRoomUnitSelect', 'all');
+    });
+    document.getElementById('singleRoomSelect').addEventListener('change', function() {
+        populateUnitSelect('singleRoomSelect', 'singleRoomUnitSelect', '');
+    });
+    document.getElementById('rangeRoomSelect').addEventListener('change', function() {
+        populateUnitSelect('rangeRoomSelect', 'rangeRoomUnitSelect', '');
     });
     </script>
     <script src="js/admin-components.js"></script>
