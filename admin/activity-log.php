@@ -9,6 +9,10 @@ require_once __DIR__ . '/admin-init.php';
 $log_type = $_GET['log_type'] ?? 'all';
 $action_query = trim($_GET['action'] ?? '');
 $actor_query = trim($_GET['actor'] ?? '');
+$actor_user_id = 0;
+if ($actor_query !== '' && preg_match('/^User #(\d+)$/', $actor_query, $actor_match)) {
+    $actor_user_id = (int)$actor_match[1];
+}
 $employee_id = isset($_GET['employee_id']) ? (int)$_GET['employee_id'] : 0;
 $date_from = trim($_GET['date_from'] ?? '');
 $date_to = trim($_GET['date_to'] ?? '');
@@ -118,9 +122,9 @@ try {
             }
         }
 
-        $sql = "SELECT DISTINCT COALESCE(au.full_name, au.username, CONCAT('User #', e.actor_user_id)) AS actor_name
+        $sql = "SELECT DISTINCT COALESCE(au.full_name, au.username, CONCAT('User #', COALESCE(e.actor_user_id, e.admin_user_id))) AS actor_name
                 FROM employee_activity_log e
-                LEFT JOIN admin_users au ON au.id = e.actor_user_id";
+            LEFT JOIN admin_users au ON au.id = COALESCE(e.actor_user_id, e.admin_user_id)";
         $sql .= empty($employee_base_where) ? '' : ' WHERE ' . implode(' AND ', array_map(function ($cond) {
             return 'e.' . $cond;
         }, $employee_base_where));
@@ -161,18 +165,26 @@ try {
         $summary_employee_params[] = $date_to_ts;
     }
     if ($action_query !== '') {
-        $summary_where_admin[] = 'action LIKE ?';
-        $summary_admin_params[] = '%' . $action_query . '%';
-        $summary_where_employee[] = 'action LIKE ?';
-        $summary_employee_params[] = '%' . $action_query . '%';
+        $summary_where_admin[] = 'action = ?';
+        $summary_admin_params[] = $action_query;
+        $summary_where_employee[] = 'action = ?';
+        $summary_employee_params[] = $action_query;
     }
     if ($actor_query !== '') {
-        $summary_where_admin[] = '(username LIKE ? OR user_id IN (SELECT id FROM admin_users WHERE full_name LIKE ?))';
-        $summary_admin_params[] = '%' . $actor_query . '%';
-        $summary_admin_params[] = '%' . $actor_query . '%';
-        $summary_where_employee[] = '(actor_user_id IN (SELECT id FROM admin_users WHERE full_name LIKE ? OR username LIKE ?))';
-        $summary_employee_params[] = '%' . $actor_query . '%';
-        $summary_employee_params[] = '%' . $actor_query . '%';
+        if ($actor_user_id > 0) {
+            $summary_where_admin[] = 'user_id = ?';
+            $summary_admin_params[] = $actor_user_id;
+            $summary_where_employee[] = 'COALESCE(actor_user_id, admin_user_id) = ?';
+            $summary_employee_params[] = $actor_user_id;
+        } else {
+            $summary_where_admin[] = '(username = ? OR user_id IN (SELECT id FROM admin_users WHERE full_name = ? OR username = ?))';
+            $summary_admin_params[] = $actor_query;
+            $summary_admin_params[] = $actor_query;
+            $summary_admin_params[] = $actor_query;
+            $summary_where_employee[] = '(COALESCE(actor_user_id, admin_user_id) IN (SELECT id FROM admin_users WHERE full_name = ? OR username = ?))';
+            $summary_employee_params[] = $actor_query;
+            $summary_employee_params[] = $actor_query;
+        }
     }
     if ($employee_id > 0) {
         $summary_where_employee[] = 'employee_id = ?';
@@ -235,14 +247,20 @@ try {
         }
 
         if ($action_query !== '') {
-            $admin_where[] = "a.action LIKE ?";
-            $admin_params[] = '%' . $action_query . '%';
+            $admin_where[] = "a.action = ?";
+            $admin_params[] = $action_query;
         }
 
         if ($actor_query !== '') {
-            $admin_where[] = "(a.username LIKE ? OR au.full_name LIKE ?)";
-            $admin_params[] = '%' . $actor_query . '%';
-            $admin_params[] = '%' . $actor_query . '%';
+            if ($actor_user_id > 0) {
+                $admin_where[] = 'a.user_id = ?';
+                $admin_params[] = $actor_user_id;
+            } else {
+                $admin_where[] = '(a.username = ? OR au.full_name = ? OR au.username = ?)';
+                $admin_params[] = $actor_query;
+                $admin_params[] = $actor_query;
+                $admin_params[] = $actor_query;
+            }
         }
 
         $sql_parts[] = "
@@ -277,15 +295,19 @@ try {
         }
 
         if ($action_query !== '') {
-            $emp_where[] = "e.action LIKE ?";
-            $emp_params[] = '%' . $action_query . '%';
+            $emp_where[] = "e.action = ?";
+            $emp_params[] = $action_query;
         }
 
         if ($actor_query !== '') {
-            $emp_where[] = "(au.full_name LIKE ? OR au.username LIKE ? OR emp.full_name LIKE ?)";
-            $emp_params[] = '%' . $actor_query . '%';
-            $emp_params[] = '%' . $actor_query . '%';
-            $emp_params[] = '%' . $actor_query . '%';
+            if ($actor_user_id > 0) {
+                $emp_where[] = 'COALESCE(e.actor_user_id, e.admin_user_id) = ?';
+                $emp_params[] = $actor_user_id;
+            } else {
+                $emp_where[] = '(au.full_name = ? OR au.username = ?)';
+                $emp_params[] = $actor_query;
+                $emp_params[] = $actor_query;
+            }
         }
 
         if ($employee_id > 0) {
@@ -301,12 +323,12 @@ try {
                 e.action,
                 e.details,
                 e.ip_address,
-                COALESCE(au.full_name, au.username, CONCAT('User #', e.actor_user_id)) AS actor_name,
+                COALESCE(au.full_name, au.username, CONCAT('User #', COALESCE(e.actor_user_id, e.admin_user_id))) AS actor_name,
                 COALESCE(au.role, 'unknown') AS actor_role,
                 COALESCE(emp.full_name, CONCAT('Employee #', e.employee_id)) AS employee_name,
                 e.source
             FROM employee_activity_log e
-            LEFT JOIN admin_users au ON au.id = e.actor_user_id
+            LEFT JOIN admin_users au ON au.id = COALESCE(e.actor_user_id, e.admin_user_id)
             LEFT JOIN employees emp ON emp.id = e.employee_id
             WHERE " . (empty($emp_where) ? '1=1' : implode(' AND ', $emp_where));
         $params = array_merge($params, $emp_params);
