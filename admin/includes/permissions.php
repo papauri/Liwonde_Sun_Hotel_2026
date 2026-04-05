@@ -21,7 +21,6 @@
  * - invoices: Invoice management
  * - payment_add: Add payments
  * - reports: View reports
- * - theme: Theme management
  * - section_headers: Section headers
  * - booking_settings: Booking settings
  * - cache: Cache management
@@ -178,13 +177,6 @@ function getAllPermissions() {
             'category' => 'Marketing',
             'page' => 'campaigns.php'
         ],
-        'theme' => [
-            'label' => 'Theme Management',
-            'description' => 'Manage website theme and appearance',
-            'icon' => 'fa-palette',
-            'category' => 'Settings',
-            'page' => 'theme-management.php'
-        ],
         'section_headers' => [
             'label' => 'Section Headers',
             'description' => 'Manage page section headers',
@@ -234,7 +226,7 @@ function getDefaultPermissionsForRole($role) {
             return $all_permissions; // Admin gets everything
             
         case 'manager':
-            return array_diff($all_permissions, ['user_management', 'cache', 'theme', 'section_headers', 'pages']);
+            return array_diff($all_permissions, ['user_management', 'cache', 'section_headers', 'pages']);
             
         case 'receptionist':
             return ['dashboard', 'bookings', 'calendar', 'blocked_dates', 'rooms', 'reviews', 'gym'];
@@ -413,7 +405,6 @@ function getPermissionForPage($page) {
         'reports.php' => 'reports',
         'activity-log.php' => 'activity_logs',
         'campaigns.php' => 'campaigns',
-        'theme-management.php' => 'theme',
         'section-headers-management.php' => 'section_headers',
         'booking-settings.php' => 'booking_settings',
         'page-management.php' => 'pages',

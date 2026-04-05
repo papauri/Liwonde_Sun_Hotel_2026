@@ -8,6 +8,52 @@ require_once 'admin-init.php';
 require_once '../includes/alert.php';
 require_once '../includes/section-headers.php';
 
+function getSectionHeaderDefaults(): array {
+    return [
+        ['home_rooms', 'index', 'Accommodations', 'Where Comfort Meets Luxury', 'Luxurious Rooms & Suites', 'Experience unmatched comfort in our meticulously designed rooms and suites', 1],
+        ['home_facilities', 'index', 'Amenities', null, 'World-Class Facilities', 'Indulge in our premium facilities designed for your ultimate comfort', 2],
+        ['home_testimonials', 'index', 'Reviews', null, 'What Our Guests Say', 'Hear from those who have experienced our exceptional hospitality', 3],
+        ['hotel_gallery', 'index', 'Visual Journey', 'Discover Our Story', 'Explore Our Hotel', 'Immerse yourself in the beauty and luxury of our hotel', 4],
+        ['hotel_reviews', 'global', 'Guest Reviews', null, 'What Our Guests Say', 'Read authentic reviews from guests who have experienced our hospitality', 1],
+        ['restaurant_gallery', 'restaurant', 'Visual Journey', null, 'Our Dining Spaces', 'From elegant interiors to breathtaking views, every detail creates the perfect ambiance', 1],
+        ['restaurant_menu', 'restaurant', 'Culinary Delights', 'A Symphony of Flavors', 'Our Menu', 'Discover our carefully curated selection of dishes and beverages', 2],
+        ['gym_wellness', 'gym', 'Your Wellness Journey', 'Transform Your Life', 'Start Your Fitness Journey', 'Transform your body and mind with our state-of-the-art facilities', 1],
+        ['gym_facilities', 'gym', 'What We Offer', null, 'Comprehensive Fitness Facilities', 'Everything you need for a complete wellness experience', 2],
+        ['gym_classes', 'gym', 'Stay Active', null, 'Group Fitness Classes', 'Join our expert-led classes designed for all fitness levels', 3],
+        ['gym_training', 'gym', 'One-on-One Coaching', null, 'Personal Training Programs', 'Achieve your fitness goals faster with personalized guidance from our certified trainers', 4],
+        ['gym_packages', 'gym', 'Exclusive Offers', null, 'Wellness Packages', 'Comprehensive packages designed for optimal health and relaxation', 5],
+        ['rooms_collection', 'rooms-showcase', 'Stay Collection', null, 'Pick Your Perfect Space', 'Suites and rooms crafted for business, romance, and family stays with direct booking flows', 1],
+        ['conference_overview', 'conference', 'Professional Events', 'Where Business Meets Excellence', 'Conference & Meeting Facilities', 'State-of-the-art venues for your business needs', 1],
+        ['events_overview', 'events', 'Celebrations & Gatherings', null, 'Upcoming Events', 'Discover our curated experiences and special occasions', 1],
+        ['upcoming_events', 'index', "What's Happening", null, 'Upcoming Events', "Don't miss out on our carefully curated experiences and celebrations", 5],
+    ];
+}
+
+function ensureSectionHeadersTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS section_headers (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        section_key VARCHAR(120) NOT NULL,
+        page VARCHAR(80) NOT NULL,
+        section_label VARCHAR(255) DEFAULT NULL,
+        section_subtitle VARCHAR(255) DEFAULT NULL,
+        section_title VARCHAR(255) NOT NULL,
+        section_description TEXT DEFAULT NULL,
+        display_order INT NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_section_page (section_key, page)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $defaults = getSectionHeaderDefaults();
+    $insert = $pdo->prepare("INSERT IGNORE INTO section_headers
+        (section_key, page, section_label, section_subtitle, section_title, section_description, display_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)");
+    foreach ($defaults as $default) {
+        $insert->execute($default);
+    }
+}
+
 $user = [
     'id' => $_SESSION['admin_user_id'],
     'username' => $_SESSION['admin_username'],
@@ -19,18 +65,62 @@ $message = '';
 $error = '';
 $success = false;
 
+try {
+    ensureSectionHeadersTable($pdo);
+} catch (Throwable $e) {
+    $error = 'Error preparing section headers table: ' . $e->getMessage();
+}
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        $error = 'Invalid security token. Please refresh and try again.';
+    } else {
     $action = $_POST['action'] ?? '';
     
     try {
-        if ($action === 'update_header') {
+        if ($action === 'create_header') {
+            $section_key = preg_replace('/[^a-z0-9_\-]/', '', strtolower(trim((string)($_POST['section_key'] ?? ''))));
+            $page = preg_replace('/[^a-z0-9_\-]/', '', strtolower(trim((string)($_POST['page'] ?? ''))));
+            $section_label = trim((string)($_POST['section_label'] ?? ''));
+            $section_subtitle = trim((string)($_POST['section_subtitle'] ?? ''));
+            $section_title = trim((string)($_POST['section_title'] ?? ''));
+            $section_description = trim((string)($_POST['section_description'] ?? ''));
+            $display_order = max(0, (int)($_POST['display_order'] ?? 0));
+            $is_active = isset($_POST['is_active']) ? 1 : 0;
+
+            if ($section_key === '' || $page === '' || $section_title === '') {
+                throw new Exception('Section key, page, and title are required.');
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO section_headers
+                (section_key, page, section_label, section_subtitle, section_title, section_description, display_order, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $section_key,
+                $page,
+                $section_label,
+                $section_subtitle,
+                $section_title,
+                $section_description,
+                $display_order,
+                $is_active
+            ]);
+
+            require_once __DIR__ . '/../config/cache.php';
+            clearCache();
+
+            $message = 'Section header created successfully!';
+            $success = true;
+
+        } elseif ($action === 'update_header') {
             $section_key = $_POST['section_key'] ?? '';
             $page = $_POST['page'] ?? '';
             $section_label = $_POST['section_label'] ?? '';
             $section_subtitle = $_POST['section_subtitle'] ?? '';
             $section_title = $_POST['section_title'] ?? '';
             $section_description = $_POST['section_description'] ?? '';
+            $display_order = max(0, (int)($_POST['display_order'] ?? 0));
             $is_active = isset($_POST['is_active']) ? 1 : 0;
             
             if (empty($section_key) || empty($page)) {
@@ -43,6 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     section_subtitle = ?,
                     section_title = ?,
                     section_description = ?,
+                    display_order = ?,
                     is_active = ?,
                     updated_at = NOW()
                 WHERE section_key = ? AND page = ?
@@ -53,6 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $section_subtitle,
                 $section_title,
                 $section_description,
+                $display_order,
                 $is_active,
                 $section_key,
                 $page
@@ -86,37 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = true;
             
         } elseif ($action === 'revert_defaults') {
-            // Delete all current section headers
-            $pdo->exec("DELETE FROM section_headers");
-            
-            // Re-insert all default section headers
-            $defaults = [
-                // Homepage sections
-                ['home_rooms', 'index', 'Accommodations', 'Where Comfort Meets Luxury', 'Luxurious Rooms & Suites', 'Experience unmatched comfort in our meticulously designed rooms and suites', 1],
-                ['home_facilities', 'index', 'Amenities', NULL, 'World-Class Facilities', 'Indulge in our premium facilities designed for your ultimate comfort', 2],
-                ['home_testimonials', 'index', 'Reviews', NULL, 'What Our Guests Say', 'Hear from those who have experienced our exceptional hospitality', 3],
-                // Hotel Gallery
-                ['hotel_gallery', 'index', 'Visual Journey', 'Discover Our Story', 'Explore Our Hotel', 'Immerse yourself in the beauty and luxury of our hotel', 4],
-                // Reviews (global)
-                ['hotel_reviews', 'global', 'Guest Reviews', NULL, 'What Our Guests Say', 'Read authentic reviews from guests who have experienced our hospitality', 1],
-                // Restaurant
-                ['restaurant_gallery', 'restaurant', 'Visual Journey', NULL, 'Our Dining Spaces', 'From elegant interiors to breathtaking views, every detail creates the perfect ambiance', 1],
-                ['restaurant_menu', 'restaurant', 'Culinary Delights', 'A Symphony of Flavors', 'Our Menu', 'Discover our carefully curated selection of dishes and beverages', 2],
-                // Gym
-                ['gym_wellness', 'gym', 'Your Wellness Journey', 'Transform Your Life', 'Start Your Fitness Journey', 'Transform your body and mind with our state-of-the-art facilities', 1],
-                ['gym_facilities', 'gym', 'What We Offer', NULL, 'Comprehensive Fitness Facilities', 'Everything you need for a complete wellness experience', 2],
-                ['gym_classes', 'gym', 'Stay Active', NULL, 'Group Fitness Classes', 'Join our expert-led classes designed for all fitness levels', 3],
-                ['gym_training', 'gym', 'One-on-One Coaching', NULL, 'Personal Training Programs', 'Achieve your fitness goals faster with personalized guidance from our certified trainers', 4],
-                ['gym_packages', 'gym', 'Exclusive Offers', NULL, 'Wellness Packages', 'Comprehensive packages designed for optimal health and relaxation', 5],
-                // Rooms showcase
-                ['rooms_collection', 'rooms-showcase', 'Stay Collection', NULL, 'Pick Your Perfect Space', 'Suites and rooms crafted for business, romance, and family stays with direct booking flows', 1],
-                // Conference
-                ['conference_overview', 'conference', 'Professional Events', 'Where Business Meets Excellence', 'Conference & Meeting Facilities', 'State-of-the-art venues for your business needs', 1],
-                // Events
-                ['events_overview', 'events', 'Celebrations & Gatherings', NULL, 'Upcoming Events', 'Discover our curated experiences and special occasions', 1],
-                // Upcoming Events (homepage section)
-                ['upcoming_events', 'index', "What's Happening", NULL, 'Upcoming Events', "Don't miss out on our carefully curated experiences and celebrations", 5]
-            ];
+            $pdo->exec("TRUNCATE TABLE section_headers");
+            $defaults = getSectionHeaderDefaults();
             
             $stmt = $pdo->prepare("
                 INSERT INTO section_headers 
@@ -143,26 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Section key and page are required.');
             }
             
-            // Define all defaults
-            $all_defaults = [
-                ['home_rooms', 'index', 'Accommodations', 'Where Comfort Meets Luxury', 'Luxurious Rooms & Suites', 'Experience unmatched comfort in our meticulously designed rooms and suites', 1],
-                ['home_facilities', 'index', 'Amenities', NULL, 'World-Class Facilities', 'Indulge in our premium facilities designed for your ultimate comfort', 2],
-                ['home_testimonials', 'index', 'Reviews', NULL, 'What Our Guests Say', 'Hear from those who have experienced our exceptional hospitality', 3],
-                ['hotel_gallery', 'index', 'Visual Journey', 'Discover Our Story', 'Explore Our Hotel', 'Immerse yourself in the beauty and luxury of our hotel', 4],
-                ['hotel_reviews', 'global', 'Guest Reviews', NULL, 'What Our Guests Say', 'Read authentic reviews from guests who have experienced our hospitality', 1],
-                ['restaurant_gallery', 'restaurant', 'Visual Journey', NULL, 'Our Dining Spaces', 'From elegant interiors to breathtaking views, every detail creates the perfect ambiance', 1],
-                ['restaurant_menu', 'restaurant', 'Culinary Delights', 'A Symphony of Flavors', 'Our Menu', 'Discover our carefully curated selection of dishes and beverages', 2],
-                ['gym_wellness', 'gym', 'Your Wellness Journey', 'Transform Your Life', 'Start Your Fitness Journey', 'Transform your body and mind with our state-of-the-art facilities', 1],
-                ['gym_facilities', 'gym', 'What We Offer', NULL, 'Comprehensive Fitness Facilities', 'Everything you need for a complete wellness experience', 2],
-                ['gym_classes', 'gym', 'Stay Active', NULL, 'Group Fitness Classes', 'Join our expert-led classes designed for all fitness levels', 3],
-                ['gym_training', 'gym', 'One-on-One Coaching', NULL, 'Personal Training Programs', 'Achieve your fitness goals faster with personalized guidance from our certified trainers', 4],
-                ['gym_packages', 'gym', 'Exclusive Offers', NULL, 'Wellness Packages', 'Comprehensive packages designed for optimal health and relaxation', 5],
-                ['rooms_collection', 'rooms-showcase', 'Stay Collection', NULL, 'Pick Your Perfect Space', 'Suites and rooms crafted for business, romance, and family stays with direct booking flows', 1],
-                ['conference_overview', 'conference', 'Professional Events', 'Where Business Meets Excellence', 'Conference & Meeting Facilities', 'State-of-the-art venues for your business needs', 1],
-                ['events_overview', 'events', 'Celebrations & Gatherings', NULL, 'Upcoming Events', 'Discover our curated experiences and special occasions', 1],
-                // Upcoming Events (homepage section)
-                ['upcoming_events', 'index', "What's Happening", NULL, 'Upcoming Events', "Don't miss out on our carefully curated experiences and celebrations", 5]
-            ];
+            $all_defaults = getSectionHeaderDefaults();
             
             // Find the matching default
             $default = null;
@@ -210,6 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Exception $e) {
         $error = 'Error: ' . $e->getMessage();
     }
+    }
 }
 
 // Get filter parameters
@@ -241,7 +286,7 @@ try {
     $pages = [];
 }
 
-$current_page = 'section-headers';
+$current_page = basename($_SERVER['PHP_SELF']);
 $page_title = 'Section Headers Management';
 ?>
 <!DOCTYPE html>
@@ -356,6 +401,7 @@ $page_title = 'Section Headers Management';
                     <p class="text-muted">Manage dynamic section headers across all pages</p>
                 </div>
                 <form method="post" style="margin-top: 8px;" onsubmit="return confirm('Are you sure you want to reset ALL section headers to factory defaults? This will DELETE all custom changes!')">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                     <input type="hidden" name="action" value="revert_defaults">
                     <button type="submit" class="btn-secondary" style="padding: 10px 20px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
                         <i class="fas fa-undo-alt"></i> Revert All to Defaults
@@ -400,6 +446,52 @@ $page_title = 'Section Headers Management';
             </div>
         </div>
 
+        <!-- Add New Section Header -->
+        <div class="header-card" style="margin-bottom: 20px; border-left: 4px solid #28a745;">
+            <h3 style="margin-top: 0; color: var(--navy);"><i class="fas fa-plus-circle"></i> Add New Section Header</h3>
+            <form method="POST" style="display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <input type="hidden" name="action" value="create_header">
+                <div>
+                    <label style="display:block; font-weight:600; margin-bottom:6px;">Section Key</label>
+                    <input type="text" name="section_key" required placeholder="e.g. home_rooms" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                </div>
+                <div>
+                    <label style="display:block; font-weight:600; margin-bottom:6px;">Page</label>
+                    <input type="text" name="page" required placeholder="e.g. index" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                </div>
+                <div>
+                    <label style="display:block; font-weight:600; margin-bottom:6px;">Display Order</label>
+                    <input type="number" name="display_order" min="0" value="10" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                </div>
+                <div>
+                    <label style="display:block; font-weight:600; margin-bottom:6px;">Label</label>
+                    <input type="text" name="section_label" placeholder="Optional label" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                </div>
+                <div style="grid-column:1 / -1;">
+                    <label style="display:block; font-weight:600; margin-bottom:6px;">Title</label>
+                    <input type="text" name="section_title" required placeholder="Section title" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                </div>
+                <div style="grid-column:1 / -1;">
+                    <label style="display:block; font-weight:600; margin-bottom:6px;">Subtitle</label>
+                    <input type="text" name="section_subtitle" placeholder="Optional subtitle" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;">
+                </div>
+                <div style="grid-column:1 / -1;">
+                    <label style="display:block; font-weight:600; margin-bottom:6px;">Description</label>
+                    <textarea name="section_description" rows="2" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px;"></textarea>
+                </div>
+                <label style="display:flex; align-items:center; gap:8px; grid-column:1 / -1;">
+                    <input type="checkbox" name="is_active" value="1" checked>
+                    Active
+                </label>
+                <div style="grid-column:1 / -1;">
+                    <button type="submit" class="btn-primary" style="background:#28a745; color:white; border:none; padding:10px 16px; border-radius:6px; cursor:pointer;">
+                        <i class="fas fa-plus"></i> Create Section Header
+                    </button>
+                </div>
+            </form>
+        </div>
+
         <!-- Section Headers Grid -->
     <div class="headers-grid" style="display: grid; gap: 20px;">
         <?php if (empty($section_headers)): ?>
@@ -433,6 +525,7 @@ $page_title = 'Section Headers Management';
                             </button>
                             
                             <form method="post" style="display: inline;" onsubmit="return confirm('Reset this section to factory default?')">
+                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                 <input type="hidden" name="action" value="reset_single">
                                 <input type="hidden" name="section_key" value="<?php echo htmlspecialchars($header['section_key']); ?>">
                                 <input type="hidden" name="page" value="<?php echo htmlspecialchars($header['page']); ?>">
@@ -473,6 +566,7 @@ $page_title = 'Section Headers Management';
                     <!-- Edit Form (Hidden by default) -->
                     <form method="POST" id="edit_<?php echo htmlspecialchars($header['section_key']); ?>_<?php echo htmlspecialchars($header['page']); ?>" 
                           style="display: none; padding: 20px; background: #fff; border: 2px solid var(--gold); border-radius: 6px;">
+                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                         <input type="hidden" name="action" value="update_header">
                         <input type="hidden" name="section_key" value="<?php echo htmlspecialchars($header['section_key']); ?>">
                         <input type="hidden" name="page" value="<?php echo htmlspecialchars($header['page']); ?>">
@@ -518,6 +612,16 @@ $page_title = 'Section Headers Management';
                                           style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; resize: vertical;"><?php echo htmlspecialchars($header['section_description'] ?? ''); ?></textarea>
                             </div>
                             
+                            <div>
+                                <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--navy);">
+                                    Display Order
+                                </label>
+                                <input type="number" name="display_order"
+                                       value="<?php echo (int)$header['display_order']; ?>"
+                                       min="0"
+                                       style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px;">
+                            </div>
+
                             <div>
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                                     <input type="checkbox" name="is_active" value="1" 

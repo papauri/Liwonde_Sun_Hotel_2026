@@ -139,11 +139,8 @@ function _canShowNavItem($permission_key) {
         <?php endif; ?>
 
         <!-- ── SETTINGS ──────────────────────────────────── -->
-        <?php if (_canShowNavItem('theme') || _canShowNavItem('booking_settings') || _canShowNavItem('cache') || _canShowNavItem('activity_logs') || _canShowNavItem('user_management') || ($user['role'] ?? '') === 'admin'): ?>
+        <?php if (_canShowNavItem('booking_settings') || _canShowNavItem('cache') || _canShowNavItem('activity_logs') || _canShowNavItem('user_management') || ($user['role'] ?? '') === 'admin'): ?>
         <li class="nav-section-label">Settings</li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('theme')): ?>
-        <li><a href="theme-management.php" class="<?php echo $current_page === 'theme-management.php' ? 'active' : ''; ?>"><i class="fas fa-palette"></i> Theme</a></li>
         <?php endif; ?>
         <?php if (_canShowNavItem('booking_settings')): ?>
         <li><a href="booking-settings.php" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-cog"></i> Booking Settings</a></li>
