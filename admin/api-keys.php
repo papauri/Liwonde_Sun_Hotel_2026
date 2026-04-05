@@ -456,19 +456,7 @@ function e($value) {
         ];
 }
 
-        $roomsResponse = apiGet($apiBase, $apiKey, '/rooms');
-        $roomsPayload = is_array($roomsResponse['json']) ? $roomsResponse['json'] : [];
-        $rooms = [];
-        if (isset($roomsPayload['data']['rooms']) && is_array($roomsPayload['data']['rooms'])) {
-            $rooms = $roomsPayload['data']['rooms'];
-        } elseif (isset($roomsPayload['rooms']) && is_array($roomsPayload['rooms'])) {
-            $rooms = $roomsPayload['rooms'];
-        } elseif (isset($roomsPayload['data']) && is_array($roomsPayload['data']) && array_values($roomsPayload['data']) === $roomsPayload['data']) {
-            $rooms = $roomsPayload['data'];
-        }
-
-        $defaultRoomId = isset($rooms[0]['id']) ? (int)$rooms[0]['id'] : 1;
-        $roomId = isset($_GET['room_id']) ? max(1, (int)$_GET['room_id']) : $defaultRoomId;
+        $roomId = isset($_GET['room_id']) ? max(1, (int)$_GET['room_id']) : 1;
         $checkIn = isset($_GET['check_in']) ? trim((string)$_GET['check_in']) : date('Y-m-d', strtotime('+7 days'));
         $checkOut = isset($_GET['check_out']) ? trim((string)$_GET['check_out']) : date('Y-m-d', strtotime('+9 days'));
         $guestCount = isset($_GET['number_of_guests']) ? max(1, (int)$_GET['number_of_guests']) : 2;
@@ -482,13 +470,6 @@ function e($value) {
 
         $payload = is_array($result['json']) ? $result['json'] : [];
         $data = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : $payload;
-        $selectedRoom = null;
-        foreach ($rooms as $room) {
-            if ((int)($room['id'] ?? 0) === $roomId) {
-                $selectedRoom = $room;
-                break;
-            }
-}
 ?>
 <!doctype html>
 <html lang="en">
@@ -510,7 +491,7 @@ function e($value) {
         body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: radial-gradient(circle at top right, #e0f2fe 0%, var(--bg) 45%, #eef2ff 100%); color: var(--text); }
         .card { max-width: 860px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: 0 14px 34px rgba(15,23,42,.10); }
         .title { margin: 0 0 12px; font-size: 26px; letter-spacing: -.02em; }
-        .grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr auto; gap: 10px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; }
         input, button, select { border: 1px solid #c7d2e3; border-radius: 10px; padding: 10px; font-size: 14px; box-sizing: border-box; }
         input, select { background: #fff; }
         button { background: linear-gradient(135deg, var(--brand), var(--brand-dark)); color: #fff; cursor: pointer; border: 0; font-weight: 600; }
@@ -531,14 +512,7 @@ function e($value) {
     <div class="card">
         <h1 class="title">Room Availability</h1>
         <form method="GET" class="grid">
-            <select name="room_id">
-                <?php foreach ($rooms as $room): ?>
-                    <?php $rid = (int)($room['id'] ?? 0); ?>
-                    <option value="<?php echo $rid; ?>" <?php echo $rid === $roomId ? 'selected' : ''; ?>>
-                        <?php echo e(($room['name'] ?? 'Room') . ' (ID ' . $rid . ')'); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+            <input type="number" min="1" name="room_id" value="<?php echo e($roomId); ?>" placeholder="Room ID">
             <input type="date" name="check_in" value="<?php echo e($checkIn); ?>">
             <input type="date" name="check_out" value="<?php echo e($checkOut); ?>">
             <input type="number" min="1" name="number_of_guests" value="<?php echo e($guestCount); ?>" placeholder="Guests">
@@ -571,13 +545,6 @@ function e($value) {
                 <?php endif; ?>
                 <?php if (isset($data['dates']['nights'])): ?>
                     <div class="muted"><?php echo e((int)$data['dates']['nights']); ?> night(s)</div>
-                <?php endif; ?>
-            </div>
-        <?php elseif (is_array($selectedRoom)): ?>
-            <div class="room-card">
-                <strong><?php echo e($selectedRoom['name'] ?? 'Room'); ?></strong>
-                <?php if (isset($selectedRoom['price_per_night_formatted'])): ?>
-                    <div class="price"><?php echo e($selectedRoom['price_per_night_formatted']); ?> / night</div>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -643,6 +610,29 @@ function createBooking($apiBase, $apiKey, $payload) {
     ];
 }
 
+function checkAvailability($apiBase, $apiKey, $payload) {
+    $query = http_build_query([
+        'room_id' => $payload['room_id'],
+        'check_in' => $payload['check_in_date'],
+        'check_out' => $payload['check_out_date'],
+        'number_of_guests' => $payload['number_of_guests']
+    ]);
+
+    $ch = curl_init($apiBase . '/availability?' . $query);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-API-Key: ' . $apiKey]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    $response = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return [
+        'status' => (int)$status,
+        'raw' => is_string($response) ? $response : '',
+        'json' => is_string($response) ? json_decode($response, true) : null,
+    ];
+}
+
 $roomsResponse = apiGet($apiBase, $apiKey, '/rooms');
 $roomsPayload = is_array($roomsResponse['json']) ? $roomsResponse['json'] : [];
 $rooms = [];
@@ -677,9 +667,33 @@ if ($payload['room_unit_id'] === '') {
     $payload['room_unit_id'] = (int)$payload['room_unit_id'];
 }
 
-$result = null;
+$action = trim((string)($_POST['action'] ?? 'check_availability'));
+$availabilityResult = null;
+$bookingResult = null;
+$availabilityOkToBook = false;
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    $result = createBooking($apiBase, $apiKey, $payload);
+    $availabilityResult = checkAvailability($apiBase, $apiKey, $payload);
+    $availabilityJson = is_array($availabilityResult['json']) ? $availabilityResult['json'] : [];
+    $availabilityData = isset($availabilityJson['data']) && is_array($availabilityJson['data']) ? $availabilityJson['data'] : $availabilityJson;
+    $availabilityOkToBook = $availabilityResult['status'] >= 200
+        && $availabilityResult['status'] < 300
+        && !empty($availabilityData['available']);
+
+    if ($action === 'create_booking') {
+        if ($availabilityOkToBook) {
+            $bookingResult = createBooking($apiBase, $apiKey, $payload);
+        } else {
+            $bookingResult = [
+                'status' => 409,
+                'raw' => 'Room not available for selected dates. Run availability check and choose other dates or room.',
+                'json' => [
+                    'success' => false,
+                    'message' => 'Room not available for selected dates.'
+                ],
+            ];
+        }
+    }
 }
 ?>
 <!doctype html>
@@ -708,6 +722,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         button:hover { filter: brightness(1.03); }
         .full { grid-column: 1 / -1; }
         .result { margin-top: 14px; padding: 12px; border-radius: 10px; font-weight: 600; }
+        .meta { margin: 8px 0 0; color: #334155; font-size: 14px; }
+        .warn { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
         .ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
         .no { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
         pre { white-space: pre-wrap; word-break: break-word; background: #0b1220; color: #e2e8f0; border-radius: 10px; padding: 12px; border: 1px solid #1e293b; }
@@ -740,19 +756,51 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 <option value="tentative" <?php echo ($payload['booking_type'] ?? 'standard') === 'tentative' ? 'selected' : ''; ?>>Tentative Booking</option>
             </select>
             <textarea name="special_requests" class="full" rows="3" placeholder="Special requests (optional)"><?php echo e($payload['special_requests']); ?></textarea>
-            <button class="full" type="submit">Create booking</button>
+            <button name="action" value="check_availability" class="full" type="submit">1) Check availability first</button>
+            <button name="action" value="create_booking" class="full" type="submit">2) Create booking</button>
         </form>
 
-        <?php if (is_array($result)): ?>
-            <?php $ok = $result['status'] >= 200 && $result['status'] < 300; ?>
-            <div class="result <?php echo $ok ? 'ok' : 'no'; ?>">
-                <strong>HTTP <?php echo (int)$result['status']; ?></strong>
-                <?php if ($ok): ?> - Booking request sent successfully.<?php else: ?> - Booking request failed.<?php endif; ?>
+        <?php if (is_array($availabilityResult)): ?>
+            <?php
+                $availabilityJson = is_array($availabilityResult['json']) ? $availabilityResult['json'] : [];
+                $availabilityData = isset($availabilityJson['data']) && is_array($availabilityJson['data']) ? $availabilityJson['data'] : $availabilityJson;
+                $isAvailable = !empty($availabilityData['available']);
+            ?>
+            <div class="result <?php echo $isAvailable ? 'ok' : 'warn'; ?>">
+                <strong>Availability HTTP <?php echo (int)$availabilityResult['status']; ?></strong>
+                <?php if ($isAvailable): ?> - Room is available for selected dates.<?php else: ?> - Room is not available for selected dates.<?php endif; ?>
             </div>
-            <?php if (is_array($result['json'])): ?>
-                <pre><?php echo e(json_encode($result['json'], JSON_PRETTY_PRINT)); ?></pre>
+            <?php if (isset($availabilityData['pricing']) && is_array($availabilityData['pricing'])): ?>
+                <p class="meta">
+                    Estimated total: <?php echo e(($availabilityData['pricing']['currency'] ?? '') . ' ' . number_format((float)($availabilityData['pricing']['total'] ?? 0), 0)); ?>
+                    <?php if (isset($availabilityData['dates']['nights'])): ?>
+                        for <?php echo e((int)$availabilityData['dates']['nights']); ?> night(s)
+                    <?php endif; ?>
+                </p>
             <?php else: ?>
-                <pre><?php echo e($result['raw']); ?></pre>
+                <p class="meta">Pricing details were not returned by availability endpoint.</p>
+            <?php endif; ?>
+            <?php if (!empty($availabilityData['conflicts']) && is_array($availabilityData['conflicts'])): ?>
+                <p class="meta"><strong>Conflicting bookings:</strong></p>
+                <pre><?php echo e(json_encode($availabilityData['conflicts'], JSON_PRETTY_PRINT)); ?></pre>
+            <?php endif; ?>
+            <?php if (is_array($availabilityResult['json'])): ?>
+                <pre><?php echo e(json_encode($availabilityResult['json'], JSON_PRETTY_PRINT)); ?></pre>
+            <?php else: ?>
+                <pre><?php echo e($availabilityResult['raw']); ?></pre>
+            <?php endif; ?>
+        <?php endif; ?>
+
+        <?php if (is_array($bookingResult)): ?>
+            <?php $bookingOk = $bookingResult['status'] >= 200 && $bookingResult['status'] < 300; ?>
+            <div class="result <?php echo $bookingOk ? 'ok' : 'no'; ?>">
+                <strong>Booking HTTP <?php echo (int)$bookingResult['status']; ?></strong>
+                <?php if ($bookingOk): ?> - Booking created successfully.<?php else: ?> - Booking could not be created.<?php endif; ?>
+            </div>
+            <?php if (is_array($bookingResult['json'])): ?>
+                <pre><?php echo e(json_encode($bookingResult['json'], JSON_PRETTY_PRINT)); ?></pre>
+            <?php else: ?>
+                <pre><?php echo e($bookingResult['raw']); ?></pre>
             <?php endif; ?>
         <?php endif; ?>
     </div>
