@@ -20,7 +20,7 @@ if ($apiBaseUrl === '') {
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $apiBaseUrl = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
 }
-$apiBaseUrl .= '/api';
+$apiBaseUrl .= '/api/index.php';
 
 $permissionCatalog = [
     'rooms.read' => 'Read room catalog and pricing.',
@@ -36,29 +36,29 @@ $permissionCatalog = [
 ];
 
 $permissionEndpointMap = [
-    'rooms.read' => 'GET /api/rooms',
-    'availability.check' => 'GET /api/availability',
-    'bookings.create' => 'POST /api/bookings',
-    'bookings.read' => 'GET /api/bookings?id=... and /api/bookings/{id}',
-    'payments.view' => 'GET /api/payments and /api/payments/{id}',
-    'payments.create' => 'POST /api/payments',
-    'payments.edit' => 'PUT /api/payments/{id}',
-    'payments.delete' => 'DELETE /api/payments/{id}',
-    'site_settings.read' => 'GET /api/site-settings',
-    'blocked_dates.write' => 'POST/PUT/DELETE /api/blocked-dates'
+    'rooms.read' => 'GET /api/index.php/rooms',
+    'availability.check' => 'GET /api/index.php/availability',
+    'bookings.create' => 'POST /api/index.php/bookings',
+    'bookings.read' => 'GET /api/index.php/bookings?id=... and /api/index.php/bookings/{id}',
+    'payments.view' => 'GET /api/index.php/payments and /api/index.php/payments/{id}',
+    'payments.create' => 'POST /api/index.php/payments',
+    'payments.edit' => 'PUT /api/index.php/payments/{id}',
+    'payments.delete' => 'DELETE /api/index.php/payments/{id}',
+    'site_settings.read' => 'GET /api/index.php/site-settings',
+    'blocked_dates.write' => 'POST/PUT/DELETE /api/index.php/blocked-dates'
 ];
 
 $permissionSampleSnippets = [
-    'rooms.read' => "fetch('/api/rooms', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
-    'availability.check' => "fetch('/api/availability?room_id=1&check_in=2026-05-10&check_out=2026-05-12', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
-    'bookings.create' => "fetch('/api/bookings', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ guest_name: 'John Doe', room_id: 1 })\n});",
-    'bookings.read' => "fetch('/api/bookings/12345', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
-    'payments.view' => "fetch('/api/payments', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
-    'payments.create' => "fetch('/api/payments', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ booking_id: 12345, amount: 50000 })\n});",
-    'payments.edit' => "fetch('/api/payments/99', {\n  method: 'PUT',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ amount: 65000 })\n});",
-    'payments.delete' => "fetch('/api/payments/99', {\n  method: 'DELETE',\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
-    'site_settings.read' => "fetch('/api/site-settings', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
-    'blocked_dates.write' => "fetch('/api/blocked-dates', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ room_id: 1, block_date: '2026-05-10' })\n});"
+    'rooms.read' => "fetch('/api/index.php/rooms', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'availability.check' => "fetch('/api/index.php/availability?room_id=1&check_in=2026-05-10&check_out=2026-05-12', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'bookings.create' => "fetch('/api/index.php/bookings', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ guest_name: 'John Doe', room_id: 1 })\n});",
+    'bookings.read' => "fetch('/api/index.php/bookings/12345', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'payments.view' => "fetch('/api/index.php/payments', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'payments.create' => "fetch('/api/index.php/payments', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ booking_id: 12345, amount: 50000 })\n});",
+    'payments.edit' => "fetch('/api/index.php/payments/99', {\n  method: 'PUT',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ amount: 65000 })\n});",
+    'payments.delete' => "fetch('/api/index.php/payments/99', {\n  method: 'DELETE',\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'site_settings.read' => "fetch('/api/index.php/site-settings', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'blocked_dates.write' => "fetch('/api/index.php/blocked-dates', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ room_id: 1, block_date: '2026-05-10' })\n});"
 ];
 
 function safePermissions(array $permissions, array $catalog): array {
@@ -134,28 +134,141 @@ function buildTestClientPhpSnippets(string $apiBaseUrl, string $apiKey): array {
     $apiBaseEsc = addslashes($apiBaseUrl);
     $apiKeyEsc = addslashes($apiKey);
 
-    $phpSnippetClass = <<<'PHP'
+        $phpSnippetClass = <<<'PHP'
 <?php
 $apiBase = '__API_BASE__';
 $apiKey = '__API_KEY__';
 
 function callApi($method, $endpoint, $apiBase, $apiKey, $payload = null) {
-    $ch = curl_init($apiBase . $endpoint);
-    $headers = ['X-API-Key: ' . $apiKey, 'Content-Type: application/json'];
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    if ($payload !== null) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    }
-    $response = curl_exec($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    return ['status' => $status, 'body' => json_decode($response, true)];
+        $ch = curl_init($apiBase . $endpoint);
+        $headers = ['X-API-Key: ' . $apiKey, 'Content-Type: application/json'];
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        if ($payload !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        }
+        $response = curl_exec($ch);
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        return ['status' => $status, 'body' => json_decode($response, true), 'raw' => is_string($response) ? $response : ''];
 }
 
-$rooms = callApi('GET', '/rooms', $apiBase, $apiKey);
-print_r($rooms);
+function e($value) {
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function originFromApiBase($apiBase) {
+        $parts = parse_url($apiBase);
+        $scheme = $parts['scheme'] ?? 'https';
+        $host = $parts['host'] ?? '';
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+        return $host !== '' ? $scheme . '://' . $host . $port : '';
+}
+
+function pickImageUrl($room, $apiBase) {
+        $candidates = [
+                $room['image_url'] ?? null,
+                $room['image'] ?? null,
+                $room['main_image'] ?? null,
+                $room['thumbnail'] ?? null,
+        ];
+
+        if (isset($room['gallery']) && is_array($room['gallery']) && !empty($room['gallery'][0])) {
+                $candidates[] = $room['gallery'][0];
+        }
+        if (isset($room['images']) && is_array($room['images']) && !empty($room['images'][0])) {
+                $candidates[] = $room['images'][0];
+        }
+
+        $origin = originFromApiBase($apiBase);
+        foreach ($candidates as $candidate) {
+                if (!is_string($candidate) || trim($candidate) === '') {
+                        continue;
+                }
+                $value = trim($candidate);
+                if (preg_match('#^https?://#i', $value)) {
+                        return $value;
+                }
+                if ($origin !== '') {
+                        if (strpos($value, '/') === 0) {
+                                return $origin . $value;
+                        }
+                        return $origin . '/' . ltrim($value, '/');
+                }
+                return $value;
+        }
+
+        return 'https://via.placeholder.com/640x420?text=Room+Image';
+}
+
+$roomsResponse = callApi('GET', '/rooms', $apiBase, $apiKey);
+$body = is_array($roomsResponse['body']) ? $roomsResponse['body'] : [];
+$rooms = [];
+if (isset($body['data']) && is_array($body['data'])) {
+        $rooms = $body['data'];
+} elseif (isset($body['rooms']) && is_array($body['rooms'])) {
+        $rooms = $body['rooms'];
+} elseif (array_values($body) === $body) {
+        $rooms = $body;
+}
+?>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rooms Showcase</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f7fb; margin: 0; padding: 24px; color: #0f172a; }
+        .status { margin: 0 0 16px; font-size: 14px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
+        .card img { width: 100%; height: 180px; object-fit: cover; display: block; background: #e2e8f0; }
+        .card-body { padding: 12px; }
+        .title { margin: 0 0 6px; font-size: 18px; }
+        .meta { margin: 4px 0; color: #475569; font-size: 13px; }
+        .desc { margin: 8px 0 0; color: #334155; font-size: 14px; line-height: 1.45; }
+        .warn { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 10px; padding: 12px; }
+        pre { white-space: pre-wrap; word-break: break-word; }
+    </style>
+</head>
+<body>
+    <p class="status"><strong>HTTP <?php echo (int)$roomsResponse['status']; ?></strong> from <?php echo e($apiBase . '/rooms'); ?></p>
+
+    <?php if (!empty($rooms)): ?>
+        <div class="grid">
+            <?php foreach ($rooms as $room): ?>
+                <?php
+                    if (!is_array($room)) {
+                            continue;
+                    }
+                    $name = $room['room_name'] ?? $room['name'] ?? $room['title'] ?? 'Room';
+                    $description = $room['description'] ?? $room['short_description'] ?? '';
+                    $price = $room['price_per_night'] ?? $room['price'] ?? $room['rate'] ?? null;
+                    $capacity = $room['capacity'] ?? $room['max_guests'] ?? $room['occupancy'] ?? null;
+                    $imageUrl = pickImageUrl($room, $apiBase);
+                ?>
+                <article class="card">
+                    <img src="<?php echo e($imageUrl); ?>" alt="<?php echo e($name); ?>">
+                    <div class="card-body">
+                        <h2 class="title"><?php echo e($name); ?></h2>
+                        <?php if ($price !== null): ?><p class="meta">Price: <?php echo e($price); ?> per night</p><?php endif; ?>
+                        <?php if ($capacity !== null): ?><p class="meta">Capacity: <?php echo e($capacity); ?> guests</p><?php endif; ?>
+                        <?php if ($description !== ''): ?><p class="desc"><?php echo e($description); ?></p><?php endif; ?>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+        </div>
+    <?php else: ?>
+        <div class="warn">
+            <p><strong>No room list was found in the API response payload.</strong></p>
+            <p>Raw response shown below so you can map your exact field names.</p>
+            <pre><?php echo e($roomsResponse['raw']); ?></pre>
+        </div>
+    <?php endif; ?>
+</body>
+</html>
 PHP;
 
     $phpSnippetAvailability = <<<'PHP'
@@ -518,7 +631,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
         $zip->addFromString('test-client-create-booking.php', $snippets['php_client_booking']);
         $zip->addFromString('README.txt',
             "Test Client API Package\n\n" .
-            "1. Use test-client-api-client.php as reusable base helper.\n" .
+            "1. Use test-client-api-client.php to render rooms as visual cards with images.\n" .
             "2. test-client-availability.php checks availability endpoint.\n" .
             "3. test-client-create-booking.php creates a booking request.\n\n" .
             "Base URL: " . $apiBaseUrl . "\n" .
@@ -630,7 +743,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
 
         <div class="api-card">
             <h3><i class="fas fa-file-code"></i> Test Client PHP Package</h3>
-            <p style="font-size:12px; color:#64748b; margin:0 0 10px;">Generate a fresh Test Client key, then copy one of the PHP tabs below and send it to your client.</p>
+            <p style="font-size:12px; color:#64748b; margin:0 0 10px;">Generate a fresh Test Client key, then copy one of the PHP tabs below. The first tab renders actual room cards and images, not raw JSON.</p>
 
             <?php if ($testClient): ?>
                 <form method="POST" style="margin-bottom:10px;" onsubmit="return confirm('Generate a new key for Test Client? The previous key will stop working.');">
@@ -656,7 +769,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
                 ?>
 
                 <div class="tab-strip" data-tab-group="php-client-tabs">
-                    <button type="button" class="tab-btn active" data-tab-target="php_client_class">Reusable Client</button>
+                    <button type="button" class="tab-btn active" data-tab-target="php_client_class">Rooms Showcase (HTML)</button>
                     <button type="button" class="tab-btn" data-tab-target="php_client_availability">Availability</button>
                     <button type="button" class="tab-btn" data-tab-target="php_client_booking">Create Booking</button>
                 </div>
@@ -734,14 +847,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
 
                 <h3 style="margin-top:14px;"><i class="fas fa-eye"></i> Client Preview</h3>
                 <div class="preview-card">
-                    <p style="margin:0 0 8px;">This is what your client receives when their PHP code calls the API successfully:</p>
-                    <pre>{
-  "success": true,
-  "message": "Request processed successfully",
-  "data": {
-    "example": "client payload from endpoint"
-  }
-}</pre>
+                                        <p style="margin:0 0 8px;">Success flow now renders a visual rooms grid (image, room name, price, capacity, description) so clients see real content immediately.</p>
                     <p style="margin:8px 0 0;">And if the key is missing/invalid:</p>
                     <pre>{
   "success": false,
