@@ -34,6 +34,8 @@ if ($limit < 25 || $limit > 500) {
 }
 
 $employee_options = [];
+$action_options = [];
+$actor_options = [];
 $rows = [];
 $summary = [
     'admin_events' => 0,
@@ -50,41 +52,171 @@ try {
     $date_from_ts = $has_date_from ? ($date_from . ' 00:00:00') : null;
     $date_to_ts = $has_date_to ? ($date_to . ' 23:59:59') : null;
 
+    $admin_base_where = [];
+    $admin_base_params = [];
+    $employee_base_where = [];
+    $employee_base_params = [];
+
+    if ($has_date_from) {
+        $admin_base_where[] = 'created_at >= ?';
+        $admin_base_params[] = $date_from_ts;
+        $employee_base_where[] = 'created_at >= ?';
+        $employee_base_params[] = $date_from_ts;
+    }
+    if ($has_date_to) {
+        $admin_base_where[] = 'created_at <= ?';
+        $admin_base_params[] = $date_to_ts;
+        $employee_base_where[] = 'created_at <= ?';
+        $employee_base_params[] = $date_to_ts;
+    }
+    if ($employee_id > 0) {
+        $employee_base_where[] = 'employee_id = ?';
+        $employee_base_params[] = $employee_id;
+    }
+
+    // Build dropdown options from current time/type/employee scope.
+    if ($log_type === 'all' || $log_type === 'admin') {
+        $sql = "SELECT DISTINCT action FROM admin_activity_log";
+        $sql .= empty($admin_base_where) ? '' : ' WHERE ' . implode(' AND ', $admin_base_where);
+        $sql .= ' ORDER BY action ASC LIMIT 300';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($admin_base_params);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $action) {
+            $action = trim((string)$action);
+            if ($action !== '') {
+                $action_options[$action] = true;
+            }
+        }
+
+        $sql = "SELECT DISTINCT COALESCE(au.full_name, a.username, CONCAT('User #', a.user_id)) AS actor_name
+                FROM admin_activity_log a
+                LEFT JOIN admin_users au ON au.id = a.user_id";
+        $sql .= empty($admin_base_where) ? '' : ' WHERE ' . implode(' AND ', array_map(function ($cond) {
+            return 'a.' . $cond;
+        }, $admin_base_where));
+        $sql .= ' ORDER BY actor_name ASC LIMIT 300';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($admin_base_params);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $actorName) {
+            $actorName = trim((string)$actorName);
+            if ($actorName !== '') {
+                $actor_options[$actorName] = true;
+            }
+        }
+    }
+
+    if ($log_type === 'all' || $log_type === 'employee') {
+        $sql = "SELECT DISTINCT action FROM employee_activity_log";
+        $sql .= empty($employee_base_where) ? '' : ' WHERE ' . implode(' AND ', $employee_base_where);
+        $sql .= ' ORDER BY action ASC LIMIT 300';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($employee_base_params);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $action) {
+            $action = trim((string)$action);
+            if ($action !== '') {
+                $action_options[$action] = true;
+            }
+        }
+
+        $sql = "SELECT DISTINCT COALESCE(au.full_name, au.username, CONCAT('User #', e.actor_user_id)) AS actor_name
+                FROM employee_activity_log e
+                LEFT JOIN admin_users au ON au.id = e.actor_user_id";
+        $sql .= empty($employee_base_where) ? '' : ' WHERE ' . implode(' AND ', array_map(function ($cond) {
+            return 'e.' . $cond;
+        }, $employee_base_where));
+        $sql .= ' ORDER BY actor_name ASC LIMIT 300';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($employee_base_params);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $actorName) {
+            $actorName = trim((string)$actorName);
+            if ($actorName !== '') {
+                $actor_options[$actorName] = true;
+            }
+        }
+    }
+
+    // Keep selected values visible even when no matches exist in scope.
+    if ($action_query !== '') {
+        $action_options[$action_query] = true;
+    }
+    if ($actor_query !== '') {
+        $actor_options[$actor_query] = true;
+    }
+
     $summary_where_admin = [];
+    $summary_admin_params = [];
     $summary_where_employee = [];
-    $summary_params = [];
+    $summary_employee_params = [];
 
     if ($has_date_from) {
         $summary_where_admin[] = 'created_at >= ?';
+        $summary_admin_params[] = $date_from_ts;
         $summary_where_employee[] = 'created_at >= ?';
-        $summary_params[] = $date_from_ts;
+        $summary_employee_params[] = $date_from_ts;
     }
     if ($has_date_to) {
         $summary_where_admin[] = 'created_at <= ?';
+        $summary_admin_params[] = $date_to_ts;
         $summary_where_employee[] = 'created_at <= ?';
-        $summary_params[] = $date_to_ts;
+        $summary_employee_params[] = $date_to_ts;
+    }
+    if ($action_query !== '') {
+        $summary_where_admin[] = 'action LIKE ?';
+        $summary_admin_params[] = '%' . $action_query . '%';
+        $summary_where_employee[] = 'action LIKE ?';
+        $summary_employee_params[] = '%' . $action_query . '%';
+    }
+    if ($actor_query !== '') {
+        $summary_where_admin[] = '(username LIKE ? OR user_id IN (SELECT id FROM admin_users WHERE full_name LIKE ?))';
+        $summary_admin_params[] = '%' . $actor_query . '%';
+        $summary_admin_params[] = '%' . $actor_query . '%';
+        $summary_where_employee[] = '(actor_user_id IN (SELECT id FROM admin_users WHERE full_name LIKE ? OR username LIKE ?))';
+        $summary_employee_params[] = '%' . $actor_query . '%';
+        $summary_employee_params[] = '%' . $actor_query . '%';
+    }
+    if ($employee_id > 0) {
+        $summary_where_employee[] = 'employee_id = ?';
+        $summary_employee_params[] = $employee_id;
     }
 
-    $admin_where_sql = empty($summary_where_admin) ? '1=1' : implode(' AND ', $summary_where_admin);
-    $employee_where_sql = empty($summary_where_employee) ? '1=1' : implode(' AND ', $summary_where_employee);
+    if ($log_type === 'all' || $log_type === 'admin') {
+        $sql = 'SELECT COUNT(*) FROM admin_activity_log WHERE ' . (empty($summary_where_admin) ? '1=1' : implode(' AND ', $summary_where_admin));
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($summary_admin_params);
+        $summary['admin_events'] = (int)$stmt->fetchColumn();
 
-    $summary_sql = "SELECT
-        (SELECT COUNT(*) FROM admin_activity_log WHERE {$admin_where_sql}) AS admin_events,
-        (SELECT COUNT(*) FROM employee_activity_log WHERE {$employee_where_sql}) AS employee_events,
-        (SELECT COUNT(*) FROM admin_activity_log WHERE {$admin_where_sql} AND action IN ('login_failed', 'login_blocked')) AS failed_logins,
-        (SELECT COUNT(*) FROM employee_activity_log WHERE {$employee_where_sql} AND action LIKE 'booking_cancel%') AS cancellations
-    ";
-    $summary_stmt = $pdo->prepare($summary_sql);
-    // Reuse params for each subquery occurrence order.
-    $summary_exec_params = [];
-    if (!empty($summary_params)) {
-        $summary_exec_params = array_merge($summary_exec_params, $summary_params, $summary_params, $summary_params, $summary_params);
+        $sql = 'SELECT COUNT(*) FROM admin_activity_log WHERE ' .
+            (empty($summary_where_admin) ? '1=1' : implode(' AND ', $summary_where_admin)) .
+            " AND action IN ('login_failed', 'login_blocked')";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($summary_admin_params);
+        $summary['failed_logins'] = (int)$stmt->fetchColumn();
     }
-    $summary_stmt->execute($summary_exec_params);
-    $summary_data = $summary_stmt->fetch(PDO::FETCH_ASSOC);
-    if ($summary_data) {
-        $summary = array_merge($summary, array_map('intval', $summary_data));
+
+    if ($log_type === 'all' || $log_type === 'employee') {
+        $sql = 'SELECT COUNT(*) FROM employee_activity_log WHERE ' . (empty($summary_where_employee) ? '1=1' : implode(' AND ', $summary_where_employee));
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($summary_employee_params);
+        $summary['employee_events'] = (int)$stmt->fetchColumn();
+
+        $sql = 'SELECT COUNT(*) FROM employee_activity_log WHERE ' .
+            (empty($summary_where_employee) ? '1=1' : implode(' AND ', $summary_where_employee)) .
+            " AND action LIKE 'booking_cancel%'";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($summary_employee_params);
+        $summary['cancellations'] = (int)$stmt->fetchColumn();
     }
+
+    if ($log_type === 'admin') {
+        $summary['employee_events'] = 0;
+        $summary['cancellations'] = 0;
+    } elseif ($log_type === 'employee') {
+        $summary['admin_events'] = 0;
+        $summary['failed_logins'] = 0;
+    }
+
+    ksort($action_options, SORT_NATURAL | SORT_FLAG_CASE);
+    ksort($actor_options, SORT_NATURAL | SORT_FLAG_CASE);
 
     $sql_parts = [];
     $params = [];
@@ -255,12 +387,26 @@ try {
                 </select>
             </div>
             <div class="form-group">
-                <label for="action">Action Contains</label>
-                <input type="text" id="action" name="action" value="<?php echo htmlspecialchars($action_query); ?>" placeholder="login, employee_, booking_cancel">
+                <label for="action">Action</label>
+                <select id="action" name="action">
+                    <option value="">All actions</option>
+                    <?php foreach (array_keys($action_options) as $actionOpt): ?>
+                        <option value="<?php echo htmlspecialchars($actionOpt); ?>" <?php echo $action_query === $actionOpt ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($actionOpt); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
             <div class="form-group">
-                <label for="actor">Actor Name</label>
-                <input type="text" id="actor" name="actor" value="<?php echo htmlspecialchars($actor_query); ?>" placeholder="Admin name or username">
+                <label for="actor">Actor</label>
+                <select id="actor" name="actor">
+                    <option value="">All actors</option>
+                    <?php foreach (array_keys($actor_options) as $actorOpt): ?>
+                        <option value="<?php echo htmlspecialchars($actorOpt); ?>" <?php echo $actor_query === $actorOpt ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($actorOpt); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
             <div class="form-group">
                 <label for="employee_id">Employee</label>
