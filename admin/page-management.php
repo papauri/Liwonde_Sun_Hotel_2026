@@ -11,22 +11,69 @@ require_once '../includes/alert.php';
 $message = '';
 $error   = '';
 
-// ─── Ensure site_pages table exists ───────────────────────────────────
-try {
-    $pdo->query("SELECT 1 FROM site_pages LIMIT 1");
-} catch (PDOException $e) {
-    // Auto-create the table + seed data
-    $sql = file_get_contents(__DIR__ . '/../Database/migrations/create_site_pages_table.sql');
-    if ($sql) {
-        // Execute each statement separately
-        $statements = array_filter(array_map('trim', explode(';', $sql)));
-        foreach ($statements as $stmt) {
-            if (!empty($stmt) && stripos($stmt, '--') !== 0) {
-                try { $pdo->exec($stmt); } catch (PDOException $ex) { /* ignore duplicates */ }
-            }
-        }
-        $message = 'Page management table created and seeded with default pages.';
+function normalizeManagedFilePath(string $path): string {
+    $clean = trim(str_replace('\\', '/', $path));
+    $clean = ltrim($clean, '/');
+    if ($clean === '') {
+        return '';
     }
+    if (stripos($clean, 'admin/') === 0 || stripos($clean, 'api/') === 0) {
+        return '';
+    }
+    if (!preg_match('/^[a-zA-Z0-9_\-\/\.]+$/', $clean)) {
+        return '';
+    }
+    if (substr($clean, -4) !== '.php') {
+        return '';
+    }
+    return basename($clean);
+}
+
+function getDefaultManagedPages(): array {
+    return [
+        ['home', 'Home', 'index.php', 'fa-home', 10, 1, 1, 'Main homepage'],
+        ['rooms', 'Rooms', 'room.php', 'fa-bed', 20, 1, 1, 'Room details page'],
+        ['rooms_showcase', 'Rooms Showcase', 'rooms-showcase.php', 'fa-th-large', 30, 1, 1, 'Rooms collection page'],
+        ['rooms_gallery', 'Rooms Gallery', 'rooms-gallery.php', 'fa-images', 40, 1, 1, 'Room images gallery'],
+        ['restaurant', 'Restaurant', 'restaurant.php', 'fa-utensils', 50, 1, 1, 'Restaurant page'],
+        ['conference', 'Conference', 'conference.php', 'fa-briefcase', 60, 1, 1, 'Conference page'],
+        ['events', 'Events', 'events.php', 'fa-calendar-alt', 70, 1, 1, 'Events page'],
+        ['gym', 'Gym', 'gym.php', 'fa-dumbbell', 80, 1, 1, 'Gym page'],
+        ['booking', 'Book Now', 'booking.php', 'fa-calendar-check', 90, 1, 1, 'Booking page'],
+        ['booking_lookup', 'Booking Lookup', 'booking-lookup.php', 'fa-search', 100, 0, 1, 'Booking lookup page'],
+        ['privacy_policy', 'Privacy Policy', 'privacy-policy.php', 'fa-shield-alt', 110, 1, 1, 'Privacy policy page'],
+    ];
+}
+
+function ensureSitePagesTable(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS site_pages (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        page_key VARCHAR(120) NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        file_path VARCHAR(255) NOT NULL,
+        icon VARCHAR(120) DEFAULT 'fa-file',
+        nav_position INT NOT NULL DEFAULT 0,
+        show_in_nav TINYINT(1) NOT NULL DEFAULT 1,
+        is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+        description VARCHAR(500) DEFAULT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_page_key (page_key),
+        UNIQUE KEY uniq_file_path (file_path)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $seed = $pdo->prepare("INSERT IGNORE INTO site_pages
+        (page_key, title, file_path, icon, nav_position, show_in_nav, is_enabled, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    foreach (getDefaultManagedPages() as $row) {
+        $seed->execute($row);
+    }
+}
+
+try {
+    ensureSitePagesTable($pdo);
+} catch (Throwable $e) {
+    $error = 'Failed to initialize page management table: ' . $e->getMessage();
 }
 
 // ─── Handle POST actions ──────────────────────────────────────────────
@@ -43,6 +90,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Toggle is_enabled
                 case 'toggle_enabled':
                     $id = (int)($_POST['page_id'] ?? 0);
+                    if ($id <= 0) {
+                        throw new Exception('Invalid page selected.');
+                    }
                     $stmt = $pdo->prepare("UPDATE site_pages SET is_enabled = NOT is_enabled WHERE id = ?");
                     $stmt->execute([$id]);
                     $message = 'Page status updated.';
@@ -51,6 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Toggle show_in_nav
                 case 'toggle_nav':
                     $id = (int)($_POST['page_id'] ?? 0);
+                    if ($id <= 0) {
+                        throw new Exception('Invalid page selected.');
+                    }
                     $stmt = $pdo->prepare("UPDATE site_pages SET show_in_nav = NOT show_in_nav WHERE id = ?");
                     $stmt->execute([$id]);
                     $message = 'Navigation visibility updated.';
@@ -62,7 +115,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (is_array($order)) {
                         $stmt = $pdo->prepare("UPDATE site_pages SET nav_position = ? WHERE id = ?");
                         foreach ($order as $pos => $id) {
-                            $stmt->execute([($pos + 1) * 10, (int)$id]);
+                            $id = (int)$id;
+                            if ($id > 0) {
+                                $stmt->execute([($pos + 1) * 10, $id]);
+                            }
                         }
                         $message = 'Navigation order saved.';
                     }
@@ -72,12 +128,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 case 'add_page':
                     $page_key  = preg_replace('/[^a-z0-9_-]/', '', strtolower(trim($_POST['page_key'] ?? '')));
                     $title     = trim($_POST['title'] ?? '');
-                    $file_path = trim($_POST['file_path'] ?? '');
+                    $file_path = normalizeManagedFilePath((string)($_POST['file_path'] ?? ''));
                     $icon      = trim($_POST['icon'] ?? 'fa-file');
                     $desc      = trim($_POST['description'] ?? '');
 
                     if (!$page_key || !$title || !$file_path) {
-                        $error = 'Page key, title, and file path are required.';
+                        $error = 'Page key, title, and a valid public PHP file path are required.';
                     } else {
                         // Check for duplicate key
                         $chk = $pdo->prepare("SELECT COUNT(*) FROM site_pages WHERE page_key = ?");
@@ -100,12 +156,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 case 'edit_page':
                     $id        = (int)($_POST['page_id'] ?? 0);
                     $title     = trim($_POST['title'] ?? '');
-                    $file_path = trim($_POST['file_path'] ?? '');
+                    $file_path = normalizeManagedFilePath((string)($_POST['file_path'] ?? ''));
                     $icon      = trim($_POST['icon'] ?? 'fa-file');
                     $desc      = trim($_POST['description'] ?? '');
 
-                    if (!$title || !$file_path) {
-                        $error = 'Title and file path are required.';
+                    if ($id <= 0 || !$title || !$file_path) {
+                        $error = 'Valid page, title, and public PHP file path are required.';
                     } else {
                         $stmt = $pdo->prepare("
                             UPDATE site_pages SET title = ?, file_path = ?, icon = ?, description = ? WHERE id = ?
