@@ -13,6 +13,20 @@ $user = [
 ];
 $today = date('Y-m-d');
 
+// Default summaries (safe fallback if any query fails)
+$today_revenue = 0;
+$month_revenue = 0;
+$total_outstanding = 0;
+$room_outstanding = 0;
+$conference_outstanding = 0;
+$total_rooms_inventory = 0;
+$rooms_available_now = 0;
+$rooms_occupied_now = 0;
+$occupancy_rate = 0;
+$today_unpaid_arrivals = 0;
+$active_employees = 0;
+$total_employees = 0;
+
 // Fetch dashboard statistics
 try {
     // Today's check-ins
@@ -46,6 +60,36 @@ try {
     $today_conf_stmt->execute([$today]);
     $today_conferences = $today_conf_stmt->fetch(PDO::FETCH_ASSOC)['count'];
 
+    // Today's completed collections
+    $today_revenue_stmt = $pdo->prepare("\n        SELECT COALESCE(SUM(total_amount), 0) as total\n        FROM payments\n        WHERE payment_status = 'completed'\n        AND DATE(COALESCE(payment_date, created_at)) = ?\n    ");
+    $today_revenue_stmt->execute([$today]);
+    $today_revenue = (float)($today_revenue_stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+
+    // This month's completed collections
+    $month_revenue_stmt = $pdo->query("\n        SELECT COALESCE(SUM(total_amount), 0) as total\n        FROM payments\n        WHERE payment_status = 'completed'\n          AND DATE(COALESCE(payment_date, created_at)) >= DATE_FORMAT(CURDATE(), '%Y-%m-01')\n          AND DATE(COALESCE(payment_date, created_at)) <= CURDATE()\n    ");
+    $month_revenue = (float)($month_revenue_stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+
+    // Outstanding balances (room + conference)
+    $room_outstanding_stmt = $pdo->query("\n        SELECT COALESCE(SUM(amount_due), 0) as total\n        FROM bookings\n        WHERE amount_due > 0\n          AND status NOT IN ('cancelled', 'checked-out', 'no-show')\n    ");
+    $room_outstanding = (float)($room_outstanding_stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+
+    $conf_outstanding_stmt = $pdo->query("\n        SELECT COALESCE(SUM(amount_due), 0) as total\n        FROM conference_inquiries\n        WHERE amount_due > 0\n          AND status NOT IN ('cancelled', 'completed')\n    ");
+    $conference_outstanding = (float)($conf_outstanding_stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+    $total_outstanding = $room_outstanding + $conference_outstanding;
+
+    // Occupancy snapshot based on room inventory
+    $occupancy_stmt = $pdo->query("\n        SELECT\n            COALESCE(SUM(total_rooms), 0) as total_rooms,\n            COALESCE(SUM(rooms_available), 0) as rooms_available\n        FROM rooms\n    ");
+    $occupancy_row = $occupancy_stmt->fetch(PDO::FETCH_ASSOC);
+    $total_rooms_inventory = (int)($occupancy_row['total_rooms'] ?? 0);
+    $rooms_available_now = (int)($occupancy_row['rooms_available'] ?? 0);
+    $rooms_occupied_now = max(0, $total_rooms_inventory - $rooms_available_now);
+    $occupancy_rate = $total_rooms_inventory > 0 ? round(($rooms_occupied_now / $total_rooms_inventory) * 100, 1) : 0;
+
+    // Unpaid arrivals expected today
+    $unpaid_arrivals_stmt = $pdo->prepare("\n        SELECT COUNT(*) as count\n        FROM bookings\n        WHERE check_in_date = ?\n          AND status IN ('pending', 'confirmed')\n          AND payment_status <> 'paid'\n    ");
+    $unpaid_arrivals_stmt->execute([$today]);
+    $today_unpaid_arrivals = (int)($unpaid_arrivals_stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
+
     // New gym inquiries
     $gym_new_stmt = $pdo->query("SELECT COUNT(*) as count FROM gym_inquiries WHERE status = 'new'");
     $new_gym_inquiries = $gym_new_stmt->fetch(PDO::FETCH_ASSOC)['count'];
@@ -53,6 +97,13 @@ try {
     // Total gym inquiries (all statuses)
     $gym_total_stmt = $pdo->query("SELECT COUNT(*) as count FROM gym_inquiries");
     $total_gym_inquiries = $gym_total_stmt->fetch(PDO::FETCH_ASSOC)['count'];
+
+    // Employee summary
+    $employees_total_stmt = $pdo->query("SELECT COUNT(*) as count FROM employees");
+    $total_employees = (int)($employees_total_stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
+
+    $employees_active_stmt = $pdo->query("SELECT COUNT(*) as count FROM employees WHERE is_active = 1");
+    $active_employees = (int)($employees_active_stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0);
 
     // Recent gym inquiries (last 10)
     $recent_gym_stmt = $pdo->query("
@@ -174,6 +225,12 @@ $currency_symbol = getSetting('currency_symbol');
         .quick-actions {
             display: flex;
             gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
         
         /* Today's Check-ins section specific styling */
@@ -238,6 +295,88 @@ $currency_symbol = getSetting('currency_symbol');
         .stat-card-warning .stat-value {
             color: #856404;
         }
+
+        @media (max-width: 1024px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 16px;
+            }
+
+            .today-checkins-section {
+                padding: 20px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .content {
+                padding-left: 12px;
+                padding-right: 12px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 14px;
+            }
+
+            .today-checkins-section {
+                padding: 16px;
+                margin-bottom: 20px;
+            }
+
+            .today-checkins-section h3 {
+                font-size: 18px;
+                line-height: 1.3;
+            }
+
+            .quick-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .quick-actions .btn,
+            .quick-actions a {
+                width: 100%;
+                justify-content: center;
+                text-align: center;
+            }
+
+            .empty-state {
+                padding: 24px 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .table-container .table {
+                font-size: 11px;
+                min-width: 720px;
+            }
+
+            .table-container .table th,
+            .table-container .table td {
+                padding: 6px 8px;
+                white-space: nowrap;
+            }
+
+            .table-container .table td:last-child,
+            .table-container .table th:last-child {
+                position: sticky;
+                right: 0;
+                background: #fff;
+                z-index: 2;
+                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
+            }
+
+            .table-container .table thead th:last-child {
+                background: #f8f9fa;
+                z-index: 3;
+            }
+
+            .table-container .table td:last-child .btn,
+            .table-container .table td:last-child a {
+                font-size: 11px;
+                padding: 5px 8px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -254,6 +393,24 @@ $currency_symbol = getSetting('currency_symbol');
         <h2 class="section-title">Dashboard Overview</h2>
         
         <div class="stats-grid">
+            <div class="stat-card stat-card-warning">
+                <div class="stat-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="stat-value"><?php echo $currency_symbol; ?><?php echo number_format($total_outstanding, 0); ?></div>
+                <div class="stat-label">Outstanding Balance</div>
+                <small style="color:#999; font-size:11px;">Room + conference dues</small>
+            </div>
+
+            <div class="stat-card stat-card-warning">
+                <div class="stat-icon">
+                    <i class="fas fa-wallet"></i>
+                </div>
+                <div class="stat-value"><?php echo $today_unpaid_arrivals; ?></div>
+                <div class="stat-label">Unpaid Arrivals Today</div>
+                <small style="color:#999; font-size:11px;">Check-ins needing payment attention</small>
+            </div>
+
             <div class="stat-card">
                 <div class="stat-icon">
                     <i class="fas fa-calendar-check"></i>
@@ -278,47 +435,83 @@ $currency_symbol = getSetting('currency_symbol');
                 <div class="stat-label">Pending Bookings</div>
             </div>
 
+            <div class="stat-card stat-card-warning">
+                <div class="stat-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-value"><?php echo $expired_bookings; ?></div>
+                <div class="stat-label">Expired (24h)</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-users-cog"></i>
+                </div>
+                <div class="stat-value"><?php echo $pending_conference; ?></div>
+                <div class="stat-label">Pending Conference Enquiries</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-calendar-day"></i>
+                </div>
+                <div class="stat-value"><?php echo $today_conferences; ?></div>
+                <div class="stat-label">Today's Conference Events</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-bed"></i>
+                </div>
+                <div class="stat-value"><?php echo number_format($occupancy_rate, 1); ?>%</div>
+                <div class="stat-label">Current Occupancy</div>
+                <small style="color:#999; font-size:11px;"><?php echo $rooms_occupied_now; ?>/<?php echo $total_rooms_inventory; ?> rooms occupied</small>
+            </div>
+
             <div class="stat-card">
                 <div class="stat-icon">
                     <i class="fas fa-users"></i>
                 </div>
                 <div class="stat-value"><?php echo $current_guests; ?></div>
                 <div class="stat-label">Current Guests</div>
-                </div>
-    
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-users-cog"></i>
-                    </div>
-                    <div class="stat-value"><?php echo $pending_conference; ?></div>
-                    <div class="stat-label">Pending Conference Enquiries</div>
-                </div>
-    
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-calendar-day"></i>
-                    </div>
-                    <div class="stat-value"><?php echo $today_conferences; ?></div>
-                    <div class="stat-label">Today's Conference Events</div>
-                </div>
-
-                <div class="stat-card stat-card-warning">
-                    <div class="stat-icon">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="stat-value"><?php echo $expired_bookings; ?></div>
-                    <div class="stat-label">Expired (24h)</div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-dumbbell"></i>
-                    </div>
-                    <div class="stat-value"><?php echo $new_gym_inquiries; ?></div>
-                    <div class="stat-label">New Gym Inquiries</div>
-                    <small style="color:#999; font-size:11px;"><?php echo $total_gym_inquiries; ?> total</small>
-                </div>
             </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-money-bill-wave"></i>
+                </div>
+                <div class="stat-value"><?php echo $currency_symbol; ?><?php echo number_format($today_revenue, 0); ?></div>
+                <div class="stat-label">Collected Today</div>
+                <small style="color:#999; font-size:11px;">Completed payments only</small>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stat-value"><?php echo $currency_symbol; ?><?php echo number_format($month_revenue, 0); ?></div>
+                <div class="stat-label">Collected This Month</div>
+                <small style="color:#999; font-size:11px;">MTD completed payments</small>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-dumbbell"></i>
+                </div>
+                <div class="stat-value"><?php echo $new_gym_inquiries; ?></div>
+                <div class="stat-label">New Gym Inquiries</div>
+                <small style="color:#999; font-size:11px;"><?php echo $total_gym_inquiries; ?> total</small>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-user-tie"></i>
+                </div>
+                <div class="stat-value"><?php echo $active_employees; ?></div>
+                <div class="stat-label">Active Employees</div>
+                <small style="color:#999; font-size:11px;"><?php echo $total_employees; ?> total employees</small>
+            </div>
+        </div>
 
         <!-- Today's Check-ins Management -->
         <div class="today-checkins-section">

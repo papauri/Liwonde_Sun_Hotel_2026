@@ -189,6 +189,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_booking'])) {
         ]);
         
         $new_booking_id = $pdo->lastInsertId();
+
+        // Ensure booking totals (including promo, levy, VAT logic) are normalized before payment writes.
+        $recalculated = recalculateRoomBookingFinancials($new_booking_id);
+        $total_amount = (float)($recalculated['subtotal'] ?? $total_amount);
+        $vatRate = (float)($recalculated['vat_rate'] ?? 0);
+        $vatAmount = (float)($recalculated['vat_amount'] ?? 0);
+        $totalWithVat = (float)($recalculated['grand_total'] ?? ($total_amount + $vatAmount));
         
         // If confirmed, decrement room availability
         if ($booking_status === 'confirmed') {
@@ -200,11 +207,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_booking'])) {
         
         // If paid, create payment record
         if ($payment_status === 'paid') {
-            $vatEnabled = in_array(getSetting('vat_enabled'), ['1', 1, true, 'true', 'on'], true);
-            $vatRate = $vatEnabled ? (float)getSetting('vat_rate') : 0;
-            $vatAmount = $vatEnabled ? ($total_amount * ($vatRate / 100)) : 0;
-            $totalWithVat = $total_amount + $vatAmount;
-            
             $payment_reference = 'PAY-' . date('Y') . '-' . str_pad($new_booking_id, 6, '0', STR_PAD_LEFT);
             $payment_method = $_POST['payment_method'] ?? 'cash';
             
@@ -238,8 +240,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_booking'])) {
         $pdo->prepare("INSERT INTO booking_notes (booking_id, note_text, created_by) VALUES (?, ?, ?)")
             ->execute([$new_booking_id, 'Booking created manually by admin (' . ($user['full_name'] ?? $user['username']) . ')', $user['id']]);
 
-        recalculateRoomBookingFinancials($new_booking_id);
-        
         $pdo->commit();
         
         // Send email if requested

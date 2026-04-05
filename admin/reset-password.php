@@ -13,6 +13,7 @@ if (isset($_SESSION['admin_user_id'])) {
 }
 
 require_once '../config/database.php';
+require_once '../includes/activity-logger.php';
 
 $error_message = '';
 $token = $_GET['token'] ?? $_POST['token'] ?? '';
@@ -102,8 +103,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
             $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
             $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
             try {
-                $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'password_reset', 'Password reset via email token', ?, ?)");
-                $log_stmt->execute([$user_data['user_id'], $user_data['username'], $ip, $ua]);
+                ensureActivityLogInfrastructure($pdo);
+                logAdminActivity($pdo, (int)$user_data['user_id'], $user_data['username'], 'password_reset', 'Password reset via email token', $ip, $ua);
+
+                $empRef = resolveEmployeeForAdminUser($pdo, (int)$user_data['user_id']);
+                if (!empty($empRef['employee_id'])) {
+                    logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user_data['user_id'], (int)$user_data['user_id'], 'password_reset', 'Employee-linked account password reset via token', 'admin_reset_password', $ip, $ua);
+                }
             } catch (PDOException $le) {
                 // Don't block reset if logging fails
             }

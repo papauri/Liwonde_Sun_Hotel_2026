@@ -38,6 +38,8 @@ if (!defined('API_ACCESS_ALLOWED') || !isset($auth) || !isset($client)) {
     exit;
 }
 
+require_once __DIR__ . '/../includes/campaign-attribution.php';
+
 // Check permission
 if (!$auth->checkPermission($client, 'bookings.create')) {
     ApiResponse::error('Permission denied: bookings.create', 403);
@@ -193,17 +195,14 @@ try {
         }
         $roomUnitAssignmentSource = $bookingData['room_unit_id'] !== null ? 'manual' : 'auto';
 
-        // Insert booking
-        $insertStmt = $pdo->prepare("
-            INSERT INTO bookings (
-                booking_reference, room_id, room_unit_id, room_unit_assignment_source, guest_name, guest_email, guest_phone,
-                guest_country, guest_address, number_of_guests, check_in_date,
-                check_out_date, number_of_nights, total_amount, special_requests, status,
-                is_tentative, tentative_expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        
-        $insertStmt->execute([
+        $insertColumns = [
+            'booking_reference', 'room_id', 'room_unit_id', 'room_unit_assignment_source', 'guest_name', 'guest_email', 'guest_phone',
+            'guest_country', 'guest_address', 'number_of_guests', 'check_in_date',
+            'check_out_date', 'number_of_nights', 'total_amount', 'special_requests', 'status',
+            'is_tentative', 'tentative_expires_at'
+        ];
+
+        $insertValues = [
             $bookingReference,
             $bookingData['room_id'],
             $allocatedRoomUnitId,
@@ -222,7 +221,23 @@ try {
             $bookingStatus,
             $isTentative,
             $tentativeExpiresAt
-        ]);
+        ];
+
+        $requestAttribution = extractCampaignAttributionFromRequest($input);
+        if ($requestAttribution === null) {
+            $requestAttribution = getCurrentCampaignAttribution();
+        }
+
+        $attributionInsert = getAttributionInsertData($pdo, 'bookings', $requestAttribution);
+        if (!empty($attributionInsert['columns'])) {
+            $insertColumns = array_merge($insertColumns, $attributionInsert['columns']);
+            $insertValues = array_merge($insertValues, $attributionInsert['values']);
+        }
+
+        $insertPlaceholders = implode(', ', array_fill(0, count($insertColumns), '?'));
+        $insertSql = "INSERT INTO bookings (" . implode(', ', $insertColumns) . ") VALUES (" . $insertPlaceholders . ")";
+        $insertStmt = $pdo->prepare($insertSql);
+        $insertStmt->execute($insertValues);
         
         $bookingId = $pdo->lastInsertId();
         

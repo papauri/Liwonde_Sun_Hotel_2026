@@ -14,6 +14,31 @@ if (isset($_SESSION['admin_user_id'])) {
 
 require_once '../config/database.php';
 
+/**
+ * Build a unique username based on email/name for auto-created employee logins.
+ */
+function buildUniqueUsername(PDO $pdo, string $email, string $fullName): string {
+    $base = strtolower(trim((string)preg_replace('/[^a-zA-Z0-9._-]/', '', strstr($email, '@', true) ?: '')));
+    if ($base === '') {
+        $base = strtolower(trim((string)preg_replace('/[^a-zA-Z0-9._-]/', '', str_replace(' ', '.', $fullName))));
+    }
+    if ($base === '') {
+        $base = 'employee';
+    }
+
+    $candidate = $base;
+    $i = 1;
+    while (true) {
+        $check = $pdo->prepare("SELECT COUNT(*) FROM admin_users WHERE username = ?");
+        $check->execute([$candidate]);
+        if ((int)$check->fetchColumn() === 0) {
+            return $candidate;
+        }
+        $i++;
+        $candidate = $base . $i;
+    }
+}
+
 $error_message = '';
 $success_message = '';
 
@@ -49,6 +74,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("SELECT id, username, email, full_name FROM admin_users WHERE email = ? AND is_active = 1");
             $stmt->execute([$email]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            // If not found, attempt employee-based recovery.
+            // Eligible positions: admin, manager, receptionist/front office.
+            if (!$user) {
+                try {
+                    $empStmt = $pdo->prepare("SELECT id, full_name, email, position_title, is_active FROM employees WHERE email = ? AND is_active = 1 LIMIT 1");
+                    $empStmt->execute([$email]);
+                    $employee = $empStmt->fetch(PDO::FETCH_ASSOC);
+
+                    if ($employee) {
+                        $position = strtolower(trim((string)$employee['position_title']));
+                        $role = null;
+                        if (strpos($position, 'admin') !== false) {
+                            $role = 'admin';
+                        } elseif (strpos($position, 'manager') !== false) {
+                            $role = 'manager';
+                        } elseif (strpos($position, 'reception') !== false || strpos($position, 'front') !== false) {
+                            $role = 'receptionist';
+                        }
+
+                        if ($role !== null) {
+                            $existingUserStmt = $pdo->prepare("SELECT id, username, email, full_name, is_active FROM admin_users WHERE email = ? LIMIT 1");
+                            $existingUserStmt->execute([$email]);
+                            $existingUser = $existingUserStmt->fetch(PDO::FETCH_ASSOC);
+
+                            if ($existingUser) {
+                                // Reactivate account if needed so reset flow can proceed.
+                                if ((int)$existingUser['is_active'] !== 1) {
+                                    $pdo->prepare("UPDATE admin_users SET is_active = 1 WHERE id = ?")->execute([(int)$existingUser['id']]);
+                                }
+                                $user = [
+                                    'id' => (int)$existingUser['id'],
+                                    'username' => $existingUser['username'],
+                                    'email' => $existingUser['email'],
+                                    'full_name' => $existingUser['full_name'],
+                                ];
+                            } else {
+                                // Create a login account for eligible employee and send temporary password.
+                                $tempPassword = bin2hex(random_bytes(4)) . 'Aa!';
+                                $username = buildUniqueUsername($pdo, $email, (string)$employee['full_name']);
+                                $hash = password_hash($tempPassword, PASSWORD_DEFAULT);
+
+                                $createStmt = $pdo->prepare("INSERT INTO admin_users (username, email, password_hash, full_name, role, is_active) VALUES (?, ?, ?, ?, ?, 1)");
+                                $createStmt->execute([$username, $email, $hash, $employee['full_name'], $role]);
+
+                                require_once '../config/email.php';
+                                $site_name = getSetting('site_name', 'Hotel Admin');
+                                $site_url = getSetting('site_url', '');
+                                if (empty($site_url)) {
+                                    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                                    $site_url = $protocol . '://' . $_SERVER['HTTP_HOST'];
+                                }
+                                $login_url = rtrim($site_url, '/') . '/admin/login.php';
+
+                                $tempHtml = '
+                                <!DOCTYPE html>
+                                <html>
+                                <head><meta charset="UTF-8"></head>
+                                <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+                                    <div style="max-width:600px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)">
+                                        <div style="background:linear-gradient(135deg,#0A1929 0%,#1a2f45 100%);padding:32px 28px;text-align:center;">
+                                            <h1 style="color:#D4AF37;margin:0 0 8px;font-size:24px;">Your Admin Access</h1>
+                                            <p style="color:rgba(255,255,255,.75);margin:0;font-size:13px;">' . htmlspecialchars($site_name) . '</p>
+                                        </div>
+                                        <div style="padding:32px 28px;">
+                                            <p style="font-size:14px;color:#333;line-height:1.6;">Hi <strong>' . htmlspecialchars((string)$employee['full_name']) . '</strong>,</p>
+                                            <p style="font-size:14px;color:#555;line-height:1.6;">A login account was prepared for your employee email. Use the temporary password below to sign in:</p>
+                                            <p style="font-size:16px;color:#0A1929;font-weight:700;background:#f8f9fb;border:1px dashed #D4AF37;padding:12px 14px;border-radius:8px;text-align:center;">' . htmlspecialchars($tempPassword) . '</p>
+                                            <p style="font-size:13px;color:#555;line-height:1.6;">Username: <strong>' . htmlspecialchars($username) . '</strong><br>Email: <strong>' . htmlspecialchars($email) . '</strong></p>
+                                            <div style="text-align:center;margin:26px 0;">
+                                                <a href="' . htmlspecialchars($login_url) . '" style="display:inline-block;background:linear-gradient(135deg,#D4AF37 0%,#c49b2e 100%);color:#050D14;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;">Go To Admin Login</a>
+                                            </div>
+                                            <p style="font-size:12px;color:#999;line-height:1.6;">For security, log in and immediately change your password using the Forgot Password option.</p>
+                                        </div>
+                                    </div>
+                                </body>
+                                </html>';
+
+                                $tempSend = sendEmail(
+                                    $email,
+                                    (string)$employee['full_name'],
+                                    'Temporary Password - ' . $site_name . ' Admin',
+                                    $tempHtml
+                                );
+
+                                if (!$tempSend['success']) {
+                                    error_log('Employee temporary password email failed: ' . ($tempSend['message'] ?? 'unknown'));
+                                }
+
+                                // Do not continue reset-link flow for newly created user.
+                                header('Location: login.php?reset=sent');
+                                exit;
+                            }
+                        }
+                    }
+                } catch (PDOException $empEx) {
+                    error_log('Employee lookup/create during forgot password failed: ' . $empEx->getMessage());
+                }
+            }
             
             if ($user) {
                 // Generate a secure token
@@ -234,7 +358,7 @@ $site_name = getSetting('site_name');
                     <i class="fas fa-key"></i>
                 </div>
                 <h1>Reset Password</h1>
-                <p>Enter the email address associated with your admin account and we'll send you a reset link.</p>
+                <p>Enter your admin or employee email. We will send password reset instructions to that address.</p>
             </div>
 
             <?php if ($error_message): ?>

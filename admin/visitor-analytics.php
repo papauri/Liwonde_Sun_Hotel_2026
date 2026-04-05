@@ -219,6 +219,58 @@ try {
             .stats-grid { grid-template-columns: 1fr 1fr; }
             .filter-bar { flex-direction: column; align-items: stretch; }
         }
+
+        @media (max-width: 480px) {
+            .analytics-container {
+                padding: 10px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .stat-card {
+                padding: 14px;
+            }
+
+            .stat-card .stat-value {
+                font-size: 26px;
+            }
+
+            .filter-bar {
+                padding: 12px;
+                gap: 8px;
+            }
+
+            .filter-bar select,
+            .filter-bar input[type="date"],
+            .filter-bar .btn-filter {
+                width: 100%;
+                font-size: 12px;
+            }
+
+            #customDates {
+                width: 100%;
+                flex-direction: column;
+                align-items: stretch !important;
+            }
+
+            .table-wrapper {
+                overflow-x: auto;
+            }
+
+            .visitors-table {
+                min-width: 860px;
+                font-size: 11px;
+            }
+
+            .visitors-table th,
+            .visitors-table td {
+                padding: 6px 8px;
+                white-space: nowrap;
+            }
+        }
     </style>
 </head>
 <body>

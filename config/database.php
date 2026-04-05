@@ -824,6 +824,144 @@ function ensureChildOccupancyInfrastructure() {
 }
 
 /**
+ * Ensure room promotions schema exists.
+ */
+function ensureRoomPromotionInfrastructure() {
+    global $pdo;
+
+    static $checked = false;
+    if ($checked) {
+        return true;
+    }
+
+    try {
+        $pdo->exec("\n            CREATE TABLE IF NOT EXISTS room_promotions (\n                id INT AUTO_INCREMENT PRIMARY KEY,\n                room_id INT NOT NULL,\n                title VARCHAR(150) NOT NULL,\n                promo_type ENUM('percentage','fixed') NOT NULL DEFAULT 'percentage',\n                promo_value DECIMAL(10,2) NOT NULL DEFAULT 0.00,\n                start_date DATE NULL,\n                end_date DATE NULL,\n                description TEXT NULL,\n                is_active TINYINT(1) NOT NULL DEFAULT 1,\n                created_by INT NULL,\n                updated_by INT NULL,\n                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n                INDEX idx_room_active_dates (room_id, is_active, start_date, end_date),\n                INDEX idx_active_dates (is_active, start_date, end_date)\n            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci\n        ");
+
+        $checked = true;
+        return true;
+    } catch (PDOException $e) {
+        error_log('Error ensuring room promotion infrastructure: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Return active promotion for a room on a given date (Y-m-d), or null.
+ */
+function getRoomActivePromotion($room_id, $on_date = null) {
+    global $pdo;
+
+    if (!ensureRoomPromotionInfrastructure()) {
+        return null;
+    }
+
+    $room_id = (int)$room_id;
+    if ($room_id <= 0) {
+        return null;
+    }
+
+    $date = $on_date ?: date('Y-m-d');
+
+    try {
+        $stmt = $pdo->prepare("\n            SELECT *\n            FROM room_promotions\n            WHERE room_id = ?\n              AND is_active = 1\n              AND (start_date IS NULL OR start_date <= ?)\n              AND (end_date IS NULL OR end_date >= ?)\n            ORDER BY\n                CASE promo_type WHEN 'percentage' THEN promo_value ELSE 0 END DESC,\n                CASE promo_type WHEN 'fixed' THEN promo_value ELSE 0 END DESC,\n                id DESC\n            LIMIT 1\n        ");
+        $stmt->execute([$room_id, $date, $date]);
+        $promo = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $promo ?: null;
+    } catch (PDOException $e) {
+        error_log('Error fetching active room promotion: ' . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Apply promotion to a base price and return final + discount metrics.
+ */
+function calculatePromotionalPrice($base_price, $promotion = null) {
+    $base = (float)$base_price;
+    $result = [
+        'base_price' => $base,
+        'final_price' => $base,
+        'discount_amount' => 0.0,
+        'discount_percent' => 0.0,
+        'has_promo' => false
+    ];
+
+    if (!$promotion || $base <= 0) {
+        return $result;
+    }
+
+    $promo_type = strtolower((string)($promotion['promo_type'] ?? ''));
+    $promo_value = (float)($promotion['promo_value'] ?? 0);
+
+    if ($promo_value <= 0) {
+        return $result;
+    }
+
+    if ($promo_type === 'percentage') {
+        $promo_value = min(100.0, $promo_value);
+        $discount_amount = round(($base * $promo_value) / 100, 2);
+    } elseif ($promo_type === 'fixed') {
+        $discount_amount = round($promo_value, 2);
+    } else {
+        return $result;
+    }
+
+    $final = max(0.0, round($base - $discount_amount, 2));
+    $actual_discount = round($base - $final, 2);
+    $discount_percent = $base > 0 ? round(($actual_discount / $base) * 100, 2) : 0.0;
+
+    $result['final_price'] = $final;
+    $result['discount_amount'] = $actual_discount;
+    $result['discount_percent'] = $discount_percent;
+    $result['has_promo'] = $actual_discount > 0;
+
+    return $result;
+}
+
+/**
+ * Resolve effective room pricing (including occupancy and active promo).
+ */
+function getRoomEffectivePricing(array $room, $occupancy_type = 'double', $on_date = null) {
+    $occupancy_type = normalizeOccupancyType($occupancy_type);
+
+    $base_price = (float)($room['price_per_night'] ?? 0);
+    if ($occupancy_type === 'single' && !empty($room['price_single_occupancy'])) {
+        $base_price = (float)$room['price_single_occupancy'];
+    } elseif ($occupancy_type === 'double' && !empty($room['price_double_occupancy'])) {
+        $base_price = (float)$room['price_double_occupancy'];
+    } elseif ($occupancy_type === 'child') {
+        $child_price = getRoomChildOccupancyPrice($room);
+        if ($child_price === null) {
+            return [
+                'occupancy_type' => $occupancy_type,
+                'base_price' => null,
+                'final_price' => null,
+                'discount_amount' => 0.0,
+                'discount_percent' => 0.0,
+                'has_promo' => false,
+                'promotion' => null,
+                'child_available' => false
+            ];
+        }
+        $base_price = (float)$child_price;
+    }
+
+    $promotion = getRoomActivePromotion((int)($room['id'] ?? 0), $on_date);
+    $promo_result = calculatePromotionalPrice($base_price, $promotion);
+
+    return [
+        'occupancy_type' => $occupancy_type,
+        'base_price' => $promo_result['base_price'],
+        'final_price' => $promo_result['final_price'],
+        'discount_amount' => $promo_result['discount_amount'],
+        'discount_percent' => $promo_result['discount_percent'],
+        'has_promo' => $promo_result['has_promo'],
+        'promotion' => $promotion,
+        'child_available' => true
+    ];
+}
+
+/**
  * Ensure room unit infrastructure exists (table + columns used by booking/blocking).
  */
 function ensureRoomUnitInfrastructure() {

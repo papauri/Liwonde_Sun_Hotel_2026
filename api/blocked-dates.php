@@ -36,12 +36,22 @@ require_once __DIR__ . '/index.php';
 $admin_user = null;
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     $apiAuth = new ApiAuth($pdo);
-    $authResult = $apiAuth->authenticate();
-    if (!$authResult['success']) {
-        ApiResponse::error($authResult['message'], 401);
+    $api_client = $apiAuth->authenticate();
+
+    if (!$apiAuth->checkPermission($api_client, 'blocked_dates.write')) {
+        http_response_code(403);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Access denied. Missing permission: blocked_dates.write',
+            'code' => 403
+        ]);
         exit;
     }
-    $admin_user = $authResult['user'];
+
+    $admin_user = [
+        'id' => null,
+        'client_name' => $api_client['client_name'] ?? 'API Client'
+    ];
 }
 
 /**
@@ -209,7 +219,7 @@ switch ($method) {
             $block_date = $input['block_date'];
             $block_type = $input['block_type'] ?? 'manual';
             $reason = $input['reason'] ?? null;
-            $created_by = $admin_user['id'];
+            $created_by = null;
             
             // Block the date
             $result = blockRoomDate($room_id, $block_date, $block_type, $reason, $created_by, $room_unit_id);
@@ -235,7 +245,7 @@ switch ($method) {
             $room_unit_id = isset($input['room_unit_id']) && $input['room_unit_id'] !== '' ? (int)$input['room_unit_id'] : null;
             $block_type = $input['block_type'] ?? 'manual';
             $reason = $input['reason'] ?? null;
-            $created_by = $admin_user['id'];
+            $created_by = null;
             
             // Validate dates
             $valid_dates = [];
@@ -319,7 +329,7 @@ switch ($method) {
         $block_date = $input['block_date'] ?? $current_date['block_date'];
         $block_type = $input['block_type'] ?? $current_date['block_type'];
         $reason = $input['reason'] ?? $current_date['reason'];
-        $created_by = $admin_user['id'];
+        $created_by = null;
         
         // First delete the old one
         unblockRoomDate($current_date['room_id'], $current_date['block_date'], $current_date['room_unit_id'] ?? null);

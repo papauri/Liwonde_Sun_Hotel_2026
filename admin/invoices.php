@@ -414,6 +414,47 @@ $site_name = getSetting('site_name');
                 min-width: 100%;
             }
         }
+
+        @media (max-width: 480px) {
+            .invoices-container {
+                padding: 8px;
+            }
+
+            .table-responsive table {
+                min-width: 980px;
+                font-size: 11px;
+            }
+
+            .table-responsive th,
+            .table-responsive td {
+                padding: 6px 8px;
+                white-space: nowrap;
+            }
+
+            .table-responsive td:last-child,
+            .table-responsive th:last-child {
+                position: sticky;
+                right: 0;
+                background: #fff;
+                z-index: 2;
+                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
+            }
+
+            .table-responsive thead th:last-child {
+                background: #f6f8fa;
+                z-index: 3;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .btn-action {
+                padding: 5px 8px;
+                font-size: 11px;
+            }
+        }
     </style>
 </head>
 <body>

@@ -31,6 +31,22 @@ if (!isset($_SESSION['admin_user_id'])) {
 }
 
 require_once '../config/database.php';
+require_once '../includes/employee-helper.php';
+require_once '../includes/activity-logger.php';
+
+// Auto-provision employee infrastructure for admin workflows.
+try {
+    ensureEmployeeInfrastructure($pdo);
+} catch (Throwable $e) {
+    // Do not block admin pages if infrastructure check fails.
+}
+
+// Ensure activity log tables are present for admin and employee auditing.
+try {
+    ensureActivityLogInfrastructure($pdo);
+} catch (Throwable $e) {
+    // Do not block admin pages if audit infrastructure check fails.
+}
 
 // Send security headers
 sendSecurityHeaders();

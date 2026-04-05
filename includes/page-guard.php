@@ -14,6 +14,9 @@
 
 if (!isset($pdo)) return; // No DB connection — skip guard
 
+require_once __DIR__ . '/campaign-attribution.php';
+captureCampaignAttribution($pdo);
+
 $_pg_file = basename($_SERVER['PHP_SELF']);
 
 // Never block the home page or booking confirmation

@@ -93,11 +93,15 @@ try {
     // Check availability using existing function from config/database.php
     // isRoomAvailable() is already loaded via config/database.php
     $available = isRoomAvailable($roomId, $checkIn, $checkOut);
+
+    $promoPricing = getRoomEffectivePricing($room, 'double', $checkIn);
+    $effectiveNightlyRate = (float)($promoPricing['final_price'] ?? $room['price_per_night']);
+    $originalNightlyRate = (float)($promoPricing['base_price'] ?? $room['price_per_night']);
     
     if ($available) {
         // Calculate nights and total
         $nights = $checkInDate->diff($checkOutDate)->days;
-        $total = $room['price_per_night'] * $nights;
+        $total = $effectiveNightlyRate * $nights;
         
         // Get any conflicting bookings for detailed info
         $conflictsStmt = $pdo->prepare("
@@ -130,7 +134,11 @@ try {
             'room' => [
                 'id' => $room['id'],
                 'name' => $room['name'],
-                'price_per_night' => (float)$room['price_per_night'],
+                'price_per_night' => $effectiveNightlyRate,
+                'price_per_night_original' => $originalNightlyRate,
+                'has_active_promo' => !empty($promoPricing['has_promo']),
+                'promo_title' => $promoPricing['promotion']['title'] ?? null,
+                'promo_discount_percent' => (float)($promoPricing['discount_percent'] ?? 0),
                 'max_guests' => (int)$room['max_guests'],
                 'rooms_available' => (int)$room['rooms_available']
             ],
@@ -140,7 +148,8 @@ try {
                 'nights' => $nights
             ],
             'pricing' => [
-                'price_per_night' => (float)$room['price_per_night'],
+                'price_per_night' => $effectiveNightlyRate,
+                'price_per_night_original' => $originalNightlyRate,
                 'total' => (float)$total,
                 'currency' => getSetting('currency_symbol', 'MWK'),
                 'currency_code' => getSetting('currency_code', 'MWK')

@@ -1,4 +1,10 @@
-<?php require_once __DIR__ . '/visitor-tracker.php'; ?>
+<?php
+require_once __DIR__ . '/campaign-attribution.php';
+if (isset($pdo)) {
+    captureCampaignAttribution($pdo);
+}
+require_once __DIR__ . '/visitor-tracker.php';
+?>
 <?php require_once 'modal.php'; ?>
 <!-- Footer - Minimalist Professional 2026 -->
 <footer class="minimalist-footer" id="contact">

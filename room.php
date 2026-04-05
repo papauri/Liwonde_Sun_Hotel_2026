@@ -95,6 +95,12 @@ if (empty($room_images) && !empty($room['image_url'])) {
 $hero_image = proxyImageUrl(resolveImageUrl($room_images[0]['image_url'] ?? $room['image_url']));
 $amenities = array_filter(array_map('trim', explode(',', $room['amenities'] ?? '')));
 
+$room_effective_pricing = getRoomEffectivePricing($room, 'double');
+$room_display_price = (float)($room_effective_pricing['final_price'] ?? $room['price_per_night']);
+$room_original_price = (float)($room_effective_pricing['base_price'] ?? $room['price_per_night']);
+$room_has_promo = !empty($room_effective_pricing['has_promo']) && $room_original_price > $room_display_price;
+$room_promo_title = $room_effective_pricing['promotion']['title'] ?? '';
+
 // Build SEO data for room page
 $seo_data = [
     'title' => $room['name'],
@@ -136,7 +142,7 @@ $seo_data = [
         ],
         'offers' => [
             '@type' => 'Offer',
-            'price' => $room['price_per_night'],
+            'price' => $room_display_price,
             'priceCurrency' => 'MWK',
             'availability' => $room['rooms_available'] > 0 ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
             'url' => $base_url . '/booking.php?room_id=' . $room['id']
@@ -281,12 +287,15 @@ try {
                         <i class="fas fa-calendar-check"></i> Book Now
                     </a>
                 </div>
+                <?php if ($room_has_promo): ?>
+                    <p style="margin: 0 0 10px; color: #1f7a4f; font-weight: 600;"><i class="fas fa-tags"></i> <?php echo htmlspecialchars($room_promo_title ?: 'Special Offer Active'); ?></p>
+                <?php endif; ?>
                 <p class="room-detail-description"><?php echo htmlspecialchars($room['description'] ?? $room['short_description']); ?></p>
                 <div class="room-detail-specs">
                     <div class="spec-item"><i class="fas fa-users"></i><div class="spec-label">Guests</div><div class="spec-value">Up to <?php echo htmlspecialchars($room['max_guests'] ?? 2); ?></div></div>
                     <div class="spec-item"><i class="fas fa-ruler-combined"></i><div class="spec-label">Floor Space</div><div class="spec-value"><?php echo htmlspecialchars($room['size_sqm']); ?> sqm</div></div>
                     <div class="spec-item"><i class="fas fa-bed"></i><div class="spec-label">Bed Type</div><div class="spec-value"><?php echo htmlspecialchars($room['bed_type']); ?></div></div>
-                    <div class="spec-item"><i class="fas fa-tag"></i><div class="spec-label">Nightly Rate</div><div class="spec-value"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room['price_per_night'], 0); ?></div></div>
+                    <div class="spec-item"><i class="fas fa-tag"></i><div class="spec-label">Nightly Rate</div><div class="spec-value"><?php if ($room_has_promo): ?><span style="font-size:12px;color:#888;text-decoration:line-through;display:block;"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room_original_price, 0); ?></span><?php endif; ?><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room_display_price, 0); ?></div></div>
                     <?php
                     $available = $room['rooms_available'] ?? 0;
                     $total = $room['total_rooms'] ?? 0;
@@ -327,7 +336,7 @@ try {
             </div>
             <div class="booking-cta__card">
                 <div class="booking-cta__row"><span>Selected Room</span><strong><?php echo htmlspecialchars($room['name']); ?></strong></div>
-                <div class="booking-cta__row"><span>Nightly Rate</span><strong><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room['price_per_night'], 0); ?></strong></div>
+                <div class="booking-cta__row"><span>Nightly Rate</span><strong><?php if ($room_has_promo): ?><span style="font-size:12px;color:#888;text-decoration:line-through;display:block;"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room_original_price, 0); ?></span><?php endif; ?><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room_display_price, 0); ?></strong></div>
                 <div class="booking-cta__row"><span>Capacity</span><strong><?php echo htmlspecialchars($room['max_guests'] ?? 2); ?> guests</strong></div>
                 <div class="booking-cta__row"><span>Floor Space</span><strong><?php echo htmlspecialchars($room['size_sqm'] ?? 40); ?> sqm</strong></div>
                 <a class="btn btn-primary" href="booking.php?room_id=<?php echo $room['id']; ?>">Proceed to Booking</a>

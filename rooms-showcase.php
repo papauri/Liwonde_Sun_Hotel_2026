@@ -31,6 +31,15 @@ try {
     $rooms = [];
 }
 
+foreach ($rooms as &$room_row) {
+    $pricing = getRoomEffectivePricing($room_row, 'double');
+    $room_row['display_price_per_night'] = (float)($pricing['final_price'] ?? $room_row['price_per_night']);
+    $room_row['original_price_per_night'] = (float)($pricing['base_price'] ?? $room_row['price_per_night']);
+    $room_row['has_active_promo'] = !empty($pricing['has_promo']) ? 1 : 0;
+    $room_row['promo_title'] = $pricing['promotion']['title'] ?? null;
+}
+unset($room_row);
+
 $hero_room = $rooms[0] ?? [
     'name' => 'Signature Suites',
     'short_description' => 'Elevated riverfront stays crafted for discerning guests',
@@ -180,7 +189,7 @@ foreach ($rooms as $room) {
                     <div class="spec-item">
                         <i class="fas fa-tag"></i>
                         <div class="spec-label">Nightly Rate</div>
-                        <div class="spec-value"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['price_per_night'], 0); ?></div>
+                        <div class="spec-value"><?php if (!empty($hero_room['has_active_promo']) && (float)$hero_room['original_price_per_night'] > (float)$hero_room['display_price_per_night']): ?><span style="display:block;font-size:12px;color:#888;text-decoration:line-through;"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['original_price_per_night'], 0); ?></span><?php endif; ?><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['display_price_per_night'], 0); ?></div>
                     </div>
                 </div>
 
@@ -283,10 +292,16 @@ foreach ($rooms as $room) {
                                     <p><?php echo htmlspecialchars($room['short_description']); ?></p>
                                 </div>
                                 <div class="room-tile__price">
-                                    <span class="amount"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room['price_per_night'], 0); ?></span>
+                                    <?php if (!empty($room['has_active_promo']) && (float)$room['original_price_per_night'] > (float)$room['display_price_per_night']): ?>
+                                        <span style="display:block;font-size:11px;color:#888;text-decoration:line-through;"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room['original_price_per_night'], 0); ?></span>
+                                    <?php endif; ?>
+                                    <span class="amount"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room['display_price_per_night'], 0); ?></span>
                                     <small>per night</small>
                                 </div>
                             </div>
+                            <?php if (!empty($room['has_active_promo'])): ?>
+                                <div style="margin:6px 0 8px; color:#1f7a4f; font-weight:600; font-size:12px;"><i class="fas fa-tag"></i> <?php echo htmlspecialchars($room['promo_title'] ?: 'Special Offer'); ?></div>
+                            <?php endif; ?>
                             <!-- Compact Rating Display -->
                             <div class="room-tile__rating" data-room-id="<?php echo (int)$room['id']; ?>">
                                 <div class="compact-rating compact-rating--loading">
@@ -426,7 +441,7 @@ foreach ($rooms as $room) {
                     </div>
                     <div class="booking-cta__row">
                         <span>Nightly Rate</span>
-                        <strong><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['price_per_night'], 0); ?></strong>
+                        <strong><?php if (!empty($hero_room['has_active_promo']) && (float)$hero_room['original_price_per_night'] > (float)$hero_room['display_price_per_night']): ?><span style="display:block;font-size:12px;color:#888;text-decoration:line-through;"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['original_price_per_night'], 0); ?></span><?php endif; ?><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['display_price_per_night'], 0); ?></strong>
                     </div>
                     <div class="booking-cta__row">
                         <span>Capacity</span>

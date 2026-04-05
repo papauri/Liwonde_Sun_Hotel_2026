@@ -472,75 +472,134 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
         } elseif ($action === 'update_payment') {
-            $payment_status = $_POST['payment_status'];
-            $booking_id = $_POST['id'];
-            
-            // Get previous payment status and booking details
-            $check = $pdo->prepare("SELECT payment_status, total_amount, booking_reference FROM bookings WHERE id = ?");
+            $booking_id = (int)($_POST['id'] ?? 0);
+            $payment_type_input = trim((string)($_POST['payment_type'] ?? 'full'));
+            $amount_paid_input = (float)($_POST['amount_paid'] ?? 0);
+            $payment_notes_input = trim((string)($_POST['payment_notes'] ?? ''));
+
+            if ($booking_id <= 0) {
+                throw new Exception('Invalid booking id');
+            }
+            if (!in_array($payment_type_input, ['full', 'partial'], true)) {
+                throw new Exception('Invalid payment type');
+            }
+            if ($payment_type_input === 'partial' && $amount_paid_input <= 0) {
+                throw new Exception('Amount must be greater than zero for partial payments');
+            }
+            $payment_status = ($payment_type_input === 'partial') ? 'partial' : 'paid';
+
+            $pdo->beginTransaction();
+
+            // Lock row so payment transition and ledger insert remain consistent.
+            $check = $pdo->prepare("SELECT payment_status, amount_paid, total_amount, booking_reference FROM bookings WHERE id = ? FOR UPDATE");
             $check->execute([$booking_id]);
             $row = $check->fetch(PDO::FETCH_ASSOC);
-            
+
             if (!$row) {
                 throw new Exception('Booking not found');
             }
-            
+
             $previous_status = $row['payment_status'] ?? 'unpaid';
-            $total_amount = (float)$row['total_amount'];
             $booking_reference = $row['booking_reference'];
-            
-            // Get VAT settings - more flexible check
-            $vatEnabled = in_array(getSetting('vat_enabled'), ['1', 1, true, 'true', 'on'], true);
-            $vatRate = $vatEnabled ? (float)getSetting('vat_rate') : 0;
-            
-            // Calculate amounts
-            $vatAmount = $vatEnabled ? ($total_amount * ($vatRate / 100)) : 0;
-            $totalWithVat = $total_amount + $vatAmount;
-            
-            // Update payment status
-            $stmt = $pdo->prepare("UPDATE bookings SET payment_status = ? WHERE id = ?");
-            $stmt->execute([$payment_status, $booking_id]);
-            $message = 'Payment status updated!';
-            
-            // If marking as paid, insert into payments table and update booking amounts
-            if ($payment_status === 'paid' && $previous_status !== 'paid') {
-                // Generate payment reference
-                $payment_reference = 'PAY-' . date('Y') . '-' . str_pad($booking_id, 6, '0', STR_PAD_LEFT);
-                
-                // Insert into payments table
-                $insert_payment = $pdo->prepare("
-                    INSERT INTO payments (
-                        payment_reference, booking_type, booking_id, booking_reference,
-                        payment_date, payment_amount, vat_rate, vat_amount, total_amount,
-                        payment_method, payment_type, payment_status, invoice_generated,
-                        status, recorded_by
-                    ) VALUES (?, 'room', ?, ?, CURDATE(), ?, ?, ?, ?, 'cash', 'full_payment', 'completed', 1, 'completed', ?)
-                ");
-                $insert_payment->execute([
+            $current_amount_paid = (float)($row['amount_paid'] ?? 0);
+
+            // Recalculate totals before recording payment to keep accounting in sync with booking changes.
+            $recalculated = recalculateRoomBookingFinancials($booking_id);
+            $total_amount = (float)($recalculated['subtotal'] ?? $row['total_amount']);
+            $vatRate = (float)($recalculated['vat_rate'] ?? 0);
+            $vatAmount = (float)($recalculated['vat_amount'] ?? 0);
+            $totalWithVat = (float)($recalculated['grand_total'] ?? ($total_amount + $vatAmount));
+
+            $send_invoice = false;
+
+            if ($payment_type_input === 'full') {
+                // --- Full payment path ---
+                if ($previous_status === 'paid') {
+                    throw new Exception('This booking is already marked as fully paid.');
+                }
+
+                $stmt = $pdo->prepare("UPDATE bookings SET payment_status = 'paid', updated_at = NOW() WHERE id = ?");
+                $stmt->execute([$booking_id]);
+                $message = 'Full payment recorded!';
+
+                // Prevent duplicate completed full payment records.
+                $existing_payment_stmt = $pdo->prepare("SELECT id FROM payments WHERE booking_type = 'room' AND booking_id = ? AND payment_type = 'full_payment' AND status = 'completed' LIMIT 1");
+                $existing_payment_stmt->execute([$booking_id]);
+                $existing_payment = $existing_payment_stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$existing_payment) {
+                    $payment_reference = 'PAY-' . date('Y') . '-' . str_pad($booking_id, 6, '0', STR_PAD_LEFT);
+                    $insert_payment = $pdo->prepare("INSERT INTO payments (payment_reference, booking_type, booking_id, booking_reference, payment_date, payment_amount, vat_rate, vat_amount, total_amount, payment_method, payment_type, payment_status, notes, invoice_generated, status, recorded_by) VALUES (?, 'room', ?, ?, CURDATE(), ?, ?, ?, ?, 'cash', 'full_payment', 'completed', ?, 1, 'completed', ?)");
+                    $insert_payment->execute([
+                        $payment_reference,
+                        $booking_id,
+                        $booking_reference,
+                        $totalWithVat,
+                        $vatRate,
+                        $vatAmount,
+                        $totalWithVat,
+                        $payment_notes_input ?: null,
+                        $user['id']
+                    ]);
+                }
+
+                $update_amounts = $pdo->prepare("UPDATE bookings SET amount_paid = ?, amount_due = 0, vat_rate = ?, vat_amount = ?, total_with_vat = ?, last_payment_date = CURDATE(), updated_at = NOW() WHERE id = ?");
+                $update_amounts->execute([$totalWithVat, $vatRate, $vatAmount, $totalWithVat, $booking_id]);
+                $message .= ' Payment recorded in accounting system.';
+                $send_invoice = true;
+
+            } elseif ($payment_type_input === 'partial') {
+                // --- Partial payment path ---
+                $remaining = max(0, $totalWithVat - $current_amount_paid);
+                if ($amount_paid_input > $remaining + 0.01) {
+                    throw new Exception('Amount (K ' . number_format($amount_paid_input, 0) . ') exceeds remaining balance (K ' . number_format($remaining, 0) . ').');
+                }
+
+                $new_amount_paid = $current_amount_paid + $amount_paid_input;
+                $new_amount_due = max(0, $totalWithVat - $new_amount_paid);
+                $new_payment_status = ($new_amount_due <= 0.01) ? 'paid' : 'partial';
+
+                $payment_reference = 'PAY-' . date('Y') . '-' . str_pad($booking_id, 6, '0', STR_PAD_LEFT) . '-P' . date('His');
+                $insert_partial = $pdo->prepare("INSERT INTO payments (payment_reference, booking_type, booking_id, booking_reference, payment_date, payment_amount, vat_rate, vat_amount, total_amount, payment_method, payment_type, payment_status, notes, invoice_generated, status, recorded_by) VALUES (?, 'room', ?, ?, CURDATE(), ?, ?, ?, ?, 'cash', 'partial_payment', 'completed', ?, 0, 'completed', ?)");
+                $insert_partial->execute([
                     $payment_reference,
                     $booking_id,
                     $booking_reference,
-                    $total_amount,
+                    $amount_paid_input,
                     $vatRate,
                     $vatAmount,
                     $totalWithVat,
+                    $payment_notes_input ?: null,
                     $user['id']
                 ]);
-                
-                // Update booking payment tracking columns
-                $update_amounts = $pdo->prepare("
-                    UPDATE bookings
-                    SET amount_paid = ?, amount_due = 0, vat_rate = ?, vat_amount = ?,
-                        total_with_vat = ?, last_payment_date = CURDATE()
-                    WHERE id = ?
-                ");
-                $update_amounts->execute([$totalWithVat, $vatRate, $vatAmount, $totalWithVat, $booking_id]);
-                
-                $message .= ' Payment recorded in accounting system.';
-                
-                // Send invoice email
+
+                $upd_partial = $pdo->prepare("UPDATE bookings SET payment_status = ?, amount_paid = ?, amount_due = ?, vat_rate = ?, vat_amount = ?, total_with_vat = ?, last_payment_date = CURDATE(), updated_at = NOW() WHERE id = ?");
+                $upd_partial->execute([
+                    $new_payment_status,
+                    $new_amount_paid,
+                    $new_amount_due,
+                    $vatRate,
+                    $vatAmount,
+                    $totalWithVat,
+                    $booking_id
+                ]);
+
+                $message = 'Partial payment of K ' . number_format($amount_paid_input, 0) . ' recorded.';
+                if ($new_payment_status === 'paid') {
+                    $message .= ' Booking is now fully paid!';
+                    $send_invoice = true;
+                } else {
+                    $message .= ' Remaining balance: K ' . number_format($new_amount_due, 0) . '.';
+                }
+            }
+
+            $pdo->commit();
+
+            // Send invoice email after commit to avoid impacting payment persistence.
+            if ($send_invoice) {
                 require_once '../config/invoice.php';
                 $invoice_result = sendPaymentInvoiceEmail($booking_id);
-                
+
                 if ($invoice_result['success']) {
                     $message .= ' Invoice sent successfully!';
                 } else {
@@ -696,29 +755,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Handle CSV export
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     try {
-        $export_stmt = $pdo->query("
-            SELECT b.booking_reference, b.guest_name, b.guest_email, b.guest_phone, b.guest_country,
-                   r.name as room_name, b.check_in_date, b.check_out_date, b.number_of_nights,
-                   b.number_of_guests, b.total_amount, b.status, b.payment_status, b.occupancy_type,
-                   b.special_requests, b.created_at
-            FROM bookings b
-            LEFT JOIN rooms r ON b.room_id = r.id
-            ORDER BY b.created_at DESC
-        ");
+        // Apply same filters as the main view
+        $exp_search = trim($_GET['search'] ?? '');
+        $exp_status = $_GET['filter_status'] ?? '';
+        $exp_payment = $_GET['filter_payment'] ?? '';
+        $exp_from   = $_GET['date_from'] ?? '';
+        $exp_to     = $_GET['date_to'] ?? '';
+
+        $exp_where  = [];
+        $exp_params = [];
+
+        if (!empty($exp_search)) {
+            $exp_where[] = "(b.booking_reference LIKE ? OR b.guest_name LIKE ? OR b.guest_email LIKE ? OR b.guest_phone LIKE ? OR r.name LIKE ?)";
+            $sp = "%{$exp_search}%";
+            $exp_params = array_merge($exp_params, [$sp, $sp, $sp, $sp, $sp]);
+        }
+        if (!empty($exp_status)) {
+            $exp_where[] = "b.status = ?";
+            $exp_params[] = $exp_status;
+        }
+        if (!empty($exp_payment)) {
+            $exp_where[] = "b.payment_status = ?";
+            $exp_params[] = $exp_payment;
+        }
+        if (!empty($exp_from)) {
+            $exp_where[] = "b.check_in_date >= ?";
+            $exp_params[] = $exp_from;
+        }
+        if (!empty($exp_to)) {
+            $exp_where[] = "b.check_out_date <= ?";
+            $exp_params[] = $exp_to;
+        }
+
+        $exp_where_sql = !empty($exp_where) ? 'WHERE ' . implode(' AND ', $exp_where) : '';
+
+        $export_stmt = $pdo->prepare("SELECT b.booking_reference, b.guest_name, b.guest_email, b.guest_phone, b.guest_country, r.name as room_name, b.check_in_date, b.check_out_date, b.number_of_nights, b.number_of_guests, b.total_amount, COALESCE(b.amount_paid, 0) as amount_paid, GREATEST(0, COALESCE(b.total_with_vat, b.total_amount) - COALESCE(b.amount_paid, 0)) as balance_due, b.status, b.payment_status, b.occupancy_type, b.special_requests, b.created_at FROM bookings b LEFT JOIN rooms r ON b.room_id = r.id {$exp_where_sql} ORDER BY b.created_at DESC");
+        $export_stmt->execute($exp_params);
         $export_data = $export_stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="bookings-export-' . date('Y-m-d') . '.csv"');
-        
+
         $output = fopen('php://output', 'w');
-        fputcsv($output, ['Reference', 'Guest Name', 'Email', 'Phone', 'Country', 'Room', 
-                          'Check-in', 'Check-out', 'Nights', 'Guests', 'Total', 'Status', 
-                          'Payment', 'Occupancy', 'Special Requests', 'Created']);
-        
+        fputcsv($output, ['Reference', 'Guest Name', 'Email', 'Phone', 'Country', 'Room',
+                          'Check-in', 'Check-out', 'Nights', 'Guests', 'Total (excl. VAT)',
+                          'Amount Paid', 'Balance Due', 'Status', 'Payment Status',
+                          'Occupancy', 'Special Requests', 'Created']);
+
         foreach ($export_data as $row) {
-            fputcsv($output, $row);
+            fputcsv($output, array_values($row));
         }
-        
+
         fclose($output);
         exit;
     } catch (PDOException $e) {
@@ -731,58 +818,47 @@ $search_query = trim($_GET['search'] ?? '');
 $filter_status = $_GET['filter_status'] ?? '';
 $filter_date_from = $_GET['date_from'] ?? '';
 $filter_date_to = $_GET['date_to'] ?? '';
+$filter_payment = $_GET['filter_payment'] ?? '';
 
 // Fetch all bookings with room details and payment status from payments table
 try {
     $where_clauses = [];
     $params = [];
-    
+
     if (!empty($search_query)) {
         $where_clauses[] = "(b.booking_reference LIKE ? OR b.guest_name LIKE ? OR b.guest_email LIKE ? OR b.guest_phone LIKE ? OR r.name LIKE ?)";
         $search_param = "%{$search_query}%";
         $params = array_merge($params, [$search_param, $search_param, $search_param, $search_param, $search_param]);
     }
-    
+
     if (!empty($filter_status)) {
         $where_clauses[] = "b.status = ?";
         $params[] = $filter_status;
     }
-    
+
     if (!empty($filter_date_from)) {
         $where_clauses[] = "b.check_in_date >= ?";
         $params[] = $filter_date_from;
     }
-    
+
     if (!empty($filter_date_to)) {
         $where_clauses[] = "b.check_out_date <= ?";
         $params[] = $filter_date_to;
+
+        if (!empty($filter_payment)) {
+            $where_clauses[] = "b.payment_status = ?";
+            $params[] = $filter_payment;
+        }
     }
-    
+
     $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
-    
-    $stmt = $pdo->prepare("
-        SELECT b.*,
-             r.name as room_name,
-             ru.unit_label as room_unit_label,
-             COALESCE(NULLIF(b.room_unit_assignment_source, ''), CASE WHEN b.room_unit_id IS NULL THEN NULL ELSE 'auto' END) as room_unit_assignment_source,
-               COALESCE(p.payment_status, b.payment_status) as actual_payment_status,
-               p.payment_reference,
-               p.payment_date as last_payment_date
-        FROM bookings b
-        LEFT JOIN rooms r ON b.room_id = r.id
-         LEFT JOIN room_units ru ON b.room_unit_id = ru.id
-        LEFT JOIN payments p ON b.id = p.booking_id AND p.booking_type = 'room' AND p.status = 'completed'
-        {$where_sql}
-        ORDER BY b.created_at DESC
-    ");
+
+    $stmt = $pdo->prepare("\n        SELECT b.*,\n             r.name as room_name,\n             ru.unit_label as room_unit_label,\n             COALESCE(NULLIF(b.room_unit_assignment_source, ''), CASE WHEN b.room_unit_id IS NULL THEN NULL ELSE 'auto' END) as room_unit_assignment_source,\n             COALESCE(p.payment_status, b.payment_status) as actual_payment_status,\n             p.payment_reference,\n             p.payment_date as last_payment_date\n        FROM bookings b\n        LEFT JOIN rooms r ON b.room_id = r.id\n        LEFT JOIN room_units ru ON b.room_unit_id = ru.id\n        LEFT JOIN payments p ON b.id = p.booking_id AND p.booking_type = 'room' AND p.status = 'completed'\n        {$where_sql}\n        ORDER BY b.created_at DESC\n    ");
     $stmt->execute($params);
     $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Also fetch conference inquiries
-    $conf_stmt = $pdo->query("
-        SELECT * FROM conference_inquiries 
-        ORDER BY created_at DESC
-    ");
+    $conf_stmt = $pdo->query("\n        SELECT * FROM conference_inquiries\n        ORDER BY created_at DESC\n    ");
     $conference_inquiries = $conf_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
@@ -807,8 +883,9 @@ $no_show = count(array_filter($bookings, fn($b) => $b['status'] === 'no-show'));
 $paid = count(array_filter($bookings, fn($b) =>
     $b['actual_payment_status'] === 'paid' || $b['actual_payment_status'] === 'completed'
 ));
+$partial_paid = count(array_filter($bookings, fn($b) => $b['actual_payment_status'] === 'partial'));
 $unpaid = count(array_filter($bookings, fn($b) =>
-    $b['actual_payment_status'] !== 'paid' && $b['actual_payment_status'] !== 'completed'
+    $b['actual_payment_status'] !== 'paid' && $b['actual_payment_status'] !== 'completed' && $b['actual_payment_status'] !== 'partial'
 ));
 
 // Count expiring soon (tentative bookings expiring within 24 hours)
@@ -906,7 +983,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
         .booking-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 1200px;
+            min-width: 1380px;
             border: 1px solid #d0d7de;
         }
         .booking-table th {
@@ -969,7 +1046,6 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
-            margin-right: 4px;
             display: inline-flex;
             align-items: center;
             gap: 6px;
@@ -1054,6 +1130,29 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             .booking-table td {
                 padding: 6px;
             }
+            .booking-table {
+                min-width: 1020px;
+            }
+            .booking-table th,
+            .booking-table td {
+                white-space: nowrap;
+            }
+            .booking-table td:last-child,
+            .booking-table th:last-child {
+                position: sticky;
+                right: 0;
+                background: #fff;
+                z-index: 2;
+                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
+            }
+            .booking-table thead th:last-child {
+                background: #f6f8fa;
+                z-index: 3;
+            }
+            .actions-cell .quick-action {
+                font-size: 11px;
+                padding: 5px 8px;
+            }
         }
 
         .page-header {
@@ -1114,6 +1213,20 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
         .quick-action.release:hover {
             background: #dc6502;
         }
+        .quick-action.partial {
+            background: #17a2b8;
+            color: white;
+        }
+        .quick-action.partial:hover {
+            background: #138496;
+        }
+        .actions-cell {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: flex-start;
+        }
+        .badge-partial { background: #17a2b8; color: white; }
         /* Tab Navigation Styles */
         .tabs-container {
             background: white;
@@ -1239,6 +1352,11 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
         }
 
         .tab-button[data-tab="unpaid"].active .tab-count {
+
+                    .tab-button[data-tab="partial"].active .tab-count {
+                        background: #17a2b8;
+                        color: white;
+                    }
             background: #dc3545;
             color: white;
         }
@@ -1357,6 +1475,12 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                     <option value="cancelled" <?php echo $filter_status === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
                     <option value="no-show" <?php echo $filter_status === 'no-show' ? 'selected' : ''; ?>>No-Show</option>
                 </select>
+                                <select name="filter_payment" style="padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: 'Poppins', sans-serif; min-width: 140px;">
+                                    <option value="">All Payments</option>
+                                    <option value="unpaid" <?php echo $filter_payment === 'unpaid' ? 'selected' : ''; ?>>Unpaid</option>
+                                    <option value="partial" <?php echo $filter_payment === 'partial' ? 'selected' : ''; ?>>Partial</option>
+                                    <option value="paid" <?php echo $filter_payment === 'paid' ? 'selected' : ''; ?>>Paid</option>
+                                </select>
                 <input type="date" name="date_from" value="<?php echo htmlspecialchars($filter_date_from); ?>" 
                        placeholder="From" title="Check-in from"
                        style="padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: 'Poppins', sans-serif;">
@@ -1373,7 +1497,17 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                 <?php endif; ?>
             </form>
             <div style="display: flex; gap: 8px;">
-                <a href="bookings.php?export=csv" class="quick-action" style="padding: 10px 16px; background: #28a745; color: white; text-decoration: none; border-radius: 8px; font-size: 13px;">
+                <?php
+                $export_url = 'bookings.php?' . http_build_query(array_filter([
+                    'export'         => 'csv',
+                    'search'         => $search_query,
+                    'filter_status'  => $filter_status,
+                    'filter_payment' => $filter_payment,
+                    'date_from'      => $filter_date_from,
+                    'date_to'        => $filter_date_to,
+                ]));
+                ?>
+                <a href="<?php echo htmlspecialchars($export_url); ?>" class="quick-action" style="padding: 10px 16px; background: #28a745; color: white; text-decoration: none; border-radius: 8px; font-size: 13px;">
                     <i class="fas fa-file-csv"></i> Export CSV
                 </a>
                 <a href="create-booking.php" class="quick-action" style="padding: 10px 16px; background: var(--gold, #d4a843); color: var(--deep-navy, #0d0d1a); text-decoration: none; border-radius: 8px; font-size: 13px; font-weight: 600;">
@@ -1444,6 +1578,11 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                     <i class="fas fa-dollar-sign"></i>
                     Paid
                     <span class="tab-count"><?php echo $paid; ?></span>
+                                <button class="tab-button" data-tab="partial" data-count="<?php echo $partial_paid; ?>">
+                                    <i class="fas fa-adjust"></i>
+                                    Partial
+                                    <span class="tab-count"><?php echo $partial_paid; ?></span>
+                                </button>
                 </button>
                 <button class="tab-button" data-tab="unpaid" data-count="<?php echo $unpaid; ?>">
                     <i class="fas fa-exclamation-circle"></i>
@@ -1490,6 +1629,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                             <th style="width: 80px;">Nights</th>
                             <th style="width: 80px;">Guests</th>
                             <th style="width: 120px;">Total</th>
+                                                        <th style="width: 110px;">Balance</th>
                             <th style="width: 120px;">Status</th>
                             <th style="width: 120px;">Payment</th>
                             <th style="width: 150px;">Created</th>
@@ -1550,6 +1690,18 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                     <?php endif; ?>
                                 </td>
                                 <td>
+                                    <?php
+                                        $b_balance = max(0, (float)($booking['total_with_vat'] ?? $booking['total_amount']) - (float)($booking['amount_paid'] ?? 0));
+                                        if ($b_balance <= 0) {
+                                            echo '<span style="color:#28a745;font-weight:600;font-size:11px;">Settled</span>';
+                                        } elseif ((float)($booking['amount_paid'] ?? 0) > 0) {
+                                            echo '<span style="color:#fd7e14;font-weight:600;">K ' . number_format($b_balance, 0) . '</span>';
+                                        } else {
+                                            echo 'K ' . number_format($b_balance, 0);
+                                        }
+                                    ?>
+                                </td>
+                                <td>
                                     <span class="badge badge-<?php echo $booking['status']; ?>">
                                         <?php echo ucfirst($booking['status']); ?>
                                     </span>
@@ -1595,6 +1747,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                     </small>
                                 </td>
                                 <td>
+                                <div class="actions-cell">
                                     <a href="booking-details.php?id=<?php echo $booking['id']; ?>" class="quick-action" style="background: #6f42c1; color: white; text-decoration: none;">
                                         <i class="fas fa-eye"></i> View
                                     </a>
@@ -1658,8 +1811,8 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                         </button>
                                     <?php endif; ?>
                                     <?php if ($booking['payment_status'] !== 'paid'): ?>
-                                        <button class="quick-action paid" onclick="updatePayment(<?php echo $booking['id']; ?>, 'paid')">
-                                            <i class="fas fa-dollar-sign"></i> Paid
+                                        <button class="quick-action paid" onclick="openPaymentModal(<?php echo $booking['id']; ?>, '<?php echo htmlspecialchars($booking['booking_reference'], ENT_QUOTES); ?>', <?php echo (float)($booking['total_with_vat'] ?? $booking['total_amount']); ?>, '<?php echo htmlspecialchars($booking['actual_payment_status'] ?? 'unpaid', ENT_QUOTES); ?>')">
+                                            <i class="fas fa-dollar-sign"></i> Record Payment
                                         </button>
                                     <?php endif; ?>
                                     <?php if ($is_expired && $user['role'] === 'admin'): ?>
@@ -1667,6 +1820,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                                             <i class="fas fa-trash"></i> Delete
                                         </button>
                                     <?php endif; ?>
+                                </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -1786,11 +1940,11 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
             
             rows.forEach(row => {
-                const statusCell = row.querySelector('td:nth-child(9)'); // Status column
-                const paymentCell = row.querySelector('td:nth-child(10)'); // Payment column
-                const checkInCell = row.querySelector('td:nth-child(4)'); // Check-in date column
-                const checkOutCell = row.querySelector('td:nth-child(5)'); // Check-out date column
-                const createdCell = row.querySelector('td:nth-child(11)'); // Created timestamp column
+                                const statusCell = row.querySelector('td:nth-child(10)'); // Status column (shifted +1 for Balance col)
+                                const paymentCell = row.querySelector('td:nth-child(11)'); // Payment column (shifted +1)
+                                const checkInCell = row.querySelector('td:nth-child(4)'); // Check-in date column
+                                const checkOutCell = row.querySelector('td:nth-child(5)'); // Check-out date column
+                                const createdCell = row.querySelector('td:nth-child(12)'); // Created timestamp column (shifted +1)
                 
                 if (!statusCell || !paymentCell) return;
                 
@@ -1884,8 +2038,11 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                     case 'paid':
                         isVisible = payment === 'paid' || payment === 'completed';
                         break;
+                    case 'partial':
+                        isVisible = payment === 'partial';
+                        break;
                     case 'unpaid':
-                        isVisible = payment !== 'paid' && payment !== 'completed';
+                        isVisible = payment !== 'paid' && payment !== 'completed' && payment !== 'partial';
                         break;
                     case 'today-bookings':
                         isVisible = isTodayBooking;
@@ -1930,6 +2087,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                 'cancelled': 'Cancelled Bookings',
                 'no-show': 'No-Show Bookings',
                 'paid': 'Paid Bookings',
+                'partial': 'Partial Payments',
                 'unpaid': 'Unpaid Bookings',
                 'today-bookings': "Today's Bookings",
                 'week-bookings': "This Week's Bookings",
@@ -1953,6 +2111,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             if (tabName === 'cancelled') newIcon = 'fa-times-circle';
             if (tabName === 'no-show') newIcon = 'fa-user-slash';
             if (tabName === 'paid') newIcon = 'fa-dollar-sign';
+            if (tabName === 'partial') newIcon = 'fa-adjust';
             if (tabName === 'unpaid') newIcon = 'fa-exclamation-circle';
             if (tabName === 'today-bookings') newIcon = 'fa-calendar-day';
             if (tabName === 'week-bookings') newIcon = 'fa-calendar-week';
@@ -2079,26 +2238,48 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             });
         }
 
-        function updatePayment(id, payment_status) {
-            const formData = new FormData();
-            formData.append('action', 'update_payment');
-            formData.append('id', id);
-            formData.append('payment_status', payment_status);
-            
+        function openPaymentModal(bookingId, bookingRef, totalAmount, currentStatus) {
+            document.getElementById('paymentModal').style.display = 'flex';
+            document.getElementById('payment_booking_id').value = bookingId;
+            document.getElementById('payment_booking_ref').value = bookingRef;
+            document.getElementById('payment_amount_display').value = 'K ' + new Intl.NumberFormat('en-US').format(Math.round(totalAmount));
+            document.getElementById('payment_amount_input').value = '';
+            document.getElementById('payment_notes_input').value = '';
+            document.getElementById('payment_type_full').checked = true;
+            document.getElementById('partial_amount_group').style.display = 'none';
+            document.getElementById('payment_amount_input').required = false;
+        }
+
+        function closePaymentModal() {
+            document.getElementById('paymentModal').style.display = 'none';
+            document.getElementById('paymentForm').reset();
+        }
+
+        function togglePaymentAmountField() {
+            const isPartial = document.getElementById('payment_type_partial').checked;
+            document.getElementById('partial_amount_group').style.display = isPartial ? 'block' : 'none';
+            document.getElementById('payment_amount_input').required = isPartial;
+        }
+
+        function submitPaymentForm() {
+            const isPartial = document.getElementById('payment_type_partial').checked;
+            const amountInput = document.getElementById('payment_amount_input');
+            if (isPartial && (!amountInput.value || parseFloat(amountInput.value) <= 0)) {
+                Alert.show('Please enter a valid payment amount.', 'error');
+                return;
+            }
+            const formData = new FormData(document.getElementById('paymentForm'));
             fetch(window.location.href, {
                 method: 'POST',
                 body: formData
             })
-            .then(response => {
-                if (response.ok) {
-                    window.location.reload();
-                } else {
-                    Alert.show('Error updating payment', 'error');
-                }
+            .then(response => response.text())
+            .then(data => {
+                window.location.reload();
             })
             .catch(error => {
                 console.error('Error:', error);
-                Alert.show('Error updating payment', 'error');
+                Alert.show('Error recording payment', 'error');
             });
         }
 
@@ -2224,6 +2405,56 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
     </script>
     
     <!-- Email Resend Modal -->
+        <!-- Payment Modal -->
+        <div id="paymentModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 520px;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-dollar-sign"></i> Record Payment</h3>
+                    <button class="close-modal" onclick="closePaymentModal()">&times;</button>
+                </div>
+                <form id="paymentForm">
+                    <input type="hidden" name="action" value="update_payment">
+                    <input type="hidden" name="id" id="payment_booking_id" value="">
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label><i class="fas fa-hashtag"></i> Booking Reference:</label>
+                            <input type="text" id="payment_booking_ref" class="form-control" readonly style="background: #f5f5f5;">
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-list-ul"></i> Payment Type:</label>
+                            <div style="display: flex; gap: 20px; margin-top: 8px;">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal;">
+                                    <input type="radio" name="payment_type" id="payment_type_full" value="full" checked onchange="togglePaymentAmountField()">
+                                    <span>Full Payment</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal;">
+                                    <input type="radio" name="payment_type" id="payment_type_partial" value="partial" onchange="togglePaymentAmountField()">
+                                    <span>Partial Payment</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-coins"></i> Total Booking Amount (MWK):</label>
+                            <input type="text" id="payment_amount_display" class="form-control" readonly style="background: #f5f5f5;">
+                        </div>
+                        <div class="form-group" id="partial_amount_group" style="display: none;">
+                            <label for="payment_amount_input"><i class="fas fa-coins"></i> Amount Being Paid Now (MWK):</label>
+                            <input type="number" name="amount_paid" id="payment_amount_input" class="form-control" min="1" step="0.01" placeholder="Enter amount received">
+                            <small style="color:#666;">Enter the actual amount received for this partial payment.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="payment_notes_input"><i class="fas fa-sticky-note"></i> Notes (Optional):</label>
+                            <textarea name="payment_notes" id="payment_notes_input" class="form-control" rows="3" placeholder="e.g., Bank transfer ref #12345, paid by cheque..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closePaymentModal()">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="submitPaymentForm()"><i class="fas fa-check-circle"></i> Record Payment</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
     <div id="resendEmailModal" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
@@ -2373,9 +2604,13 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
         
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('resendEmailModal');
-            if (event.target === modal) {
+            const emailModal = document.getElementById('resendEmailModal');
+            const payModal = document.getElementById('paymentModal');
+            if (event.target === emailModal) {
                 closeResendEmailModal();
+            }
+            if (event.target === payModal) {
+                closePaymentModal();
             }
         }
         

@@ -9,11 +9,31 @@
 // Include database connection
 require_once __DIR__ . '/../config/database.php';
 
-// Include API authentication
-require_once __DIR__ . '/auth.php';
+// Prevent direct access - this endpoint must go through api/index.php
+if (!defined('API_ACCESS_ALLOWED') || !isset($auth) || !isset($client)) {
+    http_response_code(403);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => false,
+        'error' => 'Direct access to this endpoint is not allowed',
+        'code' => 403,
+        'message' => 'Please use the API router at /api/site-settings'
+    ]);
+    exit;
+}
 
 // Set JSON response header
 header('Content-Type: application/json');
+
+if (!$auth->checkPermission($client, 'site_settings.read')) {
+    http_response_code(403);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Access denied. Missing permission: site_settings.read',
+        'code' => 403
+    ]);
+    exit;
+}
 
 try {
     // Get all site settings from database

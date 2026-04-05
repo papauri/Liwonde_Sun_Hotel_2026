@@ -1,197 +1,555 @@
 <?php
-/**
- * Admin Interface for Managing API Keys
- *
- * Allows administrators to:
- * - Create new API keys for external websites
- * - View and manage existing API keys
- * - Monitor API usage and rate limits
- * - Revoke/regenerate API keys
- */
-
-// Include admin initialization (PHP-only, no HTML output)
 require_once 'admin-init.php';
 
-// Check admin authentication - only admin role can access API keys
-if ($_SESSION['admin_role'] !== 'admin') {
+if (($_SESSION['admin_role'] ?? '') !== 'admin') {
     header('Location: dashboard.php');
     exit;
 }
 
-// Handle form submissions
 $message = '';
-$messageType = '';
+$messageType = 'success';
+$revealedKey = '';
+$testClientPackageKey = '';
+$liveTestResult = null;
+$testMethodInput = 'GET';
+$testEndpointInput = '/rooms';
+$testPayloadInput = "";
+
+$apiBaseUrl = rtrim((string)getSetting('site_url', ''), '/');
+if ($apiBaseUrl === '') {
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $apiBaseUrl = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+}
+$apiBaseUrl .= '/api';
+
+$permissionCatalog = [
+    'rooms.read' => 'Read room catalog and pricing.',
+    'availability.check' => 'Check room/date availability.',
+    'bookings.create' => 'Create booking records.',
+    'bookings.read' => 'Read booking details by ID/reference.',
+    'payments.view' => 'Read payment records.',
+    'payments.create' => 'Create payment records.',
+    'payments.edit' => 'Update payment records.',
+    'payments.delete' => 'Delete payment records.',
+    'site_settings.read' => 'Read public site settings payload.',
+    'blocked_dates.write' => 'Create/update/delete blocked dates.'
+];
+
+$permissionEndpointMap = [
+    'rooms.read' => 'GET /api/rooms',
+    'availability.check' => 'GET /api/availability',
+    'bookings.create' => 'POST /api/bookings',
+    'bookings.read' => 'GET /api/bookings?id=... and /api/bookings/{id}',
+    'payments.view' => 'GET /api/payments and /api/payments/{id}',
+    'payments.create' => 'POST /api/payments',
+    'payments.edit' => 'PUT /api/payments/{id}',
+    'payments.delete' => 'DELETE /api/payments/{id}',
+    'site_settings.read' => 'GET /api/site-settings',
+    'blocked_dates.write' => 'POST/PUT/DELETE /api/blocked-dates'
+];
+
+$permissionSampleSnippets = [
+    'rooms.read' => "fetch('/api/rooms', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'availability.check' => "fetch('/api/availability?room_id=1&check_in=2026-05-10&check_out=2026-05-12', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'bookings.create' => "fetch('/api/bookings', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ guest_name: 'John Doe', room_id: 1 })\n});",
+    'bookings.read' => "fetch('/api/bookings/12345', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'payments.view' => "fetch('/api/payments', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'payments.create' => "fetch('/api/payments', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ booking_id: 12345, amount: 50000 })\n});",
+    'payments.edit' => "fetch('/api/payments/99', {\n  method: 'PUT',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ amount: 65000 })\n});",
+    'payments.delete' => "fetch('/api/payments/99', {\n  method: 'DELETE',\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'site_settings.read' => "fetch('/api/site-settings', {\n  headers: { 'X-API-Key': 'YOUR_API_KEY' }\n});",
+    'blocked_dates.write' => "fetch('/api/blocked-dates', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-API-Key': 'YOUR_API_KEY'\n  },\n  body: JSON.stringify({ room_id: 1, block_date: '2026-05-10' })\n});"
+];
+
+function safePermissions(array $permissions, array $catalog): array {
+    $valid = [];
+    foreach ($permissions as $perm) {
+        $perm = trim((string)$perm);
+        if ($perm !== '' && isset($catalog[$perm])) {
+            $valid[] = $perm;
+        }
+    }
+    return array_values(array_unique($valid));
+}
+
+function runLiveApiRequest(string $apiBaseUrl, string $apiKey, string $method, string $endpoint, ?array $payload = null): array {
+    $url = rtrim($apiBaseUrl, '/') . '/' . ltrim($endpoint, '/');
+    $headers = [
+        'X-API-Key: ' . $apiKey,
+        'Content-Type: application/json'
+    ];
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        if ($payload !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        }
+
+        $bodyRaw = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        return [
+            'http_code' => $httpCode,
+            'body_raw' => $bodyRaw !== false ? (string)$bodyRaw : '',
+            'body_json' => is_string($bodyRaw) ? json_decode($bodyRaw, true) : null,
+            'transport_error' => $curlError !== '' ? $curlError : null,
+        ];
+    }
+
+    $headerString = implode("\r\n", $headers) . "\r\n";
+    $opts = [
+        'http' => [
+            'method' => $method,
+            'header' => $headerString,
+            'ignore_errors' => true,
+            'timeout' => 20,
+        ]
+    ];
+    if ($payload !== null) {
+        $opts['http']['content'] = json_encode($payload);
+    }
+
+    $context = stream_context_create($opts);
+    $bodyRaw = @file_get_contents($url, false, $context);
+    $httpCode = 0;
+    if (!empty($http_response_header) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+        $httpCode = (int)$m[1];
+    }
+
+    return [
+        'http_code' => $httpCode,
+        'body_raw' => is_string($bodyRaw) ? $bodyRaw : '',
+        'body_json' => is_string($bodyRaw) ? json_decode($bodyRaw, true) : null,
+        'transport_error' => $bodyRaw === false ? 'Request failed (stream transport).' : null,
+    ];
+}
+
+function buildTestClientPhpSnippets(string $apiBaseUrl, string $apiKey): array {
+    $apiBaseEsc = addslashes($apiBaseUrl);
+    $apiKeyEsc = addslashes($apiKey);
+
+    $phpSnippetClass = <<<'PHP'
+<?php
+$apiBase = '__API_BASE__';
+$apiKey = '__API_KEY__';
+
+function callApi($method, $endpoint, $apiBase, $apiKey, $payload = null) {
+    $ch = curl_init($apiBase . $endpoint);
+    $headers = ['X-API-Key: ' . $apiKey, 'Content-Type: application/json'];
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    if ($payload !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    }
+    $response = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ['status' => $status, 'body' => json_decode($response, true)];
+}
+
+$rooms = callApi('GET', '/rooms', $apiBase, $apiKey);
+print_r($rooms);
+PHP;
+
+    $phpSnippetAvailability = <<<'PHP'
+<?php
+$apiBase = '__API_BASE__';
+$apiKey = '__API_KEY__';
+
+$endpoint = '/availability?room_id=1&check_in=2026-05-10&check_out=2026-05-12';
+$ch = curl_init($apiBase . $endpoint);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-API-Key: ' . $apiKey]);
+$response = curl_exec($ch);
+$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+echo 'HTTP ' . $status . PHP_EOL;
+echo $response . PHP_EOL;
+PHP;
+
+    $phpSnippetCreateBooking = <<<'PHP'
+<?php
+$apiBase = '__API_BASE__';
+$apiKey = '__API_KEY__';
+
+$payload = [
+  'guest_name' => 'Test Guest',
+  'guest_email' => 'guest@example.com',
+  'guest_phone' => '+2650000000',
+  'room_id' => 1,
+  'check_in_date' => '2026-05-10',
+  'check_out_date' => '2026-05-12',
+  'number_of_guests' => 2
+];
+
+$ch = curl_init($apiBase . '/bookings');
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+  'X-API-Key: ' . $apiKey,
+  'Content-Type: application/json'
+]);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+$response = curl_exec($ch);
+$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+echo 'HTTP ' . $status . PHP_EOL;
+echo $response . PHP_EOL;
+PHP;
+
+    $phpSnippetClass = str_replace(['__API_BASE__', '__API_KEY__'], [$apiBaseEsc, $apiKeyEsc], $phpSnippetClass);
+    $phpSnippetAvailability = str_replace(['__API_BASE__', '__API_KEY__'], [$apiBaseEsc, $apiKeyEsc], $phpSnippetAvailability);
+    $phpSnippetCreateBooking = str_replace(['__API_BASE__', '__API_KEY__'], [$apiBaseEsc, $apiKeyEsc], $phpSnippetCreateBooking);
+
+    return [
+        'php_client_class' => $phpSnippetClass,
+        'php_client_availability' => $phpSnippetAvailability,
+        'php_client_booking' => $phpSnippetCreateBooking,
+    ];
+}
+
+$testClient = null;
+try {
+    $stmt = $pdo->query("\n        SELECT id, client_name, client_email, client_website, is_active\n        FROM api_keys\n        WHERE client_name = 'Test Client'\n        ORDER BY id DESC\n        LIMIT 1\n    ");
+    $testClient = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Throwable $e) {
+    $testClient = null;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['action'])) {
-        switch ($_POST['action']) {
-            case 'create_key':
-                $clientName = trim($_POST['client_name']);
-                $clientWebsite = trim($_POST['client_website']);
-                $clientEmail = trim($_POST['client_email']);
-                $rateLimit = (int)$_POST['rate_limit_per_hour'];
-                $permissions = isset($_POST['permissions']) ? $_POST['permissions'] : [];
-                
-                // Generate API key
-                $rawApiKey = bin2hex(random_bytes(32));
-                $hashedApiKey = password_hash($rawApiKey, PASSWORD_DEFAULT);
-                
-                // Prepare permissions JSON
-                $permissionsJson = json_encode($permissions);
-                
-                try {
-                    $stmt = $pdo->prepare("
-                        INSERT INTO api_keys (
-                            api_key, client_name, client_website, client_email,
-                            permissions, rate_limit_per_hour, is_active
-                        ) VALUES (?, ?, ?, ?, ?, ?, 1)
-                    ");
-                    
-                    $stmt->execute([
-                        $hashedApiKey,
-                        $clientName,
-                        $clientWebsite,
-                        $clientEmail,
-                        $permissionsJson,
-                        $rateLimit
-                    ]);
-                    
-                    $apiKeyId = $pdo->lastInsertId();
-                    
-                    $message = "API key created successfully!<br><br>
-                               <strong>Client:</strong> $clientName<br>
-                               <strong>API Key:</strong> <code>$rawApiKey</code><br><br>
-                               <strong>Important:</strong> Copy this API key now. It will not be shown again.";
-                    $messageType = 'success';
-                    
-                } catch (PDOException $e) {
-                    $message = "Error creating API key: " . $e->getMessage();
-                    $messageType = 'error';
-                }
-                break;
-                
-            case 'toggle_status':
-                $keyId = (int)$_POST['key_id'];
-                $isActive = (int)$_POST['is_active'];
-                
-                try {
-                    $stmt = $pdo->prepare("
-                        UPDATE api_keys 
-                        SET is_active = ? 
-                        WHERE id = ?
-                    ");
-                    $stmt->execute([$isActive, $keyId]);
-                    
-                    $message = "API key status updated successfully";
-                    $messageType = 'success';
-                } catch (PDOException $e) {
-                    $message = "Error updating API key: " . $e->getMessage();
-                    $messageType = 'error';
-                }
-                break;
-                
-            case 'regenerate_key':
-                $keyId = (int)$_POST['key_id'];
-                
-                // Generate new API key
-                $rawApiKey = bin2hex(random_bytes(32));
-                $hashedApiKey = password_hash($rawApiKey, PASSWORD_DEFAULT);
-                
-                try {
-                    $stmt = $pdo->prepare("
-                        UPDATE api_keys 
-                        SET api_key = ?, last_used_at = NULL, usage_count = 0 
-                        WHERE id = ?
-                    ");
-                    $stmt->execute([$hashedApiKey, $keyId]);
-                    
-                    // Get client name for message
-                    $stmt = $pdo->prepare("SELECT client_name FROM api_keys WHERE id = ?");
-                    $stmt->execute([$keyId]);
-                    $client = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    $message = "API key regenerated for <strong>{$client['client_name']}</strong><br><br>
-                               <strong>New API Key:</strong> <code>$rawApiKey</code><br><br>
-                               <strong>Important:</strong> Copy this new API key now. It will not be shown again.";
-                    $messageType = 'success';
-                } catch (PDOException $e) {
-                    $message = "Error regenerating API key: " . $e->getMessage();
-                    $messageType = 'error';
-                }
-                break;
-                
-            case 'delete_key':
-                $keyId = (int)$_POST['key_id'];
-                
-                try {
-                    $stmt = $pdo->prepare("DELETE FROM api_keys WHERE id = ?");
-                    $stmt->execute([$keyId]);
-                    
-                    $message = "API key deleted successfully";
-                    $messageType = 'success';
-                } catch (PDOException $e) {
-                    $message = "Error deleting API key: " . $e->getMessage();
-                    $messageType = 'error';
-                }
-                break;
+    requireCsrfValidation();
+    $action = trim((string)($_POST['action'] ?? ''));
+
+    try {
+        if ($action === 'create_key') {
+            $clientName = trim((string)($_POST['client_name'] ?? ''));
+            $clientWebsite = trim((string)($_POST['client_website'] ?? ''));
+            $clientEmail = trim((string)($_POST['client_email'] ?? ''));
+            $rateLimit = max(1, (int)($_POST['rate_limit_per_hour'] ?? 100));
+            $permissions = safePermissions((array)($_POST['permissions'] ?? []), $permissionCatalog);
+
+            if ($clientName === '') {
+                throw new Exception('Client name is required.');
+            }
+            if ($clientEmail === '' || !filter_var($clientEmail, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception('A valid client email is required.');
+            }
+            if (empty($permissions)) {
+                throw new Exception('Select at least one permission.');
+            }
+
+            $rawApiKey = bin2hex(random_bytes(32));
+            $hashedApiKey = password_hash($rawApiKey, PASSWORD_DEFAULT);
+
+            $stmt = $pdo->prepare("\n                INSERT INTO api_keys\n                    (api_key, client_name, client_website, client_email, permissions, rate_limit_per_hour, is_active)\n                VALUES (?, ?, ?, ?, ?, ?, 1)\n            ");
+            $stmt->execute([
+                $hashedApiKey,
+                $clientName,
+                $clientWebsite !== '' ? $clientWebsite : null,
+                $clientEmail,
+                json_encode($permissions),
+                $rateLimit
+            ]);
+
+            $revealedKey = $rawApiKey;
+            $message = 'API key created. Copy the key now; it is shown only once.';
+            $messageType = 'success';
         }
+
+        if ($action === 'update_key') {
+            $keyId = (int)($_POST['key_id'] ?? 0);
+            $clientName = trim((string)($_POST['client_name'] ?? ''));
+            $clientWebsite = trim((string)($_POST['client_website'] ?? ''));
+            $clientEmail = trim((string)($_POST['client_email'] ?? ''));
+            $rateLimit = max(1, (int)($_POST['rate_limit_per_hour'] ?? 100));
+            $permissions = safePermissions((array)($_POST['permissions'] ?? []), $permissionCatalog);
+
+            if ($keyId <= 0) {
+                throw new Exception('Invalid API key selection.');
+            }
+            if ($clientName === '') {
+                throw new Exception('Client name is required.');
+            }
+            if ($clientEmail === '' || !filter_var($clientEmail, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception('A valid client email is required.');
+            }
+            if (empty($permissions)) {
+                throw new Exception('Select at least one permission.');
+            }
+
+            $stmt = $pdo->prepare("\n                UPDATE api_keys\n                SET client_name = ?,\n                    client_website = ?,\n                    client_email = ?,\n                    permissions = ?,\n                    rate_limit_per_hour = ?\n                WHERE id = ?\n            ");
+            $stmt->execute([
+                $clientName,
+                $clientWebsite !== '' ? $clientWebsite : null,
+                $clientEmail,
+                json_encode($permissions),
+                $rateLimit,
+                $keyId
+            ]);
+
+            $message = 'API key profile updated successfully.';
+            $messageType = 'success';
+        }
+
+        if ($action === 'toggle_status') {
+            $keyId = (int)($_POST['key_id'] ?? 0);
+            $isActive = (int)($_POST['is_active'] ?? 0);
+            if ($keyId <= 0) {
+                throw new Exception('Invalid API key selection.');
+            }
+
+            $stmt = $pdo->prepare('UPDATE api_keys SET is_active = ? WHERE id = ?');
+            $stmt->execute([$isActive ? 1 : 0, $keyId]);
+            $message = $isActive ? 'API key activated.' : 'API key disabled.';
+            $messageType = 'success';
+        }
+
+        if ($action === 'regenerate_key') {
+            $keyId = (int)($_POST['key_id'] ?? 0);
+            if ($keyId <= 0) {
+                throw new Exception('Invalid API key selection.');
+            }
+
+            $rawApiKey = bin2hex(random_bytes(32));
+            $hashedApiKey = password_hash($rawApiKey, PASSWORD_DEFAULT);
+
+            $stmt = $pdo->prepare("\n                UPDATE api_keys\n                SET api_key = ?,\n                    last_used_at = NULL,\n                    usage_count = 0\n                WHERE id = ?\n            ");
+            $stmt->execute([$hashedApiKey, $keyId]);
+
+            $revealedKey = $rawApiKey;
+            $message = 'API key regenerated. Copy the new key now.';
+            $messageType = 'success';
+        }
+
+        if ($action === 'delete_key') {
+            $keyId = (int)($_POST['key_id'] ?? 0);
+            if ($keyId <= 0) {
+                throw new Exception('Invalid API key selection.');
+            }
+
+            $stmt = $pdo->prepare('DELETE FROM api_keys WHERE id = ?');
+            $stmt->execute([$keyId]);
+            $message = 'API key deleted successfully.';
+            $messageType = 'success';
+        }
+
+        if ($action === 'prepare_test_client_package') {
+            $testClientId = (int)($_POST['test_client_id'] ?? 0);
+            if ($testClientId <= 0) {
+                throw new Exception('Test Client was not found in live DB.');
+            }
+
+            $rawApiKey = bin2hex(random_bytes(32));
+            $hashedApiKey = password_hash($rawApiKey, PASSWORD_DEFAULT);
+
+            $stmt = $pdo->prepare("\n                UPDATE api_keys\n                SET api_key = ?,\n                    last_used_at = NULL,\n                    usage_count = 0,\n                    is_active = 1\n                WHERE id = ?\n            ");
+            $stmt->execute([$hashedApiKey, $testClientId]);
+
+            $testClientPackageKey = $rawApiKey;
+            $_SESSION['test_client_package_key'] = $rawApiKey;
+            $message = 'Test Client package is ready. Copy the PHP tab code below and share with your client.';
+            $messageType = 'success';
+        }
+
+        if ($action === 'run_test_client_request') {
+            $testClientPackageKey = $testClientPackageKey !== ''
+                ? $testClientPackageKey
+                : (string)($_SESSION['test_client_package_key'] ?? '');
+
+            if ($testClientPackageKey === '') {
+                throw new Exception('Generate Test Client package key first, then run a live test.');
+            }
+
+            $testMethodInput = strtoupper(trim((string)($_POST['test_method'] ?? 'GET')));
+            $testEndpointInput = trim((string)($_POST['test_endpoint'] ?? '/rooms'));
+            $testPayloadInput = trim((string)($_POST['test_payload'] ?? ''));
+
+            if (!in_array($testMethodInput, ['GET', 'POST', 'PUT', 'DELETE'], true)) {
+                throw new Exception('Invalid request method for live test.');
+            }
+            if ($testEndpointInput === '') {
+                throw new Exception('Endpoint is required for live test.');
+            }
+            if ($testEndpointInput[0] !== '/') {
+                $testEndpointInput = '/' . $testEndpointInput;
+            }
+
+            $payload = null;
+            if ($testPayloadInput !== '' && in_array($testMethodInput, ['POST', 'PUT'], true)) {
+                $payload = json_decode($testPayloadInput, true);
+                if (!is_array($payload)) {
+                    throw new Exception('Payload must be valid JSON object/array for POST or PUT requests.');
+                }
+            }
+
+            $liveResponse = runLiveApiRequest($apiBaseUrl, $testClientPackageKey, $testMethodInput, $testEndpointInput, $payload);
+            $liveTestResult = [
+                'request' => [
+                    'method' => $testMethodInput,
+                    'endpoint' => $testEndpointInput,
+                    'payload' => $payload,
+                ],
+                'response' => $liveResponse,
+            ];
+
+            $message = 'Live test executed from admin portal.';
+            $messageType = 'success';
+        }
+    } catch (Throwable $e) {
+        $message = 'Error: ' . $e->getMessage();
+        $messageType = 'error';
     }
 }
 
-// Get all API keys
+$selectedKeyId = isset($_GET['key_id']) ? (int)$_GET['key_id'] : 0;
+
 $apiKeys = [];
 try {
-    $stmt = $pdo->query("
-        SELECT 
-            ak.*,
-            (SELECT COUNT(*) FROM api_usage_logs WHERE api_key_id = ak.id) as total_calls,
-            (SELECT COUNT(*) FROM api_usage_logs WHERE api_key_id = ak.id AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)) as calls_last_hour
-        FROM api_keys ak
-        ORDER BY created_at DESC
-    ");
+    $stmt = $pdo->query("\n        SELECT\n            ak.*,\n            (SELECT COUNT(*) FROM api_usage_logs WHERE api_key_id = ak.id) AS total_calls,\n            (SELECT COUNT(*) FROM api_usage_logs WHERE api_key_id = ak.id AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)) AS calls_last_hour\n        FROM api_keys ak\n        ORDER BY ak.created_at DESC\n    ");
     $apiKeys = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
-    $message = "Error loading API keys: " . $e->getMessage();
-    $messageType = 'error';
+} catch (Throwable $e) {
+    if ($message === '') {
+        $message = 'Error loading API keys: ' . $e->getMessage();
+        $messageType = 'error';
+    }
 }
 
-// Get API usage statistics
-$usageStats = [];
+$dailyUsage = [];
 try {
-    $stmt = $pdo->query("
-        SELECT 
-            DATE(created_at) as date,
-            COUNT(*) as total_calls,
-            COUNT(DISTINCT api_key_id) as unique_clients,
-            AVG(response_time) as avg_response_time
-        FROM api_usage_logs 
-        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-        GROUP BY DATE(created_at)
-        ORDER BY date DESC
-    ");
-    $usageStats = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
-    // Table might not exist yet
+    $stmt = $pdo->query("\n        SELECT DATE(created_at) AS usage_date,\n               COUNT(*) AS total_calls,\n               COUNT(DISTINCT api_key_id) AS unique_clients,\n               AVG(response_time) AS avg_response_time\n        FROM api_usage_logs\n        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)\n        GROUP BY DATE(created_at)\n        ORDER BY usage_date DESC\n        LIMIT 30\n    ");
+    $dailyUsage = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    $dailyUsage = [];
 }
 
-// Available permissions
-$availablePermissions = [
-    'rooms.read' => 'Read room information',
-    'availability.check' => 'Check room availability',
-    'bookings.create' => 'Create new bookings',
-    'bookings.read' => 'Read booking details',
-    'bookings.update' => 'Update bookings',
-    'bookings.delete' => 'Delete bookings'
-];
-?>
+$selectedKeyLogs = [];
+if ($selectedKeyId > 0) {
+    try {
+        $stmt = $pdo->prepare("\n            SELECT endpoint, method, response_code, response_time, ip_address, created_at\n            FROM api_usage_logs\n            WHERE api_key_id = ?\n            ORDER BY created_at DESC\n            LIMIT 100\n        ");
+        $stmt->execute([$selectedKeyId]);
+        $selectedKeyLogs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $selectedKeyLogs = [];
+    }
+}
 
+$selectedKeyDailyTrend = [];
+if ($selectedKeyId > 0) {
+    try {
+        $stmt = $pdo->prepare("\n            SELECT DATE(created_at) AS usage_date,\n                   COUNT(*) AS total_calls,\n                   SUM(CASE WHEN response_code >= 400 THEN 1 ELSE 0 END) AS error_calls\n            FROM api_usage_logs\n            WHERE api_key_id = ?\n              AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)\n            GROUP BY DATE(created_at)\n            ORDER BY usage_date ASC\n        ");
+        $stmt->execute([$selectedKeyId]);
+        $selectedKeyDailyTrend = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $selectedKeyDailyTrend = [];
+    }
+}
+
+$siteName = getSetting('site_name', 'Hotel');
+if ($testClientPackageKey === '' && !empty($_SESSION['test_client_package_key'])) {
+    $testClientPackageKey = (string)$_SESSION['test_client_package_key'];
+}
+
+if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClientPackageKey !== '') {
+    $snippets = buildTestClientPhpSnippets($apiBaseUrl, $testClientPackageKey);
+
+    if (isset($_GET['download_php'])) {
+        $snippetType = trim((string)$_GET['download_php']);
+        if (!isset($snippets[$snippetType])) {
+            http_response_code(400);
+            echo 'Invalid snippet type.';
+            exit;
+        }
+
+        $filenameMap = [
+            'php_client_class' => 'test-client-api-client.php',
+            'php_client_availability' => 'test-client-availability.php',
+            'php_client_booking' => 'test-client-create-booking.php',
+        ];
+        $fileName = $filenameMap[$snippetType] ?? 'test-client-snippet.php';
+
+        header('Content-Type: application/x-httpd-php; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $fileName . '"');
+        header('Content-Length: ' . strlen($snippets[$snippetType]));
+        echo $snippets[$snippetType];
+        exit;
+    }
+
+    if (isset($_GET['download_zip'])) {
+        if (!class_exists('ZipArchive')) {
+            $textBundle = "ZIP export is unavailable on this server (ZipArchive extension not installed).\n" .
+                "Below are all files in plain text format.\n\n" .
+                "===== test-client-api-client.php =====\n" . $snippets['php_client_class'] . "\n\n" .
+                "===== test-client-availability.php =====\n" . $snippets['php_client_availability'] . "\n\n" .
+                "===== test-client-create-booking.php =====\n" . $snippets['php_client_booking'] . "\n";
+
+            header('Content-Type: text/plain; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="test-client-php-api-package.txt"');
+            header('Content-Length: ' . strlen($textBundle));
+            echo $textBundle;
+            exit;
+        }
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'api_pkg_');
+        if ($zipPath === false) {
+            http_response_code(500);
+            echo 'Could not create temporary package file.';
+            exit;
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::OVERWRITE) !== true) {
+            @unlink($zipPath);
+            http_response_code(500);
+            echo 'Could not create ZIP package.';
+            exit;
+        }
+
+        $zip->addFromString('test-client-api-client.php', $snippets['php_client_class']);
+        $zip->addFromString('test-client-availability.php', $snippets['php_client_availability']);
+        $zip->addFromString('test-client-create-booking.php', $snippets['php_client_booking']);
+        $zip->addFromString('README.txt',
+            "Test Client API Package\n\n" .
+            "1. Use test-client-api-client.php as reusable base helper.\n" .
+            "2. test-client-availability.php checks availability endpoint.\n" .
+            "3. test-client-create-booking.php creates a booking request.\n\n" .
+            "Base URL: " . $apiBaseUrl . "\n" .
+            "Generated: " . date('Y-m-d H:i:s') . "\n"
+        );
+        $zip->close();
+
+        $zipBytes = @file_get_contents($zipPath);
+        @unlink($zipPath);
+
+        if ($zipBytes === false) {
+            http_response_code(500);
+            echo 'Could not read ZIP package.';
+            exit;
+        }
+
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="test-client-php-api-package.zip"');
+        header('Content-Length: ' . strlen($zipBytes));
+        echo $zipBytes;
+        exit;
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Keys Management - Admin Panel</title>
-    
+    <title>API Keys Management - <?php echo htmlspecialchars($siteName); ?></title>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -200,293 +558,537 @@ $availablePermissions = [
     <link rel="stylesheet" href="../css/theme-dynamic.php">
     <link rel="stylesheet" href="css/admin-styles.css">
     <link rel="stylesheet" href="css/admin-components.css">
+
+    <style>
+        .api-grid { display:grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; }
+        .api-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; margin-bottom:16px; }
+        .api-card h3 { margin:0 0 12px; font-size:16px; color:#0f172a; }
+        .form-row { margin-bottom:10px; }
+        .form-row label { display:block; margin-bottom:4px; font-size:12px; font-weight:600; color:#334155; }
+        .form-row input, .form-row textarea { width:100%; }
+        .perm-grid { display:grid; grid-template-columns: 1fr; gap:8px; border:1px solid #e5e7eb; border-radius:8px; padding:10px; max-height:240px; overflow:auto; }
+        .perm-item { display:flex; gap:8px; align-items:flex-start; }
+        .perm-item small { color:#64748b; }
+        .api-table-wrap { overflow:auto; }
+        .api-table { width:100%; border-collapse: collapse; font-size:12px; }
+        .api-table th, .api-table td { border-bottom:1px solid #e5e7eb; padding:8px; text-align:left; vertical-align:top; }
+        .api-table th { background:#f8fafc; color:#334155; font-weight:600; }
+        .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+        .pill-ok { background:#dcfce7; color:#166534; }
+        .pill-off { background:#fee2e2; color:#991b1b; }
+        .actions { display:flex; gap:6px; flex-wrap:wrap; }
+        .btn-sm { padding:6px 9px; font-size:11px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
+        .btn-edit { background:#e0f2fe; color:#075985; }
+        .btn-toggle { background:#fef3c7; color:#92400e; }
+        .btn-regen { background:#ede9fe; color:#5b21b6; }
+        .btn-delete { background:#fee2e2; color:#b91c1c; }
+        .key-box { background:#0f172a; color:#f8fafc; border-radius:8px; padding:10px; font-family: monospace; word-break: break-all; }
+        .helper-list { margin:0; padding-left:16px; color:#334155; }
+        .helper-list li { margin:6px 0; }
+        .split-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .row-highlight { background:#fffbeb; }
+        .snippet-box { background:#0b1220; color:#e2e8f0; border-radius:8px; padding:10px; font-family:Consolas, monospace; white-space:pre-wrap; font-size:11px; }
+        .snippet-actions { margin-top:8px; }
+        .btn-copy { padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc; color:#1e293b; cursor:pointer; font-size:11px; }
+        .chart-grid { display:grid; grid-template-columns:1fr; gap:8px; }
+        .chart-row { display:grid; grid-template-columns:86px 1fr 70px; gap:8px; align-items:center; font-size:11px; }
+        .bar-track { background:#f1f5f9; border-radius:999px; height:10px; overflow:hidden; }
+        .bar-fill { height:10px; border-radius:999px; }
+        .bar-calls { background:#2563eb; }
+        .bar-errors { background:#dc2626; }
+        .tab-strip { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+        .tab-btn { padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#0f172a; cursor:pointer; font-size:12px; }
+        .tab-btn.active { background:#0f172a; color:#fff; border-color:#0f172a; }
+        .tab-panel { display:none; }
+        .tab-panel.active { display:block; }
+        .preview-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-size:12px; color:#334155; }
+        .preview-card pre { margin:0; white-space:pre-wrap; font-family:Consolas, monospace; font-size:11px; color:#0f172a; }
+        .test-grid { display:grid; grid-template-columns:120px 1fr; gap:8px; align-items:center; }
+        @media (max-width: 1100px) { .api-grid { grid-template-columns: 1fr; } .split-2 { grid-template-columns:1fr; } }
+    </style>
 </head>
 <body>
+<?php require_once 'includes/admin-header.php'; ?>
 
-    <?php require_once 'includes/admin-header.php'; ?>
-    
-    <div class="admin-container">
-    <div class="admin-header">
-        <h1><i class="fas fa-key"></i> API Keys Management</h1>
-        <p>Manage API keys for external websites to access the booking system</p>
-    </div>
-
-    <?php if ($message): ?>
-        <div class="alert alert-<?php echo $messageType === 'error' ? 'danger' : 'success'; ?>">
-            <?php echo $message; ?>
+<main class="admin-main">
+    <div class="admin-content">
+        <div class="admin-page-header">
+            <h2><i class="fas fa-key"></i> API Keys Management</h2>
+            <p>Manage clients, permissions, rate limits, key rotation, and usage logs from one place.</p>
         </div>
-    <?php endif; ?>
 
-    <div class="row">
-        <div class="col-md-8">
-            <!-- API Keys List -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-list"></i> Active API Keys</h3>
-                </div>
-                <div class="card-body">
-                    <?php if (empty($apiKeys)): ?>
-                        <div class="alert alert-info">
-                            <p>No API keys found. Create your first API key to get started.</p>
-                            <p>Make sure to run the SQL script first: <code>Database/add-api-keys-table.sql</code></p>
-                        </div>
-                    <?php else: ?>
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Client</th>
-                                        <th>Website</th>
-                                        <th>Usage</th>
-                                        <th>Rate Limit</th>
-                                        <th>Status</th>
-                                        <th>Last Used</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($apiKeys as $key): ?>
-                                        <tr>
-                                            <td>
-                                                <strong><?php echo htmlspecialchars($key['client_name']); ?></strong><br>
-                                                <small class="text-muted"><?php echo htmlspecialchars($key['client_email']); ?></small>
-                                            </td>
-                                            <td>
-                                                <?php if ($key['client_website']): ?>
-                                                    <a href="<?php echo htmlspecialchars($key['client_website']); ?>" target="_blank">
-                                                        <?php echo htmlspecialchars($key['client_website']); ?>
-                                                    </a>
-                                                <?php else: ?>
-                                                    <span class="text-muted">Not specified</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <small>Total: <?php echo $key['total_calls']; ?> calls</small><br>
-                                                <small>Last hour: <?php echo $key['calls_last_hour']; ?> calls</small>
-                                            </td>
-                                            <td><?php echo $key['rate_limit_per_hour']; ?>/hour</td>
-                                            <td>
-                                                <span class="badge badge-<?php echo $key['is_active'] ? 'success' : 'danger'; ?>">
-                                                    <?php echo $key['is_active'] ? 'Active' : 'Inactive'; ?>
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <?php if ($key['last_used_at']): ?>
-                                                    <?php echo date('M j, Y H:i', strtotime($key['last_used_at'])); ?>
-                                                <?php else: ?>
-                                                    <span class="text-muted">Never</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <div class="btn-group btn-group-sm">
-                                                    <button type="button" class="btn btn-info" data-toggle="modal" data-target="#viewKeyModal<?php echo $key['id']; ?>">
-                                                        <i class="fas fa-eye"></i>
-                                                    </button>
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="toggle_status">
-                                                        <input type="hidden" name="key_id" value="<?php echo $key['id']; ?>">
-                                                        <input type="hidden" name="is_active" value="<?php echo $key['is_active'] ? 0 : 1; ?>">
-                                                        <button type="submit" class="btn btn-<?php echo $key['is_active'] ? 'warning' : 'success'; ?>">
-                                                            <i class="fas fa-power-off"></i>
-                                                        </button>
-                                                    </form>
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="regenerate_key">
-                                                        <input type="hidden" name="key_id" value="<?php echo $key['id']; ?>">
-                                                        <button type="submit" class="btn btn-secondary" onclick="return confirm('Are you sure? This will invalidate the current API key.')">
-                                                            <i class="fas fa-redo"></i>
-                                                        </button>
-                                                    </form>
-                                                    <form method="POST" style="display: inline;">
-                                                        <input type="hidden" name="action" value="delete_key">
-                                                        <input type="hidden" name="key_id" value="<?php echo $key['id']; ?>">
-                                                        <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this API key?')">
-                                                            <i class="fas fa-trash"></i>
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        
-                                        <!-- View Key Modal -->
-                                        <div class="modal fade" id="viewKeyModal<?php echo $key['id']; ?>" tabindex="-1">
-                                            <div class="modal-dialog">
-                                                <div class="modal-content">
-                                                    <div class="modal-header">
-                                                        <h5 class="modal-title">API Key Details</h5>
-                                                        <button type="button" class="close" data-dismiss="modal">
-                                                            <span>&times;</span>
-                                                        </button>
-                                                    </div>
-                                                    <div class="modal-body">
-                                                        <h6>Client Information</h6>
-                                                        <p><strong>Name:</strong> <?php echo htmlspecialchars($key['client_name']); ?></p>
-                                                        <p><strong>Email:</strong> <?php echo htmlspecialchars($key['client_email']); ?></p>
-                                                        <p><strong>Website:</strong> <?php echo htmlspecialchars($key['client_website']); ?></p>
-                                                        
-                                                        <h6 class="mt-3">Permissions</h6>
-                                                        <?php 
-                                                        $permissions = json_decode($key['permissions'], true) ?? [];
-                                                        if ($permissions): ?>
-                                                            <ul>
-                                                                <?php foreach ($permissions as $perm): ?>
-                                                                    <li><?php echo $availablePermissions[$perm] ?? $perm; ?></li>
-                                                                <?php endforeach; ?>
-                                                            </ul>
-                                                        <?php else: ?>
-                                                            <p class="text-muted">No permissions assigned</p>
-                                                        <?php endif; ?>
-                                                        
-                                                        <h6 class="mt-3">Usage Statistics</h6>
-                                                        <p><strong>Total Calls:</strong> <?php echo $key['total_calls']; ?></p>
-                                                        <p><strong>Calls Last Hour:</strong> <?php echo $key['calls_last_hour']; ?></p>
-                                                        <p><strong>Rate Limit:</strong> <?php echo $key['rate_limit_per_hour']; ?> calls/hour</p>
-                                                        <p><strong>Created:</strong> <?php echo date('M j, Y H:i', strtotime($key['created_at'])); ?></p>
-                                                        <p><strong>Last Used:</strong> <?php echo $key['last_used_at'] ? date('M j, Y H:i', strtotime($key['last_used_at'])) : 'Never'; ?></p>
-                                                    </div>
-                                                    <div class="modal-footer">
-                                                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                </div>
+        <?php if ($message !== ''): ?>
+            <div class="alert <?php echo $messageType === 'error' ? 'alert-error' : 'alert-success'; ?>"><?php echo $message; ?></div>
+        <?php endif; ?>
+
+        <?php if ($revealedKey !== ''): ?>
+            <div class="api-card">
+                <h3><i class="fas fa-shield-alt"></i> New API Key (Shown Once)</h3>
+                <div class="key-box"><?php echo htmlspecialchars($revealedKey); ?></div>
             </div>
-            
-            <!-- API Usage Statistics -->
-            <?php if (!empty($usageStats)): ?>
-                <div class="card mt-4">
-                    <div class="card-header">
-                        <h3><i class="fas fa-chart-line"></i> API Usage Statistics (Last 30 Days)</h3>
+        <?php endif; ?>
+
+        <div class="api-card">
+            <h3><i class="fas fa-file-code"></i> Test Client PHP Package</h3>
+            <p style="font-size:12px; color:#64748b; margin:0 0 10px;">Generate a fresh Test Client key, then copy one of the PHP tabs below and send it to your client.</p>
+
+            <?php if ($testClient): ?>
+                <form method="POST" style="margin-bottom:10px;" onsubmit="return confirm('Generate a new key for Test Client? The previous key will stop working.');">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <input type="hidden" name="action" value="prepare_test_client_package">
+                    <input type="hidden" name="test_client_id" value="<?php echo (int)$testClient['id']; ?>">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-bolt"></i> Generate Test Client Package</button>
+                </form>
+                <p style="font-size:12px; color:#64748b; margin:0 0 10px;">
+                    Client: <strong><?php echo htmlspecialchars((string)$testClient['client_name']); ?></strong>
+                    | Email: <?php echo htmlspecialchars((string)$testClient['client_email']); ?>
+                </p>
+            <?php else: ?>
+                <p style="font-size:12px; color:#b91c1c; margin:0;">Test Client record was not found in the live database.</p>
+            <?php endif; ?>
+
+            <?php if ($testClientPackageKey !== ''): ?>
+                <?php
+                    $snippetBundle = buildTestClientPhpSnippets($apiBaseUrl, $testClientPackageKey);
+                    $phpSnippetClass = $snippetBundle['php_client_class'];
+                    $phpSnippetAvailability = $snippetBundle['php_client_availability'];
+                    $phpSnippetCreateBooking = $snippetBundle['php_client_booking'];
+                ?>
+
+                <div class="tab-strip" data-tab-group="php-client-tabs">
+                    <button type="button" class="tab-btn active" data-tab-target="php_client_class">Reusable Client</button>
+                    <button type="button" class="tab-btn" data-tab-target="php_client_availability">Availability</button>
+                    <button type="button" class="tab-btn" data-tab-target="php_client_booking">Create Booking</button>
+                </div>
+
+                <div class="tab-panel active" id="php_client_class" data-tab-panel="php-client-tabs">
+                    <div class="snippet-box" id="snippet_php_client_class"><?php echo htmlspecialchars($phpSnippetClass); ?></div>
+                    <div class="snippet-actions">
+                        <button type="button" class="btn-copy" onclick="copySnippet('snippet_php_client_class', this)">Copy PHP</button>
+                        <a class="btn-copy" href="api-keys.php?download_php=php_client_class" style="text-decoration:none; display:inline-block; margin-left:6px;">Download .php</a>
                     </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Total Calls</th>
-                                        <th>Unique Clients</th>
-                                        <th>Avg Response Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($usageStats as $stat): ?>
-                                        <tr>
-                                            <td><?php echo date('M j, Y', strtotime($stat['date'])); ?></td>
-                                            <td><?php echo $stat['total_calls']; ?></td>
-                                            <td><?php echo $stat['unique_clients']; ?></td>
-                                            <td><?php echo number_format($stat['avg_response_time'], 4); ?>s</td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                </div>
+                <div class="tab-panel" id="php_client_availability" data-tab-panel="php-client-tabs">
+                    <div class="snippet-box" id="snippet_php_client_availability"><?php echo htmlspecialchars($phpSnippetAvailability); ?></div>
+                    <div class="snippet-actions">
+                        <button type="button" class="btn-copy" onclick="copySnippet('snippet_php_client_availability', this)">Copy PHP</button>
+                        <a class="btn-copy" href="api-keys.php?download_php=php_client_availability" style="text-decoration:none; display:inline-block; margin-left:6px;">Download .php</a>
                     </div>
+                </div>
+                <div class="tab-panel" id="php_client_booking" data-tab-panel="php-client-tabs">
+                    <div class="snippet-box" id="snippet_php_client_booking"><?php echo htmlspecialchars($phpSnippetCreateBooking); ?></div>
+                    <div class="snippet-actions">
+                        <button type="button" class="btn-copy" onclick="copySnippet('snippet_php_client_booking', this)">Copy PHP</button>
+                        <a class="btn-copy" href="api-keys.php?download_php=php_client_booking" style="text-decoration:none; display:inline-block; margin-left:6px;">Download .php</a>
+                    </div>
+                </div>
+
+                <div class="snippet-actions" style="margin-top:10px;">
+                    <a class="btn-copy" href="api-keys.php?download_zip=1" style="text-decoration:none; display:inline-block;">Download ZIP Package</a>
+                </div>
+
+                <h3 style="margin-top:14px;"><i class="fas fa-flask"></i> Run Live Test From Website</h3>
+                <form method="POST" style="margin-bottom:10px;">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <input type="hidden" name="action" value="run_test_client_request">
+
+                    <div class="test-grid" style="margin-bottom:8px;">
+                        <label style="font-size:12px; color:#475569;">Method</label>
+                        <select name="test_method" style="border:1px solid #cbd5e1; border-radius:6px; padding:6px;">
+                            <option value="GET" <?php echo $testMethodInput === 'GET' ? 'selected' : ''; ?>>GET</option>
+                            <option value="POST" <?php echo $testMethodInput === 'POST' ? 'selected' : ''; ?>>POST</option>
+                            <option value="PUT" <?php echo $testMethodInput === 'PUT' ? 'selected' : ''; ?>>PUT</option>
+                            <option value="DELETE" <?php echo $testMethodInput === 'DELETE' ? 'selected' : ''; ?>>DELETE</option>
+                        </select>
+                    </div>
+
+                    <div class="test-grid" style="margin-bottom:8px;">
+                        <label style="font-size:12px; color:#475569;">Endpoint</label>
+                        <input type="text" name="test_endpoint" value="<?php echo htmlspecialchars($testEndpointInput); ?>" placeholder="/rooms" style="border:1px solid #cbd5e1; border-radius:6px; padding:6px;">
+                    </div>
+
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:12px; color:#475569; display:block; margin-bottom:4px;">Payload JSON (for POST/PUT)</label>
+                        <textarea name="test_payload" rows="4" style="width:100%; border:1px solid #cbd5e1; border-radius:6px; padding:6px;" placeholder='{"guest_name":"Test Guest","room_id":1}'><?php echo htmlspecialchars($testPayloadInput); ?></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-play"></i> Run Live Test</button>
+                </form>
+
+                <?php if ($liveTestResult): ?>
+                    <div class="preview-card">
+                        <p style="margin:0 0 8px;"><strong>Request:</strong> <?php echo htmlspecialchars($liveTestResult['request']['method']); ?> <?php echo htmlspecialchars($liveTestResult['request']['endpoint']); ?></p>
+                        <?php if ($liveTestResult['request']['payload'] !== null): ?>
+                            <pre><?php echo htmlspecialchars(json_encode($liveTestResult['request']['payload'], JSON_PRETTY_PRINT)); ?></pre>
+                        <?php endif; ?>
+                        <p style="margin:8px 0 4px;"><strong>Response:</strong> HTTP <?php echo (int)$liveTestResult['response']['http_code']; ?></p>
+                        <?php if (!empty($liveTestResult['response']['transport_error'])): ?>
+                            <pre><?php echo htmlspecialchars((string)$liveTestResult['response']['transport_error']); ?></pre>
+                        <?php elseif (is_array($liveTestResult['response']['body_json'])): ?>
+                            <pre><?php echo htmlspecialchars(json_encode($liveTestResult['response']['body_json'], JSON_PRETTY_PRINT)); ?></pre>
+                        <?php else: ?>
+                            <pre><?php echo htmlspecialchars((string)$liveTestResult['response']['body_raw']); ?></pre>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <h3 style="margin-top:14px;"><i class="fas fa-eye"></i> Client Preview</h3>
+                <div class="preview-card">
+                    <p style="margin:0 0 8px;">This is what your client receives when their PHP code calls the API successfully:</p>
+                    <pre>{
+  "success": true,
+  "message": "Request processed successfully",
+  "data": {
+    "example": "client payload from endpoint"
+  }
+}</pre>
+                    <p style="margin:8px 0 0;">And if the key is missing/invalid:</p>
+                    <pre>{
+  "success": false,
+  "error": "Invalid API key",
+  "code": 401
+}</pre>
                 </div>
             <?php endif; ?>
         </div>
-        
-        <div class="col-md-4">
-            <!-- Create New API Key -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-plus-circle"></i> Create New API Key</h3>
-                </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <input type="hidden" name="action" value="create_key">
-                        
-                        <div class="form-group">
-                            <label for="client_name">Client Name *</label>
-                            <input type="text" class="form-control" id="client_name" name="client_name" required>
-                            <small class="form-text text-muted">Name of the website/client using the API</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="client_website">Website URL</label>
-                            <input type="url" class="form-control" id="client_website" name="client_website" placeholder="https://example.com">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="client_email">Contact Email *</label>
-                            <input type="email" class="form-control" id="client_email" name="client_email" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="rate_limit_per_hour">Rate Limit (calls per hour) *</label>
-                            <input type="number" class="form-control" id="rate_limit_per_hour" name="rate_limit_per_hour" value="100" min="1" max="10000" required>
-                            <small class="form-text text-muted">Maximum number of API calls allowed per hour</small>
-                        </div>
-                        
-                                        <div class="form-group">
-                                            <label>Permissions *</label>
-                                            <div class="permissions-list">
-                                                <?php foreach ($availablePermissions as $perm => $description): ?>
-                                                    <div class="form-check">
-                                                        <input class="form-check-input" type="checkbox" name="permissions[]" value="<?php echo $perm; ?>" id="perm_<?php echo $perm; ?>" checked>
-                                                        <label class="form-check-label" for="perm_<?php echo $perm; ?>">
-                                                            <strong><?php echo $perm; ?></strong><br>
-                                                            <small class="text-muted"><?php echo $description; ?></small>
-                                                        </label>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        </div>
-                                        
-                                        <button type="submit" class="btn btn-primary btn-block">
-                                            <i class="fas fa-key"></i> Generate API Key
-                                        </button>
-                                        
-                                        <div class="alert alert-info mt-3">
-                                            <small>
-                                                <i class="fas fa-info-circle"></i> 
-                                                <strong>Important:</strong> The API key will be shown only once after creation. 
-                                                Make sure to copy it and store it securely.
-                                            </small>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                            
-                            <!-- API Documentation -->
-                            <div class="card mt-4">
-                                <div class="card-header">
-                                    <h3><i class="fas fa-book"></i> API Documentation</h3>
-                                </div>
-                                <div class="card-body">
-                                    <h5>Quick Links</h5>
-                                    <ul>
-                                        <li><a href="/api/" target="_blank">API Base URL</a></li>
-                                        <li><a href="/api/README.md" target="_blank">Full Documentation</a></li>
-                                        <li><a href="/api/test-api.php" target="_blank">Test Script</a></li>
-                                    </ul>
-                                    
-                                    <h5 class="mt-3">Sample Integration</h5>
-                                    <pre><code>// JavaScript Example
-const API_KEY = 'your_api_key_here';
-const API_BASE = 'https://yourdomain.com/api/';
 
-// Get rooms
-fetch(API_BASE + 'rooms', {
-    headers: { 'X-API-Key': API_KEY }
-})
-.then(response => response.json())
-.then(data => console.log(data));</code></pre>
-                                </div>
+        <div class="api-grid">
+            <section>
+                <div class="api-card">
+                    <h3><i class="fas fa-plus-circle"></i> Create API Key</h3>
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <input type="hidden" name="action" value="create_key">
+
+                        <div class="split-2">
+                            <div class="form-row"><label>Client Name</label><input type="text" name="client_name" required></div>
+                            <div class="form-row"><label>Client Email</label><input type="email" name="client_email" required></div>
+                        </div>
+                        <div class="split-2">
+                            <div class="form-row"><label>Client Website</label><input type="url" name="client_website" placeholder="https://example.com"></div>
+                            <div class="form-row"><label>Rate Limit (per hour)</label><input type="number" name="rate_limit_per_hour" min="1" max="200000" value="100" required></div>
+                        </div>
+
+                        <div class="form-row">
+                            <label>Permissions</label>
+                            <div class="perm-grid">
+                                <?php foreach ($permissionCatalog as $perm => $desc): ?>
+                                    <label class="perm-item">
+                                        <input type="checkbox" name="permissions[]" value="<?php echo htmlspecialchars($perm); ?>" checked>
+                                        <span>
+                                            <strong><?php echo htmlspecialchars($perm); ?></strong><br>
+                                            <small><?php echo htmlspecialchars($desc); ?></small>
+                                        </span>
+                                    </label>
+                                <?php endforeach; ?>
                             </div>
                         </div>
+
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> Generate Key</button>
+                    </form>
+                </div>
+
+                <div class="api-card">
+                    <h3><i class="fas fa-link"></i> Permissions Matrix</h3>
+                    <div class="api-table-wrap">
+                        <table class="api-table">
+                            <thead><tr><th>Permission</th><th>What It Allows</th><th>Endpoint(s)</th><th>Example</th></tr></thead>
+                            <tbody>
+                            <?php foreach ($permissionCatalog as $perm => $desc): ?>
+                                <tr>
+                                    <td><code><?php echo htmlspecialchars($perm); ?></code></td>
+                                    <td><?php echo htmlspecialchars($desc); ?></td>
+                                    <td><?php echo htmlspecialchars($permissionEndpointMap[$perm] ?? '-'); ?></td>
+                                    <td>
+                                        <div class="snippet-box" id="snippet_<?php echo htmlspecialchars(str_replace('.', '_', $perm)); ?>"><?php echo htmlspecialchars($permissionSampleSnippets[$perm] ?? ''); ?></div>
+                                        <div class="snippet-actions">
+                                            <button type="button" class="btn-copy" onclick="copySnippet('snippet_<?php echo htmlspecialchars(str_replace('.', '_', $perm)); ?>', this)">Copy</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            </div>
+            </section>
+
+            <section>
+                <div class="api-card">
+                    <h3><i class="fas fa-list"></i> Existing Keys</h3>
+                    <div class="api-table-wrap">
+                        <table class="api-table">
+                            <thead>
+                            <tr>
+                                <th>Client</th>
+                                <th>Usage</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <?php if (empty($apiKeys)): ?>
+                                <tr><td colspan="4">No API keys found.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($apiKeys as $key):
+                                    $keyPerms = json_decode((string)$key['permissions'], true) ?: [];
+                                ?>
+                                    <tr class="<?php echo $selectedKeyId === (int)$key['id'] ? 'row-highlight' : ''; ?>">
+                                        <td>
+                                            <strong><?php echo htmlspecialchars((string)$key['client_name']); ?></strong><br>
+                                            <small><?php echo htmlspecialchars((string)$key['client_email']); ?></small><br>
+                                            <small>Rate: <?php echo (int)$key['rate_limit_per_hour']; ?>/hr</small><br>
+                                            <small>Perms: <?php echo count($keyPerms); ?></small>
+                                        </td>
+                                        <td>
+                                            <small>Total: <?php echo (int)$key['total_calls']; ?></small><br>
+                                            <small>Last hour: <?php echo (int)$key['calls_last_hour']; ?></small><br>
+                                            <small>Last used: <?php echo $key['last_used_at'] ? date('M j, Y H:i', strtotime((string)$key['last_used_at'])) : 'Never'; ?></small>
+                                        </td>
+                                        <td>
+                                            <?php if ((int)$key['is_active'] === 1): ?>
+                                                <span class="pill pill-ok">Active</span>
+                                            <?php else: ?>
+                                                <span class="pill pill-off">Inactive</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <div class="actions">
+                                                <a class="btn-sm btn-edit" href="api-keys.php?key_id=<?php echo (int)$key['id']; ?>">View</a>
+
+                                                <form method="POST" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <input type="hidden" name="action" value="toggle_status">
+                                                    <input type="hidden" name="key_id" value="<?php echo (int)$key['id']; ?>">
+                                                    <input type="hidden" name="is_active" value="<?php echo (int)$key['is_active'] === 1 ? 0 : 1; ?>">
+                                                    <button class="btn-sm btn-toggle" type="submit"><?php echo (int)$key['is_active'] === 1 ? 'Disable' : 'Enable'; ?></button>
+                                                </form>
+
+                                                <form method="POST" style="display:inline;" onsubmit="return confirm('Regenerate this API key? Current key will stop working immediately.');">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <input type="hidden" name="action" value="regenerate_key">
+                                                    <input type="hidden" name="key_id" value="<?php echo (int)$key['id']; ?>">
+                                                    <button class="btn-sm btn-regen" type="submit">Rotate</button>
+                                                </form>
+
+                                                <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this API key permanently?');">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <input type="hidden" name="action" value="delete_key">
+                                                    <input type="hidden" name="key_id" value="<?php echo (int)$key['id']; ?>">
+                                                    <button class="btn-sm btn-delete" type="submit">Delete</button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <?php if ($selectedKeyId > 0):
+                    $selectedKey = null;
+                    foreach ($apiKeys as $k) {
+                        if ((int)$k['id'] === $selectedKeyId) {
+                            $selectedKey = $k;
+                            break;
+                        }
+                    }
+                ?>
+                    <?php if ($selectedKey):
+                        $selectedPerms = json_decode((string)$selectedKey['permissions'], true) ?: [];
+                    ?>
+                    <div class="api-card">
+                        <h3><i class="fas fa-pen"></i> Edit Key: <?php echo htmlspecialchars((string)$selectedKey['client_name']); ?></h3>
+                        <form method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                            <input type="hidden" name="action" value="update_key">
+                            <input type="hidden" name="key_id" value="<?php echo (int)$selectedKey['id']; ?>">
+
+                            <div class="split-2">
+                                <div class="form-row"><label>Client Name</label><input type="text" name="client_name" required value="<?php echo htmlspecialchars((string)$selectedKey['client_name']); ?>"></div>
+                                <div class="form-row"><label>Client Email</label><input type="email" name="client_email" required value="<?php echo htmlspecialchars((string)$selectedKey['client_email']); ?>"></div>
+                            </div>
+                            <div class="split-2">
+                                <div class="form-row"><label>Client Website</label><input type="url" name="client_website" value="<?php echo htmlspecialchars((string)$selectedKey['client_website']); ?>"></div>
+                                <div class="form-row"><label>Rate Limit (per hour)</label><input type="number" name="rate_limit_per_hour" min="1" max="200000" value="<?php echo (int)$selectedKey['rate_limit_per_hour']; ?>" required></div>
+                            </div>
+                            <div class="form-row">
+                                <label>Permissions</label>
+                                <div class="perm-grid">
+                                    <?php foreach ($permissionCatalog as $perm => $desc): ?>
+                                        <label class="perm-item">
+                                            <input type="checkbox" name="permissions[]" value="<?php echo htmlspecialchars($perm); ?>" <?php echo in_array($perm, $selectedPerms, true) ? 'checked' : ''; ?>>
+                                            <span>
+                                                <strong><?php echo htmlspecialchars($perm); ?></strong><br>
+                                                <small><?php echo htmlspecialchars($desc); ?></small>
+                                            </span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </form>
+                    </div>
+
+                    <div class="api-card">
+                        <h3><i class="fas fa-history"></i> Latest 100 Calls for This Key</h3>
+                        <div class="api-table-wrap">
+                            <table class="api-table">
+                                <thead><tr><th>Time</th><th>Method</th><th>Endpoint</th><th>Status</th><th>Time (s)</th><th>IP</th></tr></thead>
+                                <tbody>
+                                <?php if (empty($selectedKeyLogs)): ?>
+                                    <tr><td colspan="6">No usage logs yet for this key.</td></tr>
+                                <?php else: ?>
+                                    <?php foreach ($selectedKeyLogs as $log): ?>
+                                    <tr>
+                                        <td><?php echo date('Y-m-d H:i:s', strtotime((string)$log['created_at'])); ?></td>
+                                        <td><?php echo htmlspecialchars((string)$log['method']); ?></td>
+                                        <td><?php echo htmlspecialchars((string)$log['endpoint']); ?></td>
+                                        <td><?php echo (int)$log['response_code']; ?></td>
+                                        <td><?php echo number_format((float)$log['response_time'], 4); ?></td>
+                                        <td><?php echo htmlspecialchars((string)$log['ip_address']); ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="api-card">
+                        <h3><i class="fas fa-chart-bar"></i> Per-Key Daily Trend (14 Days)</h3>
+                        <?php
+                            $maxCalls = 0;
+                            foreach ($selectedKeyDailyTrend as $trendRow) {
+                                $maxCalls = max($maxCalls, (int)$trendRow['total_calls']);
+                            }
+                            if ($maxCalls <= 0) {
+                                $maxCalls = 1;
+                            }
+                        ?>
+                        <?php if (empty($selectedKeyDailyTrend)): ?>
+                            <p style="font-size:12px;color:#64748b;">No trend data yet for this key.</p>
+                        <?php else: ?>
+                            <div class="chart-grid">
+                                <?php foreach ($selectedKeyDailyTrend as $trendRow):
+                                    $calls = (int)$trendRow['total_calls'];
+                                    $errors = (int)$trendRow['error_calls'];
+                                    $errorRate = $calls > 0 ? ($errors / $calls) * 100 : 0;
+                                    $callsWidth = (int)round(($calls / $maxCalls) * 100);
+                                ?>
+                                <div class="chart-row">
+                                    <div><?php echo htmlspecialchars(date('M j', strtotime((string)$trendRow['usage_date']))); ?></div>
+                                    <div class="bar-track"><div class="bar-fill bar-calls" style="width: <?php echo $callsWidth; ?>%;"></div></div>
+                                    <div><?php echo $calls; ?> calls</div>
+                                </div>
+                                <div class="chart-row">
+                                    <div style="color:#64748b;">Errors</div>
+                                    <div class="bar-track"><div class="bar-fill bar-errors" style="width: <?php echo (int)round($errorRate); ?>%;"></div></div>
+                                    <div><?php echo $errors; ?> (<?php echo number_format($errorRate, 1); ?>%)</div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <div class="api-card">
+                    <h3><i class="fas fa-chart-line"></i> Last 30 Days Usage</h3>
+                    <div class="api-table-wrap">
+                        <table class="api-table">
+                            <thead><tr><th>Date</th><th>Total Calls</th><th>Unique Keys</th><th>Avg Time (s)</th></tr></thead>
+                            <tbody>
+                            <?php if (empty($dailyUsage)): ?>
+                                <tr><td colspan="4">No usage data available.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($dailyUsage as $day): ?>
+                                <tr>
+                                    <td><?php echo date('M j, Y', strtotime((string)$day['usage_date'])); ?></td>
+                                    <td><?php echo (int)$day['total_calls']; ?></td>
+                                    <td><?php echo (int)$day['unique_clients']; ?></td>
+                                    <td><?php echo number_format((float)$day['avg_response_time'], 4); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="api-card">
+                    <h3><i class="fas fa-book"></i> How API Keys Work</h3>
+                    <ol class="helper-list">
+                        <li>Create one key per external website/client.</li>
+                        <li>Choose only the permissions that client needs.</li>
+                        <li>Client sends the key in <strong>X-API-Key</strong> header.</li>
+                        <li>The API validates key, permissions, and hourly rate limit.</li>
+                        <li>Rotate keys immediately if a key is exposed.</li>
+                    </ol>
+                </div>
+            </section>
         </div>
     </div>
-</div>
+</main>
+<script>
+function copySnippet(elementId, button) {
+    var el = document.getElementById(elementId);
+    if (!el) {
+        return;
+    }
+    var text = el.innerText || el.textContent || '';
+    if (!text) {
+        return;
+    }
 
+    function markCopied() {
+        var oldText = button.textContent;
+        button.textContent = 'Copied';
+        setTimeout(function() {
+            button.textContent = oldText;
+        }, 1200);
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+            markCopied();
+        });
+        return;
+    }
+
+    var temp = document.createElement('textarea');
+    temp.value = text;
+    document.body.appendChild(temp);
+    temp.select();
+    document.execCommand('copy');
+    document.body.removeChild(temp);
+    markCopied();
+}
+
+document.querySelectorAll('[data-tab-group]').forEach(function(tabGroup) {
+    tabGroup.querySelectorAll('[data-tab-target]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var targetId = this.getAttribute('data-tab-target');
+            var groupName = tabGroup.getAttribute('data-tab-group');
+
+            tabGroup.querySelectorAll('[data-tab-target]').forEach(function(otherBtn) {
+                otherBtn.classList.remove('active');
+            });
+            this.classList.add('active');
+
+            document.querySelectorAll('[data-tab-panel="' + groupName + '"]').forEach(function(panel) {
+                panel.classList.remove('active');
+            });
+
+            var target = document.getElementById(targetId);
+            if (target) {
+                target.classList.add('active');
+            }
+        });
+    });
+});
+</script>
 </body>
 </html>

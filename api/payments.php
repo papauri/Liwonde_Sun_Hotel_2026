@@ -36,14 +36,18 @@ if (!defined('API_ACCESS_ALLOWED') || !isset($auth) || !isset($client)) {
 
 // Get request method and path
 $method = $_SERVER['REQUEST_METHOD'];
-$requestUri = $_SERVER['REQUEST_URI'];
-$path = parse_url($requestUri, PHP_URL_PATH);
+$requestUri = $_SERVER['REQUEST_URI'] ?? '';
+$path = parse_url($requestUri, PHP_URL_PATH) ?? '';
 
 // Extract payment ID from path if present
-$pathParts = explode('/', trim($path, '/'));
-$paymentId = null;
-if (count($pathParts) >= 3 && is_numeric($pathParts[2])) {
-    $paymentId = (int)$pathParts[2];
+$paymentId = isset($_GET['id']) ? (int)$_GET['id'] : null;
+
+if (preg_match('#/api/(?:index\.php/)?payments(?:/|\.php/)?(\d+)$#i', $path, $matches)) {
+    $paymentId = (int)$matches[1];
+}
+
+if (!is_int($paymentId) || $paymentId <= 0) {
+    $paymentId = null;
 }
 
 try {

@@ -38,7 +38,8 @@ try {
     // Build query
     $sql = "SELECT 
                 id, name, slug, description, short_description,
-                price_per_night, size_sqm, max_guests, 
+                price_per_night, price_single_occupancy, price_double_occupancy, price_child_occupancy,
+                size_sqm, max_guests, 
                 rooms_available, total_rooms, bed_type,
                 image_url, badge, amenities,
                 is_featured, is_active, display_order
@@ -74,6 +75,20 @@ try {
     
     // Process room data
     foreach ($rooms as &$room) {
+        $promoPricing = getRoomEffectivePricing($room, 'double');
+        $singlePricing = getRoomEffectivePricing($room, 'single');
+        $childPricing = getRoomEffectivePricing($room, 'child');
+
+        $room['price_per_night_original'] = (float)($promoPricing['base_price'] ?? $room['price_per_night']);
+        $room['price_per_night'] = (float)($promoPricing['final_price'] ?? $room['price_per_night']);
+        $room['price_single_occupancy'] = (float)($singlePricing['final_price'] ?? $room['price_per_night']);
+        $room['price_double_occupancy'] = (float)($promoPricing['final_price'] ?? $room['price_per_night']);
+        $room['price_child_occupancy'] = isset($childPricing['final_price']) ? (float)$childPricing['final_price'] : null;
+        $room['has_child_occupancy'] = !empty($childPricing['child_available']);
+        $room['has_active_promo'] = !empty($promoPricing['has_promo']);
+        $room['promo_title'] = $promoPricing['promotion']['title'] ?? null;
+        $room['promo_discount_percent'] = (float)($promoPricing['discount_percent'] ?? 0);
+
         // Decode amenities if it's JSON
         if ($room['amenities'] && strpos($room['amenities'], '[') === 0) {
             $room['amenities'] = json_decode($room['amenities'], true);
@@ -87,6 +102,7 @@ try {
         // Format price
         $currencySymbol = getSetting('currency_symbol');
         $room['price_per_night_formatted'] = $currencySymbol . ' ' . number_format($room['price_per_night'], 0);
+        $room['price_per_night_original_formatted'] = $currencySymbol . ' ' . number_format($room['price_per_night_original'], 0);
         $room['currency'] = $currencySymbol;
         
         // Get gallery images for each room

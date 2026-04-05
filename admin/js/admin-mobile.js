@@ -6,6 +6,9 @@
 (function() {
     'use strict';
 
+    let listenersBound = false;
+    let resizeTimer = null;
+
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -19,6 +22,27 @@
         detectOverflowingTables();
         addTouchGestures();
         optimizeQuickActions();
+        bindGlobalListeners();
+    }
+
+    function bindGlobalListeners() {
+        if (listenersBound) {
+            return;
+        }
+        listenersBound = true;
+
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function() {
+                optimizeQuickActions();
+            }, 200);
+        });
+
+        document.addEventListener('admin:contentLoaded', function() {
+            addTableDataLabels();
+            detectOverflowingTables();
+            optimizeQuickActions();
+        });
     }
 
     /**
@@ -178,30 +202,36 @@
      * Optimize quick action buttons on mobile
      */
     function optimizeQuickActions() {
-        if (window.innerWidth <= 480) {
-            const quickActions = document.querySelectorAll('.quick-action');
-            
-            quickActions.forEach(button => {
-                // Add title attribute for tooltips
-                if (!button.getAttribute('title')) {
-                    const buttonText = button.textContent.trim();
-                    if (buttonText) {
-                        button.setAttribute('title', buttonText);
-                    }
-                }
-            });
+        const quickActions = document.querySelectorAll('.quick-action');
 
-            // Group action buttons into dropdown if too many
-            const actionCells = document.querySelectorAll('td:last-child');
-            
-            actionCells.forEach(cell => {
+        quickActions.forEach(button => {
+            // Add title attribute for tooltips
+            if (!button.getAttribute('title')) {
+                const buttonText = button.textContent.trim();
+                if (buttonText) {
+                    button.setAttribute('title', buttonText);
+                }
+            }
+        });
+
+        const actionCells = document.querySelectorAll('td:last-child');
+        const isSmallMobile = window.innerWidth <= 480;
+
+        actionCells.forEach(cell => {
+            const hasDropdown = !!cell.querySelector('.actions-dropdown');
+
+            if (isSmallMobile) {
                 const buttons = cell.querySelectorAll('.quick-action, .btn');
-                
-                if (buttons.length > 3) {
+                if (buttons.length > 3 && !hasDropdown) {
                     createActionsDropdown(cell, buttons);
                 }
-            });
-        }
+                return;
+            }
+
+            if (hasDropdown) {
+                restoreActionsCell(cell);
+            }
+        });
     }
 
     /**
@@ -210,6 +240,10 @@
     function createActionsDropdown(cell, buttons) {
         // Check if already converted
         if (cell.querySelector('.actions-dropdown')) return;
+
+        if (!cell.dataset.originalActionsHtml) {
+            cell.dataset.originalActionsHtml = cell.innerHTML;
+        }
 
         // Create dropdown container
         const dropdown = document.createElement('div');
@@ -235,6 +269,15 @@
         });
 
         cell.appendChild(dropdown);
+    }
+
+    function restoreActionsCell(cell) {
+        if (!cell.dataset.originalActionsHtml) {
+            return;
+        }
+
+        cell.innerHTML = cell.dataset.originalActionsHtml;
+        delete cell.dataset.originalActionsHtml;
     }
 
     /**
