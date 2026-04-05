@@ -9,6 +9,7 @@
  * - calendar: View calendar
  * - blocked_dates: Manage blocked dates
  * - rooms: Room management
+ * - employees: Employee management
  * - gallery: Gallery management
  * - conference: Conference management
  * - gym: Gym inquiries
@@ -65,6 +66,20 @@ function getAllPermissions() {
             'category' => 'Property',
             'page' => 'room-management.php'
         ],
+        'employees' => [
+            'label' => 'Employees',
+            'description' => 'Manage employee records, positions, and privileges',
+            'icon' => 'fa-user-tie',
+            'category' => 'Property',
+            'page' => 'employees.php'
+        ],
+        'maintenance' => [
+            'label' => 'Maintenance',
+            'description' => 'Manage maintenance tasks, room service, and room availability blocks',
+            'icon' => 'fa-tools',
+            'category' => 'Property',
+            'page' => 'maintenance.php'
+        ],
         'gallery' => [
             'label' => 'Gallery',
             'description' => 'Manage hotel gallery images',
@@ -85,6 +100,13 @@ function getAllPermissions() {
             'icon' => 'fa-dumbbell',
             'category' => 'Property',
             'page' => 'gym-inquiries.php'
+        ],
+        'gym_management' => [
+            'label' => 'Gym Management',
+            'description' => 'Edit gym packages, classes, facilities, features, and page content',
+            'icon' => 'fa-dumbbell',
+            'category' => 'Property',
+            'page' => 'gym-management.php'
         ],
         'menu' => [
             'label' => 'Menu',
@@ -141,6 +163,20 @@ function getAllPermissions() {
             'icon' => 'fa-chart-bar',
             'category' => 'Finance',
             'page' => 'reports.php'
+        ],
+        'activity_logs' => [
+            'label' => 'Activity Logs',
+            'description' => 'View admin and employee activity timeline',
+            'icon' => 'fa-history',
+            'category' => 'Settings',
+            'page' => 'activity-log.php'
+        ],
+        'campaigns' => [
+            'label' => 'Campaigns',
+            'description' => 'Manage social campaigns and attribution',
+            'icon' => 'fa-bullhorn',
+            'category' => 'Marketing',
+            'page' => 'campaigns.php'
         ],
         'theme' => [
             'label' => 'Theme Management',
@@ -360,9 +396,12 @@ function getPermissionForPage($page) {
         'calendar.php' => 'calendar',
         'blocked-dates.php' => 'blocked_dates',
         'room-management.php' => 'rooms',
+        'employees.php' => 'employees',
+        'maintenance.php' => 'maintenance',
         'gallery-management.php' => 'gallery',
         'conference-management.php' => 'conference',
         'gym-inquiries.php' => 'gym',
+        'gym-management.php' => 'gym_management',
         'menu-management.php' => 'menu',
         'events-management.php' => 'events',
         'reviews.php' => 'reviews',
@@ -372,6 +411,8 @@ function getPermissionForPage($page) {
         'invoices.php' => 'invoices',
         'payment-add.php' => 'payment_add',
         'reports.php' => 'reports',
+        'activity-log.php' => 'activity_logs',
+        'campaigns.php' => 'campaigns',
         'theme-management.php' => 'theme',
         'section-headers-management.php' => 'section_headers',
         'booking-settings.php' => 'booking_settings',

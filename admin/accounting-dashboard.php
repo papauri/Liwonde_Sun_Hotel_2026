@@ -189,7 +189,7 @@ try {
     $methodStmt->execute([$startDate, $endDate]);
     $paymentMethods = $methodStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Recent payments (last 20)
+    // Recent payments for the selected period (last 20)
     $recentStmt = $pdo->prepare("
         SELECT
             p.*,
@@ -197,14 +197,40 @@ try {
                 WHEN p.booking_type = 'room' THEN CONCAT(b.guest_name, ' (', b.booking_reference, ')')
                 WHEN p.booking_type = 'conference' THEN CONCAT(ci.company_name, ' (', ci.inquiry_reference, ')')
                 ELSE 'Unknown'
-            END as booking_description
+            END as booking_description,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.booking_reference
+                WHEN p.booking_type = 'conference' THEN ci.inquiry_reference
+                ELSE NULL
+            END as source_reference,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.guest_name
+                WHEN p.booking_type = 'conference' THEN ci.contact_person
+                ELSE NULL
+            END as customer_name,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.guest_email
+                WHEN p.booking_type = 'conference' THEN ci.email
+                ELSE NULL
+            END as contact_email,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.guest_phone
+                WHEN p.booking_type = 'conference' THEN ci.phone
+                ELSE NULL
+            END as contact_phone,
+            COALESCE(au.full_name, au.username, p.processed_by, 'System') as recorded_by_name,
+            COALESCE(p.payment_reference_number, p.transaction_id) as external_reference,
+            COALESCE(p.payment_date, DATE(p.created_at)) as effective_payment_date
         FROM payments p
         LEFT JOIN bookings b ON p.booking_type = 'room' AND p.booking_id = b.id
         LEFT JOIN conference_inquiries ci ON p.booking_type = 'conference' AND p.booking_id = ci.id
-        ORDER BY p.payment_date DESC, p.created_at DESC
+        LEFT JOIN admin_users au ON p.recorded_by = au.id
+        WHERE p.deleted_at IS NULL
+          AND COALESCE(p.payment_date, DATE(p.created_at)) BETWEEN ? AND ?
+        ORDER BY COALESCE(p.payment_date, DATE(p.created_at)) DESC, p.created_at DESC
         LIMIT 20
     ");
-    $recentStmt->execute();
+    $recentStmt->execute([$startDate, $endDate]);
     $recentPayments = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Outstanding payments summary
@@ -332,6 +358,16 @@ try {
             padding: 12px 20px;
             border-radius: var(--radius-lg);
             box-shadow: var(--shadow);
+            flex-wrap: wrap;
+        }
+
+        .date-filter label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--navy);
+            flex-wrap: wrap;
         }
         
         .date-filter input {
@@ -339,6 +375,7 @@ try {
             border: 1px solid #ddd;
             border-radius: var(--radius);
             font-family: inherit;
+            min-width: 150px;
         }
         
         .date-filter button {
@@ -357,69 +394,80 @@ try {
         
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
             margin-bottom: 32px;
+            align-items: stretch;
         }
         
         .stat-card {
             position: relative;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 150px;
+            padding: 18px 20px;
+            background: #fff;
+            color: #1f2937;
+            border: 1px solid #e5e7eb;
+            border-radius: var(--radius-lg);
+            box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
         }
         
-        .stat-card.primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
-        }
-        
-        .stat-card.success {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-            color: white;
-            box-shadow: 0 8px 20px rgba(17, 153, 142, 0.3);
-        }
-        
-        .stat-card.warning {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-            box-shadow: 0 8px 20px rgba(245, 87, 108, 0.3);
-        }
-        
-        .stat-card.danger {
-            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-            color: #333;
-            box-shadow: 0 8px 20px rgba(250, 112, 154, 0.3);
-        }
-        
-        .stat-card.info {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            color: white;
-            box-shadow: 0 8px 20px rgba(79, 172, 254, 0.3);
-        }
-        
+        .stat-card.primary,
+        .stat-card.success,
+        .stat-card.warning,
+        .stat-card.danger,
+        .stat-card.info,
         .stat-card.gold {
-            background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%);
-            color: var(--deep-navy);
-            box-shadow: 0 8px 20px rgba(212, 175, 55, 0.4);
+            background: #fff;
+            color: #1f2937;
+            box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
         }
         
         .stat-label {
             font-size: 14px;
-            opacity: 0.9;
-            margin-bottom: 8px;
+            color: #6b7280;
+            margin-bottom: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.08em;
         }
         
         .stat-value {
-            font-size: 32px;
+            font-size: 30px;
             font-weight: 700;
-            margin-bottom: 4px;
+            color: var(--navy);
+            margin-bottom: 10px;
+            line-height: 1.1;
         }
         
         .stat-sub {
             font-size: 13px;
-            opacity: 0.8;
+            color: #6b7280;
+            line-height: 1.45;
+        }
+
+        .recent-payments-table {
+            min-width: 1320px;
+        }
+
+        .recent-payments-table td {
+            vertical-align: top;
+        }
+
+        .payment-summary-cell strong {
+            display: block;
+            color: var(--navy);
+        }
+
+        .payment-summary-cell small,
+        .payment-meta small,
+        .audit-meta small,
+        .booking-meta small {
+            color: #6b7280;
+            font-size: 11px;
+            line-height: 1.45;
         }
         
         .section-grid {
@@ -542,6 +590,11 @@ try {
             gap: 12px;
             flex-wrap: wrap;
         }
+
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
         
         .quick-actions a {
             padding: 10px 20px;
@@ -587,6 +640,163 @@ try {
         
         .vat-info strong {
             color: var(--navy);
+        }
+
+        .levy-settings-form {
+            margin-top: 10px;
+            display: grid;
+            gap: 8px;
+            max-width: 380px;
+        }
+
+        .levy-settings-form .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            color: var(--navy);
+        }
+
+        .levy-settings-form .field-label {
+            font-weight: 500;
+            color: var(--navy);
+        }
+
+        .levy-settings-form small {
+            color: #6b7280;
+        }
+
+        @media (max-width: 1024px) {
+            .accounting-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .date-filter {
+                width: 100%;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .section-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .content {
+                padding-left: 12px;
+                padding-right: 12px;
+            }
+
+            .date-filter {
+                padding: 14px;
+                gap: 10px;
+            }
+
+            .date-filter label,
+            .date-filter input,
+            .date-filter button {
+                width: 100%;
+            }
+
+            .date-filter a {
+                width: 100%;
+                margin-left: 0 !important;
+            }
+
+            .quick-actions {
+                flex-direction: column;
+            }
+
+            .quick-actions a {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .vat-info {
+                padding: 14px;
+            }
+
+            .levy-settings-form {
+                max-width: none;
+            }
+
+            .levy-settings-form input[type="number"],
+            .levy-settings-form button {
+                width: 100% !important;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stat-card {
+                min-height: 0;
+                padding: 16px;
+            }
+
+            .stat-value {
+                font-size: 26px;
+            }
+
+            .section-card {
+                padding: 16px;
+            }
+
+            .payment-method-item,
+            .outstanding-item {
+                align-items: flex-start;
+                gap: 10px;
+                flex-direction: column;
+            }
+
+            .method-stats {
+                text-align: left;
+            }
+
+            .recent-payments-table {
+                min-width: 1100px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .table-container .table {
+                font-size: 11px;
+                min-width: 760px;
+            }
+
+            .recent-payments-table {
+                min-width: 980px;
+            }
+
+            .table-container .table th,
+            .table-container .table td {
+                padding: 6px 8px;
+                white-space: nowrap;
+            }
+
+            .table-container .table td:last-child,
+            .table-container .table th:last-child {
+                position: sticky;
+                right: 0;
+                background: #fff;
+                z-index: 2;
+                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
+            }
+
+            .table-container .table thead th:last-child {
+                background: #f8f9fa;
+                z-index: 3;
+            }
+
+            .table-container .table td:last-child .btn,
+            .table-container .table td:last-child a {
+                font-size: 11px;
+                padding: 5px 8px;
+            }
         }
     </style>
 </head>
@@ -654,16 +864,16 @@ try {
             <p><strong>Tourist Levy:</strong> <?php echo $levyEnabled ? 'Enabled' : 'Disabled'; ?></p>
             <p><strong>Levy Rate:</strong> <?php echo number_format((float)$levyRate, 2); ?>%</p>
 
-            <form method="POST" style="margin-top:10px; display:grid; gap:8px; max-width:380px;">
+            <form method="POST" class="levy-settings-form">
                 <input type="hidden" name="save_levy_settings" value="1">
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
-                <label style="display:flex; align-items:center; gap:8px; font-weight:500; color:#fff;">
+                <label class="checkbox-label">
                     <input type="checkbox" name="tourist_levy_enabled" value="1" <?php echo $levyEnabled ? 'checked' : ''; ?>>
                     Enable tourist levy
                 </label>
-                <label style="font-weight:500; color:#fff;">Levy Rate (%)</label>
+                <label class="field-label">Levy Rate (%)</label>
                 <input type="number" step="0.01" min="0" max="100" name="tourist_levy_rate" value="<?php echo htmlspecialchars(number_format((float)$levyRate, 2, '.', '')); ?>" style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;">
-                <small style="opacity:0.9; color:#fff;">This levy is optional per guest and can be toggled on each booking details page.</small>
+                <small>This levy is optional per guest and can be toggled on each booking details page.</small>
                 <button type="submit" style="padding:10px 14px; border:none; border-radius:6px; background:#fff; color:var(--deep-navy); font-weight:600; cursor:pointer; width:fit-content;">Save Levy Settings</button>
             </form>
         </div>
@@ -853,17 +1063,16 @@ try {
         <!-- Recent Payments -->
         <h3 class="section-title">Recent Payments</h3>
         <div class="table-container">
-            <table class="table">
+            <table class="table recent-payments-table">
                 <thead>
                     <tr>
                         <th>Reference</th>
                         <th>Booking</th>
-                        <th>Type</th>
+                        <th>Classification</th>
                         <th>Payment Date</th>
-                        <th>Amount</th>
-                        <th>Method</th>
+                        <th>Amounts</th>
                         <th>Status</th>
-                        <th>Created</th>
+                        <th>Audit</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -871,51 +1080,91 @@ try {
                     <?php if (!empty($recentPayments)): ?>
                         <?php foreach ($recentPayments as $payment): ?>
                             <tr>
-                                <td><strong><?php echo htmlspecialchars($payment['payment_reference']); ?></strong></td>
-                                <td><?php echo htmlspecialchars($payment['booking_description']); ?></td>
                                 <td>
+                                    <strong><?php echo htmlspecialchars($payment['payment_reference']); ?></strong>
+                                    <?php if (!empty($payment['receipt_number'])): ?>
+                                        <br><small><i class="fas fa-receipt"></i> Receipt: <?php echo htmlspecialchars($payment['receipt_number']); ?></small>
+                                    <?php endif; ?>
+                                    <?php if (!empty($payment['invoice_number'])): ?>
+                                        <br><small><i class="fas fa-file-invoice"></i> Invoice: <?php echo htmlspecialchars($payment['invoice_number']); ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="booking-meta">
+                                    <strong><?php echo htmlspecialchars($payment['booking_description']); ?></strong>
+                                    <?php if (!empty($payment['customer_name']) && $payment['customer_name'] !== $payment['booking_description']): ?>
+                                        <br><small><i class="fas fa-user"></i> <?php echo htmlspecialchars($payment['customer_name']); ?></small>
+                                    <?php endif; ?>
+                                    <?php if (!empty($payment['contact_email'])): ?>
+                                        <br><small><i class="fas fa-envelope"></i> <?php echo htmlspecialchars($payment['contact_email']); ?></small>
+                                    <?php endif; ?>
+                                    <?php if (!empty($payment['contact_phone'])): ?>
+                                        <br><small><i class="fas fa-phone"></i> <?php echo htmlspecialchars($payment['contact_phone']); ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="payment-meta">
                                     <span class="badge badge-<?php echo $payment['booking_type']; ?>">
                                         <?php echo ucfirst($payment['booking_type']); ?>
                                     </span>
-                                </td>
-                                <td>
-                                    <?php echo date('M j, Y', strtotime($payment['payment_date'])); ?>
-                                    <br><small style="color: #666; font-size: 11px;">
-                                        <i class="fas fa-clock"></i> <?php echo date('H:i', strtotime($payment['payment_date'])); ?>
-                                    </small>
-                                </td>
-                                <td>
-                                    <?php echo $currency_symbol; ?><?php echo number_format($payment['total_amount'], 0); ?>
-                                    <?php if ($payment['vat_amount'] > 0): ?>
-                                        <small style="color: #666;">(incl. VAT)</small>
+                                    <?php if (!empty($payment['payment_type'])): ?>
+                                        <br><small><i class="fas fa-tags"></i> <?php echo htmlspecialchars(ucwords(str_replace('_', ' ', $payment['payment_type']))); ?></small>
+                                    <?php endif; ?>
+                                    <br><small><i class="fas fa-wallet"></i> <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $payment['payment_method'] ?? 'n/a'))); ?></small>
+                                    <?php if (!empty($payment['external_reference'])): ?>
+                                        <br><small><i class="fas fa-link"></i> <?php echo htmlspecialchars($payment['external_reference']); ?></small>
                                     <?php endif; ?>
                                 </td>
-                                <td><?php echo ucfirst(str_replace('_', ' ', $payment['payment_method'])); ?></td>
+                                <td>
+                                    <?php echo date('M j, Y', strtotime($payment['effective_payment_date'])); ?>
+                                    <br><small style="color: #666; font-size: 11px;">
+                                        <i class="fas fa-clock"></i> <?php echo date('H:i', strtotime($payment['created_at'])); ?>
+                                    </small>
+                                </td>
+                                <td class="payment-summary-cell">
+                                    <strong><?php echo $currency_symbol; ?><?php echo number_format((float)$payment['total_amount'], 0); ?></strong>
+                                    <small>Subtotal: <?php echo $currency_symbol; ?><?php echo number_format((float)$payment['payment_amount'], 0); ?></small>
+                                    <?php if ($payment['vat_amount'] > 0): ?>
+                                        <br><small>VAT: <?php echo $currency_symbol; ?><?php echo number_format((float)$payment['vat_amount'], 0); ?></small>
+                                    <?php endif; ?>
+                                    <?php if (!empty($payment['source_reference'])): ?>
+                                        <br><small>Booking Ref: <?php echo htmlspecialchars($payment['source_reference']); ?></small>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <span class="badge badge-<?php echo $payment['payment_status']; ?>">
                                         <?php echo ucfirst(str_replace('_', ' ', $payment['payment_status'])); ?>
                                     </span>
+                                    <?php if (!empty($payment['status']) && $payment['status'] !== $payment['payment_status']): ?>
+                                        <br><small><i class="fas fa-info-circle"></i> Record: <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $payment['status']))); ?></small>
+                                    <?php endif; ?>
                                 </td>
-                                <td>
-                                    <small style="color: #666; font-size: 11px;">
-                                        <i class="fas fa-clock"></i> <?php echo date('M j, H:i', strtotime($payment['created_at'])); ?>
-                                    </small>
+                                <td class="audit-meta">
+                                    <small><i class="fas fa-user-shield"></i> Recorded by: <?php echo htmlspecialchars($payment['recorded_by_name'] ?? 'System'); ?></small>
+                                    <br><small><i class="fas fa-clock"></i> Created: <?php echo date('M j, H:i', strtotime($payment['created_at'])); ?></small>
                                     <?php if ($payment['updated_at'] && $payment['updated_at'] != $payment['created_at']): ?>
-                                        <br><small style="color: #999; font-size: 10px;">
-                                            <i class="fas fa-edit"></i> <?php echo date('M j, H:i', strtotime($payment['updated_at'])); ?>
-                                        </small>
+                                        <br><small><i class="fas fa-edit"></i> Updated: <?php echo date('M j, H:i', strtotime($payment['updated_at'])); ?></small>
+                                    <?php endif; ?>
+                                    <?php if (!empty($payment['processed_by'])): ?>
+                                        <br><small><i class="fas fa-user-check"></i> Processed: <?php echo htmlspecialchars($payment['processed_by']); ?></small>
+                                    <?php endif; ?>
+                                    <?php if (!empty($payment['notes'])): ?>
+                                        <br><small><i class="fas fa-note-sticky"></i> <?php echo htmlspecialchars(strlen(trim((string)$payment['notes'])) > 80 ? substr(trim((string)$payment['notes']), 0, 77) . '...' : trim((string)$payment['notes'])); ?></small>
                                     <?php endif; ?>
                                 </td>
                                 <td>
                                     <a href="payment-details.php?id=<?php echo $payment['id']; ?>" class="btn btn-primary btn-sm">
                                         <i class="fas fa-eye"></i> View
                                     </a>
+                                    <?php if ($payment['payment_status'] !== 'completed'): ?>
+                                        <br><a href="payment-add.php?edit=<?php echo $payment['id']; ?>" class="btn btn-secondary btn-sm" style="margin-top: 8px; display: inline-flex;">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="9" class="empty-state">
+                            <td colspan="8" class="empty-state">
                                 <i class="fas fa-inbox"></i>
                                 <p>No payments recorded yet</p>
                             </td>

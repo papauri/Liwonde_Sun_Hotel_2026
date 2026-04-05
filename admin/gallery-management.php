@@ -324,11 +324,12 @@ sort($categories);
             background: rgba(0,0,0,0.5);
             z-index: 9999;
             justify-content: center;
-            align-items: center;
-            padding: 20px;
+            align-items: flex-start;
+            padding: 40px 20px;
             opacity: 1;
             visibility: visible;
             pointer-events: auto;
+            overflow-y: auto;
         }
         .modal-content {
             background: white;
@@ -336,8 +337,9 @@ sort($categories);
             padding: 32px;
             max-width: 700px;
             width: 100%;
-            max-height: 90vh;
+            max-height: calc(100vh - 80px);
             overflow-y: auto;
+            margin: 0 auto;
         }
         .modal-header {
             display: flex;

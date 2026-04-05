@@ -21,6 +21,11 @@ html, body {
     height: 100%;
 }
 
+/* Keep sizing predictable so inputs never overflow their panels */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
 body {
     min-height: 100vh;
     display: flex;
@@ -183,6 +188,39 @@ footer {
     margin: 0 auto;
     width: 100%;
     flex: 1 0 auto;
+}
+
+.admin-main,
+.admin-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.card,
+.panel {
+    min-width: 0;
+}
+
+.admin-page-header {
+    background: #ffffff;
+    border-radius: var(--radius-lg);
+    padding: 18px 22px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+}
+
+.admin-page-header h2,
+.admin-page-header h1,
+.admin-page-header h3 {
+    margin: 0 0 6px;
+    color: var(--navy);
+}
+
+.admin-page-header p {
+    margin: 0;
+    color: var(--gray);
 }
 
 /* ============================================
@@ -426,11 +464,13 @@ footer {
 
 .form-control {
     width: 100%;
+    max-width: 100%;
     padding: 10px 14px;
     border: 2px solid var(--border-color);
     border-radius: var(--radius-sm);
     font-size: 14px;
     font-family: 'Poppins', sans-serif;
+    box-sizing: border-box;
     transition: all 0.3s ease;
 }
 
@@ -443,6 +483,8 @@ footer {
 textarea.form-control {
     min-height: 100px;
     resize: vertical;
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
 select.form-control {
@@ -451,6 +493,38 @@ select.form-control {
     background-repeat: no-repeat;
     background-position: right 12px center;
     padding-right: 36px;
+}
+
+/* Global admin form field containment for pages that don't use .form-control */
+.card input,
+.card select,
+.card textarea,
+.panel input,
+.panel select,
+.panel textarea,
+.admin-content input,
+.admin-content select,
+.admin-content textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.card textarea,
+.panel textarea,
+.admin-content textarea {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+    .content {
+        padding: 16px;
+    }
+
+    .admin-page-header {
+        padding: 14px 16px;
+    }
 }
 
 /* ============================================
@@ -465,8 +539,10 @@ select.form-control {
     height: 100%;
     background: rgba(0, 0, 0, 0.7);
     z-index: 10000;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    padding: 40px 20px;
+    overflow-y: auto;
 }
 
 .modal.active {
@@ -475,8 +551,10 @@ select.form-control {
 
 .modal.show {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    padding: 40px 20px;
+    overflow-y: auto;
 }
 
 .modal-content {
@@ -485,9 +563,10 @@ select.form-control {
     padding: 32px;
     max-width: 600px;
     width: 90%;
-    max-height: 90vh;
+    max-height: calc(100vh - 80px);
     overflow-y: auto;
     box-shadow: var(--shadow-lg);
+    margin: 0 auto;
 }
 
 .modal-header {

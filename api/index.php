@@ -19,7 +19,7 @@ require_once __DIR__ . '/../config/security.php';
 
 // Enable CORS for external websites
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, X-API-Key");
 header("Content-Type: application/json");
 
@@ -81,9 +81,25 @@ class ApiAuth {
      */
     private function getApiKey() {
         // Check headers first
-        $headers = getallheaders();
+        $headers = [];
+        if (function_exists('getallheaders')) {
+            $headers = getallheaders();
+        }
+
         if (isset($headers['X-API-Key'])) {
-            return $headers['X-API-Key'];
+            return trim((string)$headers['X-API-Key']);
+        }
+
+        if (isset($headers['x-api-key'])) {
+            return trim((string)$headers['x-api-key']);
+        }
+
+        if (!empty($_SERVER['HTTP_X_API_KEY'])) {
+            return trim((string)$_SERVER['HTTP_X_API_KEY']);
+        }
+
+        if (!empty($_SERVER['REDIRECT_HTTP_X_API_KEY'])) {
+            return trim((string)$_SERVER['REDIRECT_HTTP_X_API_KEY']);
         }
         
         // Check query parameter
@@ -269,12 +285,45 @@ try {
     
     // Get request method and path
     $method = $_SERVER['REQUEST_METHOD'];
-    $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-    $endpoint = str_replace('/api/', '', $path);
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+
+    // Support setups that route /api/index.php/{endpoint} through PATH_INFO.
+    if (!empty($_SERVER['PATH_INFO'])) {
+        $path = '/api/' . ltrim($_SERVER['PATH_INFO'], '/');
+    }
+
+    $endpoint = '';
+    if (preg_match('#/api(?:/index\.php)?/?(.*)$#i', $path, $matches)) {
+        $endpoint = trim($matches[1], '/');
+    }
+    $endpoint = preg_replace('/\.php$/i', '', $endpoint);
+    $endpoint = preg_replace('#/+#', '/', $endpoint);
+
+    // Allow GET /api/bookings/{id} in addition to GET /api/bookings?id={id}
+    if (preg_match('#^bookings/([^/]+)$#i', $endpoint, $bookingMatch)) {
+        $endpoint = 'bookings';
+        if (!isset($_GET['id']) || $_GET['id'] === '') {
+            $_GET['id'] = $bookingMatch[1];
+        }
+    }
     
     // Initialize authentication
     $auth = new ApiAuth($pdo);
     $client = $auth->authenticate();
+
+    // Log usage even when endpoint handlers call exit() in ApiResponse helpers.
+    register_shutdown_function(function() use ($auth, $client, &$endpoint, $method, $startTime) {
+        try {
+            $responseTime = max(0, microtime(true) - $startTime);
+            $responseCode = http_response_code();
+            if (!$responseCode) {
+                $responseCode = 200;
+            }
+            $auth->logUsage($client['id'], $endpoint ?: 'index', $method, $responseCode, $responseTime);
+        } catch (Throwable $e) {
+            error_log('API usage log write failed: ' . $e->getMessage());
+        }
+    });
     
     // Define constant to allow access to endpoint files
     define('API_ACCESS_ALLOWED', true);
@@ -308,8 +357,11 @@ try {
             break;
             
         case 'payments':
-        case strpos($endpoint, 'payments/') === 0:
             require_once __DIR__ . '/payments.php';
+            break;
+
+        case 'blocked-dates':
+            require_once __DIR__ . '/blocked-dates.php';
             break;
             
         case 'site-settings':
@@ -331,11 +383,14 @@ try {
                     'GET /api/availability' => 'Check room availability',
                     'POST /api/bookings' => 'Create a new booking',
                     'GET /api/bookings?id={id}' => 'Get booking status',
+                    'GET /api/bookings/{id}' => 'Get booking status by path parameter',
                     'GET /api/payments' => 'List all payments (with filters)',
                     'POST /api/payments' => 'Create a new payment',
                     'GET /api/payments/{id}' => 'Get payment details',
                     'PUT /api/payments/{id}' => 'Update payment',
                     'DELETE /api/payments/{id}' => 'Delete payment (soft delete)',
+                    'GET /api/blocked-dates' => 'Get blocked dates (calendar/public use)',
+                    'POST /api/blocked-dates' => 'Create blocked dates (authenticated)',
                     'GET /api/site-settings' => 'Get dynamic site settings'
                 ],
                 'authentication' => 'API Key required in X-API-Key header',
@@ -344,21 +399,15 @@ try {
             break;
             
         default:
+            if (strpos($endpoint, 'payments/') === 0) {
+                require_once __DIR__ . '/payments.php';
+                break;
+            }
+
             ApiResponse::error('Endpoint not found', 404);
     }
     
-    // Calculate response time
-    $responseTime = microtime(true) - $startTime;
-    
-    // Log successful request
-    $auth->logUsage($client['id'], $endpoint, $method, 200, $responseTime);
-    
 } catch (Exception $e) {
-    // Log error
-    if (isset($auth) && isset($client)) {
-        $auth->logUsage($client['id'], $endpoint ?? 'unknown', $method ?? 'unknown', 500, 0);
-    }
-    
     ApiResponse::error('Internal server error', 500, $e->getMessage());
 }
 

@@ -815,8 +815,8 @@ try {
     </div>
     
     <!-- Add Menu Item Modal -->
-    <div class="modal" id="addMenuModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 12px; padding: 32px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal" id="addMenuModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto;">
+        <div style="background: white; border-radius: 12px; padding: 32px; max-width: 600px; width: 90%; max-height: calc(100vh - 80px); overflow-y: auto; margin: 0 auto;">
             <div style="font-size: 24px; font-weight: 700; color: var(--navy); margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
                 <span id="modal-title">Add New Menu Item</span>
                 <span onclick="closeAddModal()" style="cursor: pointer; font-size: 28px; color: #999;">&times;</span>

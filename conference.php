@@ -22,6 +22,7 @@ require_once 'includes/modal.php';
 require_once 'includes/validation.php';
 require_once 'includes/section-headers.php';
 require_once 'includes/countries-data.php';
+require_once 'includes/campaign-attribution.php';
 
 // Send security headers
 sendSecurityHeaders();
@@ -234,19 +235,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } while ($ref_check->rowCount() > 0);
 
         // Insert inquiry
-        $insert_stmt = $pdo->prepare("
-            INSERT INTO conference_inquiries (
-                inquiry_reference, conference_room_id, company_name, contact_person,
-                email, phone, event_date, start_time, end_time, number_of_attendees,
-                event_type, special_requirements, catering_required, av_equipment, total_amount
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
+        $insert_columns = [
+            'inquiry_reference', 'conference_room_id', 'company_name', 'contact_person',
+            'email', 'phone', 'event_date', 'start_time', 'end_time', 'number_of_attendees',
+            'event_type', 'special_requirements', 'catering_required', 'av_equipment', 'total_amount'
+        ];
 
-        $insert_stmt->execute([
+        $insert_values = [
             $inquiry_reference, $room_id, $company_name, $contact_person,
             $email, $phone, $event_date, $start_time, $end_time, $attendees,
             $event_type, $special_requirements, $catering, $av_equipment, $total_amount
-        ]);
+        ];
+
+        $current_attribution = getCurrentCampaignAttribution();
+        $attribution_insert = getAttributionInsertData($pdo, 'conference_inquiries', $current_attribution);
+        if (!empty($attribution_insert['columns'])) {
+            $insert_columns = array_merge($insert_columns, $attribution_insert['columns']);
+            $insert_values = array_merge($insert_values, $attribution_insert['values']);
+        }
+
+        $insert_placeholders = implode(', ', array_fill(0, count($insert_columns), '?'));
+        $insert_sql = "INSERT INTO conference_inquiries (" . implode(', ', $insert_columns) . ") VALUES (" . $insert_placeholders . ")";
+        $insert_stmt = $pdo->prepare($insert_sql);
+        $insert_stmt->execute($insert_values);
 
         // Set success and generate reference after validation passes
         $inquiry_success = true;

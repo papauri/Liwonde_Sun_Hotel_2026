@@ -14,26 +14,15 @@ if (isset($_SESSION['admin_user_id'])) {
 }
 
 require_once '../config/database.php';
+require_once '../includes/activity-logger.php';
 
 $error_message = '';
 
-// Ensure admin_activity_log table exists
+// Ensure audit tables exist.
 try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS admin_activity_log (
-        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        user_id INT UNSIGNED NULL,
-        username VARCHAR(100) NULL,
-        action VARCHAR(50) NOT NULL,
-        details TEXT NULL,
-        ip_address VARCHAR(45) NULL,
-        user_agent VARCHAR(500) NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_user_id (user_id),
-        INDEX idx_action (action),
-        INDEX idx_created_at (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-} catch (PDOException $e) {
-    // Table likely already exists
+    ensureActivityLogInfrastructure($pdo);
+} catch (Throwable $e) {
+    // Keep login page operational even if table checks fail.
 }
 
 // Max failed attempts before temporary lockout
@@ -61,8 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error_message = 'Too many login attempts from this location. Please try again in ' . $lockout_minutes . ' minutes.';
                 
                 // Log the blocked attempt
-                $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (username, action, details, ip_address, user_agent) VALUES (?, 'login_blocked', ?, ?, ?)");
-                $log_stmt->execute([$username, 'IP rate limit exceeded (' . $recent_ip_failures . ' attempts)', $ip, $ua]);
+                logAdminActivity($pdo, null, $username, 'login_blocked', 'IP rate limit exceeded (' . $recent_ip_failures . ' attempts)', $ip, $ua);
             } else {
                 $stmt = $pdo->prepare("SELECT id, username, password_hash, role, full_name, email, failed_login_attempts, is_active FROM admin_users WHERE username = ?");
                 $stmt->execute([$username]);
@@ -71,8 +59,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($user && !$user['is_active']) {
                     $error_message = 'This account has been deactivated. Contact your administrator.';
                     
-                    $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'login_failed', ?, ?, ?)");
-                    $log_stmt->execute([$user['id'], $username, 'Account deactivated', $ip, $ua]);
+                    logAdminActivity($pdo, (int)$user['id'], $username, 'login_failed', 'Account deactivated', $ip, $ua);
+
+                    $empRef = resolveEmployeeForAdminUser($pdo, (int)$user['id']);
+                    if (!empty($empRef['employee_id'])) {
+                        logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user['id'], null, 'login_failed', 'Account deactivated', 'admin_login', $ip, $ua);
+                    }
                     
                 } elseif ($user && $user['failed_login_attempts'] >= $max_attempts) {
                     // Check if lockout period has passed by looking at last failed attempt
@@ -88,8 +80,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $remaining = $lockout_minutes - floor((time() - strtotime($last_fail_time)) / 60);
                         $error_message = 'Account temporarily locked due to too many failed attempts. Try again in ' . max(1, $remaining) . ' minute(s).';
                         
-                        $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'login_blocked', ?, ?, ?)");
-                        $log_stmt->execute([$user['id'], $username, 'Account locked (' . $user['failed_login_attempts'] . ' failed attempts)', $ip, $ua]);
+                        logAdminActivity($pdo, (int)$user['id'], $username, 'login_blocked', 'Account locked (' . $user['failed_login_attempts'] . ' failed attempts)', $ip, $ua);
+
+                        $empRef = resolveEmployeeForAdminUser($pdo, (int)$user['id']);
+                        if (!empty($empRef['employee_id'])) {
+                            logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user['id'], null, 'login_blocked', 'Account temporarily locked after failed attempts', 'admin_login', $ip, $ua);
+                        }
                     } else {
                         // Lockout expired, reset counter and allow attempt
                         $pdo->prepare("UPDATE admin_users SET failed_login_attempts = 0 WHERE id = ?")->execute([$user['id']]);
@@ -117,8 +113,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pdo->prepare("UPDATE admin_users SET failed_login_attempts = 0, last_login = NOW() WHERE id = ?")->execute([$user['id']]);
                         
                         // Log successful login
-                        $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'login_success', ?, ?, ?)");
-                        $log_stmt->execute([$user['id'], $user['username'], 'Role: ' . $user['role'], $ip, $ua]);
+                        logAdminActivity($pdo, (int)$user['id'], $user['username'], 'login_success', 'Role: ' . $user['role'], $ip, $ua);
+
+                        $empRef = resolveEmployeeForAdminUser($pdo, (int)$user['id']);
+                        if (!empty($empRef['employee_id'])) {
+                            logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user['id'], (int)$user['id'], 'login_success', 'Employee-linked user login success', 'admin_login', $ip, $ua);
+                        }
 
                         header('Location: dashboard.php');
                         exit;
@@ -132,8 +132,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $remaining = $max_attempts - $attempts;
                             $detail = 'Wrong password (attempt ' . $attempts . '/' . $max_attempts . ')';
                             
-                            $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'login_failed', ?, ?, ?)");
-                            $log_stmt->execute([$user['id'], $username, $detail, $ip, $ua]);
+                            logAdminActivity($pdo, (int)$user['id'], $username, 'login_failed', $detail, $ip, $ua);
+
+                            $empRef = resolveEmployeeForAdminUser($pdo, (int)$user['id']);
+                            if (!empty($empRef['employee_id'])) {
+                                logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user['id'], null, 'login_failed', $detail, 'admin_login', $ip, $ua);
+                            }
                             
                             if ($remaining > 0 && $remaining <= 2) {
                                 $error_message = 'Invalid username or password. ' . $remaining . ' attempt(s) remaining before lockout.';
@@ -144,8 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         } else {
                             // Unknown username
-                            $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (username, action, details, ip_address, user_agent) VALUES (?, 'login_failed', 'Unknown username', ?, ?)");
-                            $log_stmt->execute([$username, $ip, $ua]);
+                            logAdminActivity($pdo, null, $username, 'login_failed', 'Unknown username', $ip, $ua);
                             
                             $error_message = 'Invalid username or password.';
                         }
@@ -452,7 +455,7 @@ $site_name = getSetting('site_name');
 
             <?php if (isset($_GET['reset']) && $_GET['reset'] === 'sent'): ?>
                 <div class="alert-success">
-                    Password reset link sent to your email.
+                    Password reset instructions were sent to your email.
                 </div>
             <?php endif; ?>
 

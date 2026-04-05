@@ -20,6 +20,7 @@ require_once 'includes/page-guard.php';
 require_once 'config/email.php';
 require_once 'includes/validation.php';
 require_once 'includes/countries-data.php';
+require_once 'includes/campaign-attribution.php';
 
 ensureChildOccupancyInfrastructure();
 
@@ -197,24 +198,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $room = $validation_result['availability']['room'];
         $number_of_nights = $validation_result['availability']['nights'];
         
-        // Determine pricing based on occupancy type
+        // Determine pricing based on occupancy type and active room promo.
         $occupancy_type = normalizeOccupancyType($_POST['occupancy_type'] ?? 'double');
-        
-        // Get the correct price based on occupancy
-        if ($occupancy_type === 'single' && !empty($room['price_single_occupancy'])) {
-            $room_price = $room['price_single_occupancy'];
-        } elseif ($occupancy_type === 'double' && !empty($room['price_double_occupancy'])) {
-            $room_price = $room['price_double_occupancy'];
-        } elseif ($occupancy_type === 'child') {
-            $child_room_price = getRoomChildOccupancyPrice($room);
-            if ($child_room_price === null) {
-                throw new Exception('Child occupancy pricing is not configured for the selected room.');
-            }
-            $room_price = $child_room_price;
-        } else {
-            // Fallback to default price
-            $room_price = $room['price_per_night'];
+        $effective_pricing = getRoomEffectivePricing($room, $occupancy_type, $check_in_date);
+        if ($occupancy_type === 'child' && empty($effective_pricing['child_available'])) {
+            throw new Exception('Child occupancy pricing is not configured for the selected room.');
         }
+
+        $room_price = isset($effective_pricing['final_price']) ? (float)$effective_pricing['final_price'] : (float)$room['price_per_night'];
         
         $total_amount = $room_price * $number_of_nights;
 
@@ -281,27 +272,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $room_unit_assignment_source = $requested_room_unit_id !== null ? 'manual' : 'auto';
 
-            $insert_stmt = $pdo->prepare("
-                INSERT INTO bookings (
-                    booking_reference, room_id, room_unit_id, room_unit_assignment_source, guest_name, guest_email, guest_phone,
-                    guest_country, guest_address, number_of_guests, check_in_date,
-                    check_out_date, number_of_nights, total_amount, special_requests, status,
-                    is_tentative, tentative_expires_at, occupancy_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
+            $insert_columns = [
+                'booking_reference', 'room_id', 'room_unit_id', 'room_unit_assignment_source', 'guest_name', 'guest_email', 'guest_phone',
+                'guest_country', 'guest_address', 'number_of_guests', 'check_in_date',
+                'check_out_date', 'number_of_nights', 'total_amount', 'special_requests', 'status',
+                'is_tentative', 'tentative_expires_at', 'occupancy_type'
+            ];
 
-            $insert_stmt->execute([
+            $insert_values = [
                 $booking_reference, $room_id, $allocated_room_unit_id, $room_unit_assignment_source, $guest_name, $guest_email, $guest_phone,
                 $guest_country, $guest_address, $number_of_guests, $check_in_date,
                 $check_out_date, $number_of_nights, $total_amount, $special_requests,
                 $booking_status, $is_tentative, $tentative_expires_at, $occupancy_type
-            ]);
+            ];
+
+            $current_attribution = getCurrentCampaignAttribution();
+            $attribution_insert = getAttributionInsertData($pdo, 'bookings', $current_attribution);
+            if (!empty($attribution_insert['columns'])) {
+                $insert_columns = array_merge($insert_columns, $attribution_insert['columns']);
+                $insert_values = array_merge($insert_values, $attribution_insert['values']);
+            }
+
+            $insert_placeholders = implode(', ', array_fill(0, count($insert_columns), '?'));
+            $insert_sql = "INSERT INTO bookings (" . implode(', ', $insert_columns) . ") VALUES (" . $insert_placeholders . ")";
+            $insert_stmt = $pdo->prepare($insert_sql);
+            $insert_stmt->execute($insert_values);
 
             $new_booking_id = (int)$pdo->lastInsertId();
-            recalculateRoomBookingFinancials($new_booking_id);
 
             // Commit transaction - booking secured with foreign key constraints!
+            // NOTE: recalculateRoomBookingFinancials is called AFTER commit because it runs
+            // DDL (CREATE TABLE IF NOT EXISTS) internally, which would cause an implicit
+            // commit and break rollback safety.
             $pdo->commit();
+
+            // Update financial columns (totals, VAT, levy) now that the booking row exists.
+            recalculateRoomBookingFinancials($new_booking_id);
 
             // Send email notifications using working email system
             $booking_data = [
@@ -322,7 +328,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'is_tentative' => $is_tentative,
                 'tentative_expires_at' => $tentative_expires_at,
                 'occupancy_type' => $occupancy_type,
-                'room_price' => $room_price
+                'room_price' => $room_price,
+                'has_active_promo'       => !empty($effective_pricing['has_promo']),
+                'promo_title'            => $effective_pricing['promotion']['title'] ?? null,
+                'promo_discount_percent' => (float)($effective_pricing['discount_percent'] ?? 0),
+                'promo_discount_amount'  => (float)($effective_pricing['discount_amount'] ?? 0),
+                'promo_original_price'   => (float)($effective_pricing['base_price'] ?? $room_price),
             ];
             
             // Send appropriate email based on booking type
@@ -380,8 +391,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
             
         } catch (Exception $e) {
-            // Rollback on insert error
-            $pdo->rollBack();
+            // Rollback on insert error (only if still in transaction)
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             throw $e;
         }
 
@@ -402,6 +415,24 @@ $preselected_room = null;
 $rooms_stmt = $pdo->query("SELECT id, name, price_per_night, price_single_occupancy, price_double_occupancy, price_child_occupancy, max_guests, rooms_available, total_rooms, short_description, image_url FROM rooms WHERE is_active = 1 ORDER BY display_order ASC");
 $available_rooms = $rooms_stmt->fetchAll(PDO::FETCH_ASSOC);
 
+foreach ($available_rooms as &$room_row) {
+    $single_pricing = getRoomEffectivePricing($room_row, 'single', date('Y-m-d'));
+    $double_pricing = getRoomEffectivePricing($room_row, 'double', date('Y-m-d'));
+    $child_pricing = getRoomEffectivePricing($room_row, 'child', date('Y-m-d'));
+
+    $room_row['promo_title'] = $double_pricing['promotion']['title'] ?? null;
+    $room_row['has_active_promo'] = !empty($double_pricing['has_promo']) ? 1 : 0;
+    $room_row['display_price_per_night'] = (float)($double_pricing['final_price'] ?? $room_row['price_per_night']);
+    $room_row['original_price_per_night'] = (float)($double_pricing['base_price'] ?? $room_row['price_per_night']);
+    $room_row['promo_discount_percent'] = (float)($double_pricing['discount_percent'] ?? 0);
+
+    $room_row['effective_single_price'] = (float)($single_pricing['final_price'] ?? $room_row['price_per_night']);
+    $room_row['effective_double_price'] = (float)($double_pricing['final_price'] ?? $room_row['price_per_night']);
+    $room_row['effective_child_price'] = isset($child_pricing['final_price']) ? (float)$child_pricing['final_price'] : null;
+    $room_row['has_child_occupancy'] = !empty($child_pricing['child_available']);
+}
+unset($room_row);
+
         // Build rooms data for JavaScript with occupancy pricing
         $rooms_data = [];
 foreach ($available_rooms as $room) {
@@ -409,11 +440,15 @@ foreach ($available_rooms as $room) {
         'id' => (int)$room['id'],
         'name' => $room['name'],
         'max_guests' => (int)$room['max_guests'],
-        'price_per_night' => (float)$room['price_per_night'],
-        'price_single_occupancy' => (float)($room['price_single_occupancy'] ?? $room['price_per_night']),
-        'price_double_occupancy' => (float)($room['price_double_occupancy'] ?? $room['price_per_night'] * 1.2),
-        'price_child_occupancy' => ($room['price_child_occupancy'] !== null ? (float)$room['price_child_occupancy'] : null),
-        'has_child_occupancy' => ($room['price_child_occupancy'] !== null),
+        'price_per_night' => (float)$room['display_price_per_night'],
+        'price_per_night_original' => (float)$room['original_price_per_night'],
+        'price_single_occupancy' => (float)$room['effective_single_price'],
+        'price_double_occupancy' => (float)$room['effective_double_price'],
+        'price_child_occupancy' => ($room['effective_child_price'] !== null ? (float)$room['effective_child_price'] : null),
+        'has_child_occupancy' => ((int)$room['has_child_occupancy'] === 1),
+        'has_active_promo' => ((int)$room['has_active_promo'] === 1),
+        'promo_title' => $room['promo_title'],
+        'promo_discount_percent' => (float)$room['promo_discount_percent'],
         'rooms_available' => (int)$room['rooms_available'],
         'total_rooms' => (int)$room['total_rooms']
     ];
@@ -527,15 +562,21 @@ try {
                 <h3 class="form-section-title"><i class="fas fa-bed"></i> Select Your Room</h3>
                 <div class="room-selection">
                     <?php foreach ($available_rooms as $room): ?>
-                    <label class="room-option" onclick="selectRoom(this)" data-room-id="<?php echo $room['id']; ?>" data-room-name="<?php echo htmlspecialchars($room['name']); ?>" data-room-price="<?php echo $room['price_per_night']; ?>" data-max-guests="<?php echo $room['max_guests']; ?>" data-rooms-available="<?php echo $room['rooms_available']; ?>">
+                    <label class="room-option" onclick="selectRoom(this)" data-room-id="<?php echo $room['id']; ?>" data-room-name="<?php echo htmlspecialchars($room['name']); ?>" data-room-price="<?php echo $room['display_price_per_night']; ?>" data-max-guests="<?php echo $room['max_guests']; ?>" data-rooms-available="<?php echo $room['rooms_available']; ?>">
                         <input type="radio" name="room_id" value="<?php echo $room['id']; ?>" required>
                         <div class="room-info">
                             <h4><?php echo htmlspecialchars($room['name']); ?></h4>
+                            <?php if (!empty($room['has_active_promo'])): ?>
+                                <p style="color:#1f7a4f; font-weight:600; margin:4px 0;"><i class="fas fa-tag"></i> <?php echo htmlspecialchars($room['promo_title'] ?: 'Special Offer'); ?></p>
+                            <?php endif; ?>
                             <p><?php echo htmlspecialchars($room['short_description']); ?></p>
                             <p><i class="fas fa-users"></i> Max <?php echo $room['max_guests']; ?> guests <?php echo $room['rooms_available'] > 1 ? "({$room['rooms_available']} rooms available)" : ''; ?></p>
                         </div>
                         <div class="room-price">
-                            <div class="room-price-amount"><?php echo $currency_symbol; ?><?php echo number_format($room['price_per_night'], 0); ?></div>
+                            <?php if (!empty($room['has_active_promo']) && (float)$room['original_price_per_night'] > (float)$room['display_price_per_night']): ?>
+                                <div style="font-size:12px; color:#888; text-decoration:line-through;"><?php echo $currency_symbol; ?><?php echo number_format($room['original_price_per_night'], 0); ?></div>
+                            <?php endif; ?>
+                            <div class="room-price-amount"><?php echo $currency_symbol; ?><?php echo number_format($room['display_price_per_night'], 0); ?></div>
                             <div class="room-price-period">per night</div>
                         </div>
                     </label>
@@ -598,11 +639,17 @@ try {
                         <input type="hidden" name="room_id" value="<?php echo $preselected_room['id']; ?>" id="preselectedRoomId">
                         <div class="room-info">
                             <h4><?php echo htmlspecialchars($preselected_room['name']); ?></h4>
+                            <?php if (!empty($preselected_room['has_active_promo'])): ?>
+                                <p style="color:#1f7a4f; font-weight:600; margin:4px 0;"><i class="fas fa-tag"></i> <?php echo htmlspecialchars($preselected_room['promo_title'] ?: 'Special Offer'); ?></p>
+                            <?php endif; ?>
                             <p><?php echo htmlspecialchars($preselected_room['short_description']); ?></p>
                             <p><i class="fas fa-users"></i> Max <?php echo $preselected_room['max_guests']; ?> guests <?php echo $preselected_room['rooms_available'] > 1 ? "({$preselected_room['rooms_available']} rooms available)" : ''; ?></p>
                         </div>
                         <div class="room-price">
-                            <div class="room-price-amount"><?php echo $currency_symbol; ?><?php echo number_format($preselected_room['price_per_night'], 0); ?></div>
+                            <?php if (!empty($preselected_room['has_active_promo']) && (float)$preselected_room['original_price_per_night'] > (float)$preselected_room['display_price_per_night']): ?>
+                                <div style="font-size:12px; color:#888; text-decoration:line-through;"><?php echo $currency_symbol; ?><?php echo number_format($preselected_room['original_price_per_night'], 0); ?></div>
+                            <?php endif; ?>
+                            <div class="room-price-amount"><?php echo $currency_symbol; ?><?php echo number_format($preselected_room['display_price_per_night'], 0); ?></div>
                             <div class="room-price-period">per night</div>
                         </div>
                     </div>
@@ -738,6 +785,10 @@ try {
                         <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
                             <i class="fas fa-info-circle"></i> Prices vary based on occupancy type
                         </small>
+                        <div id="occupancyPromoBanner" style="display: none; margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: linear-gradient(135deg, #eef9f2 0%, #dff3e8 100%); border-left: 4px solid #1f7a4f; color: #1f7a4f; font-size: 13px; font-weight: 600;">
+                            <i class="fas fa-tags"></i>
+                            <span id="occupancyPromoText">Special promotion active for your selected dates.</span>
+                        </div>
                         <small id="childOccupancyUnavailableNote" style="display: none; color: #b26a00; font-size: 12px; margin-top: 5px;">
                             <i class="fas fa-exclamation-circle"></i> Child occupancy is not available for this room.
                         </small>
@@ -784,6 +835,10 @@ try {
                     <span>Total Amount:</span>
                     <span id="summaryTotal">-</span>
                 </div>
+                <div class="summary-row" id="summaryPromoRow" style="display: none; background: #eef9f2; border-radius: 8px; padding: 8px 10px; margin-top: 8px;">
+                    <span style="color: #1f7a4f; font-weight: 600;"><i class="fas fa-tag"></i> Promotion:</span>
+                    <span id="summaryPromoText" style="color: #1f7a4f; font-weight: 600; text-align: right;">-</span>
+                </div>
             </div>
 
             <button type="submit" class="btn-submit">
@@ -810,7 +865,7 @@ try {
         // Blocked dates from server
         const blockedDates = <?php echo json_encode($blocked_dates_array); ?>;
         const preselectedRoomId = <?php echo $preselected_room_id ? $preselected_room_id : 'null'; ?>;
-        const preselectedRoomPrice = <?php echo $preselected_room ? $preselected_room['price_per_night'] : 'null'; ?>;
+        const preselectedRoomPrice = <?php echo $preselected_room ? $preselected_room['display_price_per_night'] : 'null'; ?>;
         const preselectedRoomName = <?php echo $preselected_room ? '"' . addslashes($preselected_room['name']) . '"' : 'null'; ?>;
         const preselectedRoomMaxGuests = <?php echo $preselected_room ? $preselected_room['max_guests'] : 'null'; ?>;
         
@@ -860,6 +915,7 @@ try {
                             }
                         }
                     }
+                    refreshSelectedRoomPricingForDates();
                     updateSummary();
                 }
             });
@@ -879,6 +935,7 @@ try {
                     }
                 },
                 onChange: function() {
+                    refreshSelectedRoomPricingForDates();
                     updateSummary();
                 }
             });
@@ -1048,6 +1105,7 @@ try {
             
             // Reinitialize calendars with new room's blocked dates
             updateBlockedDatesForRoom(roomId);
+            refreshSelectedRoomPricingForDates();
         }
         
         // Update guest dropdown options based on room capacity
@@ -1182,6 +1240,103 @@ try {
                     callback({ available: false, message: 'Unable to check availability' });
                 });
         }
+
+        function refreshSelectedRoomPricingForDates() {
+            const checkIn = document.getElementById('check_in_date').value;
+            const checkOut = document.getElementById('check_out_date').value;
+            const promoBanner = document.getElementById('occupancyPromoBanner');
+            const promoText = document.getElementById('occupancyPromoText');
+
+            if (!selectedRoomId || !checkIn || !checkOut) {
+                if (promoBanner) promoBanner.style.display = 'none';
+                if (promoText) promoText.textContent = 'Special promotion active for your selected dates.';
+                return;
+            }
+
+            checkRoomAvailability(selectedRoomId, checkIn, checkOut, function(result) {
+                if (!result || !result.available || !result.room) {
+                    return;
+                }
+
+                const room = roomsData.find(r => r.id === selectedRoomId);
+                if (!room) {
+                    return;
+                }
+
+                room.price_per_night = parseFloat(result.room.price_per_night || room.price_per_night);
+                room.price_per_night_original = parseFloat(result.room.price_per_night_original || room.price_per_night_original || room.price_per_night);
+                room.price_single_occupancy = parseFloat(result.room.price_single_occupancy || room.price_single_occupancy || room.price_per_night);
+                room.price_double_occupancy = parseFloat(result.room.price_double_occupancy || room.price_double_occupancy || room.price_per_night);
+                room.price_child_occupancy = (result.room.price_child_occupancy !== null && result.room.price_child_occupancy !== undefined)
+                    ? parseFloat(result.room.price_child_occupancy)
+                    : null;
+                room.has_child_occupancy = !!result.room.has_child_occupancy;
+                room.has_active_promo = !!result.room.has_active_promo;
+                room.promo_title = result.room.promo_title || '';
+                room.promo_discount_percent = parseFloat(result.room.promo_discount_percent || 0);
+
+                if (promoBanner && promoText) {
+                    if (room.has_active_promo && room.promo_discount_percent > 0) {
+                        promoBanner.style.display = 'block';
+                        promoText.textContent = `${room.promo_title || 'Special Offer'} (-${room.promo_discount_percent.toFixed(0)}%) active for your selected dates.`;
+                    } else {
+                        promoBanner.style.display = 'none';
+                        promoText.textContent = 'Special promotion active for your selected dates.';
+                    }
+                }
+
+                const selectedOption = document.querySelector(`.room-option input[name="room_id"][value="${selectedRoomId}"]`)?.closest('.room-option');
+                if (selectedOption) {
+                    const info = selectedOption.querySelector('.room-info');
+                    const priceWrap = selectedOption.querySelector('.room-price');
+
+                    if (priceWrap) {
+                        const strike = priceWrap.querySelector('.promo-original-price');
+                        if (room.has_active_promo && room.price_per_night_original > room.price_per_night) {
+                            if (!strike) {
+                                const strikeEl = document.createElement('div');
+                                strikeEl.className = 'promo-original-price';
+                                strikeEl.style.fontSize = '12px';
+                                strikeEl.style.color = '#888';
+                                strikeEl.style.textDecoration = 'line-through';
+                                strikeEl.textContent = currencySymbol + room.price_per_night_original.toLocaleString();
+                                priceWrap.insertBefore(strikeEl, priceWrap.querySelector('.room-price-amount'));
+                            } else {
+                                strike.textContent = currencySymbol + room.price_per_night_original.toLocaleString();
+                            }
+                        } else if (strike) {
+                            strike.remove();
+                        }
+
+                        const amountEl = priceWrap.querySelector('.room-price-amount');
+                        if (amountEl) {
+                            amountEl.textContent = currencySymbol + room.price_per_night.toLocaleString();
+                        }
+                    }
+
+                    if (info) {
+                        let promoNode = info.querySelector('.room-promo-note');
+                        if (room.has_active_promo) {
+                            if (!promoNode) {
+                                promoNode = document.createElement('p');
+                                promoNode.className = 'room-promo-note';
+                                promoNode.style.color = '#1f7a4f';
+                                promoNode.style.fontWeight = '600';
+                                promoNode.style.margin = '4px 0';
+                                info.insertBefore(promoNode, info.querySelector('p'));
+                            }
+                            promoNode.innerHTML = '<i class="fas fa-tag"></i> ' + (room.promo_title || 'Special Offer');
+                        } else if (promoNode) {
+                            promoNode.remove();
+                        }
+                    }
+                }
+
+                updateOccupancyPrices(selectedRoomId);
+                updatePriceBasedOnOccupancy();
+                updateSummary();
+            });
+        }
         
         function showAvailabilityMessage(message, isSuccess) {
             // Use new Alert component
@@ -1229,6 +1384,16 @@ try {
                     document.getElementById('summaryCheckOut').textContent = checkOutDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     document.getElementById('summaryNights').textContent = nights + (nights === 1 ? ' night' : ' nights');
                     document.getElementById('summaryTotal').textContent = currencySymbol + total.toLocaleString();
+
+                    const promoRow = document.getElementById('summaryPromoRow');
+                    const promoText = document.getElementById('summaryPromoText');
+                    if (selectedRoom.has_active_promo && selectedRoom.promo_discount_percent > 0) {
+                        promoRow.style.display = 'flex';
+                        promoText.textContent = `${selectedRoom.promo_title || 'Special Offer'} (-${selectedRoom.promo_discount_percent.toFixed(0)}%)`;
+                    } else {
+                        promoRow.style.display = 'none';
+                        promoText.textContent = '-';
+                    }
                     
                     document.getElementById('bookingSummary').style.display = 'block';
                     
@@ -1238,6 +1403,10 @@ try {
                     submitBtn.innerHTML = '<i class="fas fa-check-circle"></i> Confirm Booking';
                     submitBtn.style.opacity = '1';
                 } else {
+                    const promoRow = document.getElementById('summaryPromoRow');
+                    const promoText = document.getElementById('summaryPromoText');
+                    if (promoRow) promoRow.style.display = 'none';
+                    if (promoText) promoText.textContent = '-';
                     document.getElementById('bookingSummary').style.display = 'none';
                 }
             }
@@ -1248,11 +1417,13 @@ try {
             const nextDay = new Date(checkIn);
             nextDay.setDate(checkIn.getDate() + 1);
             document.getElementById('check_out_date').min = nextDay.toISOString().split('T')[0];
+            refreshSelectedRoomPricingForDates();
             updateSummary();
             validateFormForSubmit();
         });
 
         document.getElementById('check_out_date').addEventListener('change', function() {
+            refreshSelectedRoomPricingForDates();
             updateSummary();
             validateFormForSubmit();
         });

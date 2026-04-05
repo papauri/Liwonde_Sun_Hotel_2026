@@ -644,102 +644,79 @@ function sendEmailWithAttachment($to, $toName, $subject, $htmlBody, $attachmentP
  * Uses the same email configuration as config/email.php
  */
 function sendEmailWithAttachmentAndCC($to, $toName, $subject, $htmlBody, $attachmentPath, $ccRecipients = []) {
-    global $email_from_name, $email_from_email, $email_admin_email;
-    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
-    global $email_bcc_admin, $development_mode, $email_log_enabled, $email_preview_enabled;
-    
-    // Check if we're on localhost
-    $is_localhost = isset($_SERVER['HTTP_HOST']) && (
-        strpos($_SERVER['HTTP_HOST'], 'localhost') !== false || 
-        strpos($_SERVER['HTTP_HOST'], '127.0.0.1') !== false ||
-        strpos($_SERVER['HTTP_HOST'], '.local') !== false
-    );
-    
-    // Development mode: show previews on localhost unless explicitly disabled
-    $dev_mode = $is_localhost && $development_mode;
-    
-    // If in development mode and no password or preview enabled, show preview
-    if ($dev_mode && (empty($smtp_password) || $email_preview_enabled)) {
+    global $email_from_name, $email_from_email, $email_admin_email, $smtp_username;
+    global $smtp_password, $email_bcc_admin, $development_mode, $email_log_enabled, $email_preview_enabled;
+
+    // Development mode: create preview file instead of sending
+    if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
         return createEmailPreview($to, $toName, $subject, $htmlBody);
     }
-    
+
     try {
         $mail = new PHPMailer(true);
-        
-        // Server settings - loaded from database
-        $mail->isSMTP();
-        $mail->Host = $smtp_host;
-        $mail->SMTPAuth = true;
-        $mail->Username = $smtp_username;
-        $mail->Password = $smtp_password;
-        $mail->SMTPSecure = $smtp_secure;
-        $mail->Port = $smtp_port;
-        $mail->Timeout = $smtp_timeout;
-        
-        if ($smtp_debug > 0) {
-            $mail->SMTPDebug = $smtp_debug;
-        }
-        
-        // Recipients
-        $mail->setFrom($smtp_username, $email_from_name);
+
+        // Use shared SMTP transport helper (handles SMTPAutoTLS=false for plain connections)
+        configureSmtpTransport($mail);
+
+        // From / To — use email_from_email (site settings), fall back to smtp_username
+        $fromAddress = filter_var($email_from_email, FILTER_VALIDATE_EMAIL)
+            ? $email_from_email
+            : $smtp_username;
+        $fromName = !empty($email_from_name) ? $email_from_name : 'Liwonde Sun Hotel';
+        $mail->setFrom($fromAddress, $fromName);
         $mail->addAddress($to, $toName);
-        $mail->addReplyTo($email_from_email, $email_from_name);
-        
-        // Add CC recipients from invoice_recipients setting
+        $mail->addReplyTo($fromAddress, $fromName);
+
+        // CC recipients (invoice_recipients + any extra)
         foreach ($ccRecipients as $cc) {
             if (!empty($cc) && filter_var($cc, FILTER_VALIDATE_EMAIL)) {
                 $mail->addCC($cc);
             }
         }
-        
-        // Add BCC for admin if enabled
-        if ($email_bcc_admin && !empty($email_admin_email)) {
+
+        // BCC admin if enabled
+        if ($email_bcc_admin && !empty($email_admin_email) && filter_var($email_admin_email, FILTER_VALIDATE_EMAIL)) {
             $mail->addBCC($email_admin_email);
         }
-        
-        // Add attachment
-        if (file_exists($attachmentPath)) {
+
+        // Attach invoice file
+        if (!empty($attachmentPath) && file_exists($attachmentPath)) {
             $mail->addAttachment($attachmentPath, basename($attachmentPath));
         }
-        
+
         // Content
         $mail->isHTML(true);
         $mail->Subject = $subject;
-        $mail->Body = $htmlBody;
+        $mail->Body    = $htmlBody;
         $mail->AltBody = strip_tags($htmlBody);
-        
+
         $mail->send();
-        
-        // Log email if enabled
+
         if ($email_log_enabled) {
-            $cc_list = implode(', ', $ccRecipients);
-            logEmail($to, $toName, $subject, 'sent', '', "CC: $cc_list");
+            logEmail($to, $toName, $subject, 'sent');
         }
-        
+
         return [
             'success' => true,
-            'message' => 'Email sent successfully via SMTP with ' . count($ccRecipients) . ' CC recipients'
+            'message' => 'Invoice email sent successfully (' . count($ccRecipients) . ' CC recipient(s))',
         ];
-        
+
     } catch (Exception $e) {
         error_log("PHPMailer Error (sendEmailWithAttachmentAndCC): " . $e->getMessage());
-        
-        // Log error if enabled
+
         if ($email_log_enabled) {
-            $cc_list = implode(', ', $ccRecipients);
-            logEmail($to, $toName, $subject, 'failed', $e->getMessage(), "CC: $cc_list");
+            logEmail($to, $toName, $subject, 'failed', $e->getMessage());
         }
-        
-        // If development mode, show preview instead of failing
-        if ($dev_mode) {
+
+        if ($development_mode) {
             return createEmailPreview($to, $toName, $subject, $htmlBody);
         }
-        
+
         return [
             'success' => false,
-            'message' => 'Failed to send email: ' . $e->getMessage()
+            'message' => 'Failed to send invoice email: ' . $e->getMessage(),
         ];
-}
+    }
 }
 
 /**

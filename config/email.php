@@ -6,6 +6,7 @@
 
 // Require database connection for settings
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/../includes/activity-logger.php';
 
 // Load PHPMailer
 use PHPMailer\PHPMailer\PHPMailer;
@@ -281,14 +282,57 @@ function logEmail($to, $toName, $subject, $status, $error = '') {
  * @param string $email_status Email status message
  * @return bool Success status
  */
-function logCancellationToDatabase($booking_id, $booking_reference, $booking_type, $guest_email, $cancelled_by, $cancellation_reason = '', $email_sent = false, $email_status = '') {
+function logCancellationToDatabase($booking_id, $booking_reference, $booking_type, $guest_email, $cancelled_by, $cancellation_reason = '', $email_sent = false, $email_status = '', $cancelled_by_type = 'admin', $cancelled_by_employee_id = null) {
     global $pdo;
     
     try {
+        // Ensure cancellation log table and newer audit columns exist.
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cancellation_log (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            booking_id INT UNSIGNED NOT NULL,
+            booking_reference VARCHAR(80) NOT NULL,
+            booking_type VARCHAR(30) NOT NULL,
+            guest_email VARCHAR(255) DEFAULT NULL,
+            cancelled_by INT UNSIGNED DEFAULT 0,
+            cancellation_reason TEXT NULL,
+            email_sent TINYINT(1) DEFAULT 0,
+            email_status TEXT NULL,
+            cancelled_by_type VARCHAR(20) DEFAULT 'admin',
+            cancelled_by_employee_id INT UNSIGNED NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            cancellation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_booking_id (booking_id),
+            INDEX idx_booking_type (booking_type),
+            INDEX idx_cancelled_by (cancelled_by),
+            INDEX idx_cancelled_by_type (cancelled_by_type),
+            INDEX idx_cancellation_date (cancellation_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        try {
+            $pdo->exec("ALTER TABLE cancellation_log ADD COLUMN IF NOT EXISTS cancelled_by_type VARCHAR(20) DEFAULT 'admin' AFTER cancelled_by");
+            $pdo->exec("ALTER TABLE cancellation_log ADD COLUMN IF NOT EXISTS cancelled_by_employee_id INT UNSIGNED NULL AFTER cancelled_by_type");
+            $pdo->exec("ALTER TABLE cancellation_log ADD COLUMN IF NOT EXISTS cancellation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER created_at");
+        } catch (Throwable $e) {
+            // Ignore if DB does not support IF NOT EXISTS for ALTER TABLE.
+        }
+
+        // Auto-detect employee-linked actor where possible.
+        $actorType = $cancelled_by_type;
+        $actorEmployeeId = $cancelled_by_employee_id ? (int)$cancelled_by_employee_id : null;
+        if ((int)$cancelled_by <= 0) {
+            $actorType = 'guest';
+        } elseif ($actorEmployeeId === null) {
+            $empRef = resolveEmployeeForAdminUser($pdo, (int)$cancelled_by);
+            if (!empty($empRef['employee_id'])) {
+                $actorType = 'employee';
+                $actorEmployeeId = (int)$empRef['employee_id'];
+            }
+        }
+
         $stmt = $pdo->prepare("
             INSERT INTO cancellation_log
-            (booking_id, booking_reference, booking_type, guest_email, cancelled_by, cancellation_reason, email_sent, email_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (booking_id, booking_reference, booking_type, guest_email, cancelled_by, cancelled_by_type, cancelled_by_employee_id, cancellation_reason, email_sent, email_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $booking_id,
@@ -296,10 +340,35 @@ function logCancellationToDatabase($booking_id, $booking_reference, $booking_typ
             $booking_type,
             $guest_email,
             $cancelled_by,
+            $actorType,
+            $actorEmployeeId,
             $cancellation_reason,
             $email_sent ? 1 : 0,
             $email_status
         ]);
+
+        try {
+            $detail = 'Cancellation logged for booking ' . $booking_reference . ' (' . $booking_type . '). Email sent: ' . ($email_sent ? 'yes' : 'no');
+            $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+            $ua = isset($_SERVER['HTTP_USER_AGENT']) ? substr($_SERVER['HTTP_USER_AGENT'], 0, 500) : null;
+
+            if ((int)$cancelled_by > 0) {
+                $unameStmt = $pdo->prepare("SELECT username FROM admin_users WHERE id = ? LIMIT 1");
+                $unameStmt->execute([(int)$cancelled_by]);
+                $username = (string)($unameStmt->fetchColumn() ?: '');
+
+                logAdminActivity($pdo, (int)$cancelled_by, $username !== '' ? $username : null, 'booking_cancelled', $detail, $ip, $ua);
+            } else {
+                logAdminActivity($pdo, null, 'guest', 'booking_cancelled_guest', $detail, $ip, $ua);
+            }
+
+            if (!empty($actorEmployeeId)) {
+                logEmployeeActivity($pdo, (int)$actorEmployeeId, (int)$cancelled_by > 0 ? (int)$cancelled_by : null, (int)$cancelled_by > 0 ? (int)$cancelled_by : null, 'booking_cancelled', $detail, 'cancellation_log', $ip, $ua);
+            }
+        } catch (Throwable $e) {
+            // Do not block cancellation logging flow if activity mirror fails.
+        }
+
         return true;
     } catch (Exception $e) {
         error_log("Failed to log cancellation to database: " . $e->getMessage());
@@ -338,6 +407,55 @@ function logCancellationToFile($booking_reference, $booking_type, $guest_email, 
 /**
  * Send booking received email (sent immediately when user submits booking)
  */
+/**
+ * Build a promotional rate notice HTML block for inclusion in booking emails.
+ * Uses pre-computed promo metadata from $booking if available,
+ * otherwise performs a live DB lookup via getRoomEffectivePricing.
+ */
+function buildPromoEmailBlock(array $booking, array $room) {
+    $currency = getSetting('currency_symbol', 'MWK');
+    $nights   = max(1, (int)($booking['number_of_nights'] ?? 1));
+
+    if (!empty($booking['has_active_promo'])) {
+        // Pre-computed promo data passed in from booking.php submission
+        $promo_title        = $booking['promo_title'] ?? 'Special Offer';
+        $discount_percent   = (float)($booking['promo_discount_percent'] ?? 0);
+        $discount_per_night = (float)($booking['promo_discount_amount'] ?? 0);
+        $original_per_night = (float)($booking['promo_original_price'] ?? 0);
+        $final_per_night    = $original_per_night - $discount_per_night;
+        $total_savings      = round($discount_per_night * $nights, 2);
+    } else {
+        // Live lookup — used for admin-triggered emails where promo metadata was not pre-loaded
+        $occupancy = function_exists('normalizeOccupancyType')
+            ? normalizeOccupancyType($booking['occupancy_type'] ?? 'double')
+            : ($booking['occupancy_type'] ?? 'double');
+        $pricing = getRoomEffectivePricing($room, $occupancy, $booking['check_in_date'] ?? null);
+        if (empty($pricing['has_promo']) || (float)($pricing['discount_amount'] ?? 0) <= 0) {
+            return '';
+        }
+        $promo_title        = $pricing['promotion']['title'] ?? 'Special Offer';
+        $discount_percent   = (float)($pricing['discount_percent'] ?? 0);
+        $discount_per_night = (float)($pricing['discount_amount'] ?? 0);
+        $original_per_night = (float)($pricing['base_price'] ?? 0);
+        $final_per_night    = (float)($pricing['final_price'] ?? $original_per_night);
+        $total_savings      = round($discount_per_night * $nights, 2);
+    }
+
+    if ($total_savings <= 0) {
+        return '';
+    }
+
+    return '
+        <div style="background: linear-gradient(135deg, #eef9f2 0%, #dff3e8 100%); padding: 15px; border-left: 4px solid #1f7a4f; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #1f7a4f; margin-top: 0;">&#127991; Promotional Rate Applied</h3>
+            <p style="color: #1f7a4f; margin: 0 0 6px;"><strong>' . htmlspecialchars($promo_title) . '</strong></p>
+            <p style="color: #1f7a4f; margin: 0; font-size: 14px;">
+                You saved <strong>' . $currency . ' ' . number_format($total_savings, 0) . '</strong> (' . number_format($discount_percent, 0) . '% off) on your stay.<br>
+                <span style="opacity: 0.85;">Original rate: ' . $currency . ' ' . number_format($original_per_night, 0) . '/night &rarr; Promo rate: ' . $currency . ' ' . number_format($final_per_night, 0) . '/night</span>
+            </p>
+        </div>';
+}
+
 function sendBookingReceivedEmail($booking) {
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
     
@@ -431,6 +549,16 @@ function sendBookingReceivedEmail($booking) {
             </p>
         </div>';
         
+        // Inject promo notice before Payment Information section
+        $promo_block = buildPromoEmailBlock($booking, $room);
+        if ($promo_block !== '') {
+            $marker = '<div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107';
+            $pos = strpos($htmlBody, $marker);
+            if ($pos !== false) {
+                $htmlBody = substr($htmlBody, 0, $pos) . $promo_block . "\n        " . substr($htmlBody, $pos);
+            }
+        }
+
         // Send email
         return sendEmail(
             $booking['guest_email'],
@@ -554,6 +682,16 @@ function sendBookingConfirmedEmail($booking) {
             </p>
         </div>';
         
+        // Inject promo notice before Payment Information section
+        $promo_block = buildPromoEmailBlock($booking, $room);
+        if ($promo_block !== '') {
+            $marker = '<div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107';
+            $pos = strpos($htmlBody, $marker);
+            if ($pos !== false) {
+                $htmlBody = substr($htmlBody, 0, $pos) . $promo_block . "\n        " . substr($htmlBody, $pos);
+            }
+        }
+
         // Send email
         return sendEmail(
             $booking['guest_email'],
@@ -1760,6 +1898,17 @@ function sendTentativeBookingConfirmedEmail($booking) {
         </div>';
         
         // Send email
+        // Inject promo notice before the 'What Happens Next?' section
+        // (tentative confirmed email has no Payment Info block, so target the green status div)
+        $promo_block = buildPromoEmailBlock($booking, $room);
+        if ($promo_block !== '') {
+            $marker = '<div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745';
+            $pos = strpos($htmlBody, $marker);
+            if ($pos !== false) {
+                $htmlBody = substr($htmlBody, 0, $pos) . $promo_block . "\n        " . substr($htmlBody, $pos);
+            }
+        }
+
         return sendEmail(
             $booking['guest_email'],
             $booking['guest_name'],
@@ -2070,6 +2219,16 @@ function sendTentativeBookingConvertedEmail($booking) {
             </p>
         </div>';
         
+        // Inject promo notice before Payment Information section
+        $promo_block = buildPromoEmailBlock($booking, $room);
+        if ($promo_block !== '') {
+            $marker = '<div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107';
+            $pos = strpos($htmlBody, $marker);
+            if ($pos !== false) {
+                $htmlBody = substr($htmlBody, 0, $pos) . $promo_block . "\n        " . substr($htmlBody, $pos);
+            }
+        }
+
         // Send email with unique subject line for conversion
         return sendEmail(
             $booking['guest_email'],

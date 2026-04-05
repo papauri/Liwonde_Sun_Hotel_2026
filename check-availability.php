@@ -96,20 +96,31 @@ try {
 
     // Use the availability checking function from database.php
     $availability = checkRoomAvailability($room_id, $check_in, $check_out);
+    $promoPricing = getRoomEffectivePricing($room, 'double', $check_in);
+    $singlePricing = getRoomEffectivePricing($room, 'single', $check_in);
+    $doublePricing = getRoomEffectivePricing($room, 'double', $check_in);
+    $childPricing = getRoomEffectivePricing($room, 'child', $check_in);
+    $effectiveNightlyRate = (float)($promoPricing['final_price'] ?? $room['price_per_night']);
+    $originalNightlyRate = (float)($promoPricing['base_price'] ?? $room['price_per_night']);
 
     if ($availability['available']) {
         $nights = $checkInDate->diff($checkOutDate)->days;
-        $total = $room['price_per_night'] * $nights;
+        $total = $effectiveNightlyRate * $nights;
 
         echo json_encode([
             'available' => true,
             'room' => [
                 'id' => (int)$room['id'],
                 'name' => $room['name'],
-                'price_per_night' => (float)$room['price_per_night'],
-                'price_single_occupancy' => (float)($room['price_single_occupancy'] ?? $room['price_per_night']),
-                'price_double_occupancy' => (float)($room['price_double_occupancy'] ?? $room['price_per_night']),
-                'price_child_occupancy' => (float)(getRoomChildOccupancyPrice($room) ?? $room['price_per_night']),
+                'price_per_night' => $effectiveNightlyRate,
+                'price_per_night_original' => $originalNightlyRate,
+                'price_single_occupancy' => (float)($singlePricing['final_price'] ?? $room['price_per_night']),
+                'price_double_occupancy' => (float)($doublePricing['final_price'] ?? $room['price_per_night']),
+                'price_child_occupancy' => isset($childPricing['final_price']) ? (float)$childPricing['final_price'] : null,
+                'has_child_occupancy' => !empty($childPricing['child_available']),
+                'has_active_promo' => !empty($promoPricing['has_promo']),
+                'promo_title' => $promoPricing['promotion']['title'] ?? null,
+                'promo_discount_percent' => (float)($promoPricing['discount_percent'] ?? 0),
                 'max_guests' => (int)$room['max_guests'],
                 'rooms_available' => (int)$room['rooms_available']
             ],
