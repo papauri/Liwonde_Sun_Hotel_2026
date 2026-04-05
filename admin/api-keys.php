@@ -158,49 +158,194 @@ function e($value) {
         return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
-function originFromApiBase($apiBase) {
-        $parts = parse_url($apiBase);
-        $scheme = $parts['scheme'] ?? 'https';
-        $host = $parts['host'] ?? '';
-        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
-        return $host !== '' ? $scheme . '://' . $host . $port : '';
+function siteBaseFromApiBase($apiBase) {
+    $parts = parse_url($apiBase);
+    $scheme = $parts['scheme'] ?? 'https';
+    $host = $parts['host'] ?? '';
+    $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+    $origin = $host !== '' ? $scheme . '://' . $host . $port : '';
+
+    $path = $parts['path'] ?? '';
+    $sitePath = preg_replace('#/api(?:/index\\.php)?/?$#i', '', $path);
+    $sitePath = is_string($sitePath) ? rtrim($sitePath, '/') : '';
+
+    if ($origin === '') {
+        return '';
+    }
+    if ($sitePath === '' || $sitePath === '/') {
+        return $origin;
+    }
+    return $origin . $sitePath;
+}
+
+function toAbsoluteUrl($urlValue, $apiBase) {
+    if (!is_string($urlValue) || trim($urlValue) === '') {
+        return '';
+    }
+
+    $value = trim($urlValue);
+    if (preg_match('#^https?://#i', $value)) {
+        return $value;
+    }
+
+    $parts = parse_url($apiBase);
+    $scheme = $parts['scheme'] ?? 'https';
+    $host = $parts['host'] ?? '';
+    $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+    $origin = $host !== '' ? $scheme . '://' . $host . $port : '';
+
+    $path = $parts['path'] ?? '';
+    $sitePath = preg_replace('#/api(?:/index\\.php)?/?$#i', '', $path);
+    $sitePath = is_string($sitePath) ? rtrim($sitePath, '/') : '';
+
+    if ($origin === '') {
+        return $value;
+    }
+
+    if (strpos($value, '/') === 0) {
+        if ($sitePath !== '' && (strpos($value, $sitePath . '/') === 0 || $value === $sitePath)) {
+            return $origin . $value;
+        }
+        if ($sitePath !== '') {
+            return $origin . $sitePath . $value;
+        }
+        return $origin . $value;
+    }
+
+    if ($sitePath !== '') {
+        return $origin . $sitePath . '/' . ltrim($value, '/');
+    }
+    return $origin . '/' . ltrim($value, '/');
+}
+
+function siteRootFsPathFromApiBase($apiBase) {
+    $parts = parse_url($apiBase);
+    $path = $parts['path'] ?? '';
+    $sitePath = preg_replace('#/api(?:/index\\.php)?/?$#i', '', $path);
+    $sitePath = is_string($sitePath) ? rtrim($sitePath, '/') : '';
+
+    $docRoot = rtrim((string)($_SERVER['DOCUMENT_ROOT'] ?? ''), '/\\');
+    if ($docRoot === '') {
+        return '';
+    }
+
+    return str_replace('\\', '/', $docRoot . ($sitePath !== '' ? $sitePath : ''));
+}
+
+function findExistingRoomImage($room, $apiBase) {
+    $siteRootFs = siteRootFsPathFromApiBase($apiBase);
+    if ($siteRootFs === '') {
+        return '';
+    }
+
+    $roomsDir = rtrim($siteRootFs, '/') . '/images/rooms';
+    if (!is_dir($roomsDir)) {
+        return '';
+    }
+
+    $roomId = $room['id'] ?? $room['room_id'] ?? null;
+    if ($roomId !== null && $roomId !== '') {
+        $cleanId = preg_replace('/[^0-9]/', '', (string)$roomId);
+        if ($cleanId !== '') {
+            $patterns = [
+                $roomsDir . '/room_' . $cleanId . '_featured_*.*',
+                $roomsDir . '/room_' . $cleanId . '_*.*',
+            ];
+            foreach ($patterns as $pattern) {
+                $matches = glob($pattern);
+                if (!empty($matches) && isset($matches[0])) {
+                    return toAbsoluteUrl('images/rooms/' . basename((string)$matches[0]), $apiBase);
+                }
+            }
+        }
+    }
+
+    $anyRoomImages = glob($roomsDir . '/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}', GLOB_BRACE);
+    if (!empty($anyRoomImages) && isset($anyRoomImages[0])) {
+        return toAbsoluteUrl('images/rooms/' . basename((string)$anyRoomImages[0]), $apiBase);
+    }
+
+    return '';
 }
 
 function pickImageUrl($room, $apiBase) {
-        $candidates = [
-                $room['image_url'] ?? null,
-                $room['image'] ?? null,
-                $room['main_image'] ?? null,
-                $room['thumbnail'] ?? null,
+    $candidates = [
+        $room['image_url'] ?? null,
+        $room['image'] ?? null,
+        $room['main_image'] ?? null,
+        $room['thumbnail'] ?? null,
+        $room['featured_image'] ?? null,
+    ];
+
+    if (isset($room['gallery']) && is_array($room['gallery'])) {
+        foreach ($room['gallery'] as $galleryItem) {
+            if (is_array($galleryItem)) {
+                $candidates[] = $galleryItem['image_url'] ?? null;
+                $candidates[] = $galleryItem['url'] ?? null;
+                $candidates[] = $galleryItem['image'] ?? null;
+            } else {
+                $candidates[] = $galleryItem;
+            }
+        }
+    }
+    if (isset($room['images']) && is_array($room['images'])) {
+        foreach ($room['images'] as $imageItem) {
+            if (is_array($imageItem)) {
+                $candidates[] = $imageItem['image_url'] ?? null;
+                $candidates[] = $imageItem['url'] ?? null;
+                $candidates[] = $imageItem['image'] ?? null;
+            } else {
+                $candidates[] = $imageItem;
+            }
+        }
+    }
+
+    foreach ($candidates as $candidate) {
+        if (!is_string($candidate) || trim($candidate) === '') {
+            continue;
+        }
+        $resolved = toAbsoluteUrl($candidate, $apiBase);
+        if ($resolved !== '') {
+            return $resolved;
+        }
+    }
+
+    $existingRoomImage = findExistingRoomImage($room, $apiBase);
+    if ($existingRoomImage !== '') {
+        return $existingRoomImage;
+    }
+
+    return toAbsoluteUrl('images/hero/slide1.jpg', $apiBase);
+}
+
+    function roomLinkUrl($room, $apiBase) {
+        $linkCandidates = [
+            $room['url'] ?? null,
+            $room['link'] ?? null,
+            $room['room_url'] ?? null,
+            $room['details_url'] ?? null,
+            $room['page_url'] ?? null,
         ];
 
-        if (isset($room['gallery']) && is_array($room['gallery']) && !empty($room['gallery'][0])) {
-                $candidates[] = $room['gallery'][0];
-        }
-        if (isset($room['images']) && is_array($room['images']) && !empty($room['images'][0])) {
-                $candidates[] = $room['images'][0];
-        }
-
-        $origin = originFromApiBase($apiBase);
-        foreach ($candidates as $candidate) {
-                if (!is_string($candidate) || trim($candidate) === '') {
-                        continue;
-                }
-                $value = trim($candidate);
-                if (preg_match('#^https?://#i', $value)) {
-                        return $value;
-                }
-                if ($origin !== '') {
-                        if (strpos($value, '/') === 0) {
-                                return $origin . $value;
-                        }
-                        return $origin . '/' . ltrim($value, '/');
-                }
-                return $value;
+        foreach ($linkCandidates as $candidate) {
+            $resolved = toAbsoluteUrl($candidate, $apiBase);
+            if ($resolved !== '') {
+                return $resolved;
+            }
         }
 
-        return 'https://via.placeholder.com/640x420?text=Room+Image';
-}
+        $slug = $room['slug'] ?? $room['room_slug'] ?? null;
+        if (is_string($slug) && trim($slug) !== '') {
+            return toAbsoluteUrl('room.php?slug=' . urlencode(trim($slug)), $apiBase);
+        }
+
+        $id = $room['id'] ?? $room['room_id'] ?? null;
+        if ($id !== null && $id !== '') {
+            return toAbsoluteUrl('room.php?id=' . urlencode((string)$id), $apiBase);
+        }
+
+        return toAbsoluteUrl('rooms-showcase.php', $apiBase);
+    }
 
 $roomsResponse = callApi('GET', '/rooms', $apiBase, $apiKey);
 $body = is_array($roomsResponse['body']) ? $roomsResponse['body'] : [];
@@ -218,17 +363,21 @@ if (isset($body['data']) && is_array($body['data'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
     <title>Rooms Showcase</title>
     <style>
         body { font-family: Arial, sans-serif; background: #f5f7fb; margin: 0; padding: 24px; color: #0f172a; }
         .status { margin: 0 0 16px; font-size: 14px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
-        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(15,23,42,.06); transition: transform .18s ease, box-shadow .18s ease; }
+        .card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(15,23,42,.12); }
         .card img { width: 100%; height: 180px; object-fit: cover; display: block; background: #e2e8f0; }
+        .card-link { display: block; text-decoration: none; color: inherit; }
         .card-body { padding: 12px; }
         .title { margin: 0 0 6px; font-size: 18px; }
         .meta { margin: 4px 0; color: #475569; font-size: 13px; }
         .desc { margin: 8px 0 0; color: #334155; font-size: 14px; line-height: 1.45; }
+        .cta { margin-top: 10px; display: inline-block; font-size: 13px; color: #fff; font-weight: 600; background: #0369a1; border-radius: 6px; padding: 7px 11px; }
         .warn { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 10px; padding: 12px; }
         pre { white-space: pre-wrap; word-break: break-word; }
     </style>
@@ -248,15 +397,19 @@ if (isset($body['data']) && is_array($body['data'])) {
                     $price = $room['price_per_night'] ?? $room['price'] ?? $room['rate'] ?? null;
                     $capacity = $room['capacity'] ?? $room['max_guests'] ?? $room['occupancy'] ?? null;
                     $imageUrl = pickImageUrl($room, $apiBase);
+                    $roomLink = roomLinkUrl($room, $apiBase);
                 ?>
                 <article class="card">
-                    <img src="<?php echo e($imageUrl); ?>" alt="<?php echo e($name); ?>">
-                    <div class="card-body">
-                        <h2 class="title"><?php echo e($name); ?></h2>
-                        <?php if ($price !== null): ?><p class="meta">Price: <?php echo e($price); ?> per night</p><?php endif; ?>
-                        <?php if ($capacity !== null): ?><p class="meta">Capacity: <?php echo e($capacity); ?> guests</p><?php endif; ?>
-                        <?php if ($description !== ''): ?><p class="desc"><?php echo e($description); ?></p><?php endif; ?>
-                    </div>
+                    <a class="card-link" href="<?php echo e($roomLink); ?>" target="_blank" rel="noopener noreferrer">
+                        <img src="<?php echo e($imageUrl); ?>" alt="<?php echo e($name); ?>" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'640\' height=\'420\' viewBox=\'0 0 640 420\'%3E%3Cdefs%3E%3ClinearGradient id=\'g\' x1=\'0\' x2=\'1\' y1=\'0\' y2=\'1\'%3E%3Cstop offset=\'0%25\' stop-color=\'%23cbd5e1\'/%3E%3Cstop offset=\'100%25\' stop-color=\'%23e2e8f0\'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=\'640\' height=\'420\' fill=\'url(%23g)\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'Arial,sans-serif\' font-size=\'28\' fill=\'%23334155\'%3ERoom image unavailable%3C/text%3E%3C/svg%3E';">
+                        <div class="card-body">
+                            <h2 class="title"><?php echo e($name); ?></h2>
+                            <?php if ($price !== null): ?><p class="meta">Price: <?php echo e($price); ?> per night</p><?php endif; ?>
+                            <?php if ($capacity !== null): ?><p class="meta">Capacity: <?php echo e($capacity); ?> guests</p><?php endif; ?>
+                            <?php if ($description !== ''): ?><p class="desc"><?php echo e($description); ?></p><?php endif; ?>
+                            <span class="cta">Open details</span>
+                        </div>
+                    </a>
                 </article>
             <?php endforeach; ?>
         </div>
@@ -271,52 +424,208 @@ if (isset($body['data']) && is_array($body['data'])) {
 </html>
 PHP;
 
-    $phpSnippetAvailability = <<<'PHP'
+        $phpSnippetAvailability = <<<'PHP'
 <?php
 $apiBase = '__API_BASE__';
 $apiKey = '__API_KEY__';
 
-$endpoint = '/availability?room_id=1&check_in=2026-05-10&check_out=2026-05-12';
-$ch = curl_init($apiBase . $endpoint);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-API-Key: ' . $apiKey]);
-$response = curl_exec($ch);
-$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
+function e($value) {
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
 
-echo 'HTTP ' . $status . PHP_EOL;
-echo $response . PHP_EOL;
+function callAvailability($apiBase, $apiKey, $roomId, $checkIn, $checkOut) {
+        $query = http_build_query([
+                'room_id' => $roomId,
+                'check_in' => $checkIn,
+                'check_out' => $checkOut,
+        ]);
+        $url = $apiBase . '/availability?' . $query;
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-API-Key: ' . $apiKey]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        $response = curl_exec($ch);
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return [
+                'status' => (int)$status,
+                'raw' => is_string($response) ? $response : '',
+                'json' => is_string($response) ? json_decode($response, true) : null,
+        ];
+}
+
+$roomId = isset($_GET['room_id']) ? (int)$_GET['room_id'] : 1;
+$checkIn = isset($_GET['check_in']) ? trim((string)$_GET['check_in']) : date('Y-m-d', strtotime('+7 days'));
+$checkOut = isset($_GET['check_out']) ? trim((string)$_GET['check_out']) : date('Y-m-d', strtotime('+9 days'));
+
+$result = callAvailability($apiBase, $apiKey, $roomId, $checkIn, $checkOut);
+$payload = is_array($result['json']) ? $result['json'] : [];
+$data = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : $payload;
+$isAvailable = null;
+if (isset($data['available'])) {
+        $isAvailable = (bool)$data['available'];
+} elseif (isset($payload['available'])) {
+        $isAvailable = (bool)$payload['available'];
+}
+?>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
+    <title>Check Availability</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: #f8fafc; color: #0f172a; }
+        .card { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
+        .title { margin: 0 0 12px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; }
+        input, button { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px; font-size: 14px; }
+        button { background: #0f172a; color: #fff; cursor: pointer; }
+        .status { margin-top: 14px; padding: 12px; border-radius: 10px; }
+        .ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+        .no { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .neutral { background: #e0f2fe; color: #0c4a6e; border: 1px solid #7dd3fc; }
+        .meta { margin: 10px 0 0; color: #475569; font-size: 14px; }
+        pre { white-space: pre-wrap; word-break: break-word; background: #0b1220; color: #e2e8f0; border-radius: 8px; padding: 10px; }
+        @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1 class="title">Room Availability</h1>
+        <form method="GET" class="grid">
+            <input type="number" name="room_id" min="1" value="<?php echo e($roomId); ?>" placeholder="Room ID">
+            <input type="date" name="check_in" value="<?php echo e($checkIn); ?>">
+            <input type="date" name="check_out" value="<?php echo e($checkOut); ?>">
+            <button type="submit">Check</button>
+        </form>
+
+        <?php
+            $statusClass = 'neutral';
+            $statusText = 'Availability response loaded.';
+            if ($isAvailable === true) {
+                    $statusClass = 'ok';
+                    $statusText = 'Available for selected dates.';
+            } elseif ($isAvailable === false) {
+                    $statusClass = 'no';
+                    $statusText = 'Not available for selected dates.';
+            }
+        ?>
+        <div class="status <?php echo e($statusClass); ?>">
+            <strong>HTTP <?php echo (int)$result['status']; ?></strong> - <?php echo e($statusText); ?>
+        </div>
+
+        <p class="meta">Room ID: <?php echo e($roomId); ?> | Check-in: <?php echo e($checkIn); ?> | Check-out: <?php echo e($checkOut); ?></p>
+
+        <?php if (is_array($result['json'])): ?>
+            <pre><?php echo e(json_encode($result['json'], JSON_PRETTY_PRINT)); ?></pre>
+        <?php else: ?>
+            <pre><?php echo e($result['raw']); ?></pre>
+        <?php endif; ?>
+    </div>
+</body>
+</html>
 PHP;
 
-    $phpSnippetCreateBooking = <<<'PHP'
+        $phpSnippetCreateBooking = <<<'PHP'
 <?php
 $apiBase = '__API_BASE__';
 $apiKey = '__API_KEY__';
 
+function e($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function createBooking($apiBase, $apiKey, $payload) {
+    $ch = curl_init($apiBase . '/bookings');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'X-API-Key: ' . $apiKey,
+        'Content-Type: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    $response = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return [
+        'status' => (int)$status,
+        'raw' => is_string($response) ? $response : '',
+        'json' => is_string($response) ? json_decode($response, true) : null,
+    ];
+}
+
 $payload = [
-  'guest_name' => 'Test Guest',
-  'guest_email' => 'guest@example.com',
-  'guest_phone' => '+2650000000',
-  'room_id' => 1,
-  'check_in_date' => '2026-05-10',
-  'check_out_date' => '2026-05-12',
-  'number_of_guests' => 2
+    'guest_name' => trim((string)($_POST['guest_name'] ?? 'Test Guest')),
+    'guest_email' => trim((string)($_POST['guest_email'] ?? 'guest@example.com')),
+    'guest_phone' => trim((string)($_POST['guest_phone'] ?? '+2650000000')),
+    'room_id' => max(1, (int)($_POST['room_id'] ?? 1)),
+    'check_in_date' => trim((string)($_POST['check_in_date'] ?? date('Y-m-d', strtotime('+7 days')))),
+    'check_out_date' => trim((string)($_POST['check_out_date'] ?? date('Y-m-d', strtotime('+9 days')))),
+    'number_of_guests' => max(1, (int)($_POST['number_of_guests'] ?? 2))
 ];
 
-$ch = curl_init($apiBase . '/bookings');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-  'X-API-Key: ' . $apiKey,
-  'Content-Type: application/json'
-]);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-$response = curl_exec($ch);
-$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
+$result = null;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    $result = createBooking($apiBase, $apiKey, $payload);
+}
+?>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
+    <title>Create Booking</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: #f8fafc; color: #0f172a; }
+        .card { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
+        .title { margin: 0 0 12px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        input, button { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px; font-size: 14px; }
+        button { background: #0f172a; color: #fff; cursor: pointer; }
+        .full { grid-column: 1 / -1; }
+        .result { margin-top: 14px; padding: 12px; border-radius: 10px; }
+        .ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+        .no { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        pre { white-space: pre-wrap; word-break: break-word; background: #0b1220; color: #e2e8f0; border-radius: 8px; padding: 10px; }
+        @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1 class="title">Create Booking</h1>
+        <form method="POST" class="grid">
+            <input name="guest_name" value="<?php echo e($payload['guest_name']); ?>" placeholder="Guest name">
+            <input type="email" name="guest_email" value="<?php echo e($payload['guest_email']); ?>" placeholder="Guest email">
+            <input name="guest_phone" value="<?php echo e($payload['guest_phone']); ?>" placeholder="Guest phone">
+            <input type="number" min="1" name="room_id" value="<?php echo e($payload['room_id']); ?>" placeholder="Room ID">
+            <input type="date" name="check_in_date" value="<?php echo e($payload['check_in_date']); ?>">
+            <input type="date" name="check_out_date" value="<?php echo e($payload['check_out_date']); ?>">
+            <input type="number" min="1" name="number_of_guests" value="<?php echo e($payload['number_of_guests']); ?>" placeholder="Guests">
+            <button class="full" type="submit">Create booking</button>
+        </form>
 
-echo 'HTTP ' . $status . PHP_EOL;
-echo $response . PHP_EOL;
+        <?php if (is_array($result)): ?>
+            <?php $ok = $result['status'] >= 200 && $result['status'] < 300; ?>
+            <div class="result <?php echo $ok ? 'ok' : 'no'; ?>">
+                <strong>HTTP <?php echo (int)$result['status']; ?></strong>
+                <?php if ($ok): ?> - Booking request sent successfully.<?php else: ?> - Booking request failed.<?php endif; ?>
+            </div>
+            <?php if (is_array($result['json'])): ?>
+                <pre><?php echo e(json_encode($result['json'], JSON_PRETTY_PRINT)); ?></pre>
+            <?php else: ?>
+                <pre><?php echo e($result['raw']); ?></pre>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+</body>
+</html>
 PHP;
 
     $phpSnippetClass = str_replace(['__API_BASE__', '__API_KEY__'], [$apiBaseEsc, $apiKeyEsc], $phpSnippetClass);
@@ -847,7 +1156,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
 
                 <h3 style="margin-top:14px;"><i class="fas fa-eye"></i> Client Preview</h3>
                 <div class="preview-card">
-                                        <p style="margin:0 0 8px;">Success flow now renders a visual rooms grid (image, room name, price, capacity, description) so clients see real content immediately.</p>
+                                        <p style="margin:0 0 8px;">Success flow now renders a visual rooms grid (image, room name, price, capacity, description) with clickable cards that open room details.</p>
                     <p style="margin:8px 0 0;">And if the key is missing/invalid:</p>
                     <pre>{
   "success": false,
