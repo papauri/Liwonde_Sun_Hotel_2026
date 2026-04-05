@@ -368,20 +368,45 @@ if (isset($body['data']['rooms']) && is_array($body['data']['rooms'])) {
     <link rel="icon" href="data:,">
     <title>Rooms Showcase</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f5f7fb; margin: 0; padding: 24px; color: #0f172a; }
-        .status { margin: 0 0 16px; font-size: 14px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
-        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(15,23,42,.06); transition: transform .18s ease, box-shadow .18s ease; }
-        .card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(15,23,42,.12); }
-        .card img { width: 100%; height: 180px; object-fit: cover; display: block; background: #e2e8f0; }
-        .card-link { display: block; text-decoration: none; color: inherit; }
-        .card-body { padding: 12px; }
-        .title { margin: 0 0 6px; font-size: 18px; }
-        .meta { margin: 4px 0; color: #475569; font-size: 13px; }
-        .desc { margin: 8px 0 0; color: #334155; font-size: 14px; line-height: 1.45; }
-        .cta { margin-top: 10px; display: inline-block; font-size: 13px; color: #fff; font-weight: 600; background: #0369a1; border-radius: 6px; padding: 7px 11px; }
+        :root {
+            --bg: #f2f6ff;
+            --surface: #ffffff;
+            --line: #dbe4f0;
+            --text: #0f172a;
+            --muted: #475569;
+            --brand: #0369a1;
+            --brand-2: #0c4a6e;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: radial-gradient(circle at top right, #dbeafe 0%, var(--bg) 45%, #eef2ff 100%); margin: 0; padding: 24px; color: var(--text); }
+        .status { margin: 0 0 18px; font-size: 14px; color: #1e293b; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+        .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 16px 36px rgba(15,23,42,.10); transform: translateY(10px); opacity: 0; animation: reveal .55s ease forwards; }
+        .card:nth-child(2) { animation-delay: .06s; }
+        .card:nth-child(3) { animation-delay: .12s; }
+        .card:nth-child(4) { animation-delay: .18s; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 22px 42px rgba(15,23,42,.16); }
+        .card-media { position: relative; aspect-ratio: 16 / 10; background: #0f172a; overflow: hidden; }
+        .card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s ease; }
+        .card:hover img { transform: scale(1.04); }
+        .hd-chip { position: absolute; right: 10px; top: 10px; background: rgba(15,23,42,.8); color: #fff; border-radius: 999px; padding: 5px 10px; font-size: 11px; letter-spacing: .03em; }
+        .card-body { padding: 14px; }
+        .title { margin: 0 0 6px; font-size: 20px; }
+        .meta { margin: 4px 0; color: var(--muted); font-size: 13px; }
+        .desc { margin: 8px 0 0; color: #334155; font-size: 14px; line-height: 1.5; }
+        .actions { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn { border: 0; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+        .btn-hd { background: #e0f2fe; color: #075985; }
+        .btn-details { color: #fff; background: linear-gradient(135deg, var(--brand), var(--brand-2)); }
         .warn { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 10px; padding: 12px; }
         pre { white-space: pre-wrap; word-break: break-word; }
+        .lightbox { position: fixed; inset: 0; background: rgba(2,6,23,.88); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 50; }
+        .lightbox.active { display: flex; animation: fadeIn .22s ease; }
+        .lightbox-inner { max-width: 1100px; width: 100%; }
+        .lightbox img { width: 100%; max-height: 85vh; object-fit: contain; border-radius: 12px; border: 1px solid rgba(255,255,255,.22); }
+        .lightbox-close { margin-top: 10px; background: #fff; color: #0f172a; border: 0; border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes reveal { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     </style>
 </head>
 <body>
@@ -402,16 +427,20 @@ if (isset($body['data']['rooms']) && is_array($body['data']['rooms'])) {
                     $roomLink = roomLinkUrl($room, $apiBase);
                 ?>
                 <article class="card">
-                    <a class="card-link" href="<?php echo e($roomLink); ?>" target="_blank" rel="noopener noreferrer">
-                        <img src="<?php echo e($imageUrl); ?>" alt="<?php echo e($name); ?>" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'640\' height=\'420\' viewBox=\'0 0 640 420\'%3E%3Cdefs%3E%3ClinearGradient id=\'g\' x1=\'0\' x2=\'1\' y1=\'0\' y2=\'1\'%3E%3Cstop offset=\'0%25\' stop-color=\'%23cbd5e1\'/%3E%3Cstop offset=\'100%25\' stop-color=\'%23e2e8f0\'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=\'640\' height=\'420\' fill=\'url(%23g)\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'Arial,sans-serif\' font-size=\'28\' fill=\'%23334155\'%3ERoom image unavailable%3C/text%3E%3C/svg%3E';">
-                        <div class="card-body">
-                            <h2 class="title"><?php echo e($name); ?></h2>
-                            <?php if ($price !== null): ?><p class="meta">Price: <?php echo e($price); ?> per night</p><?php endif; ?>
-                            <?php if ($capacity !== null): ?><p class="meta">Capacity: <?php echo e($capacity); ?> guests</p><?php endif; ?>
-                            <?php if ($description !== ''): ?><p class="desc"><?php echo e($description); ?></p><?php endif; ?>
-                            <span class="cta">Open details</span>
+                    <figure class="card-media">
+                        <img src="<?php echo e($imageUrl); ?>" alt="<?php echo e($name); ?>" loading="lazy" decoding="async" data-full="<?php echo e($imageUrl); ?>" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'640\' height=\'420\' viewBox=\'0 0 640 420\'%3E%3Cdefs%3E%3ClinearGradient id=\'g\' x1=\'0\' x2=\'1\' y1=\'0\' y2=\'1\'%3E%3Cstop offset=\'0%25\' stop-color=\'%23cbd5e1\'/%3E%3Cstop offset=\'100%25\' stop-color=\'%23e2e8f0\'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=\'640\' height=\'420\' fill=\'url(%23g)\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'Arial,sans-serif\' font-size=\'28\' fill=\'%23334155\'%3ERoom image unavailable%3C/text%3E%3C/svg%3E';">
+                        <span class="hd-chip">HD</span>
+                    </figure>
+                    <div class="card-body">
+                        <h2 class="title"><?php echo e($name); ?></h2>
+                        <?php if ($price !== null): ?><p class="meta">Price: <?php echo e($price); ?> per night</p><?php endif; ?>
+                        <?php if ($capacity !== null): ?><p class="meta">Capacity: <?php echo e($capacity); ?> guests</p><?php endif; ?>
+                        <?php if ($description !== ''): ?><p class="desc"><?php echo e($description); ?></p><?php endif; ?>
+                        <div class="actions">
+                            <button type="button" class="btn btn-hd js-open-hd" data-image="<?php echo e($imageUrl); ?>">View HD</button>
+                            <a class="btn btn-details" href="<?php echo e($roomLink); ?>" target="_blank" rel="noopener noreferrer">Open details</a>
                         </div>
-                    </a>
+                    </div>
                 </article>
             <?php endforeach; ?>
         </div>
@@ -422,6 +451,49 @@ if (isset($body['data']['rooms']) && is_array($body['data']['rooms'])) {
             <pre><?php echo e($roomsResponse['raw']); ?></pre>
         </div>
     <?php endif; ?>
+    <div class="lightbox" id="hdLightbox" aria-hidden="true">
+        <div class="lightbox-inner">
+            <img id="hdLightboxImage" src="" alt="Room image preview">
+            <button class="lightbox-close" id="hdLightboxClose" type="button">Close</button>
+        </div>
+    </div>
+    <script>
+        (function () {
+            var lightbox = document.getElementById('hdLightbox');
+            var lightboxImg = document.getElementById('hdLightboxImage');
+            var closeBtn = document.getElementById('hdLightboxClose');
+
+            function closeLightbox() {
+                lightbox.classList.remove('active');
+                lightboxImg.src = '';
+                lightbox.setAttribute('aria-hidden', 'true');
+            }
+
+            document.querySelectorAll('.js-open-hd').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var src = this.getAttribute('data-image') || '';
+                    if (!src) {
+                        return;
+                    }
+                    lightboxImg.src = src;
+                    lightbox.classList.add('active');
+                    lightbox.setAttribute('aria-hidden', 'false');
+                });
+            });
+
+            closeBtn.addEventListener('click', closeLightbox);
+            lightbox.addEventListener('click', function (e) {
+                if (e.target === lightbox) {
+                    closeLightbox();
+                }
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    closeLightbox();
+                }
+            });
+        })();
+    </script>
 </body>
 </html>
 PHP;
@@ -489,7 +561,7 @@ function e($value) {
             --brand-dark: #0c4a6e;
         }
         body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: radial-gradient(circle at top right, #e0f2fe 0%, var(--bg) 45%, #eef2ff 100%); color: var(--text); }
-        .card { max-width: 860px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: 0 14px 34px rgba(15,23,42,.10); }
+        .card { max-width: 860px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: 0 14px 34px rgba(15,23,42,.10); animation: rise .45s ease; }
         .title { margin: 0 0 12px; font-size: 26px; letter-spacing: -.02em; }
         .grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; }
         input, button, select { border: 1px solid #c7d2e3; border-radius: 10px; padding: 10px; font-size: 14px; box-sizing: border-box; }
@@ -504,8 +576,13 @@ function e($value) {
         .room-card { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #fff; }
         .price { font-weight: 700; color: var(--brand); }
         .muted { color: var(--muted); font-size: 13px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 12px; }
+        .stat { border: 1px solid var(--line); background: #f8fbff; border-radius: 12px; padding: 10px; }
+        .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+        .stat-value { margin-top: 3px; font-size: 18px; font-weight: 700; color: #0f172a; }
         pre { white-space: pre-wrap; word-break: break-word; background: #0b1220; color: #e2e8f0; border-radius: 10px; padding: 12px; border: 1px solid #1e293b; }
         @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+        @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -536,6 +613,31 @@ function e($value) {
         </div>
 
         <p class="meta">Room ID: <?php echo e($roomId); ?> | Check-in: <?php echo e($checkIn); ?> | Check-out: <?php echo e($checkOut); ?> | Guests: <?php echo e($guestCount); ?></p>
+
+        <?php
+            $nights = isset($data['dates']['nights']) ? (int)$data['dates']['nights'] : null;
+            $nightly = isset($data['pricing']['price_per_night']) ? (float)$data['pricing']['price_per_night'] : null;
+            $total = isset($data['pricing']['total']) ? (float)$data['pricing']['total'] : null;
+            $currency = (string)($data['pricing']['currency'] ?? '');
+        ?>
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-label">Status</div>
+                <div class="stat-value"><?php echo $isAvailable === true ? 'Available' : ($isAvailable === false ? 'Unavailable' : 'Unknown'); ?></div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Nights</div>
+                <div class="stat-value"><?php echo $nights !== null ? e($nights) : '-'; ?></div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Nightly Rate</div>
+                <div class="stat-value"><?php echo $nightly !== null ? e($currency . ' ' . number_format($nightly, 0)) : '-'; ?></div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Estimated Total</div>
+                <div class="stat-value"><?php echo $total !== null ? e($currency . ' ' . number_format($total, 0)) : '-'; ?></div>
+            </div>
+        </div>
 
         <?php if (isset($data['room']) && is_array($data['room'])): ?>
             <div class="room-card">
@@ -713,7 +815,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             --brand-dark: #0c4a6e;
         }
         body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: radial-gradient(circle at top left, #e0f2fe 0%, var(--bg) 50%, #ecfeff 100%); color: var(--text); }
-        .card { max-width: 860px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: 0 14px 34px rgba(15,23,42,.10); }
+        .card { max-width: 860px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: 0 14px 34px rgba(15,23,42,.10); animation: rise .45s ease; }
         .title { margin: 0 0 12px; font-size: 26px; letter-spacing: -.02em; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         input, button, select, textarea { border: 1px solid #c7d2e3; border-radius: 10px; padding: 10px; font-size: 14px; font-family: inherit; box-sizing: border-box; }
@@ -723,16 +825,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         .full { grid-column: 1 / -1; }
         .result { margin-top: 14px; padding: 12px; border-radius: 10px; font-weight: 600; }
         .meta { margin: 8px 0 0; color: #334155; font-size: 14px; }
+        .steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0 0 12px; }
+        .step { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #f8fbff; font-size: 13px; color: #334155; }
+        .step strong { display: block; color: #0f172a; margin-bottom: 3px; }
+        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
+        .summary-item { border: 1px solid var(--line); border-radius: 10px; background: #f8fbff; padding: 9px; }
+        .summary-item .k { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+        .summary-item .v { margin-top: 3px; font-size: 16px; font-weight: 700; color: #0f172a; }
         .warn { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
         .ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
         .no { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
         pre { white-space: pre-wrap; word-break: break-word; background: #0b1220; color: #e2e8f0; border-radius: 10px; padding: 12px; border: 1px solid #1e293b; }
         @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+        @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div class="card">
         <h1 class="title">Create Booking</h1>
+        <div class="steps">
+            <div class="step"><strong>Step 1</strong>Run availability check to confirm dates, rate, and conflicts.</div>
+            <div class="step"><strong>Step 2</strong>Create booking only when room is available.</div>
+        </div>
         <form method="POST" class="grid">
             <input name="guest_name" value="<?php echo e($payload['guest_name']); ?>" placeholder="Guest name">
             <input type="email" name="guest_email" value="<?php echo e($payload['guest_email']); ?>" placeholder="Guest email">
@@ -769,6 +883,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             <div class="result <?php echo $isAvailable ? 'ok' : 'warn'; ?>">
                 <strong>Availability HTTP <?php echo (int)$availabilityResult['status']; ?></strong>
                 <?php if ($isAvailable): ?> - Room is available for selected dates.<?php else: ?> - Room is not available for selected dates.<?php endif; ?>
+            </div>
+            <div class="summary">
+                <div class="summary-item">
+                    <div class="k">Room</div>
+                    <div class="v"><?php echo e((string)($availabilityData['room']['name'] ?? $payload['room_id'])); ?></div>
+                </div>
+                <div class="summary-item">
+                    <div class="k">Nights</div>
+                    <div class="v"><?php echo e(isset($availabilityData['dates']['nights']) ? (int)$availabilityData['dates']['nights'] : '-'); ?></div>
+                </div>
+                <div class="summary-item">
+                    <div class="k">Total</div>
+                    <div class="v"><?php echo e((string)(($availabilityData['pricing']['currency'] ?? '') . ' ' . number_format((float)($availabilityData['pricing']['total'] ?? 0), 0))); ?></div>
+                </div>
+                <div class="summary-item">
+                    <div class="k">Booking Type</div>
+                    <div class="v"><?php echo e(ucfirst((string)$payload['booking_type'])); ?></div>
+                </div>
             </div>
             <?php if (isset($availabilityData['pricing']) && is_array($availabilityData['pricing'])): ?>
                 <p class="meta">
