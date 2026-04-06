@@ -176,24 +176,6 @@ try {
     $error = "Unable to load dashboard data.";
 }
 
-// Fetch recent login activity (admin only)
-$activity_log = [];
-if ($user['role'] === 'admin') {
-    try {
-        $log_stmt = $pdo->query("
-            SELECT al.*, au.full_name 
-            FROM admin_activity_log al 
-            LEFT JOIN admin_users au ON al.user_id = au.id 
-            ORDER BY al.created_at DESC 
-            LIMIT 20
-        ");
-        $activity_log = $log_stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        // Table may not exist yet - that's fine
-        $activity_log = [];
-    }
-}
-
 $site_name = getSetting('site_name');
 $currency_symbol = getSetting('currency_symbol');
 ?>
@@ -920,61 +902,6 @@ $currency_symbol = getSetting('currency_symbol');
             </table>
         </div>
     </div>
-
-    <?php if ($user['role'] === 'admin' && !empty($activity_log)): ?>
-    <!-- Login Activity Log -->
-    <div class="today-checkins-section">
-        <h3><i class="fas fa-shield-alt"></i> Recent Login Activity</h3>
-        <div style="overflow-x: auto;">
-            <table class="table" style="width:100%; border-collapse:collapse; font-size:13px;">
-                <thead>
-                    <tr style="background:linear-gradient(135deg, var(--deep-navy, #05090F) 0%, var(--navy, #0A1929) 100%); color:white;">
-                        <th style="padding:10px 14px; text-align:left; font-weight:600; font-size:12px; text-transform:uppercase;">Time</th>
-                        <th style="padding:10px 14px; text-align:left; font-weight:600; font-size:12px; text-transform:uppercase;">User</th>
-                        <th style="padding:10px 14px; text-align:left; font-weight:600; font-size:12px; text-transform:uppercase;">Action</th>
-                        <th style="padding:10px 14px; text-align:left; font-weight:600; font-size:12px; text-transform:uppercase;">Details</th>
-                        <th style="padding:10px 14px; text-align:left; font-weight:600; font-size:12px; text-transform:uppercase;">IP Address</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($activity_log as $log): 
-                        $action_colors = [
-                            'login_success' => ['bg' => '#e8f5e9', 'color' => '#2e7d32', 'icon' => 'fa-sign-in-alt', 'label' => 'Login'],
-                            'login_failed' => ['bg' => '#fbe9e7', 'color' => '#c62828', 'icon' => 'fa-times-circle', 'label' => 'Failed Login'],
-                            'login_blocked' => ['bg' => '#fff3e0', 'color' => '#e65100', 'icon' => 'fa-lock', 'label' => 'Blocked'],
-                            'logout' => ['bg' => '#e3f2fd', 'color' => '#1565c0', 'icon' => 'fa-sign-out-alt', 'label' => 'Logout'],
-                            'password_reset' => ['bg' => '#f3e5f5', 'color' => '#7b1fa2', 'icon' => 'fa-key', 'label' => 'Password Reset'],
-                        ];
-                        $ac = $action_colors[$log['action']] ?? ['bg' => '#f5f5f5', 'color' => '#666', 'icon' => 'fa-info-circle', 'label' => $log['action']];
-                    ?>
-                    <tr style="border-bottom:1px solid #f0f0f0;">
-                        <td style="padding:10px 14px; white-space:nowrap; color:#888; font-size:12px;">
-                            <?php echo date('M j, g:ia', strtotime($log['created_at'])); ?>
-                        </td>
-                        <td style="padding:10px 14px;">
-                            <strong><?php echo htmlspecialchars($log['full_name'] ?? $log['username'] ?? '—'); ?></strong>
-                            <?php if ($log['username']): ?>
-                                <span style="color:#999; font-size:11px;">(<?php echo htmlspecialchars($log['username']); ?>)</span>
-                            <?php endif; ?>
-                        </td>
-                        <td style="padding:10px 14px;">
-                            <span style="display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; background:<?php echo $ac['bg']; ?>; color:<?php echo $ac['color']; ?>;">
-                                <i class="fas <?php echo $ac['icon']; ?>"></i> <?php echo $ac['label']; ?>
-                            </span>
-                        </td>
-                        <td style="padding:10px 14px; color:#555; font-size:12px;">
-                            <?php echo htmlspecialchars($log['details'] ?? ''); ?>
-                        </td>
-                        <td style="padding:10px 14px; font-family:monospace; font-size:12px; color:#888;">
-                            <?php echo htmlspecialchars($log['ip_address'] ?? ''); ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <?php endif; ?>
 
     <script src="js/admin-components.js"></script>
     <script src="js/admin-mobile.js"></script>
