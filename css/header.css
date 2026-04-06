@@ -336,6 +336,220 @@
     transform: rotate(-45deg) translate(6px, -6px);
 }
 
+/* Keep desktop nav items perfectly aligned on one row */
+@media (min-width: 1200px) {
+    .navbar {
+        gap: 24px;
+    }
+
+    .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+        margin-right: 8px;
+    }
+
+    .logo-image {
+        display: block;
+        height: 30px;
+    }
+
+    .logo-text {
+        display: inline-flex;
+        align-items: center;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .logo-hotel-icon {
+        display: block;
+        margin-left: 0;
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+
+    .nav-menu {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: nowrap;
+        gap: 6px;
+        margin-left: auto;
+    }
+
+    .nav-item,
+    .nav-item-cta {
+        display: flex;
+        align-items: center;
+    }
+
+    .nav-link,
+    .nav-cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .nav-cta i {
+        margin-right: 8px;
+        line-height: 1;
+    }
+}
+
+/* Ultra-wide desktop polish */
+@media (min-width: 1600px) {
+    .header {
+        padding: 18px 32px;
+    }
+
+    .navbar {
+        max-width: 1720px;
+        gap: 28px;
+    }
+
+    .logo {
+        gap: 14px;
+        margin-right: 14px;
+    }
+
+    .logo-image {
+        height: 34px;
+    }
+
+    .logo-text {
+        font-size: 1.62rem;
+        letter-spacing: 0.6px;
+    }
+
+    .logo-hotel-icon {
+        width: 20px;
+        height: 20px;
+    }
+
+    .nav-menu {
+        gap: 8px;
+    }
+
+    .nav-link {
+        padding: 13px 20px;
+        font-size: 1.02rem;
+    }
+
+    .nav-item-cta {
+        margin-left: 18px;
+    }
+
+    .nav-cta {
+        padding: 13px 30px;
+        font-size: 0.97rem;
+    }
+}
+
+/* Prevent CTA clipping on mid ultra-wide desktops */
+@media (min-width: 1600px) and (max-width: 1799px) {
+    .header {
+        padding: 16px 24px;
+    }
+
+    .navbar {
+        max-width: 1660px;
+        gap: 18px;
+    }
+
+    .logo {
+        gap: 10px;
+        margin-right: 8px;
+    }
+
+    .logo-image {
+        height: 31px;
+    }
+
+    .logo-text {
+        font-size: 1.5rem;
+        letter-spacing: 0.5px;
+    }
+
+    .logo-hotel-icon {
+        width: 18px;
+        height: 18px;
+    }
+
+    .nav-menu {
+        gap: 4px;
+    }
+
+    .nav-link {
+        padding: 11px 15px;
+        font-size: 0.95rem;
+    }
+
+    .nav-item-cta {
+        margin-left: 10px;
+    }
+
+    .nav-cta {
+        padding: 11px 22px;
+        font-size: 0.9rem;
+        letter-spacing: 0.45px;
+    }
+}
+
+/* Full HD and larger desktop polish */
+@media (min-width: 1920px) {
+    .header {
+        padding: 20px 40px;
+    }
+
+    .navbar {
+        max-width: 1840px;
+        gap: 32px;
+    }
+
+    .logo {
+        gap: 16px;
+        margin-right: 18px;
+    }
+
+    .logo-image {
+        height: 36px;
+    }
+
+    .logo-text {
+        font-size: 1.72rem;
+        letter-spacing: 0.65px;
+    }
+
+    .logo-hotel-icon {
+        width: 22px;
+        height: 22px;
+    }
+
+    .nav-menu {
+        gap: 10px;
+    }
+
+    .nav-link {
+        padding: 14px 22px;
+        font-size: 1.06rem;
+    }
+
+    .nav-item-cta {
+        margin-left: 22px;
+    }
+
+    .nav-cta {
+        padding: 14px 34px;
+        font-size: 1rem;
+        letter-spacing: 0.55px;
+    }
+}
+
 /* ============================================
    DESKTOP 1200-1499px BREAKPOINT
    Fix overlapping, match 1500px appearance

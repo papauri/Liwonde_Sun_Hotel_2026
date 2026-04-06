@@ -492,17 +492,14 @@ try {
         }
 
         @media (max-width: 520px) {
-            .menu-type-tabs {
-                border-radius: 16px;
-                padding: 4px;
-                width: calc(100% - 8px);
+            .menu-type-tabs-wrap {
+                padding: 8px;
+                border-radius: 14px;
             }
             .menu-type-tab {
-                padding: 11px 16px;
-                font-size: 0.82rem;
-                flex: 1;
-                justify-content: center;
-                border-radius: 12px;
+                padding: 9px 12px;
+                font-size: 0.76rem;
+                gap: 6px;
             }
         }
         
@@ -549,6 +546,209 @@ try {
         /* Menu Categories */
         .menu-categories-wrapper {
             min-height: 400px;
+        }
+
+        @keyframes chipFloatIn {
+            from {
+                opacity: 0;
+                transform: translateY(6px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .menu-type-tabs-wrap {
+                margin: 0 0 20px;
+                padding: 10px;
+                border-radius: 16px;
+                background: rgba(255, 255, 255, 0.88);
+                border: 1px solid rgba(139, 115, 85, 0.18);
+                box-shadow: 0 10px 26px rgba(10, 20, 35, 0.08);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                animation: chipFloatIn 0.28s ease-out;
+            }
+
+            .menu-type-tabs-wrap .menu-type-tabs {
+                width: 100%;
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 8px;
+                margin: 0;
+                padding: 0;
+                border: 0;
+                border-radius: 0;
+                background: transparent;
+            }
+
+            .menu-type-tab {
+                width: 100%;
+                min-width: 0;
+                padding: 10px 12px;
+                font-size: 0.8rem;
+                font-weight: 600;
+                letter-spacing: 0.2px;
+                line-height: 1.3;
+                text-align: center;
+                justify-content: center;
+                border-radius: 14px;
+                border: 1px solid rgba(139, 115, 85, 0.25);
+                background: rgba(247, 242, 234, 0.92);
+                color: #6a5b4c;
+                white-space: normal;
+                word-break: break-word;
+                position: relative;
+                overflow: hidden;
+                transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, color 0.22s ease;
+                animation: chipFloatIn 0.24s ease-out both;
+            }
+
+            .menu-type-tab::before {
+                content: '';
+                position: absolute;
+                inset: 0;
+                border-radius: inherit;
+                padding: 1px;
+                background: linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(139, 115, 85, 0.95));
+                -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+                mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+                -webkit-mask-composite: xor;
+                mask-composite: exclude;
+                opacity: 0;
+                transition: opacity 0.24s ease;
+                pointer-events: none;
+            }
+
+            .menu-type-tab:active {
+                transform: scale(0.98);
+            }
+
+            .menu-type-tab.active {
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 243, 235, 0.98) 100%);
+                color: #4f3b27;
+                border-color: transparent;
+                box-shadow: 0 7px 18px rgba(117, 88, 59, 0.22);
+            }
+
+            .menu-type-tab.active::before {
+                opacity: 1;
+            }
+
+            .menu-categories-wrapper {
+                min-height: 0;
+                padding: 14px;
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.88);
+                border: 1px solid rgba(139, 115, 85, 0.16);
+                box-shadow: 0 10px 24px rgba(10, 20, 35, 0.06);
+                backdrop-filter: blur(6px);
+                -webkit-backdrop-filter: blur(6px);
+                animation: chipFloatIn 0.3s ease-out;
+            }
+
+            .menu-tabs {
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 18px;
+                padding-bottom: 0;
+            }
+
+            .menu-tab {
+                flex: 0 1 calc(50% - 6px);
+                max-width: 100%;
+                min-width: 120px;
+                padding: 10px 12px;
+                border: 1px solid rgba(139, 115, 85, 0.2);
+                border-radius: 14px;
+                background: rgba(247, 242, 234, 0.92);
+                font-size: 0.79rem;
+                font-weight: 600;
+                letter-spacing: 0.2px;
+                text-transform: none;
+                white-space: normal;
+                word-break: break-word;
+                text-align: center;
+                position: relative;
+                overflow: hidden;
+                transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.22s ease, color 0.22s ease;
+                animation: chipFloatIn 0.24s ease-out both;
+            }
+
+            .menu-tab::before {
+                content: '';
+                position: absolute;
+                inset: 0;
+                border-radius: inherit;
+                padding: 1px;
+                background: linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(139, 115, 85, 0.95));
+                -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+                mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+                -webkit-mask-composite: xor;
+                mask-composite: exclude;
+                opacity: 0;
+                transition: opacity 0.24s ease;
+                pointer-events: none;
+            }
+
+            .menu-tab:active {
+                transform: scale(0.98);
+            }
+
+            .menu-tab.active {
+                color: #4f3b27;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 243, 235, 0.98) 100%);
+                border-color: transparent;
+                box-shadow: 0 6px 14px rgba(117, 88, 59, 0.2);
+            }
+
+            .menu-tab.active::before {
+                opacity: 1;
+            }
+
+            .menu-tab.active::after {
+                display: none;
+            }
+
+            .menu-type-tab:nth-child(1),
+            .menu-tab:nth-child(1) { animation-delay: 0.02s; }
+            .menu-type-tab:nth-child(2),
+            .menu-tab:nth-child(2) { animation-delay: 0.05s; }
+            .menu-type-tab:nth-child(3),
+            .menu-tab:nth-child(3) { animation-delay: 0.08s; }
+            .menu-tab:nth-child(4) { animation-delay: 0.11s; }
+            .menu-tab:nth-child(5) { animation-delay: 0.14s; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .menu-type-tabs-wrap,
+            .menu-categories-wrapper,
+            .menu-type-tab,
+            .menu-tab {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
+
+        @media (max-width: 520px) {
+            .menu-type-tabs-wrap .menu-type-tabs {
+                grid-template-columns: 1fr;
+                gap: 7px;
+            }
+
+            .menu-categories-wrapper {
+                padding: 12px;
+            }
+
+            .menu-tab {
+                flex: 1 1 100%;
+                min-width: 0;
+                padding: 9px 10px;
+                font-size: 0.75rem;
+            }
         }
         .menu-category {
             display: none;
@@ -938,9 +1138,80 @@ try {
             .reservation-grid {
                 grid-template-columns: 1fr;
             }
+
+            .reservation-card {
+                padding: 20px;
+            }
         }
 
         @media (max-width: 640px) {
+            .reservation-section .container,
+            .reservation-grid,
+            .reservation-card,
+            .reservation-form,
+            .reservation-form .form-group {
+                width: 100%;
+                max-width: 100%;
+                min-width: 0;
+                box-sizing: border-box;
+            }
+
+            .reservation-grid {
+                gap: 16px;
+            }
+
+            .reservation-card {
+                padding: 16px;
+                border-radius: 10px;
+            }
+
+            .reservation-form .form-control,
+            .reservation-form input[type="date"],
+            .reservation-form input[type="time"],
+            .reservation-form input[type="number"],
+            .reservation-form select,
+            .reservation-form textarea {
+                width: 100%;
+                max-width: 100%;
+                min-height: 40px;
+                padding: 8px 10px;
+                font-size: 14px;
+                box-sizing: border-box;
+            }
+
+            .reservation-form textarea {
+                min-height: 92px;
+            }
+
+            .reservation-form .phone-input-group {
+                display: flex;
+                gap: 8px;
+                align-items: stretch;
+                width: 100%;
+                max-width: 100%;
+            }
+
+            .reservation-form .phone-input-group .phone-code-select {
+                flex: 0 0 104px;
+                width: 104px;
+                min-width: 104px;
+                max-width: 104px;
+            }
+
+            .reservation-form .phone-input-group .phone-number-input {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
+            .reservation-form .btn,
+            .reservation-form .btn-primary {
+                width: 100%;
+                min-height: 42px;
+                padding: 10px 12px;
+                font-size: 13px;
+                letter-spacing: 0.5px;
+            }
+
             .restaurant-hero-actions .btn,
             .menu-cta .btn,
             .qr-menu-actions .btn {
@@ -950,6 +1221,38 @@ try {
 
             .qr-menu-actions {
                 width: 100%;
+            }
+        }
+
+        @media (max-width: 380px) {
+            .reservation-form .form-control,
+            .reservation-form input[type="date"],
+            .reservation-form input[type="time"],
+            .reservation-form input[type="number"],
+            .reservation-form select,
+            .reservation-form textarea {
+                min-height: 38px;
+                padding: 7px 9px;
+                font-size: 13px;
+            }
+
+            .reservation-form .btn,
+            .reservation-form .btn-primary {
+                min-height: 40px;
+                padding: 9px 10px;
+                font-size: 12.5px;
+            }
+
+            .reservation-form .phone-input-group {
+                flex-direction: column;
+            }
+
+            .reservation-form .phone-input-group .phone-code-select,
+            .reservation-form .phone-input-group .phone-number-input {
+                width: 100%;
+                min-width: 0;
+                max-width: 100%;
+                flex: 1 1 auto;
             }
         }
     </style>
@@ -1193,7 +1496,7 @@ try {
 
                         <div class="form-group">
                             <label for="special_requests">Special Requests (Optional)</label>
-                            <textarea class="form-control" id="special_requests" name="special_requests" rows="4" placeholder="Dietary requirements, seating preference, accessibility needs...\"><?php echo htmlspecialchars($_POST['special_requests'] ?? ''); ?></textarea>
+                            <textarea class="form-control" id="special_requests" name="special_requests" rows="4" placeholder="Dietary requirements, seating preference, accessibility needs..."><?php echo htmlspecialchars($_POST['special_requests'] ?? ''); ?></textarea>
                         </div>
 
                         <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Submit Reservation</button>
@@ -1329,8 +1632,39 @@ try {
             menuTabs.querySelectorAll('.menu-tab').forEach(tab => {
                 tab.addEventListener('click', function() {
                     const category = this.getAttribute('data-category');
-                    switchCategory(category);
+                    switchCategory(category, this);
                 });
+            });
+        }
+
+        // On mobile, scroll selected menu/tab area into the correct viewing position.
+        function focusTabAndItems(tabEl, contentEl = null) {
+            if (!tabEl || window.innerWidth > 900) return;
+
+            const headerEl = document.querySelector('.header');
+            const visualGap = window.innerWidth <= 480 ? 3 : 5;
+            const headerOffset = (headerEl ? headerEl.offsetHeight : 72) + visualGap;
+
+            // For category clicks, jump to first item in that category.
+            if (contentEl) {
+                const firstItem = contentEl.querySelector('.menu-item');
+                const anchorEl = firstItem || contentEl;
+                const anchorTop = anchorEl.getBoundingClientRect().top + window.pageYOffset;
+                const targetY = Math.max(0, anchorTop - headerOffset);
+
+                window.scrollTo({
+                    top: targetY,
+                    behavior: 'smooth'
+                });
+                return;
+            }
+
+            const tabTop = tabEl.getBoundingClientRect().top + window.pageYOffset;
+            const targetY = Math.max(0, tabTop - headerOffset);
+
+            window.scrollTo({
+                top: targetY,
+                behavior: 'smooth'
             });
         }
         
@@ -1373,7 +1707,7 @@ try {
         }
         
         // Switch category
-        function switchCategory(category) {
+        function switchCategory(category, triggerTab = null) {
             currentCategory = category;
             
             // Update active tab
@@ -1385,10 +1719,14 @@ try {
             menuContent.querySelectorAll('.menu-category').forEach(cat => {
                 cat.classList.toggle('active', cat.getAttribute('data-category') === category);
             });
+
+            const activeTab = triggerTab || menuTabs.querySelector(`.menu-tab[data-category="${category}"]`);
+            const activeCategory = menuContent.querySelector(`.menu-category[data-category="${category}"]`);
+            focusTabAndItems(activeTab, activeCategory);
         }
         
         // Switch menu type
-        function switchMenuType(menuType) {
+        function switchMenuType(menuType, triggerTab = null) {
             if (currentMenuType === menuType) return;
             
             currentMenuType = menuType;
@@ -1401,6 +1739,9 @@ try {
             
             // Fetch new menu data
             fetchMenuData(menuType);
+
+            const activeTypeTab = triggerTab || document.querySelector(`.menu-type-tab[data-type="${menuType}"]`);
+            focusTabAndItems(activeTypeTab);
         }
         
         // Escape HTML to prevent XSS
@@ -1414,7 +1755,7 @@ try {
         menuTypeTabs.forEach(tab => {
             tab.addEventListener('click', function() {
                 const menuType = this.getAttribute('data-type');
-                switchMenuType(menuType);
+                switchMenuType(menuType, this);
             });
         });
         
