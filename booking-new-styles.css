@@ -421,6 +421,36 @@ textarea.form-control {
     background: #6c757d;
 }
 
+/* Occupancy selector responsiveness for small devices */
+.occupancy-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.occupancy-card {
+    flex: 1 1 140px;
+    min-width: 110px;
+}
+
+@media (max-width: 640px) {
+    .occupancy-options {
+        gap: 10px;
+    }
+
+    .occupancy-card {
+        flex: 1 1 calc(50% - 10px);
+        min-width: 0 !important;
+        padding: 10px !important;
+    }
+}
+
+@media (max-width: 420px) {
+    .occupancy-card {
+        flex: 1 1 100%;
+    }
+}
+
 .legend-color.selected {
     background: var(--gold);
 }

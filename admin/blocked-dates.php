@@ -781,15 +781,26 @@ $site_name = getSetting('site_name');
     populateUnitSelect('singleRoomSelect', 'singleRoomUnitSelect', '');
     populateUnitSelect('rangeRoomSelect', 'rangeRoomUnitSelect', '');
 
-    document.getElementById('filterRoomSelect').addEventListener('change', function() {
-        populateUnitSelect('filterRoomSelect', 'filterRoomUnitSelect', 'all');
-    });
-    document.getElementById('singleRoomSelect').addEventListener('change', function() {
-        populateUnitSelect('singleRoomSelect', 'singleRoomUnitSelect', '');
-    });
-    document.getElementById('rangeRoomSelect').addEventListener('change', function() {
-        populateUnitSelect('rangeRoomSelect', 'rangeRoomUnitSelect', '');
-    });
+    const filterRoomSelect = document.getElementById('filterRoomSelect');
+    if (filterRoomSelect) {
+        filterRoomSelect.addEventListener('change', function() {
+            populateUnitSelect('filterRoomSelect', 'filterRoomUnitSelect', 'all');
+        });
+    }
+
+    const singleRoomSelect = document.getElementById('singleRoomSelect');
+    if (singleRoomSelect) {
+        singleRoomSelect.addEventListener('change', function() {
+            populateUnitSelect('singleRoomSelect', 'singleRoomUnitSelect', '');
+        });
+    }
+
+    const rangeRoomSelect = document.getElementById('rangeRoomSelect');
+    if (rangeRoomSelect) {
+        rangeRoomSelect.addEventListener('change', function() {
+            populateUnitSelect('rangeRoomSelect', 'rangeRoomUnitSelect', '');
+        });
+    }
     </script>
     <script src="js/admin-components.js"></script>
 

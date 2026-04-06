@@ -227,7 +227,7 @@ $currency_symbol = getSetting('currency_symbol');
         .booking-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 1120px;
+            min-width: 980px;
         }
         .booking-table th {
             background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 100%);
@@ -356,6 +356,7 @@ $currency_symbol = getSetting('currency_symbol');
             }
             .booking-table {
                 font-size: 12px;
+                min-width: 900px;
             }
             .booking-table th,
             .booking-table td {
@@ -369,7 +370,7 @@ $currency_symbol = getSetting('currency_symbol');
             }
             .booking-table {
                 font-size: 11px;
-                min-width: 980px;
+                min-width: 820px;
             }
             .booking-table th,
             .booking-table td {
@@ -388,12 +389,16 @@ $currency_symbol = getSetting('currency_symbol');
                 z-index: 3;
             }
             .action-buttons {
-                flex-direction: column;
+                display: grid;
+                grid-template-columns: 1fr;
                 gap: 6px;
+                width: 100%;
             }
             .action-buttons .btn {
                 font-size: 11px;
                 padding: 5px 8px;
+                justify-content: center;
+                width: 100%;
             }
         }
     </style>

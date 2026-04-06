@@ -593,17 +593,20 @@ if (!$booking) {
     }
 
     // Update max guests when room changes
-    document.getElementById('room_id').addEventListener('change', function() {
-        const selected = this.options[this.selectedIndex];
-        const maxGuests = parseInt(selected.dataset.maxGuests) || 10;
-        const guestsInput = document.getElementById('number_of_guests');
-        guestsInput.max = maxGuests;
-        document.getElementById('maxGuestsHint').textContent = maxGuests;
-        if (parseInt(guestsInput.value) > maxGuests) {
-            guestsInput.value = maxGuests;
-        }
-        loadAvailableUnits();
-    });
+    const roomSelectEl = document.getElementById('room_id');
+    if (roomSelectEl) {
+        roomSelectEl.addEventListener('change', function() {
+            const selected = this.options[this.selectedIndex];
+            const maxGuests = parseInt(selected.dataset.maxGuests) || 10;
+            const guestsInput = document.getElementById('number_of_guests');
+            guestsInput.max = maxGuests;
+            document.getElementById('maxGuestsHint').textContent = maxGuests;
+            if (parseInt(guestsInput.value) > maxGuests) {
+                guestsInput.value = maxGuests;
+            }
+            loadAvailableUnits();
+        });
+    }
 
     document.addEventListener('DOMContentLoaded', function() {
         loadAvailableUnits();

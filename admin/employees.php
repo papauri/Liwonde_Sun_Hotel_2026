@@ -482,6 +482,37 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
         }
         .btn-edit { background: #e0f2fe; color: #0369a1; }
         .btn-delete { background: #fee2e2; color: #b91c1c; }
+
+        @media (max-width: 768px) {
+            .panel form[method="POST"] {
+                width: 100%;
+            }
+
+            .panel form[method="POST"] input[type="text"] {
+                min-width: 0 !important;
+                width: 100%;
+            }
+
+            .table-wrap {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .emp-table {
+                min-width: 760px;
+            }
+
+            .action-group .btn-inline {
+                width: 100%;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .emp-table {
+                min-width: 700px;
+            }
+        }
     </style>
 </head>
 <body>

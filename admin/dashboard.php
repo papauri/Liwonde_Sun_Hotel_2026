@@ -348,7 +348,7 @@ $currency_symbol = getSetting('currency_symbol');
         @media (max-width: 480px) {
             .table-container .table {
                 font-size: 11px;
-                min-width: 720px;
+                min-width: 640px;
             }
 
             .table-container .table th,
@@ -375,6 +375,16 @@ $currency_symbol = getSetting('currency_symbol');
             .table-container .table td:last-child a {
                 font-size: 11px;
                 padding: 5px 8px;
+                display: inline-flex;
+                width: 100%;
+                justify-content: center;
+                margin-top: 4px;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .table-container .table {
+                min-width: 580px;
             }
         }
     </style>

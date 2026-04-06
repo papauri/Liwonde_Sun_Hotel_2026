@@ -224,6 +224,103 @@ footer {
 }
 
 /* ============================================
+   ADMIN BUTTONS
+   ============================================ */
+.btn,
+.admin-content button,
+.admin-content input[type="submit"],
+.admin-content input[type="button"],
+.admin-content a.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #f8fafc;
+    color: #1f2937;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.btn:hover,
+.admin-content button:hover,
+.admin-content input[type="submit"]:hover,
+.admin-content input[type="button"]:hover,
+.admin-content a.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn:focus,
+.admin-content button:focus,
+.admin-content input[type="submit"]:focus,
+.admin-content input[type="button"]:focus,
+.admin-content a.btn:focus {
+    outline: 2px solid rgba(212, 175, 55, 0.45);
+    outline-offset: 2px;
+}
+
+.btn:disabled,
+.admin-content button:disabled,
+.admin-content input[type="submit"]:disabled,
+.admin-content input[type="button"]:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--gold, #D4AF37) 0%, #c49b2e 100%);
+    color: var(--deep-navy, #0A1929);
+    box-shadow: 0 8px 18px rgba(212, 175, 55, 0.2);
+}
+
+.btn-primary:hover {
+    box-shadow: 0 10px 20px rgba(212, 175, 55, 0.28);
+}
+
+.btn-secondary {
+    background: #f8fafc;
+    color: #334155;
+    border-color: #cbd5e1;
+}
+
+.btn-outline {
+    background: transparent;
+    color: #334155;
+    border-color: #cbd5e1;
+}
+
+.btn-outline:hover {
+    background: #f8fafc;
+}
+
+.btn-success {
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.btn-danger {
+    background: #dc2626;
+    color: #ffffff;
+}
+
+.btn-warning {
+    background: #f59e0b;
+    color: #111827;
+}
+
+.btn-info {
+    background: #0ea5e9;
+    color: #ffffff;
+}
+
+/* ============================================
    ADMIN PAGE HEADER
    ============================================ */
 .page-header {
@@ -770,6 +867,48 @@ select.form-control {
     .btn {
         padding: 6px 12px;
         font-size: 12px;
+    }
+
+    /* Global fallback for admin pages with horizontally wide tables */
+    .table-responsive,
+    .table-container,
+    .task-table-wrap,
+    .table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .table-responsive table,
+    .table-container table,
+    .task-table-wrap table,
+    .table-wrap table {
+        min-width: 700px;
+    }
+
+    .table-responsive th,
+    .table-responsive td,
+    .table-container th,
+    .table-container td {
+        white-space: nowrap;
+    }
+
+    .action-group,
+    .actions-cell,
+    .quick-actions,
+    .action-buttons {
+        width: 100%;
+    }
+
+    .action-group .btn,
+    .action-group button,
+    .actions-cell .btn,
+    .actions-cell button,
+    .quick-actions .btn,
+    .quick-actions button,
+    .action-buttons .btn,
+    .action-buttons button {
+        width: 100%;
+        justify-content: center;
     }
 }
 

@@ -421,7 +421,7 @@ $site_name = getSetting('site_name');
             }
 
             .table-responsive table {
-                min-width: 980px;
+                min-width: 840px;
                 font-size: 11px;
             }
 
@@ -453,6 +453,14 @@ $site_name = getSetting('site_name');
             .btn-action {
                 padding: 5px 8px;
                 font-size: 11px;
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .table-responsive table {
+                min-width: 760px;
             }
         }
     </style>

@@ -156,26 +156,32 @@ document.addEventListener('DOMContentLoaded', function() {
         // Skip if it's just a hash or empty
         if (href === '#' || href === '') return;
 
-        // Extract the hash part from the href
-        let targetId = href;
-        if (href.includes('#')) {
-            targetId = '#' + href.split('#')[1];
-        }
-
-        // Skip if no hash found
-        if (targetId === '#') return;
-
-        // Check if target exists on current page
-        const targetSection = document.querySelector(targetId);
-        if (!targetSection) {
-            // If target doesn't exist on this page, let the link work normally
+        let linkUrl;
+        try {
+            linkUrl = new URL(href, window.location.href);
+        } catch (err) {
             return;
         }
 
-        // Check if this is a link to the current page (index.php#rooms)
-        const isCurrentPageLink = href.startsWith(window.location.pathname) ||
-                                 href.startsWith('index.php') ||
-                                 (href.includes('#') && !href.includes('http'));
+        const targetId = linkUrl.hash;
+        if (!targetId || targetId === '#') {
+            return;
+        }
+
+        const currentUrl = new URL(window.location.href);
+        const normalizedTargetPath = linkUrl.pathname.replace(/\/+$/, '');
+        const normalizedCurrentPath = currentUrl.pathname.replace(/\/+$/, '');
+        const isCurrentPageLink = linkUrl.origin === currentUrl.origin && normalizedTargetPath === normalizedCurrentPath;
+
+        if (!isCurrentPageLink) {
+            // Let browser navigate to target page + anchor normally.
+            return;
+        }
+
+        const targetSection = document.querySelector(targetId);
+        if (!targetSection) {
+            return;
+        }
 
         if (isCurrentPageLink) {
             // Prevent default for same-page anchors
@@ -285,29 +291,40 @@ document.addEventListener('DOMContentLoaded', function() {
     // The is_nav_active() function in header.php sets the correct active class
     
     // Intersection Observer for fade-in animations
-    const observerOptions = {
-        threshold: 0.1,
-        rootMargin: '0px 0px -50px 0px'
-    };
-    
-    const intersectionObserver = new IntersectionObserver(function(entries) {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.style.opacity = '1';
-                entry.target.style.transform = 'translateY(0)';
-                intersectionObserver.unobserve(entry.target);
-            }
-        });
-    }, observerOptions);
-    
-    // Observe all cards
+    // Keep reveal animations off on mobile to avoid scroll-time "staggering".
     const cards = document.querySelectorAll('.room-card, .facility-card, .testimonial-card');
-    cards.forEach((card, index) => {
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(30px)';
-        card.style.transition = `all 0.6s ease ${index * 0.1}s`;
-        intersectionObserver.observe(card);
-    });
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const enableRevealAnimations = window.innerWidth > 768 && !prefersReducedMotion;
+
+    if (enableRevealAnimations) {
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const intersectionObserver = new IntersectionObserver(function(entries) {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                    intersectionObserver.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        cards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(30px)';
+            card.style.transition = `all 0.6s ease ${index * 0.1}s`;
+            intersectionObserver.observe(card);
+        });
+    } else {
+        cards.forEach(card => {
+            card.style.opacity = '1';
+            card.style.transform = 'none';
+            card.style.transition = 'none';
+        });
+    }
 
     // Scroll to Top Button
     const scrollToTopBtn = document.getElementById('scrollToTop');
@@ -639,6 +656,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (galleryCarousel && galleryItems.length > 0) {
         let currentGalleryIndex = 0;
         let itemsToShow = getItemsToShow();
+        const carouselWrapper = document.querySelector('.gallery-carousel-wrapper');
+
+        function getMaxGalleryIndex() {
+            return Math.max(0, galleryItems.length - itemsToShow);
+        }
+
+        function updateGalleryNavState() {
+            if (!carouselWrapper) return;
+            const isStatic = getMaxGalleryIndex() === 0;
+            carouselWrapper.classList.toggle('is-static', isStatic);
+        }
         
         function getItemsToShow() {
             if (window.innerWidth <= 768) return 1;
@@ -649,6 +677,9 @@ document.addEventListener('DOMContentLoaded', function() {
         function updateCarousel(smooth = true) {
             const itemWidth = galleryItems[0].offsetWidth;
             const gap = 20;
+            const maxIndex = getMaxGalleryIndex();
+
+            currentGalleryIndex = Math.max(0, Math.min(currentGalleryIndex, maxIndex));
             const offset = currentGalleryIndex * (itemWidth + gap);
             
             galleryCarousel.style.transition = smooth ? 'transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none';
@@ -658,16 +689,19 @@ document.addEventListener('DOMContentLoaded', function() {
             galleryDots.forEach((dot, index) => {
                 dot.classList.toggle('active', index === currentGalleryIndex);
             });
+
+            updateGalleryNavState();
         }
         
         function nextSlide() {
-            const maxIndex = Math.max(0, galleryItems.length - itemsToShow);
-            currentGalleryIndex = Math.min(currentGalleryIndex + 1, maxIndex);
+            const maxIndex = getMaxGalleryIndex();
+            currentGalleryIndex = currentGalleryIndex >= maxIndex ? 0 : currentGalleryIndex + 1;
             updateCarousel();
         }
         
         function prevSlide() {
-            currentGalleryIndex = Math.max(currentGalleryIndex - 1, 0);
+            const maxIndex = getMaxGalleryIndex();
+            currentGalleryIndex = currentGalleryIndex <= 0 ? maxIndex : currentGalleryIndex - 1;
             updateCarousel();
         }
         
@@ -683,7 +717,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Dot navigation
         galleryDots.forEach((dot, index) => {
             dot.addEventListener('click', () => {
-                currentGalleryIndex = index;
+                const maxIndex = getMaxGalleryIndex();
+                currentGalleryIndex = Math.min(index, maxIndex);
                 updateCarousel();
             });
         });
@@ -692,7 +727,6 @@ document.addEventListener('DOMContentLoaded', function() {
         let autoplayInterval = setInterval(nextSlide, 4000);
         
         // Pause on hover
-        const carouselWrapper = document.querySelector('.gallery-carousel-wrapper');
         if (carouselWrapper) {
             carouselWrapper.addEventListener('mouseenter', () => {
                 clearInterval(autoplayInterval);
@@ -711,7 +745,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const newItemsToShow = getItemsToShow();
                 if (newItemsToShow !== itemsToShow) {
                     itemsToShow = newItemsToShow;
-                    currentGalleryIndex = Math.min(currentGalleryIndex, Math.max(0, galleryItems.length - itemsToShow));
+                    currentGalleryIndex = Math.min(currentGalleryIndex, getMaxGalleryIndex());
                     updateCarousel(false);
                 }
             }, 250);

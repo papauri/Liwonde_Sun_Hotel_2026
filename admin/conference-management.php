@@ -524,6 +524,29 @@ try {
             color: var(--navy);
             cursor: pointer;
         }
+
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .table-container .table {
+            min-width: 980px;
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .quick-actions .btn,
+        .quick-actions button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         @media (max-width: 768px) {
             .room-list {
                 grid-template-columns: 1fr;
@@ -536,6 +559,47 @@ try {
             }
             .room-actions .btn {
                 width: 100%;
+            }
+
+            .table-container .table {
+                min-width: 900px;
+            }
+
+            .quick-actions .btn,
+            .quick-actions button {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .table-container .table {
+                min-width: 820px;
+            }
+
+            .table-container .table th,
+            .table-container .table td {
+                white-space: nowrap;
+                padding: 6px 8px;
+            }
+
+            .table-container .table td:last-child,
+            .table-container .table th:last-child {
+                position: sticky;
+                right: 0;
+                background: #fff;
+                z-index: 2;
+                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
+            }
+
+            .table-container .table thead th:last-child {
+                background: #f8f9fa;
+                z-index: 3;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .table-container .table {
+                min-width: 760px;
             }
         }
     </style>

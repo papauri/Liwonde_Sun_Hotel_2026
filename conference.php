@@ -766,6 +766,13 @@ function resolveConferenceImage(?string $imagePath): string
 
         @media (max-width: 480px) {
 
+            .phone-input-group > select {
+                width: 96px !important;
+                flex: 0 0 96px !important;
+                min-width: 96px !important;
+                max-width: 96px !important;
+            }
+
             .conference-room-image {
                 height: 180px;
             }

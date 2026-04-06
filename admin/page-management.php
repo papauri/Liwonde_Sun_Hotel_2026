@@ -417,6 +417,32 @@ $csrf_token = generateCsrfToken();
                 display: block;
                 margin-bottom: 4px;
             }
+
+            .action-group {
+                width: 100%;
+            }
+
+            .action-group .btn-toggle,
+            .action-group button {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .edit-modal {
+                width: calc(100% - 24px);
+                padding: 20px;
+                max-height: calc(100vh - 30px);
+                overflow-y: auto;
+            }
+
+            .edit-modal .modal-actions {
+                flex-direction: column;
+            }
+
+            .edit-modal .modal-actions .btn-cancel,
+            .edit-modal .modal-actions .btn-submit {
+                width: 100%;
+            }
         }
     </style>
 </head>
@@ -651,9 +677,12 @@ $csrf_token = generateCsrfToken();
         document.getElementById('editOverlay').classList.remove('active');
     }
     // Close on overlay click
-    document.getElementById('editOverlay').addEventListener('click', function(e) {
-        if (e.target === this) closeEditModal();
-    });
+    const editOverlay = document.getElementById('editOverlay');
+    if (editOverlay) {
+        editOverlay.addEventListener('click', function(e) {
+            if (e.target === this) closeEditModal();
+        });
+    }
     // Close on Escape
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeEditModal();

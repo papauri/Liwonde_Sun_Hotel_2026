@@ -528,6 +528,7 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
         .task-table {
             width: 100%; border-collapse: collapse;
             font-size: 13px;
+            min-width: 980px;
         }
         .task-table th,
         .task-table td {
@@ -571,6 +572,48 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
         .btn-edit     { background: #e0f2fe; color: #0369a1; }
         .btn-delete   { background: #fee2e2; color: #b91c1c; }
         .action-group { display: flex; flex-wrap: wrap; gap: 4px; }
+
+        @media (max-width: 480px) {
+            .task-table {
+                min-width: 840px;
+                font-size: 11px;
+            }
+
+            .task-table th,
+            .task-table td {
+                white-space: nowrap;
+                padding: 6px 8px;
+            }
+
+            .task-table th:last-child,
+            .task-table td:last-child {
+                position: sticky;
+                right: 0;
+                background: #fff;
+                z-index: 2;
+                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
+            }
+
+            .task-table thead th:last-child {
+                background: #f9fafb;
+                z-index: 3;
+            }
+
+            .action-group {
+                width: 100%;
+            }
+
+            .action-group .btn-inline {
+                width: 100%;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .task-table {
+                min-width: 760px;
+            }
+        }
 
         /* ── Date/Time display ───────────────────────────────── */
         .dt-range { font-size: 12px; white-space: nowrap; }

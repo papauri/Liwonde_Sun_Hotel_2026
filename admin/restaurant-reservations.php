@@ -222,6 +222,57 @@ try {
             .search-bar {
                 flex-direction: column;
             }
+
+            .search-bar input {
+                min-width: 0;
+            }
+
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .table-container .table {
+                min-width: 940px;
+            }
+
+            .action-buttons .btn,
+            .action-buttons button {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .table-container .table {
+                min-width: 820px;
+            }
+
+            .table-container .table th,
+            .table-container .table td {
+                white-space: nowrap;
+                padding: 6px 8px;
+            }
+
+            .table-container .table td:last-child,
+            .table-container .table th:last-child {
+                position: sticky;
+                right: 0;
+                background: #fff;
+                z-index: 2;
+                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
+            }
+
+            .table-container .table thead th:last-child {
+                background: #f8f9fa;
+                z-index: 3;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .table-container .table {
+                min-width: 760px;
+            }
         }
     </style>
 </head>

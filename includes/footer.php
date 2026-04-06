@@ -72,7 +72,25 @@ require_once __DIR__ . '/visitor-tracker.php';
                 <h4><?php echo htmlspecialchars($column_name); ?></h4>
                 <ul class="minimalist-footer-links">
                     <?php foreach ($links as $link): ?>
-                    <li><a href="<?php echo htmlspecialchars($link['link_url']); ?>"><?php echo htmlspecialchars($link['link_text']); ?></a></li>
+                    <?php
+                        $rawLinkUrl = trim((string)($link['link_url'] ?? ''));
+                        $resolvedLinkUrl = $rawLinkUrl;
+
+                        // Ensure hash links always resolve to the homepage sections from non-index pages.
+                        if ($rawLinkUrl !== '' && strpos($rawLinkUrl, '#') === 0 && !$is_index_page) {
+                            $resolvedLinkUrl = siteUrl('index.php' . $rawLinkUrl);
+                        }
+
+                        // Prevent empty href attributes from producing broken anchors.
+                        if ($resolvedLinkUrl === '') {
+                            $resolvedLinkUrl = '#top';
+                        }
+
+                        $isExternalFooterLink = preg_match('#^https?://#i', $resolvedLinkUrl) === 1;
+                    ?>
+                    <li>
+                        <a href="<?php echo htmlspecialchars($resolvedLinkUrl); ?>"<?php echo $isExternalFooterLink ? ' target="_blank" rel="noopener noreferrer"' : ''; ?>><?php echo htmlspecialchars($link['link_text']); ?></a>
+                    </li>
                     <?php endforeach; ?>
                 </ul>
             </div>

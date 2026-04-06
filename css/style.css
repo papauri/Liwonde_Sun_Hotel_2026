@@ -142,10 +142,31 @@ body {
     flex-direction: column;
 }
 
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 110px;
+}
+
+/* Keep anchored sections visible below the fixed header. */
+[id] {
+    scroll-margin-top: 110px;
+}
+
 img {
     max-width: 100%;
     height: auto;
     display: block;
+}
+
+iframe,
+video,
+embed,
+object {
+    max-width: 100%;
+}
+
+table {
+    width: 100%;
 }
 
 a {
@@ -169,6 +190,22 @@ button {
     width: 100%;
     padding: 0 20px;
     margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 0 14px;
+    }
+
+    /* Make wide content scroll instead of breaking layout on small screens. */
+    .table-responsive,
+    .content-table,
+    table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
 }
 
 /* ============================================
@@ -4058,7 +4095,7 @@ button:disabled,
     background-size: cover;
     background-position: center 40%;
     background-attachment: fixed;
-    margin-top: 70px;
+    margin-top: 0;
 }
 
 @media (min-width: 769px) {
@@ -6545,7 +6582,7 @@ button:disabled,
     /* Gym page mobile */
     .page-hero {
         min-height: 350px;
-        margin-top: 70px;
+        margin-top: 0;
     }
     
     .page-hero h1 {
@@ -6596,14 +6633,35 @@ button:disabled,
     }
     
     /* Forms mobile */
-    input[type="text"],
-    input[type="email"],
-    input[type="tel"],
-    input[type="date"],
-    select,
-    textarea {
-        font-size: 16px; /* Prevent zoom on iOS */
-        padding: 12px 16px;
+    form input[type="text"],
+    form input[type="email"],
+    form input[type="tel"],
+    form input[type="date"],
+    form select,
+    form textarea,
+    form .form-control {
+        font-size: 15px !important;
+        line-height: 1.35;
+        padding: 9px 11px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box;
+    }
+
+    form,
+    .form-grid,
+    .form-group,
+    .phone-input-group {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .form-grid > *,
+    .form-group > * {
+        min-width: 0;
+        max-width: 100%;
     }
     
     /* Mobile menu improvements */
@@ -6656,6 +6714,18 @@ button:disabled,
     .rooms-hero__content h1,
     .page-hero h1 {
         font-size: 26px;
+    }
+
+    form input[type="text"],
+    form input[type="email"],
+    form input[type="tel"],
+    form input[type="date"],
+    form select,
+    form textarea,
+    form .form-control {
+        font-size: 14px !important;
+        padding: 8px 10px !important;
+        border-radius: 8px;
     }
     
     .gallery-carousel-item {
@@ -7103,7 +7173,9 @@ button:disabled,
 @media (max-width: 640px) {
     .hero-controls {
         bottom: 16px;
-        gap: 14px;
+        gap: 10px;
+        padding: 6px 10px;
+        max-width: calc(100vw - 16px);
     }
 
     .hero-nav {
@@ -7113,7 +7185,7 @@ button:disabled,
     }
 
     .hero-indicators {
-        gap: 9px;
+        gap: 7px;
     }
 
     .hero-indicator {
@@ -7122,12 +7194,17 @@ button:disabled,
     }
 
     .hero-indicator.active {
-        width: 64px;
-        height: 64px;
+        width: auto;
+        height: auto;
+        min-width: 58px;
+        max-width: 82px;
+        min-height: 28px;
+        padding: 5px 9px;
     }
 
     .hero-indicator.active::after {
-        font-size: 5px;
+        font-size: 8px;
+        line-height: 1.2;
     }
 
     .hero-indicators::after {
@@ -7187,7 +7264,9 @@ button:disabled,
 @media (max-width: 480px) {
     .hero-controls {
         bottom: 12px;
-        gap: 10px;
+        gap: 8px;
+        padding: 5px 8px;
+        max-width: calc(100vw - 12px);
     }
 
     .hero-nav {
@@ -7197,13 +7276,47 @@ button:disabled,
     }
 
     .hero-indicator.active {
-        width: 54px;
-        height: 54px;
+        width: auto;
+        height: auto;
+        min-width: 50px;
+        max-width: 70px;
+        min-height: 24px;
+        padding: 4px 7px;
     }
 
     .hero-indicator.active::after {
-        font-size: 4px;
+        font-size: 7px;
         letter-spacing: 0.3px;
+    }
+}
+
+@media (max-width: 360px) {
+    .hero-controls {
+        gap: 6px;
+        padding: 4px 6px;
+        max-width: calc(100vw - 8px);
+    }
+
+    .hero-nav {
+        width: 28px;
+        height: 28px;
+        font-size: 11px;
+    }
+
+    .hero-indicators {
+        gap: 5px;
+    }
+
+    .hero-indicator.active {
+        min-width: 42px;
+        max-width: 58px;
+        min-height: 21px;
+        padding: 3px 6px;
+    }
+
+    .hero-indicator.active::after {
+        font-size: 6px;
+        letter-spacing: 0.2px;
     }
 }
 
@@ -8988,17 +9101,282 @@ body.modal-open {
 
 /* ============================================
    CONTENT-VISIBILITY — SKIP RENDERING OFF-SCREEN
-   Improves initial paint speed on mobile by
-   deferring layout/paint of below-fold sections.
+   Keep this optimization on larger screens only to avoid
+   perceived "staggered loading" while scrolling on mobile.
    ============================================ */
-.about-section,
-#rooms,
-#facilities,
-.upcoming-events-section,
-.hotel-gallery-section,
-.hotel-reviews-section,
-#testimonials {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 600px;
+@media (min-width: 992px) {
+    .about-section,
+    #rooms,
+    #facilities,
+    .upcoming-events-section,
+    .hotel-gallery-section,
+    .hotel-reviews-section,
+    #testimonials {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 600px;
+    }
+}
+
+/* ============================================
+   FINAL GALLERY NAV REFINEMENT
+   Consistent placement and touch-friendly behavior.
+   ============================================ */
+.hotel-gallery-section .gallery-carousel-wrapper {
+    position: relative;
+    isolation: isolate;
+    display: block;
+}
+
+.hotel-gallery-section .gallery-carousel-container {
+    width: 100%;
+}
+
+.hotel-gallery-section .gallery-nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    background: rgba(10, 25, 41, 0.58);
+    border: 1.5px solid rgba(212, 175, 55, 0.52);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 20px rgba(5, 9, 15, 0.35);
+    opacity: 0.96;
+    visibility: visible;
+    transition:
+        transform 0.24s ease,
+        opacity 0.24s ease,
+        background-color 0.24s ease,
+        border-color 0.24s ease,
+        box-shadow 0.24s ease,
+        visibility 0.24s ease;
+    will-change: transform, opacity;
+}
+
+.hotel-gallery-section .gallery-nav-prev {
+    left: 14px;
+}
+
+.hotel-gallery-section .gallery-nav-next {
+    right: 14px;
+}
+
+.hotel-gallery-section .gallery-nav-btn:hover {
+    transform: translateY(-50%) scale(1.06);
+}
+
+.hotel-gallery-section .gallery-nav-btn:active {
+    transform: translateY(-50%) scale(0.96);
+}
+
+.hotel-gallery-section .gallery-nav-btn:focus-visible {
+    outline: 2px solid rgba(212, 175, 55, 0.9);
+    outline-offset: 2px;
+}
+
+.hotel-gallery-section .gallery-carousel-wrapper.is-static .gallery-nav-btn {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-50%) scale(0.88);
+}
+
+@media (hover: hover) {
+    .hotel-gallery-section .gallery-carousel-wrapper:hover .gallery-nav-btn {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hotel-gallery-section .gallery-nav-btn {
+        transition: none;
+        will-change: auto;
+    }
+}
+
+@media (max-width: 1024px) {
+    .hotel-gallery-section .gallery-nav-btn {
+        width: 46px;
+        height: 46px;
+    }
+
+    .hotel-gallery-section .gallery-nav-prev {
+        left: 10px;
+    }
+
+    .hotel-gallery-section .gallery-nav-next {
+        right: 10px;
+    }
+}
+
+@media (max-width: 768px) {
+    .hotel-gallery-section .gallery-nav-btn {
+        width: 42px;
+        height: 42px;
+    }
+
+    .hotel-gallery-section .gallery-nav-prev {
+        left: 8px;
+    }
+
+    .hotel-gallery-section .gallery-nav-next {
+        right: 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    .hotel-gallery-section .gallery-nav-btn {
+        width: 38px;
+        height: 38px;
+    }
+
+    .hotel-gallery-section .gallery-nav-prev {
+        left: 6px;
+    }
+
+    .hotel-gallery-section .gallery-nav-next {
+        right: 6px;
+    }
+}
+
+@media (max-width: 320px) {
+    .hotel-gallery-section .gallery-nav-btn {
+        width: 34px;
+        height: 34px;
+        font-size: 12px;
+    }
+
+    .hotel-gallery-section .gallery-nav-prev {
+        left: 4px;
+    }
+
+    .hotel-gallery-section .gallery-nav-next {
+        right: 4px;
+    }
+}
+
+/* ============================================
+   FINAL MOBILE SAFETY OVERRIDES
+   Keep hero controls centered and review cards within viewport.
+   ============================================ */
+@media (max-width: 480px) and (orientation: landscape) {
+    .hero-controls {
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 8px;
+        max-width: calc(100vw - 10px);
+        gap: 6px;
+        padding: 4px 6px;
+    }
+
+    .hero-nav {
+        width: 26px;
+        height: 26px;
+        font-size: 10px;
+    }
+
+    .hero-indicator.active {
+        min-width: 40px;
+        max-width: 56px;
+        min-height: 20px;
+        padding: 3px 6px;
+    }
+
+    .hero-indicator.active::after {
+        font-size: 6px;
+    }
+}
+
+@media (max-width: 768px) {
+    .hotel-reviews-list,
+    .reviews-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .hotel-review-card {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+
+    .hotel-review-card * {
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .hotel-review-card .reviewer-name,
+    .hotel-review-card .review-date,
+    .hotel-review-card .review-text,
+    .hotel-review-card .review-comment,
+    .hotel-review-card .review-meta,
+    .hotel-review-card .review-category,
+    .hotel-review-card .response-text,
+    .hotel-review-card .admin-response-text {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+}
+
+@media (max-width: 320px) {
+    .hotel-review-card {
+        padding: 12px;
+        border-radius: 10px;
+    }
+
+    .hotel-review-card .review-header {
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .hotel-review-card .reviewer-avatar {
+        width: 36px;
+        height: 36px;
+        font-size: 0.9rem;
+    }
+
+    .hotel-review-card .reviewer-name {
+        font-size: 0.9rem;
+        line-height: 1.25;
+    }
+
+    .hotel-review-card .review-date,
+    .hotel-review-card .review-meta,
+    .hotel-review-card .review-category,
+    .hotel-review-card .admin-response-date {
+        font-size: 0.75rem;
+    }
+
+    .hotel-review-card .review-rating .star {
+        font-size: 0.85rem;
+    }
+
+    .hotel-review-card .review-rating .rating-number {
+        font-size: 0.8rem;
+    }
+
+    .hotel-review-card .review-text,
+    .hotel-review-card .review-comment,
+    .hotel-review-card .response-text,
+    .hotel-review-card .admin-response-text {
+        font-size: 0.86rem;
+        line-height: 1.45;
+    }
+
+    .hotel-review-card .review-admin-response,
+    .hotel-review-card .admin-response {
+        padding: 10px;
+        margin-top: 10px;
+    }
 }
 

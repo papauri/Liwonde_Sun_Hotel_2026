@@ -616,6 +616,71 @@ $cache_types = [
         .cache-table tr:hover {
             background: #f8f9fa;
         }
+
+        @media (max-width: 768px) {
+            .cache-section {
+                padding: 16px;
+            }
+
+            .cache-overview {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+
+            .cache-stat-card {
+                padding: 16px;
+            }
+
+            .bulk-clear-form,
+            .schedule-form,
+            .cache-toggle-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cache-section form[method="POST"][style*="display: flex"] {
+                flex-direction: column;
+                align-items: stretch !important;
+            }
+
+            .cache-section .btn-action,
+            .cache-section button[type="submit"] {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .cache-table {
+                min-width: 760px;
+                font-size: 11px;
+            }
+
+            .cache-table th,
+            .cache-table td {
+                padding: 6px 8px;
+                white-space: nowrap;
+            }
+
+            .cache-table th:last-child,
+            .cache-table td:last-child {
+                position: sticky;
+                right: 0;
+                background: #fff;
+                z-index: 2;
+                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
+            }
+
+            .cache-table thead th:last-child {
+                background: #f8f9fa;
+                z-index: 3;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .cache-table {
+                min-width: 700px;
+            }
+        }
     </style>
 </head>
 <body>
