@@ -59,7 +59,14 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
         .policy-section ul li { margin-bottom: 6px; }
         .policy-section ul li::marker { color: var(--gold, #D4AF37); }
 
-        .data-table { width: 100%; border-collapse: collapse; margin: 16px 0; border-radius: 10px; overflow: hidden; }
+        .data-table-wrap {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 16px 0;
+            border-radius: 10px;
+        }
+        .data-table { width: 100%; border-collapse: collapse; margin: 0; border-radius: 10px; overflow: hidden; }
         .data-table th { background: var(--navy, #1a1a2e); color: #fff; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
         .data-table td { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13px; color: #555; }
         .data-table tr:last-child td { border-bottom: none; }
@@ -85,6 +92,22 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
             .privacy-nav ul { grid-template-columns: 1fr; }
             .rights-grid { grid-template-columns: 1fr; }
             .policy-section { padding: 24px 20px; }
+            .data-table {
+                min-width: 640px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .privacy-container { padding: 0 14px; }
+            .privacy-header h1 { font-size: 24px; }
+            .policy-section { padding: 20px 16px; }
+            .data-table {
+                min-width: 560px;
+            }
+            .data-table th,
+            .data-table td {
+                padding: 10px 12px;
+            }
         }
     </style>
 </head>
@@ -158,42 +181,44 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
                 <h2><i class="fas fa-cookie-bite"></i> Cookies & Tracking Technologies</h2>
                 <p>Our website uses cookies — small text files stored on your device — to enhance your experience. Here are the cookies we use:</p>
 
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Cookie Name</th>
-                            <th>Type</th>
-                            <th>Purpose</th>
-                            <th>Duration</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>PHPSESSID</code></td>
-                            <td><span class="cookie-type-badge badge-essential">Essential</span></td>
-                            <td>Maintains your session while browsing (e.g., booking form state)</td>
-                            <td>Session</td>
-                        </tr>
-                        <tr>
-                            <td><code>cookie_consent</code></td>
-                            <td><span class="cookie-type-badge badge-essential">Essential</span></td>
-                            <td>Remembers your cookie consent preference</td>
-                            <td>1 year</td>
-                        </tr>
-                        <tr>
-                            <td><code>csrf_token</code></td>
-                            <td><span class="cookie-type-badge badge-essential">Essential</span></td>
-                            <td>Security token to prevent cross-site request forgery attacks</td>
-                            <td>Session</td>
-                        </tr>
-                        <tr>
-                            <td><code>visitor_session</code></td>
-                            <td><span class="cookie-type-badge badge-analytics">Analytics</span></td>
-                            <td>Tracks anonymous browsing session for traffic reports</td>
-                            <td>Session</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="data-table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Cookie Name</th>
+                                <th>Type</th>
+                                <th>Purpose</th>
+                                <th>Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>PHPSESSID</code></td>
+                                <td><span class="cookie-type-badge badge-essential">Essential</span></td>
+                                <td>Maintains your session while browsing (e.g., booking form state)</td>
+                                <td>Session</td>
+                            </tr>
+                            <tr>
+                                <td><code>cookie_consent</code></td>
+                                <td><span class="cookie-type-badge badge-essential">Essential</span></td>
+                                <td>Remembers your cookie consent preference</td>
+                                <td>1 year</td>
+                            </tr>
+                            <tr>
+                                <td><code>csrf_token</code></td>
+                                <td><span class="cookie-type-badge badge-essential">Essential</span></td>
+                                <td>Security token to prevent cross-site request forgery attacks</td>
+                                <td>Session</td>
+                            </tr>
+                            <tr>
+                                <td><code>visitor_session</code></td>
+                                <td><span class="cookie-type-badge badge-analytics">Analytics</span></td>
+                                <td>Tracks anonymous browsing session for traffic reports</td>
+                                <td>Session</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
 
                 <h3>Managing Cookies</h3>
                 <p>When you first visit our website, a cookie banner will ask for your consent. You can choose to:</p>
@@ -211,52 +236,54 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
                 <p>To improve our services and understand our visitors better, we log anonymous session data when you browse our website. This is done through our own internal tracking system — we do <strong>not</strong> use third-party analytics services like Google Analytics.</p>
 
                 <h3>What We Log</h3>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Data Point</th>
-                            <th>Example</th>
-                            <th>Purpose</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Device Type</td>
-                            <td>Desktop, Mobile, Tablet</td>
-                            <td>Optimise website layout for different devices</td>
-                        </tr>
-                        <tr>
-                            <td>Browser</td>
-                            <td>Chrome, Safari, Firefox</td>
-                            <td>Ensure compatibility across browsers</td>
-                        </tr>
-                        <tr>
-                            <td>Operating System</td>
-                            <td>Windows, macOS, Android, iOS</td>
-                            <td>Technical support and compatibility</td>
-                        </tr>
-                        <tr>
-                            <td>Pages Visited</td>
-                            <td>/rooms-gallery.php, /restaurant.php</td>
-                            <td>Understand popular content and user journeys</td>
-                        </tr>
-                        <tr>
-                            <td>Visit Time</td>
-                            <td>2026-02-09 14:30:00</td>
-                            <td>Identify peak traffic times</td>
-                        </tr>
-                        <tr>
-                            <td>Referring Website</td>
-                            <td>google.com, facebook.com</td>
-                            <td>Understand how visitors find us</td>
-                        </tr>
-                        <tr>
-                            <td>IP Address</td>
-                            <td>Partially anonymised</td>
-                            <td>Geographic region identification, security</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="data-table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Data Point</th>
+                                <th>Example</th>
+                                <th>Purpose</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Device Type</td>
+                                <td>Desktop, Mobile, Tablet</td>
+                                <td>Optimise website layout for different devices</td>
+                            </tr>
+                            <tr>
+                                <td>Browser</td>
+                                <td>Chrome, Safari, Firefox</td>
+                                <td>Ensure compatibility across browsers</td>
+                            </tr>
+                            <tr>
+                                <td>Operating System</td>
+                                <td>Windows, macOS, Android, iOS</td>
+                                <td>Technical support and compatibility</td>
+                            </tr>
+                            <tr>
+                                <td>Pages Visited</td>
+                                <td>/rooms-gallery.php, /restaurant.php</td>
+                                <td>Understand popular content and user journeys</td>
+                            </tr>
+                            <tr>
+                                <td>Visit Time</td>
+                                <td>2026-02-09 14:30:00</td>
+                                <td>Identify peak traffic times</td>
+                            </tr>
+                            <tr>
+                                <td>Referring Website</td>
+                                <td>google.com, facebook.com</td>
+                                <td>Understand how visitors find us</td>
+                            </tr>
+                            <tr>
+                                <td>IP Address</td>
+                                <td>Partially anonymised</td>
+                                <td>Geographic region identification, security</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
 
                 <p>Session logs are stored in our secure database and in server log files. This data is used exclusively for internal analytics and is never shared with third parties.</p>
             </section>

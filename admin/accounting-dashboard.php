@@ -449,7 +449,7 @@ try {
         }
 
         .recent-payments-table {
-            min-width: 1320px;
+            min-width: 1180px;
         }
 
         .recent-payments-table td {
@@ -758,18 +758,18 @@ try {
             }
 
             .recent-payments-table {
-                min-width: 1100px;
+                min-width: 980px;
             }
         }
 
         @media (max-width: 480px) {
             .table-container .table {
                 font-size: 11px;
-                min-width: 760px;
+                min-width: 680px;
             }
 
             .recent-payments-table {
-                min-width: 980px;
+                min-width: 860px;
             }
 
             .table-container .table th,
@@ -796,6 +796,10 @@ try {
             .table-container .table td:last-child a {
                 font-size: 11px;
                 padding: 5px 8px;
+                display: inline-flex;
+                margin-top: 4px;
+                width: 100%;
+                justify-content: center;
             }
         }
     </style>

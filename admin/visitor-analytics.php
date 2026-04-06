@@ -256,12 +256,16 @@ try {
                 align-items: stretch !important;
             }
 
+            #customDates span {
+                text-align: center;
+            }
+
             .table-wrapper {
                 overflow-x: auto;
             }
 
             .visitors-table {
-                min-width: 860px;
+                min-width: 760px;
                 font-size: 11px;
             }
 
@@ -269,6 +273,12 @@ try {
             .visitors-table td {
                 padding: 6px 8px;
                 white-space: nowrap;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .visitors-table {
+                min-width: 700px;
             }
         }
     </style>

@@ -632,9 +632,12 @@ sort($categories);
     }
     
     // Close on outside click
-    document.getElementById('galleryModal').addEventListener('click', function(e) {
-        if (e.target === this) closeModal();
-    });
+    const galleryModal = document.getElementById('galleryModal');
+    if (galleryModal) {
+        galleryModal.addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+    }
     
     function toggleActive(id) {
         const formData = new FormData();

@@ -316,6 +316,17 @@ body {
     .two-col { grid-template-columns: 1fr; }
     .menu-cover .hotel-name { font-size: 1.8rem; letter-spacing: 4px; }
     .menu-page { padding: 20px 16px; }
+    .print-bar {
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+    }
+    .print-bar button,
+    .print-bar a {
+        width: 100%;
+        text-align: center;
+        padding: 11px 16px;
+    }
 }
 </style>
 </head>

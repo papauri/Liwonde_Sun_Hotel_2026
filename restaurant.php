@@ -939,6 +939,19 @@ try {
                 grid-template-columns: 1fr;
             }
         }
+
+        @media (max-width: 640px) {
+            .restaurant-hero-actions .btn,
+            .menu-cta .btn,
+            .qr-menu-actions .btn {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .qr-menu-actions {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>

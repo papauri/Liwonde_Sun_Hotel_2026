@@ -1622,39 +1622,42 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
     }
 
     // Auto-upload on file select
-    document.getElementById('roomImageInput').addEventListener('change', function() {
-        const form = document.getElementById('imageUploadForm');
-        const formData = new FormData(form);
-        fetch(window.location.href, {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(r => r.json().catch(() => null))
-        .then(data => {
-            if (data && data.success) {
-                const src = /^https?:\/\//i.test(data.image_url) ? data.image_url : ('../' + data.image_url);
-                document.getElementById('currentImage').src = src + '?t=' + Date.now();
-                document.getElementById('currentImageContainer').style.display = 'block';
-                // Update card image
-                const card = document.querySelector('.room-card[data-id="' + document.getElementById('uploadRoomId').value + '"]');
-                if (card) {
-                    let img = card.querySelector('.room-card-image');
-                    if (img) {
-                        img.src = src + '?t=' + Date.now();
-                        img.style.display = '';
-                        const placeholder = card.querySelector('.no-image-placeholder');
-                        if (placeholder) placeholder.style.display = 'none';
+    const roomImageInput = document.getElementById('roomImageInput');
+    if (roomImageInput) {
+        roomImageInput.addEventListener('change', function() {
+            const form = document.getElementById('imageUploadForm');
+            const formData = new FormData(form);
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json().catch(() => null))
+            .then(data => {
+                if (data && data.success) {
+                    const src = /^https?:\/\//i.test(data.image_url) ? data.image_url : ('../' + data.image_url);
+                    document.getElementById('currentImage').src = src + '?t=' + Date.now();
+                    document.getElementById('currentImageContainer').style.display = 'block';
+                    // Update card image
+                    const card = document.querySelector('.room-card[data-id="' + document.getElementById('uploadRoomId').value + '"]');
+                    if (card) {
+                        let img = card.querySelector('.room-card-image');
+                        if (img) {
+                            img.src = src + '?t=' + Date.now();
+                            img.style.display = '';
+                            const placeholder = card.querySelector('.no-image-placeholder');
+                            if (placeholder) placeholder.style.display = 'none';
+                        }
                     }
+                    form.reset();
+                } else {
+                    alert(data && data.message ? data.message : 'Error uploading image');
                 }
-                form.reset();
-            } else {
-                alert(data && data.message ? data.message : 'Error uploading image');
-            }
-        })
-        .catch(() => alert('Error uploading image'));
-    });
+            })
+            .catch(() => alert('Error uploading image'));
+        });
+    }
 
     // ===== VIDEO MODAL =====
     function openVideoModal(roomId, roomName, videoPath, videoType) {
@@ -1766,24 +1769,27 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
     }
 
     // Handle picture upload
-    document.getElementById('pictureUploadForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        var self = this;
-        fetch('api/room-pictures.php', {
-            method: 'POST',
-            body: new FormData(self),
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.success) {
-                self.reset();
-                loadRoomPictures(document.getElementById('pictureRoomId').value);
-            } else { alert(data.message || 'Error'); }
-        })
-        .catch(function() { alert('Error uploading'); });
-    });
+    const pictureUploadForm = document.getElementById('pictureUploadForm');
+    if (pictureUploadForm) {
+        pictureUploadForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var self = this;
+            fetch('api/room-pictures.php', {
+                method: 'POST',
+                body: new FormData(self),
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    self.reset();
+                    loadRoomPictures(document.getElementById('pictureRoomId').value);
+                } else { alert(data.message || 'Error'); }
+            })
+            .catch(function() { alert('Error uploading'); });
+        });
+    }
 
     // ===== TOGGLE & DELETE =====
     function toggleActive(id) {

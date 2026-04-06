@@ -2,7 +2,7 @@
     // Load base URL helper
     require_once __DIR__ . '/../config/base-url.php';
     ?>
-    <header class="header">
+    <header class="header" id="top">
         <div class="container">
             <nav class="navbar">
                 <!-- Mobile: Hotel icon on far left (separate element) -->

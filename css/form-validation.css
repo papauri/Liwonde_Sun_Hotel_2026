@@ -283,12 +283,118 @@ select.form-control,
 }
 
 @media (max-width: 480px) {
+    .phone-input-group {
+        gap: 6px;
+    }
+
     .phone-input-group > .phone-code-select,
     .phone-input-group .phone-code-select {
-        flex: 0 0 105px !important;
-        width: 105px !important;
-        min-width: 105px !important;
-        max-width: 105px !important;
-        font-size: 13px;
+        flex: 0 0 92px !important;
+        width: 92px !important;
+        min-width: 92px !important;
+        max-width: 92px !important;
+        font-size: 12px;
+        padding: 8px 6px !important;
+    }
+
+    .phone-input-group > .phone-number-input,
+    .phone-input-group .phone-number-input {
+        min-width: 0 !important;
+    }
+}
+
+/* ============================================================
+   Frontend Mobile Form Standardization
+   Ensures compact, consistent control sizing across public pages.
+   ============================================================ */
+@media (max-width: 768px) {
+    form .form-control,
+    form input[type="text"],
+    form input[type="email"],
+    form input[type="tel"],
+    form input[type="date"],
+    form input[type="time"],
+    form input[type="number"],
+    form select,
+    form textarea {
+        min-height: 42px;
+        font-size: 15px !important;
+        line-height: 1.35;
+        padding: 9px 11px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
+    }
+
+    form textarea,
+    form textarea.form-control {
+        min-height: 88px;
+    }
+
+    /* Normalize native picker controls on mobile */
+    form input[type="date"],
+    form input[type="time"],
+    form select,
+    form .phone-code-select,
+    form .form-control[type="date"],
+    form .form-control[type="time"] {
+        min-height: 42px !important;
+        height: 42px;
+        line-height: 1.25;
+        appearance: none;
+        -webkit-appearance: none;
+        background-position: right 10px center;
+        padding-right: 28px !important;
+    }
+
+    form .phone-input-group > .phone-code-select,
+    form .phone-input-group .phone-code-select {
+        height: 42px !important;
+        min-height: 42px !important;
+    }
+
+    form .form-group,
+    form .form-grid,
+    form .phone-input-group {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    form .form-control,
+    form input[type="text"],
+    form input[type="email"],
+    form input[type="tel"],
+    form input[type="date"],
+    form input[type="time"],
+    form input[type="number"],
+    form select,
+    form textarea {
+        min-height: 40px;
+        font-size: 14px !important;
+        padding: 8px 10px !important;
+        border-radius: 8px;
+    }
+
+    form textarea,
+    form textarea.form-control {
+        min-height: 82px;
+    }
+
+    form input[type="date"],
+    form input[type="time"],
+    form select,
+    form .phone-code-select,
+    form .form-control[type="date"],
+    form .form-control[type="time"] {
+        min-height: 40px !important;
+        height: 40px;
+        padding-right: 24px !important;
+    }
+
+    form .phone-input-group > .phone-code-select,
+    form .phone-input-group .phone-code-select {
+        height: 40px !important;
+        min-height: 40px !important;
     }
 }

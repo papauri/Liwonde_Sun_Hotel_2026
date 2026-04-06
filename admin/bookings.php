@@ -983,7 +983,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
         .booking-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 1380px;
+            min-width: 1260px;
             border: 1px solid #d0d7de;
         }
         .booking-table th {
@@ -1102,6 +1102,33 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                 grid-template-columns: repeat(2, 1fr);
                 gap: 12px;
             }
+
+            .bookings-toolbar {
+                padding: 14px !important;
+            }
+
+            .bookings-toolbar form {
+                width: 100%;
+            }
+
+            .bookings-toolbar form > div:first-child {
+                min-width: 0 !important;
+                width: 100%;
+            }
+
+            .bookings-toolbar form select,
+            .bookings-toolbar form input[type="date"],
+            .bookings-toolbar form button,
+            .bookings-toolbar form a {
+                width: 100%;
+            }
+
+            .bookings-toolbar > div {
+                width: 100%;
+                display: grid !important;
+                grid-template-columns: 1fr;
+            }
+
             .stat-card {
                 padding: 16px;
             }
@@ -1110,6 +1137,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             }
             .booking-table {
                 font-size: 12px;
+                min-width: 1100px;
             }
             .booking-table th,
             .booking-table td {
@@ -1123,6 +1151,11 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             .stats-grid {
                 grid-template-columns: 1fr;
             }
+
+            .bookings-section {
+                padding: 14px;
+            }
+
             .booking-table {
                 font-size: 11px;
             }
@@ -1131,7 +1164,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                 padding: 6px;
             }
             .booking-table {
-                min-width: 1020px;
+                min-width: 900px;
             }
             .booking-table th,
             .booking-table td {
@@ -1152,6 +1185,8 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
             .actions-cell .quick-action {
                 font-size: 11px;
                 padding: 5px 8px;
+                flex: 1 1 100%;
+                justify-content: center;
             }
         }
 
@@ -2615,25 +2650,28 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
         }
         
         // Form submission
-        document.getElementById('resendEmailForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            
-            fetch(window.location.href, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.text())
-            .then(data => {
-                // Reload page to see success/error message
-                window.location.reload();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                Alert.show('Error sending email', 'error');
+        const resendEmailForm = document.getElementById('resendEmailForm');
+        if (resendEmailForm) {
+            resendEmailForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                
+                fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.text())
+                .then(data => {
+                    // Reload page to see success/error message
+                    window.location.reload();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Alert.show('Error sending email', 'error');
+                });
             });
-        });
+        }
     </script>
     <script src="js/admin-components.js"></script>
     <script src="js/admin-mobile.js"></script>

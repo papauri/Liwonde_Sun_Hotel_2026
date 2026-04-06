@@ -259,7 +259,7 @@ try {
         }
         .menu-table {
             width: 100%;
-            min-width: 1400px;
+            min-width: 1240px;
             border-collapse: collapse;
             border: 1px solid #d0d7de;
         }
@@ -519,7 +519,7 @@ try {
                 overflow-x: auto;
             }
             .menu-table {
-                min-width: 1200px;
+                min-width: 1080px;
             }
             .category-header {
                 font-size: 16px;
@@ -539,6 +539,7 @@ try {
             }
             .menu-table {
                 font-size: 11px;
+                min-width: 920px;
             }
             .menu-table th,
             .menu-table td {
@@ -554,6 +555,18 @@ try {
             .btn-action {
                 padding: 5px 10px;
                 font-size: 10px;
+                width: 100%;
+                justify-content: center;
+            }
+
+            .actions-cell {
+                min-width: 180px;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .menu-table {
+                min-width: 860px;
             }
         }
         /* Modal form controls specific to menu management */
@@ -936,11 +949,14 @@ try {
         }
         
         // Close modal when clicking outside
-        document.getElementById('addMenuModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeAddModal();
-            }
-        });
+        const addMenuModal = document.getElementById('addMenuModal');
+        if (addMenuModal) {
+            addMenuModal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeAddModal();
+                }
+            });
+        }
         
         function saveRow(id, category, menuType) {
             const row = document.getElementById(`${menuType}-row-${id}`);

@@ -1157,6 +1157,18 @@ foreach ($all_permissions as $key => $info) {
             }
             .actions-cell {
                 justify-content: flex-end;
+                width: 100%;
+            }
+
+            .actions-cell .btn-sm,
+            .actions-cell a.btn-sm {
+                width: 100%;
+                justify-content: center;
+            }
+
+            input[name="title_name"] {
+                min-width: 0 !important;
+                width: 100%;
             }
             .perm-grid {
                 grid-template-columns: 1fr;
@@ -1183,6 +1195,17 @@ foreach ($all_permissions as $key => $info) {
                 transform: translateX(-50%);
                 width: calc(100% - 24px);
                 max-height: calc(100vh - 40px);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .users-table td {
+                padding-left: 42%;
+            }
+
+            .users-table td::before {
+                left: 12px;
+                max-width: 40%;
             }
         }
     </style>

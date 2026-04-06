@@ -751,58 +751,59 @@ try {
                         <div class="legend-color selected"></div>
                         <span>Selected</span>
                     </div>
-                    <div class="form-group">
-                        <label for="number_of_guests" class="required">Number of Guests</label>
-                        <select id="number_of_guests" name="number_of_guests" class="form-control" required>
-                            <option value="">Select room first...</option>
-                        </select>
-                        <small id="guestCapacityHint" style="color: #666; font-size: 12px; margin-top: 5px; display: none;"></small>
+                </div>
+
+                <div class="form-group">
+                    <label for="number_of_guests" class="required">Number of Guests</label>
+                    <select id="number_of_guests" name="number_of_guests" class="form-control" required>
+                        <option value="">Select room first...</option>
+                    </select>
+                    <small id="guestCapacityHint" style="color: #666; font-size: 12px; margin-top: 5px; display: none;"></small>
+                </div>
+                
+                <!-- Occupancy Type Selection -->
+                <div class="form-group">
+                    <label class="required">Occupancy Type</label>
+                    <div class="occupancy-options" style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 8px;">
+                        <label class="occupancy-card" style="flex: 1; min-width: 100px; cursor: pointer; padding: 12px; border: 2px solid #ddd; border-radius: 8px; text-align: center; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; gap: 5px;" id="singleOccupancyLabel">
+                            <input type="radio" name="occupancy_type" value="single" style="margin: 0;">
+                            <strong style="color: var(--navy);">Single</strong>
+                            <span style="font-size: 12px; color: #666;">1 Guest</span>
+                            <span id="singlePriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
+                        </label>
+                        <label class="occupancy-card" style="flex: 1; min-width: 100px; cursor: pointer; padding: 12px; border: 2px solid var(--gold); border-radius: 8px; text-align: center; transition: all 0.3s; background: rgba(212, 175, 55, 0.1); display: flex; flex-direction: column; align-items: center; gap: 5px;" id="doubleOccupancyLabel">
+                            <input type="radio" name="occupancy_type" value="double" checked style="margin: 0;">
+                            <strong style="color: var(--navy);">Double</strong>
+                            <span style="font-size: 12px; color: #666;">2 Guests</span>
+                            <span id="doublePriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
+                        </label>
+                        <label class="occupancy-card" style="flex: 1; min-width: 100px; cursor: pointer; padding: 12px; border: 2px solid #ddd; border-radius: 8px; text-align: center; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; gap: 5px;" id="childOccupancyLabel">
+                            <input type="radio" name="occupancy_type" value="child" style="margin: 0;">
+                            <strong style="color: var(--navy);">Child</strong>
+                            <span style="font-size: 12px; color: #666;">3 Guests</span>
+                            <span id="childPriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
+                        </label>
                     </div>
-                    
-                    <!-- Occupancy Type Selection -->
-                    <div class="form-group">
-                        <label class="required">Occupancy Type</label>
-                        <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 8px;">
-                            <label style="flex: 1; min-width: 100px; cursor: pointer; padding: 12px; border: 2px solid #ddd; border-radius: 8px; text-align: center; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; gap: 5px;" id="singleOccupancyLabel">
-                                <input type="radio" name="occupancy_type" value="single" style="margin: 0;">
-                                <strong style="color: var(--navy);">Single</strong>
-                                <span style="font-size: 12px; color: #666;">1 Guest</span>
-                                <span id="singlePriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
-                            </label>
-                            <label style="flex: 1; min-width: 100px; cursor: pointer; padding: 12px; border: 2px solid var(--gold); border-radius: 8px; text-align: center; transition: all 0.3s; background: rgba(212, 175, 55, 0.1); display: flex; flex-direction: column; align-items: center; gap: 5px;" id="doubleOccupancyLabel">
-                                <input type="radio" name="occupancy_type" value="double" checked style="margin: 0;">
-                                <strong style="color: var(--navy);">Double</strong>
-                                <span style="font-size: 12px; color: #666;">2 Guests</span>
-                                <span id="doublePriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
-                            </label>
-                            <label style="flex: 1; min-width: 100px; cursor: pointer; padding: 12px; border: 2px solid #ddd; border-radius: 8px; text-align: center; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; gap: 5px;" id="childOccupancyLabel">
-                                <input type="radio" name="occupancy_type" value="child" style="margin: 0;">
-                                <strong style="color: var(--navy);">Child</strong>
-                                <span style="font-size: 12px; color: #666;">3 Guests</span>
-                                <span id="childPriceDisplay" style="font-weight: 600; color: var(--gold);">-</span>
-                            </label>
-                        </div>
-                        <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
-                            <i class="fas fa-info-circle"></i> Prices vary based on occupancy type
-                        </small>
-                        <div id="occupancyPromoBanner" style="display: none; margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: linear-gradient(135deg, #eef9f2 0%, #dff3e8 100%); border-left: 4px solid #1f7a4f; color: #1f7a4f; font-size: 13px; font-weight: 600;">
-                            <i class="fas fa-tags"></i>
-                            <span id="occupancyPromoText">Special promotion active for your selected dates.</span>
-                        </div>
-                        <small id="childOccupancyUnavailableNote" style="display: none; color: #b26a00; font-size: 12px; margin-top: 5px;">
-                            <i class="fas fa-exclamation-circle"></i> Child occupancy is not available for this room.
-                        </small>
+                    <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                        <i class="fas fa-info-circle"></i> Prices vary based on occupancy type
+                    </small>
+                    <div id="occupancyPromoBanner" style="display: none; margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: linear-gradient(135deg, #eef9f2 0%, #dff3e8 100%); border-left: 4px solid #1f7a4f; color: #1f7a4f; font-size: 13px; font-weight: 600;">
+                        <i class="fas fa-tags"></i>
+                        <span id="occupancyPromoText">Special promotion active for your selected dates.</span>
                     </div>
-                    
-                    <!-- Second Room Suggestion (hidden by default) -->
-                    <div id="secondRoomSuggestion" style="display: none; margin-top: 15px; padding: 15px; background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); border-left: 4px solid var(--gold); border-radius: 8px;">
-                        <div style="display: flex; align-items: start; gap: 12px;">
-                            <i class="fas fa-info-circle" style="color: var(--gold); font-size: 20px; margin-top: 2px;"></i>
-                            <div>
-                                <h4 style="margin: 0 0 8px 0; color: var(--navy); font-size: 16px;">Consider Booking Multiple Rooms</h4>
-                                <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Your group size exceeds the maximum capacity for one room. You can book multiple rooms to accommodate all guests.</p>
-                                <div id="secondRoomOptions" style="margin-top: 10px;"></div>
-                            </div>
+                    <small id="childOccupancyUnavailableNote" style="display: none; color: #b26a00; font-size: 12px; margin-top: 5px;">
+                        <i class="fas fa-exclamation-circle"></i> Child occupancy is not available for this room.
+                    </small>
+                </div>
+                
+                <!-- Second Room Suggestion (hidden by default) -->
+                <div id="secondRoomSuggestion" style="display: none; margin-top: 15px; padding: 15px; background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); border-left: 4px solid var(--gold); border-radius: 8px;">
+                    <div style="display: flex; align-items: start; gap: 12px;">
+                        <i class="fas fa-info-circle" style="color: var(--gold); font-size: 20px; margin-top: 2px;"></i>
+                        <div>
+                            <h4 style="margin: 0 0 8px 0; color: var(--navy); font-size: 16px;">Consider Booking Multiple Rooms</h4>
+                            <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Your group size exceeds the maximum capacity for one room. You can book multiple rooms to accommodate all guests.</p>
+                            <div id="secondRoomOptions" style="margin-top: 10px;"></div>
                         </div>
                     </div>
                 </div>
