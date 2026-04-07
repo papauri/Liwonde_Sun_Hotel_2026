@@ -176,25 +176,28 @@ $site_name = getSetting('site_name');
         .alert-danger::before { content: '\f071'; font-family: 'Font Awesome 6 Free'; font-weight: 900; color: #dc3545; }
         .form-group { margin-bottom: 20px; }
         .form-group label { display: block; font-weight: 600; color: var(--navy); margin-bottom: 8px; font-size: 13px; letter-spacing: 0.3px; }
-        .input-wrapper { position: relative; }
+        .input-wrapper { position: relative; width: 100%; }
         .input-wrapper i.field-icon {
-            position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+            position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
             color: #aaa; font-size: 15px; z-index: 2; pointer-events: none; transition: color 0.3s;
         }
         .input-wrapper:focus-within i.field-icon { color: var(--gold); }
         .form-control {
-            width: 100%; padding: 14px 46px 14px 46px;
+            width: 100%; height: 50px; padding: 12px 14px 12px 42px;
             border: 2px solid #e8e8e8; border-radius: 12px; font-size: 14px;
-            transition: all 0.3s; font-family: 'Poppins', sans-serif; background: #fafafa; color: var(--navy);
+            line-height: 1.2; transition: all 0.3s; font-family: 'Poppins', sans-serif; background: #fafafa; color: var(--navy);
         }
+        .input-wrapper.password-field .form-control { padding-right: 48px; }
         .form-control::placeholder { color: #bbb; font-weight: 300; }
         .form-control:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.1); background: #fff; }
         .form-control:hover { border-color: #ccc; }
         .password-toggle {
-            position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
-            background: none; border: none; cursor: pointer; color: #aaa; font-size: 15px; padding: 4px; z-index: 2; transition: color 0.3s;
+            position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+            width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+            background: none; border: none; border-radius: 8px; cursor: pointer; color: #aaa; font-size: 15px; padding: 0; z-index: 3; transition: color 0.3s;
         }
-        .password-toggle:hover { color: var(--gold); }
+        .password-toggle:hover { color: var(--gold); background: rgba(212, 175, 55, 0.08); }
+        .password-toggle:focus-visible { outline: 2px solid rgba(212, 175, 55, 0.4); outline-offset: 1px; }
         .password-strength { height: 4px; border-radius: 2px; margin-top: 8px; background: #eee; overflow: hidden; }
         .password-strength-bar { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; width: 0; }
         .password-hint { font-size: 11px; color: #999; margin-top: 6px; }
@@ -214,7 +217,13 @@ $site_name = getSetting('site_name');
             border-radius: 20px; font-size: 13px; color: var(--navy); font-weight: 500; margin-top: 10px;
         }
         .user-badge i { color: var(--gold); }
-        @media (max-width: 480px) { .login-card { padding: 36px 24px; border-radius: 20px; } }
+        @media (max-width: 480px) {
+            .login-card { padding: 36px 24px; border-radius: 20px; }
+            .form-control { height: 48px; padding-left: 40px; }
+            .input-wrapper.password-field .form-control { padding-right: 46px; }
+            .input-wrapper i.field-icon { left: 13px; font-size: 14px; }
+            .password-toggle { right: 8px; width: 30px; height: 30px; }
+        }
     </style>
 </head>
 <body>
@@ -247,12 +256,12 @@ $site_name = getSetting('site_name');
                     
                     <div class="form-group">
                         <label for="password">New Password</label>
-                        <div class="input-wrapper">
+                        <div class="input-wrapper password-field">
                             <i class="fas fa-lock field-icon"></i>
                             <input type="password" id="password" name="password" class="form-control" 
                                    placeholder="Enter new password" required minlength="8"
                                    oninput="checkStrength(this.value)">
-                            <button type="button" class="password-toggle" onclick="togglePassword('password', 'toggleIcon1')">
+                            <button type="button" class="password-toggle" onclick="togglePassword('password', 'toggleIcon1')" aria-label="Show or hide new password">
                                 <i class="fas fa-eye" id="toggleIcon1"></i>
                             </button>
                         </div>
@@ -262,11 +271,11 @@ $site_name = getSetting('site_name');
 
                     <div class="form-group">
                         <label for="confirm_password">Confirm Password</label>
-                        <div class="input-wrapper">
+                        <div class="input-wrapper password-field">
                             <i class="fas fa-lock field-icon"></i>
                             <input type="password" id="confirm_password" name="confirm_password" class="form-control" 
                                    placeholder="Confirm new password" required minlength="8">
-                            <button type="button" class="password-toggle" onclick="togglePassword('confirm_password', 'toggleIcon2')">
+                            <button type="button" class="password-toggle" onclick="togglePassword('confirm_password', 'toggleIcon2')" aria-label="Show or hide confirm password">
                                 <i class="fas fa-eye" id="toggleIcon2"></i>
                             </button>
                         </div>

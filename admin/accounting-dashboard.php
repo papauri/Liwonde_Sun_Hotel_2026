@@ -435,11 +435,14 @@ try {
         }
         
         .stat-value {
-            font-size: 30px;
+            font-size: clamp(22px, 2vw, 28px);
             font-weight: 700;
             color: var(--navy);
             margin-bottom: 10px;
             line-height: 1.1;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            white-space: normal;
         }
         
         .stat-sub {
@@ -739,7 +742,7 @@ try {
             }
 
             .stat-value {
-                font-size: 26px;
+                font-size: 22px;
             }
 
             .section-card {

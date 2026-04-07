@@ -8,12 +8,9 @@ require_once __DIR__ . '/admin-init.php';
 
 $log_type = $_GET['log_type'] ?? 'all';
 $action_query = trim($_GET['action'] ?? '');
-$actor_query = trim($_GET['actor'] ?? '');
+$actor_query = '';
 $actor_user_id = 0;
-if ($actor_query !== '' && preg_match('/^User #(\d+)$/', $actor_query, $actor_match)) {
-    $actor_user_id = (int)$actor_match[1];
-}
-$employee_id = isset($_GET['employee_id']) ? (int)$_GET['employee_id'] : 0;
+$employee_id = 0;
 $date_from = trim($_GET['date_from'] ?? '');
 $date_to = trim($_GET['date_to'] ?? '');
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 150;
@@ -47,9 +44,60 @@ $summary = [
     'failed_logins' => 0,
     'cancellations' => 0,
 ];
+$has_admin_log_table = false;
+$has_employee_log_table = false;
+$employee_has_actor_user_id = false;
+$employee_has_admin_user_id = false;
+$employee_has_employee_id = false;
+$employee_has_source = false;
+$employee_actor_expr = 'NULL';
+$employee_actor_expr_unaliased = 'NULL';
+$employee_id_expr = 'NULL';
+$employee_join_clause = 'LEFT JOIN employees emp ON 1=0';
+$employee_source_select = 'NULL';
 $error = null;
 
 try {
+    $has_admin_log_table = (bool)$pdo->query("SHOW TABLES LIKE 'admin_activity_log'")->fetchColumn();
+    $has_employee_log_table = (bool)$pdo->query("SHOW TABLES LIKE 'employee_activity_log'")->fetchColumn();
+
+    if ($has_employee_log_table) {
+        $employee_columns_stmt = $pdo->query('SHOW COLUMNS FROM employee_activity_log');
+        foreach ($employee_columns_stmt->fetchAll(PDO::FETCH_ASSOC) as $col) {
+            $field = strtolower((string)($col['Field'] ?? ''));
+            if ($field === 'actor_user_id') {
+                $employee_has_actor_user_id = true;
+            }
+            if ($field === 'admin_user_id') {
+                $employee_has_admin_user_id = true;
+            }
+            if ($field === 'employee_id') {
+                $employee_has_employee_id = true;
+            }
+            if ($field === 'source') {
+                $employee_has_source = true;
+            }
+        }
+
+        if ($employee_has_actor_user_id && $employee_has_admin_user_id) {
+            $employee_actor_expr = 'COALESCE(e.actor_user_id, e.admin_user_id)';
+            $employee_actor_expr_unaliased = 'COALESCE(actor_user_id, admin_user_id)';
+        } elseif ($employee_has_actor_user_id) {
+            $employee_actor_expr = 'e.actor_user_id';
+            $employee_actor_expr_unaliased = 'actor_user_id';
+        } elseif ($employee_has_admin_user_id) {
+            $employee_actor_expr = 'e.admin_user_id';
+            $employee_actor_expr_unaliased = 'admin_user_id';
+        }
+
+        if ($employee_has_employee_id) {
+            $employee_id_expr = 'e.employee_id';
+            $employee_join_clause = 'LEFT JOIN employees emp ON emp.id = e.employee_id';
+        }
+
+        $employee_source_select = $employee_has_source ? 'e.source' : 'NULL';
+    }
+
     $employee_options_stmt = $pdo->query("SELECT id, full_name FROM employees ORDER BY full_name ASC");
     $employee_options = $employee_options_stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -74,12 +122,12 @@ try {
         $employee_base_params[] = $date_to_ts;
     }
     if ($employee_id > 0) {
-        $employee_base_where[] = 'employee_id = ?';
+        $employee_base_where[] = $employee_has_employee_id ? 'employee_id = ?' : '0=1';
         $employee_base_params[] = $employee_id;
     }
 
     // Build dropdown options from current time/type/employee scope.
-    if ($log_type === 'all' || $log_type === 'admin') {
+    if (($log_type === 'all' || $log_type === 'admin') && $has_admin_log_table) {
         $sql = "SELECT DISTINCT action FROM admin_activity_log";
         $sql .= empty($admin_base_where) ? '' : ' WHERE ' . implode(' AND ', $admin_base_where);
         $sql .= ' ORDER BY action ASC LIMIT 300';
@@ -109,7 +157,7 @@ try {
         }
     }
 
-    if ($log_type === 'all' || $log_type === 'employee') {
+    if (($log_type === 'all' || $log_type === 'employee') && $has_employee_log_table) {
         $sql = "SELECT DISTINCT action FROM employee_activity_log";
         $sql .= empty($employee_base_where) ? '' : ' WHERE ' . implode(' AND ', $employee_base_where);
         $sql .= ' ORDER BY action ASC LIMIT 300';
@@ -122,9 +170,9 @@ try {
             }
         }
 
-        $sql = "SELECT DISTINCT COALESCE(au.full_name, au.username, CONCAT('User #', COALESCE(e.actor_user_id, e.admin_user_id))) AS actor_name
+        $sql = "SELECT DISTINCT COALESCE(au.full_name, au.username, CONCAT('User #', {$employee_actor_expr})) AS actor_name
                 FROM employee_activity_log e
-            LEFT JOIN admin_users au ON au.id = COALESCE(e.actor_user_id, e.admin_user_id)";
+            LEFT JOIN admin_users au ON au.id = {$employee_actor_expr}";
         $sql .= empty($employee_base_where) ? '' : ' WHERE ' . implode(' AND ', array_map(function ($cond) {
             return 'e.' . $cond;
         }, $employee_base_where));
@@ -174,24 +222,28 @@ try {
         if ($actor_user_id > 0) {
             $summary_where_admin[] = 'user_id = ?';
             $summary_admin_params[] = $actor_user_id;
-            $summary_where_employee[] = 'COALESCE(actor_user_id, admin_user_id) = ?';
+            $summary_where_employee[] = $employee_actor_expr_unaliased !== 'NULL'
+                ? ($employee_actor_expr_unaliased . ' = ?')
+                : '0=1';
             $summary_employee_params[] = $actor_user_id;
         } else {
             $summary_where_admin[] = '(username = ? OR user_id IN (SELECT id FROM admin_users WHERE full_name = ? OR username = ?))';
             $summary_admin_params[] = $actor_query;
             $summary_admin_params[] = $actor_query;
             $summary_admin_params[] = $actor_query;
-            $summary_where_employee[] = '(COALESCE(actor_user_id, admin_user_id) IN (SELECT id FROM admin_users WHERE full_name = ? OR username = ?))';
+            $summary_where_employee[] = $employee_actor_expr_unaliased !== 'NULL'
+                ? ('(' . $employee_actor_expr_unaliased . ' IN (SELECT id FROM admin_users WHERE full_name = ? OR username = ?))')
+                : '0=1';
             $summary_employee_params[] = $actor_query;
             $summary_employee_params[] = $actor_query;
         }
     }
     if ($employee_id > 0) {
-        $summary_where_employee[] = 'employee_id = ?';
+        $summary_where_employee[] = $employee_has_employee_id ? 'employee_id = ?' : '0=1';
         $summary_employee_params[] = $employee_id;
     }
 
-    if ($log_type === 'all' || $log_type === 'admin') {
+    if (($log_type === 'all' || $log_type === 'admin') && $has_admin_log_table) {
         $sql = 'SELECT COUNT(*) FROM admin_activity_log WHERE ' . (empty($summary_where_admin) ? '1=1' : implode(' AND ', $summary_where_admin));
         $stmt = $pdo->prepare($sql);
         $stmt->execute($summary_admin_params);
@@ -205,7 +257,7 @@ try {
         $summary['failed_logins'] = (int)$stmt->fetchColumn();
     }
 
-    if ($log_type === 'all' || $log_type === 'employee') {
+    if (($log_type === 'all' || $log_type === 'employee') && $has_employee_log_table) {
         $sql = 'SELECT COUNT(*) FROM employee_activity_log WHERE ' . (empty($summary_where_employee) ? '1=1' : implode(' AND ', $summary_where_employee));
         $stmt = $pdo->prepare($sql);
         $stmt->execute($summary_employee_params);
@@ -233,7 +285,7 @@ try {
     $sql_parts = [];
     $params = [];
 
-    if ($log_type === 'all' || $log_type === 'admin') {
+    if (($log_type === 'all' || $log_type === 'admin') && $has_admin_log_table) {
         $admin_where = [];
         $admin_params = [];
 
@@ -265,23 +317,30 @@ try {
 
         $sql_parts[] = "
             SELECT
-                'admin' AS log_type,
+                CAST('admin' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS log_type,
                 a.id,
                 a.created_at,
-                a.action,
-                a.details,
-                a.ip_address,
-                COALESCE(au.full_name, a.username, CONCAT('User #', a.user_id)) AS actor_name,
-                COALESCE(au.role, 'unknown') AS actor_role,
-                NULL AS employee_name,
-                NULL AS source
+                CONVERT(a.action USING utf8mb4) COLLATE utf8mb4_unicode_ci AS action,
+                CONVERT(a.details USING utf8mb4) COLLATE utf8mb4_unicode_ci AS details,
+                CONVERT(a.ip_address USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ip_address,
+                COALESCE(
+                    CONVERT(au.full_name USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                    CONVERT(a.username USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                    CONVERT(CONCAT('User #', a.user_id) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                ) AS actor_name,
+                COALESCE(
+                    CONVERT(au.role USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                    CAST('unknown' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci
+                ) AS actor_role,
+                CAST(NULL AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS employee_name,
+                CAST(NULL AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS source
             FROM admin_activity_log a
             LEFT JOIN admin_users au ON au.id = a.user_id
             WHERE " . (empty($admin_where) ? '1=1' : implode(' AND ', $admin_where));
         $params = array_merge($params, $admin_params);
     }
 
-    if ($log_type === 'all' || $log_type === 'employee') {
+    if (($log_type === 'all' || $log_type === 'employee') && $has_employee_log_table) {
         $emp_where = [];
         $emp_params = [];
 
@@ -301,7 +360,9 @@ try {
 
         if ($actor_query !== '') {
             if ($actor_user_id > 0) {
-                $emp_where[] = 'COALESCE(e.actor_user_id, e.admin_user_id) = ?';
+                $emp_where[] = $employee_actor_expr !== 'NULL'
+                    ? ($employee_actor_expr . ' = ?')
+                    : '0=1';
                 $emp_params[] = $actor_user_id;
             } else {
                 $emp_where[] = '(au.full_name = ? OR au.username = ?)';
@@ -311,25 +372,35 @@ try {
         }
 
         if ($employee_id > 0) {
-            $emp_where[] = "e.employee_id = ?";
+            $emp_where[] = $employee_has_employee_id ? "e.employee_id = ?" : '0=1';
             $emp_params[] = $employee_id;
         }
 
         $sql_parts[] = "
             SELECT
-                'employee' AS log_type,
+                CAST('employee' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS log_type,
                 e.id,
                 e.created_at,
-                e.action,
-                e.details,
-                e.ip_address,
-                COALESCE(au.full_name, au.username, CONCAT('User #', COALESCE(e.actor_user_id, e.admin_user_id))) AS actor_name,
-                COALESCE(au.role, 'unknown') AS actor_role,
-                COALESCE(emp.full_name, CONCAT('Employee #', e.employee_id)) AS employee_name,
-                e.source
+                CONVERT(e.action USING utf8mb4) COLLATE utf8mb4_unicode_ci AS action,
+                CONVERT(e.details USING utf8mb4) COLLATE utf8mb4_unicode_ci AS details,
+                CONVERT(e.ip_address USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ip_address,
+                COALESCE(
+                    CONVERT(au.full_name USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                    CONVERT(au.username USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                    CONVERT(CONCAT('User #', {$employee_actor_expr}) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                ) AS actor_name,
+                COALESCE(
+                    CONVERT(au.role USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                    CAST('unknown' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci
+                ) AS actor_role,
+                COALESCE(
+                    CONVERT(emp.full_name USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                    CONVERT(CONCAT('Employee #', {$employee_id_expr}) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                ) AS employee_name,
+                CONVERT({$employee_source_select} USING utf8mb4) COLLATE utf8mb4_unicode_ci AS source
             FROM employee_activity_log e
-            LEFT JOIN admin_users au ON au.id = COALESCE(e.actor_user_id, e.admin_user_id)
-            LEFT JOIN employees emp ON emp.id = e.employee_id
+            LEFT JOIN admin_users au ON au.id = {$employee_actor_expr}
+            {$employee_join_clause}
             WHERE " . (empty($emp_where) ? '1=1' : implode(' AND ', $emp_where));
         $params = array_merge($params, $emp_params);
     }
@@ -339,6 +410,81 @@ try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // If default view is empty unexpectedly, retry with a strict unfiltered fallback.
+    $is_default_view = (
+        $log_type === 'all' &&
+        $action_query === '' &&
+        $actor_query === '' &&
+        $employee_id === 0 &&
+        !$has_date_from &&
+        !$has_date_to
+    );
+
+    if ($is_default_view && empty($rows)) {
+        $fallback_parts = [];
+
+        if ($has_admin_log_table) {
+            $fallback_parts[] = "
+                SELECT
+                    CAST('admin' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS log_type,
+                    a.id,
+                    a.created_at,
+                    CONVERT(a.action USING utf8mb4) COLLATE utf8mb4_unicode_ci AS action,
+                    CONVERT(a.details USING utf8mb4) COLLATE utf8mb4_unicode_ci AS details,
+                    CONVERT(a.ip_address USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ip_address,
+                    COALESCE(
+                        CONVERT(au.full_name USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                        CONVERT(a.username USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                        CONVERT(CONCAT('User #', a.user_id) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    ) AS actor_name,
+                    COALESCE(
+                        CONVERT(au.role USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                        CAST('unknown' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci
+                    ) AS actor_role,
+                    CAST(NULL AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS employee_name,
+                    CAST(NULL AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS source
+                FROM admin_activity_log a
+                LEFT JOIN admin_users au ON au.id = a.user_id
+            ";
+        }
+
+        if ($has_employee_log_table) {
+            $fallback_parts[] = "
+                SELECT
+                    CAST('employee' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS log_type,
+                    e.id,
+                    e.created_at,
+                    CONVERT(e.action USING utf8mb4) COLLATE utf8mb4_unicode_ci AS action,
+                    CONVERT(e.details USING utf8mb4) COLLATE utf8mb4_unicode_ci AS details,
+                    CONVERT(e.ip_address USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ip_address,
+                    COALESCE(
+                        CONVERT(au.full_name USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                        CONVERT(au.username USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                        CONVERT(CONCAT('User #', {$employee_actor_expr}) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    ) AS actor_name,
+                    COALESCE(
+                        CONVERT(au.role USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                        CAST('unknown' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci
+                    ) AS actor_role,
+                    COALESCE(
+                        CONVERT(emp.full_name USING utf8mb4) COLLATE utf8mb4_unicode_ci,
+                        CONVERT(CONCAT('Employee #', {$employee_id_expr}) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    ) AS employee_name,
+                    CONVERT({$employee_source_select} USING utf8mb4) COLLATE utf8mb4_unicode_ci AS source
+                FROM employee_activity_log e
+                LEFT JOIN admin_users au ON au.id = {$employee_actor_expr}
+                {$employee_join_clause}
+            ";
+        }
+
+        if (!empty($fallback_parts)) {
+            $fallback_sql = implode("\nUNION ALL\n", $fallback_parts) . "\nORDER BY created_at DESC, id DESC\nLIMIT " . (int)$limit;
+            $stmt = $pdo->prepare($fallback_sql);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
     }
 } catch (PDOException $e) {
     $error = 'Unable to load activity logs right now. Please try again shortly.';
@@ -415,28 +561,6 @@ try {
                     <?php foreach (array_keys($action_options) as $actionOpt): ?>
                         <option value="<?php echo htmlspecialchars($actionOpt); ?>" <?php echo $action_query === $actionOpt ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($actionOpt); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="actor">Actor</label>
-                <select id="actor" name="actor">
-                    <option value="">All actors</option>
-                    <?php foreach (array_keys($actor_options) as $actorOpt): ?>
-                        <option value="<?php echo htmlspecialchars($actorOpt); ?>" <?php echo $actor_query === $actorOpt ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($actorOpt); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="employee_id">Employee</label>
-                <select id="employee_id" name="employee_id">
-                    <option value="0">All employees</option>
-                    <?php foreach ($employee_options as $emp): ?>
-                        <option value="<?php echo (int)$emp['id']; ?>" <?php echo $employee_id === (int)$emp['id'] ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($emp['full_name']); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>

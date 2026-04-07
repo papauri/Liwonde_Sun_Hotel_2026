@@ -383,10 +383,14 @@ footer {
 }
 
 .stat-card .stat-value {
-    font-size: 36px;
+    font-size: clamp(24px, 2.1vw, 32px);
     font-weight: 700;
     color: var(--navy);
     margin-bottom: 4px;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
 }
 
 .stat-card .stat-label {
@@ -861,7 +865,7 @@ select.form-control {
     }
     
     .stat-card .stat-value {
-        font-size: 28px;
+        font-size: 24px;
     }
     
     .btn {
@@ -1004,8 +1008,8 @@ select.form-control {
     }
     
     .stat-card .stat-value {
-        font-size: 24px;
-        line-height: 1;
+        font-size: 20px;
+        line-height: 1.1;
         margin-bottom: 6px;
     }
     
