@@ -320,16 +320,16 @@ $site_name = getSetting('site_name');
         }
         .form-group { margin-bottom: 20px; }
         .form-group label { display: block; font-weight: 600; color: var(--navy); margin-bottom: 8px; font-size: 13px; letter-spacing: 0.3px; }
-        .input-wrapper { position: relative; }
+        .input-wrapper { position: relative; width: 100%; }
         .input-wrapper i {
-            position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+            position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
             color: #aaa; font-size: 15px; z-index: 2; pointer-events: none; transition: color 0.3s;
         }
         .input-wrapper:focus-within i { color: var(--gold); }
         .form-control {
-            width: 100%; padding: 14px 16px 14px 46px;
+            width: 100%; height: 50px; padding: 12px 14px 12px 42px;
             border: 2px solid #e8e8e8; border-radius: 12px; font-size: 14px;
-            transition: all 0.3s; font-family: 'Poppins', sans-serif; background: #fafafa; color: var(--navy);
+            line-height: 1.2; transition: all 0.3s; font-family: 'Poppins', sans-serif; background: #fafafa; color: var(--navy);
         }
         .form-control::placeholder { color: #bbb; font-weight: 300; }
         .form-control:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.1); background: #fff; }
@@ -347,7 +347,11 @@ $site_name = getSetting('site_name');
         .login-footer a { color: #888; text-decoration: none; font-size: 13px; font-weight: 500; transition: color 0.3s; }
         .login-footer a:hover { color: var(--gold); }
         .login-footer a i { margin-right: 4px; }
-        @media (max-width: 480px) { .login-card { padding: 36px 24px; border-radius: 20px; } }
+        @media (max-width: 480px) {
+            .login-card { padding: 36px 24px; border-radius: 20px; }
+            .form-control { height: 48px; padding-left: 40px; }
+            .input-wrapper i { left: 13px; font-size: 14px; }
+        }
     </style>
 </head>
 <body>

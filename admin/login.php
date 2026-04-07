@@ -308,10 +308,11 @@ $site_name = getSetting('site_name');
         }
         .input-wrapper {
             position: relative;
+            width: 100%;
         }
         .input-wrapper i {
             position: absolute;
-            left: 20px;
+            left: 14px;
             top: 50%;
             transform: translateY(-50%);
             color: #aaa;
@@ -325,14 +326,20 @@ $site_name = getSetting('site_name');
         }
         .form-control {
             width: 100%;
-            padding: 14px 16px 14px 70px !important;
+            height: 50px;
+            padding: 12px 14px 12px 42px !important;
             border: 2px solid #e8e8e8;
             border-radius: 12px;
             font-size: 14px;
+            line-height: 1.2;
             transition: all 0.3s ease;
             font-family: 'Poppins', sans-serif;
             background: #fafafa;
             color: var(--navy);
+        }
+
+        .input-wrapper.password-field .form-control {
+            padding-right: 48px !important;
         }
         .form-control::placeholder {
             color: #bbb;
@@ -349,20 +356,31 @@ $site_name = getSetting('site_name');
         }
         .password-toggle {
             position: absolute;
-            right: 16px;
+            right: 9px;
             top: 50%;
             transform: translateY(-50%);
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             background: none;
             border: none;
+            border-radius: 8px;
             cursor: pointer;
             color: #aaa;
             font-size: 15px;
-            padding: 4px;
-            z-index: 2;
+            padding: 0;
+            z-index: 3;
             transition: color 0.3s ease;
         }
         .password-toggle:hover {
             color: var(--gold);
+            background: rgba(212, 175, 55, 0.08);
+        }
+        .password-toggle:focus-visible {
+            outline: 2px solid rgba(212, 175, 55, 0.4);
+            outline-offset: 1px;
         }
         .btn-login {
             width: 100%;
@@ -426,6 +444,23 @@ $site_name = getSetting('site_name');
                 padding: 36px 24px;
                 border-radius: 20px;
             }
+            .form-control {
+                height: 48px;
+                font-size: 14px;
+                padding-left: 40px !important;
+            }
+            .input-wrapper.password-field .form-control {
+                padding-right: 46px !important;
+            }
+            .input-wrapper i {
+                left: 13px;
+                font-size: 14px;
+            }
+            .password-toggle {
+                right: 8px;
+                width: 30px;
+                height: 30px;
+            }
             .login-header h1 {
                 font-size: 22px;
             }
@@ -478,11 +513,11 @@ $site_name = getSetting('site_name');
 
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <div class="input-wrapper">
+                    <div class="input-wrapper password-field">
                         <i class="fas fa-lock"></i>
                         <input type="password" id="password" name="password" class="form-control" 
                                placeholder="Enter your password" required>
-                        <button type="button" class="password-toggle" onclick="togglePassword()">
+                        <button type="button" class="password-toggle" onclick="togglePassword()" aria-label="Show or hide password">
                             <i class="fas fa-eye" id="toggleIcon"></i>
                         </button>
                     </div>
