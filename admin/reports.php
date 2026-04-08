@@ -20,7 +20,7 @@ if (!strtotime($start_date) || !strtotime($end_date)) {
 }
 
 // Sanitize tab
-$valid_tabs = ['overview', 'revenue', 'bookings', 'occupancy', 'guests', 'conference'];
+$valid_tabs = ['overview', 'revenue', 'bookings', 'occupancy', 'guests', 'conference', 'maintenance'];
 if (!in_array($active_tab, $valid_tabs)) {
     $active_tab = 'overview';
 }
@@ -50,6 +50,8 @@ $recentBookings = [];
 $manualReleaseAudit = [];
 $reviewStats = [];
 $gymInquiryStats = [];
+$maintenanceTaskStats = [];
+$maintenanceActivityLog = [];
 
 $totalRevenue = 0;
 $totalVatCollected = 0;
@@ -448,11 +450,21 @@ try {
     $gymStatsStmt->execute([$start_date, $end_date]);
     $gymInquiryStats = $gymStatsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // 23. Maintenance Task Stats
+    $maintenanceTaskStatsStmt = $pdo->prepare("\n        SELECT\n            t.status,\n            COUNT(*) as count,\n            SUM(CASE WHEN t.room_unit_id IS NOT NULL THEN 1 ELSE 0 END) as unit_scoped_count,\n            SUM(CASE WHEN t.blocks_availability = 1 THEN 1 ELSE 0 END) as blocking_count\n        FROM room_maintenance_tasks t\n        WHERE t.created_at >= ? AND t.created_at <= DATE_ADD(?, INTERVAL 1 DAY)\n        GROUP BY t.status\n        ORDER BY count DESC\n    ");
+    $maintenanceTaskStatsStmt->execute([$start_date, $end_date]);
+    $maintenanceTaskStats = $maintenanceTaskStatsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 24. Maintenance Activity Log (create/update/status/delete)
+    $maintenanceActivityStmt = $pdo->prepare("\n        SELECT\n            aal.created_at,\n            aal.action,\n            aal.details,\n            COALESCE(au.full_name, aal.username, 'System') as actor\n        FROM admin_activity_log aal\n        LEFT JOIN admin_users au ON au.id = aal.user_id\n        WHERE aal.created_at >= ?\n          AND aal.created_at <= DATE_ADD(?, INTERVAL 1 DAY)\n          AND aal.action IN ('maintenance_task_create', 'maintenance_task_update', 'maintenance_task_status', 'maintenance_task_delete')\n        ORDER BY aal.created_at DESC\n        LIMIT 150\n    ");
+    $maintenanceActivityStmt->execute([$start_date, $end_date]);
+    $maintenanceActivityLog = $maintenanceActivityStmt->fetchAll(PDO::FETCH_ASSOC);
+
     // ============================================
     // ADVANCED HOTEL KPI METRICS
     // ============================================
 
-    // 23. ADR (Average Daily Rate) = Total Room Revenue / Number of Room Nights Sold
+    // 25. ADR (Average Daily Rate) = Total Room Revenue / Number of Room Nights Sold
     $adrStmt = $pdo->prepare("
         SELECT COALESCE(SUM(b.total_amount), 0) as total_room_revenue,
                COALESCE(SUM(b.number_of_nights), 0) as total_nights_sold
@@ -466,7 +478,7 @@ try {
         ? round($adrData['total_room_revenue'] / $adrData['total_nights_sold'], 0) 
         : 0;
 
-    // 24. RevPAR (Revenue Per Available Room) = Total Room Revenue / Total Available Room Nights
+    // 26. RevPAR (Revenue Per Available Room) = Total Room Revenue / Total Available Room Nights
     $revpar = $totalRoomNightsAvailable > 0 
         ? round($adrData['total_room_revenue'] / $totalRoomNightsAvailable, 0) 
         : 0;
@@ -710,6 +722,7 @@ try {
                 'occupancy' => ['icon' => 'fa-bed', 'label' => 'Occupancy'],
                 'guests' => ['icon' => 'fa-users', 'label' => 'Guests'],
                 'conference' => ['icon' => 'fa-briefcase', 'label' => 'Conference'],
+                'maintenance' => ['icon' => 'fa-tools', 'label' => 'Maintenance'],
             ];
             foreach ($tabs as $tab_key => $tab_info): ?>
                 <a href="?tab=<?php echo $tab_key; ?>&start_date=<?php echo htmlspecialchars($start_date); ?>&end_date=<?php echo htmlspecialchars($end_date); ?>" 
@@ -1535,6 +1548,86 @@ try {
                         </tbody>
                     </table>
                 <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- MAINTENANCE TAB -->
+        <!-- ============================================ -->
+        <div class="tab-content <?php echo $active_tab === 'maintenance' ? 'active' : ''; ?>" id="tab-maintenance">
+
+            <?php
+            $totalMaintenanceTasks = 0;
+            $totalUnitScopedTasks = 0;
+            $totalBlockingTasks = 0;
+            foreach ($maintenanceTaskStats as $ms) {
+                $totalMaintenanceTasks += (int)$ms['count'];
+                $totalUnitScopedTasks += (int)$ms['unit_scoped_count'];
+                $totalBlockingTasks += (int)$ms['blocking_count'];
+            }
+            ?>
+
+            <div class="summary-cards">
+                <div class="summary-card blue">
+                    <h3>Total Tasks</h3>
+                    <div class="value"><?php echo number_format($totalMaintenanceTasks); ?></div>
+                </div>
+                <div class="summary-card green">
+                    <h3>Unit-Scoped Tasks</h3>
+                    <div class="value"><?php echo number_format($totalUnitScopedTasks); ?></div>
+                </div>
+                <div class="summary-card red">
+                    <h3>Blocking Tasks</h3>
+                    <div class="value"><?php echo number_format($totalBlockingTasks); ?></div>
+                </div>
+                <div class="summary-card purple">
+                    <h3>Logged Actions</h3>
+                    <div class="value"><?php echo number_format(count($maintenanceActivityLog)); ?></div>
+                </div>
+            </div>
+
+            <div class="two-col">
+                <div class="report-section">
+                    <h2><i class="fas fa-clipboard-list"></i> Task Status Breakdown</h2>
+                    <?php if (empty($maintenanceTaskStats)): ?>
+                        <div class="empty-state"><i class="fas fa-tools"></i><p>No maintenance tasks in this period</p></div>
+                    <?php else: ?>
+                        <table class="report-table">
+                            <thead><tr><th>Status</th><th>Tasks</th><th>Unit-Scoped</th><th>Blocking</th></tr></thead>
+                            <tbody>
+                            <?php foreach ($maintenanceTaskStats as $ms): ?>
+                                <tr>
+                                    <td><?php echo ucfirst(str_replace('_', ' ', (string)$ms['status'])); ?></td>
+                                    <td><?php echo number_format((int)$ms['count']); ?></td>
+                                    <td><?php echo number_format((int)$ms['unit_scoped_count']); ?></td>
+                                    <td><?php echo number_format((int)$ms['blocking_count']); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
+
+                <div class="report-section">
+                    <h2><i class="fas fa-history"></i> Maintenance Activity Log</h2>
+                    <?php if (empty($maintenanceActivityLog)): ?>
+                        <div class="empty-state"><i class="fas fa-clipboard-check"></i><p>No maintenance actions logged in this period</p></div>
+                    <?php else: ?>
+                        <table class="report-table">
+                            <thead><tr><th>Date/Time</th><th>Action</th><th>Actor</th><th>Details</th></tr></thead>
+                            <tbody>
+                            <?php foreach ($maintenanceActivityLog as $entry): ?>
+                                <tr>
+                                    <td><?php echo date('M j, Y H:i', strtotime((string)$entry['created_at'])); ?></td>
+                                    <td><?php echo ucfirst(str_replace('_', ' ', str_replace('maintenance_task_', '', (string)$entry['action']))); ?></td>
+                                    <td><?php echo htmlspecialchars((string)$entry['actor']); ?></td>
+                                    <td><?php echo htmlspecialchars((string)($entry['details'] ?? '')); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
 
