@@ -67,6 +67,10 @@ switch ($report_type) {
         exportConferenceReport($output, $start_date, $end_date, $currency_symbol);
         break;
 
+    case 'maintenance':
+        exportMaintenanceReport($output, $start_date, $end_date);
+        break;
+
     case 'overview':
     default:
         exportOverviewReport($output, $start_date, $end_date, $date_filter, $currency_symbol);
@@ -608,5 +612,45 @@ function exportConferenceReport($output, $start_date, $end_date, $currency_symbo
     $gymStmt->execute([$start_date, $end_date]);
     while ($row = $gymStmt->fetch(PDO::FETCH_ASSOC)) {
         fputcsv($output, [ucfirst($row['status']), $row['count']]);
+    }
+}
+
+/**
+ * Export Maintenance Report
+ */
+function exportMaintenanceReport($output, $start_date, $end_date) {
+    global $pdo;
+
+    fputcsv($output, ['Maintenance Report']);
+    fputcsv($output, ['Period:', $start_date . ' to ' . $end_date]);
+    fputcsv($output, []);
+
+    fputcsv($output, ['TASK STATUS BREAKDOWN']);
+    fputcsv($output, ['Status', 'Tasks', 'Unit-Scoped', 'Blocking']);
+
+    $statsStmt = $pdo->prepare("\n        SELECT\n            status,\n            COUNT(*) as count,\n            SUM(CASE WHEN room_unit_id IS NOT NULL THEN 1 ELSE 0 END) as unit_scoped_count,\n            SUM(CASE WHEN blocks_availability = 1 THEN 1 ELSE 0 END) as blocking_count\n        FROM room_maintenance_tasks\n        WHERE created_at >= ? AND created_at <= DATE_ADD(?, INTERVAL 1 DAY)\n        GROUP BY status\n        ORDER BY count DESC\n    ");
+    $statsStmt->execute([$start_date, $end_date]);
+    while ($row = $statsStmt->fetch(PDO::FETCH_ASSOC)) {
+        fputcsv($output, [
+            ucfirst(str_replace('_', ' ', (string)$row['status'])),
+            (int)$row['count'],
+            (int)$row['unit_scoped_count'],
+            (int)$row['blocking_count']
+        ]);
+    }
+
+    fputcsv($output, []);
+    fputcsv($output, ['MAINTENANCE ACTIVITY LOG']);
+    fputcsv($output, ['Date/Time', 'Action', 'Actor', 'Details']);
+
+    $activityStmt = $pdo->prepare("\n        SELECT\n            aal.created_at,\n            aal.action,\n            aal.details,\n            COALESCE(au.full_name, aal.username, 'System') as actor\n        FROM admin_activity_log aal\n        LEFT JOIN admin_users au ON au.id = aal.user_id\n        WHERE aal.created_at >= ?\n          AND aal.created_at <= DATE_ADD(?, INTERVAL 1 DAY)\n          AND aal.action IN ('maintenance_task_create', 'maintenance_task_update', 'maintenance_task_status', 'maintenance_task_delete')\n        ORDER BY aal.created_at DESC\n    ");
+    $activityStmt->execute([$start_date, $end_date]);
+    while ($row = $activityStmt->fetch(PDO::FETCH_ASSOC)) {
+        fputcsv($output, [
+            $row['created_at'],
+            ucfirst(str_replace('_', ' ', str_replace('maintenance_task_', '', (string)$row['action']))),
+            (string)$row['actor'],
+            (string)($row['details'] ?? '')
+        ]);
     }
 }
