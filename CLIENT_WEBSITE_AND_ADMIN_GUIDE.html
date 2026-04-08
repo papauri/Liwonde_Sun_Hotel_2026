@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Liwonde Sun Hotel - Website and Admin Guide</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --surface: #fffaf2;
+      --ink: #1f2a30;
+      --muted: #5a676d;
+      --accent: #0e5a8a;
+      --accent-2: #ce8d2f;
+      --border: #d9cdb8;
+      --ok: #2d7d46;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 20% 10%, #fff8ec 0%, var(--bg) 50%, #eadcc3 100%);
+      line-height: 1.55;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }
+
+    .hero {
+      background: linear-gradient(130deg, rgba(14, 90, 138, 0.95), rgba(24, 74, 95, 0.95));
+      color: #fff;
+      border: 1px solid #2e6e91;
+      border-radius: 16px;
+      padding: 34px 28px;
+      box-shadow: 0 16px 30px rgba(0, 0, 0, 0.15);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      background: rgba(206, 141, 47, 0.28);
+      right: -120px;
+      top: -120px;
+      filter: blur(1px);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 5vw, 46px);
+      line-height: 1.12;
+      position: relative;
+      z-index: 1;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: #e8f4ff;
+      font-size: 18px;
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 8px 20px rgba(61, 56, 47, 0.06);
+    }
+
+    .col-12 { grid-column: span 12; }
+    .col-8 { grid-column: span 8; }
+    .col-6 { grid-column: span 6; }
+    .col-4 { grid-column: span 4; }
+
+    h2 {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 25px;
+      border-bottom: 2px solid #d5e5ef;
+      padding-bottom: 6px;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      color: #26414f;
+      font-size: 19px;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: bold;
+      border: 1px solid #a7c6d8;
+      background: #edf7fe;
+      color: #144462;
+      margin-right: 6px;
+      margin-bottom: 8px;
+    }
+
+    .ok {
+      color: var(--ok);
+      font-weight: bold;
+    }
+
+    .ad-wrap {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .ad-img {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      border-radius: 12px;
+      border: 1px solid #c6bca9;
+      display: block;
+    }
+
+    .ad-iframe {
+      width: 100%;
+      min-height: 520px;
+      border: 1px solid #c6bca9;
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .btn {
+      text-decoration: none;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid #9bb9c9;
+      background: #f0f8ff;
+      color: #123f5b;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .footer {
+      margin-top: 20px;
+      color: #516068;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .col-8, .col-6, .col-4 {
+        grid-column: span 12;
+      }
+
+      .ad-iframe {
+        min-height: 440px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Liwonde Sun Hotel 2026</h1>
+      <p class="subtitle">Complete Website and Admin Guide (Client Edition)</p>
+      <p class="subtitle" style="margin-top:10px; font-size:16px;">Not Just A Website. A Management System.</p>
+    </section>
+
+    <section class="grid">
+      <article class="card col-8">
+        <h2>Platform Summary</h2>
+        <p>Your project includes both a guest website and a full admin operations system in one connected platform.</p>
+        <div>
+          <span class="pill">Public Website</span>
+          <span class="pill">Bookings</span>
+          <span class="pill">Payments</span>
+          <span class="pill">Admin Control</span>
+          <span class="pill">Reports</span>
+        </div>
+        <p class="ok">Status: Live-ready architecture with operational and content workflows.</p>
+      </article>
+
+      <article class="card col-4">
+        <h2>Key Value</h2>
+        <ul>
+          <li>Increase direct bookings</li>
+          <li>Reduce manual operations</li>
+          <li>Improve guest response speed</li>
+          <li>Centralize team management</li>
+          <li>Support data-driven decisions</li>
+        </ul>
+      </article>
+
+      <article class="card col-6">
+        <h2>Public Website Scope</h2>
+        <ul>
+          <li>Home page and branding</li>
+          <li>Rooms and room galleries</li>
+          <li>Booking and availability checks</li>
+          <li>Conference, events, restaurant, gym pages</li>
+          <li>Reviews and privacy/cookie support</li>
+        </ul>
+      </article>
+
+      <article class="card col-6">
+        <h2>Admin System Scope</h2>
+        <ul>
+          <li>Dashboard, bookings, calendar, check-ins</li>
+          <li>Room management and blocked dates</li>
+          <li>Maintenance planning (including exact room unit)</li>
+          <li>Payments, invoices, accounting views</li>
+          <li>Reports and CSV export</li>
+          <li>Users, employees, login/reset/access controls</li>
+        </ul>
+      </article>
+
+      <article class="card col-12">
+        <h2>Daily Operations Workflow</h2>
+        <ol>
+          <li>Open dashboard and review arrivals/departures.</li>
+          <li>Process new bookings and check-ins.</li>
+          <li>Manage room availability and maintenance tasks.</li>
+          <li>Track payments and invoice status.</li>
+          <li>Update site content (pages/gallery/menu) when needed.</li>
+          <li>Export reports for management review.</li>
+        </ol>
+      </article>
+
+      <article class="card col-12">
+        <h2>Marketing Ad Section</h2>
+        <div class="ad-wrap">
+          <h3>Static Campaign Creative</h3>
+          <img src="marketing-ad.png" alt="Liwonde Sun Hotel marketing ad" class="ad-img" />
+
+          <h3>Animated Ad Preview</h3>
+          <iframe src="marketing-ad.html" title="Animated marketing ad" class="ad-iframe"></iframe>
+
+          <div class="btn-row">
+            <a class="btn" href="marketing-ad.html" target="_blank" rel="noopener">Open Main Animated Ad</a>
+            <a class="btn" href="marketing-ad/animated-ad.html" target="_blank" rel="noopener">Open Alternate Animated Ad</a>
+            <a class="btn" href="marketing-ad/ad-phenomenal.png" target="_blank" rel="noopener">Open Alternate Static Ad</a>
+          </div>
+          <p class="muted">Campaign line: Not Just A Website. A Management System.</p>
+        </div>
+      </article>
+
+      <article class="card col-12">
+        <h2>Security and Control</h2>
+        <ul>
+          <li>Protected admin login and authenticated actions</li>
+          <li>CSRF-protected admin workflows</li>
+          <li>Role-based access flow for internal users</li>
+          <li>Operational logging to support reporting and accountability</li>
+        </ul>
+      </article>
+
+      <article class="card col-12">
+        <h2>Final Handover Note</h2>
+        <p>
+          Liwonde Sun Hotel now has a complete digital business platform that combines guest marketing,
+          booking operations, administrative control, and business reporting in one system.
+        </p>
+      </article>
+    </section>
+
+    <p class="footer">Prepared for Liwonde Sun Hotel | Website and Admin Guide</p>
+  </div>
+</body>
+</html>
