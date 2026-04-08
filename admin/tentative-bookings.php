@@ -520,6 +520,7 @@ $currency_symbol = getSetting('currency_symbol');
                                     <div class="action-buttons">
                                         <?php if (!$is_expired): ?>
                                             <form method="POST" style="display: inline;">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action" value="convert">
                                                 <input type="hidden" name="id" value="<?php echo $booking['id']; ?>">
                                                 <button type="submit" class="btn btn-convert" onclick="return confirm('Convert this tentative booking to confirmed?')">
@@ -528,6 +529,7 @@ $currency_symbol = getSetting('currency_symbol');
                                             </form>
                                         <?php endif; ?>
                                         <form method="POST" style="display: inline;">
+                                            <?php echo getCsrfField(); ?>
                                             <input type="hidden" name="action" value="cancel">
                                             <input type="hidden" name="id" value="<?php echo $booking['id']; ?>">
                                             <button type="submit" class="btn btn-cancel" onclick="return confirm('Cancel this tentative booking?')">

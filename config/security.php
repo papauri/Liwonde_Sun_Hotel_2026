@@ -138,29 +138,6 @@ function getCsrfField() {
 function requireCsrfValidation() {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token = $_POST['csrf_token'] ?? '';
-        
-        // Diagnostic logging
-        $logDir = __DIR__ . '/../logs/security';
-        if (!file_exists($logDir)) {
-            mkdir($logDir, 0755, true);
-        }
-        $logFile = $logDir . '/csrf-debug.log';
-        
-        $debugInfo = [
-            'timestamp' => date('Y-m-d H:i:s'),
-            'session_status' => session_status(),
-            'session_id' => session_id(),
-            'session_exists' => isset($_SESSION),
-            'csrf_token_in_session' => isset($_SESSION['csrf_token']) ? 'YES' : 'NO',
-            'csrf_token_value' => isset($_SESSION['csrf_token']) ? substr($_SESSION['csrf_token'], 0, 10) . '...' : 'N/A',
-            'received_token' => !empty($token) ? substr($token, 0, 10) . '...' : 'EMPTY',
-            'tokens_match' => isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token) ? 'YES' : 'NO',
-            'uri' => $_SERVER['REQUEST_URI'] ?? 'unknown',
-            'post_fields' => array_keys($_POST)
-        ];
-        
-        file_put_contents($logFile, json_encode($debugInfo) . "\n", FILE_APPEND | LOCK_EX);
-        
         if (!validateCsrfToken($token)) {
             throw new Exception('CSRF token validation failed. Please refresh the page and try again.');
         }

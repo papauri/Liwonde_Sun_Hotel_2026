@@ -174,15 +174,20 @@ function clearCache() {
  * Clear image cache
  */
 function clearImageCache() {
-    $files = glob(IMAGE_CACHE_DIR . '/*.jpg');
     $cleared = 0;
-    if ($files) {
-        foreach ($files as $file) {
-            if (@unlink($file)) {
-                $cleared++;
+    $extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+
+    foreach ($extensions as $ext) {
+        $files = glob(IMAGE_CACHE_DIR . '/*.' . $ext);
+        if ($files) {
+            foreach ($files as $file) {
+                if (@unlink($file)) {
+                    $cleared++;
+                }
             }
         }
     }
+
     return $cleared;
 }
 
@@ -371,7 +376,7 @@ function clearRoomCache() {
  * Call this when site settings are updated
  */
 function clearSettingsCache() {
-    return clearCacheByPattern('setting_*');
+    return clearCacheByPattern('setting_*') + clearCacheByPattern('settings_group_*');
 }
 
 /**
@@ -380,6 +385,19 @@ function clearSettingsCache() {
  */
 function clearEmailCache() {
     return clearCacheByPattern('email_*');
+}
+
+/**
+ * Clear content cache snippets used across public pages.
+ */
+function clearContentCache() {
+    $total = 0;
+    $total += clearCacheByPattern('about_us*');
+    $total += clearCacheByPattern('footer_links*');
+    $total += clearCacheByPattern('hotel_reviews_*');
+    $total += clearCacheByPattern('testimonials_*');
+    $total += clearCacheByPattern('policies*');
+    return $total;
 }
 
 /**

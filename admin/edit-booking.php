@@ -382,7 +382,7 @@ if (!$booking) {
 
     <div class="edit-form">
         <form method="POST">
-            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+            <?php echo getCsrfField(); ?>
             
             <h3 style="margin-top: 0; color: var(--navy); border-bottom: 2px solid var(--gold, #d4a843); padding-bottom: 8px;">
                 <i class="fas fa-user"></i> Guest Information

@@ -17,6 +17,7 @@ if (!function_exists('ensureMaintenanceInfrastructure')) {
         $pdo->exec("CREATE TABLE IF NOT EXISTS `room_maintenance_tasks` (
             `id`                  int          NOT NULL AUTO_INCREMENT,
             `room_id`             int          DEFAULT NULL,
+            `room_unit_id`        int          DEFAULT NULL,
             `task_type`           enum('maintenance','deep_cleaning','room_service','inspection','renovation','pest_control','other')
                                                NOT NULL DEFAULT 'maintenance',
             `title`               varchar(200) NOT NULL,
@@ -38,6 +39,7 @@ if (!function_exists('ensureMaintenanceInfrastructure')) {
             `updated_at`          timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (`id`),
             KEY `idx_maint_room_id`     (`room_id`),
+            KEY `idx_maint_room_unit`   (`room_unit_id`),
             KEY `idx_maint_status`      (`status`),
             KEY `idx_maint_scheduled`   (`scheduled_start`),
             KEY `idx_maint_assigned_to` (`assigned_to`),
@@ -46,6 +48,28 @@ if (!function_exists('ensureMaintenanceInfrastructure')) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
         // Add assigned_to_name column to existing tables that predate this column
+        try {
+            $pdo->exec("ALTER TABLE `room_maintenance_tasks`
+                ADD COLUMN IF NOT EXISTS `room_unit_id` int DEFAULT NULL
+                AFTER `room_id`");
+        } catch (\PDOException $e) {
+            $needsAdd = function_exists('hasTableColumn') ? !hasTableColumn('room_maintenance_tasks', 'room_unit_id') : true;
+            if ($needsAdd) {
+                try {
+                    $pdo->exec("ALTER TABLE `room_maintenance_tasks` ADD COLUMN `room_unit_id` int DEFAULT NULL AFTER `room_id`");
+                } catch (\PDOException $inner) {
+                    // Ignore duplicate-column style failures.
+                }
+            }
+        }
+
+        try {
+            $pdo->exec("ALTER TABLE `room_maintenance_tasks`
+                ADD INDEX `idx_maint_room_unit` (`room_unit_id`)");
+        } catch (\PDOException $e) {
+            // Index already exists.
+        }
+
         try {
             $pdo->exec("ALTER TABLE `room_maintenance_tasks`
                 ADD COLUMN IF NOT EXISTS `assigned_to_name` varchar(150) DEFAULT NULL
@@ -82,6 +106,7 @@ if (!function_exists('syncMaintenanceBlockedDates')) {
         PDO    $pdo,
         int    $taskId,
         ?int   $roomId,
+        ?int   $roomUnitId,
         string $scheduledStart,
         string $scheduledEnd,
         bool   $blocksAvailability,
@@ -110,13 +135,13 @@ if (!function_exists('syncMaintenanceBlockedDates')) {
         }
 
         $stmt = $pdo->prepare(
-            "INSERT INTO room_blocked_dates (room_id, block_date, block_type, reason)
-             VALUES (?, ?, 'maintenance', ?)"
+              "INSERT INTO room_blocked_dates (room_id, room_unit_id, block_date, block_type, reason)
+               VALUES (?, ?, ?, 'maintenance', ?)"
         );
 
         $current = clone $startDate;
         while ($current <= $endDate) {
-            $stmt->execute([$roomId, $current->format('Y-m-d'), "maintenance_task:{$taskId}"]);
+            $stmt->execute([$roomId, $roomUnitId, $current->format('Y-m-d'), "maintenance_task:{$taskId}"]);
             $current->modify('+1 day');
         }
     }

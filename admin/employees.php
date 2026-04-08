@@ -530,7 +530,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
             <div class="panel" style="margin-bottom:16px;">
                 <h3><i class="fas fa-list"></i> Employee Titles Catalog</h3>
                 <form method="POST" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="action" value="add_employee_title">
                     <input type="text" name="title_name" placeholder="Add new title (e.g. Concierge)" required style="min-width:260px; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px;">
                     <button type="submit" class="btn-inline btn-edit"><i class="fas fa-plus"></i> Add Title</button>
@@ -541,7 +541,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                     <?php else: ?>
                         <?php foreach ($employee_titles as $t): ?>
                             <form method="POST" style="display:inline-flex; align-items:center; gap:6px; margin:0;">
-                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                <?php echo getCsrfField(); ?>
                                 <input type="hidden" name="action" value="delete_employee_title">
                                 <input type="hidden" name="title_id" value="<?php echo (int)$t['id']; ?>">
                                 <span style="background:#f3f4f6; color:#374151; border:1px solid #e5e7eb; border-radius:999px; padding:6px 10px; font-size:12px;">
@@ -568,7 +568,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                     </h3>
 
                     <form method="POST" action="employees.php<?php echo $editEmployee ? '?edit=' . (int)$editEmployee['id'] : ''; ?>">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <?php if ($editEmployee): ?>
                             <input type="hidden" name="action" value="edit_employee">
                             <input type="hidden" name="employee_id" value="<?php echo (int)$editEmployee['id']; ?>">
@@ -722,7 +722,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                                                     <i class="fas fa-pen"></i>
                                                 </a>
                                                 <form method="POST" style="display:inline" onsubmit="return confirm('Delete this employee?')">
-                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <?php echo getCsrfField(); ?>
                                                     <input type="hidden" name="action" value="delete_employee">
                                                     <input type="hidden" name="employee_id" value="<?php echo (int)$emp['id']; ?>">
                                                     <button class="btn-inline btn-delete" title="Delete"><i class="fas fa-trash"></i></button>

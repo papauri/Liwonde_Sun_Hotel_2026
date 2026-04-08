@@ -529,7 +529,7 @@ $site_name = getSetting('site_name');
                                         <td>
                                             <form method="POST" class="d-inline">
                                                 <?php echo getCsrfField(); ?>
-                                                <input type="hidden" name="action" value="unblock_date">
+<input type="hidden" name="action" value="unblock_date">
                                                 <input type="hidden" name="id" value="<?php echo $bd['id']; ?>">
                                                 <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to unblock this date?');">
                                                     <i class="fas fa-unlock"></i> Unblock
@@ -559,7 +559,7 @@ $site_name = getSetting('site_name');
                 <div class="modal-body">
                     <form method="POST">
                         <?php echo getCsrfField(); ?>
-                        <input type="hidden" name="action" value="block_date">
+<input type="hidden" name="action" value="block_date">
                         
                         <div class="mb-3">
                             <label class="form-label">Room</label>
@@ -626,7 +626,7 @@ $site_name = getSetting('site_name');
                 <div class="modal-body">
                     <form method="POST" id="blockRangeForm">
                         <?php echo getCsrfField(); ?>
-                        <input type="hidden" name="action" value="block_multiple">
+<input type="hidden" name="action" value="block_multiple">
                         <input type="hidden" name="dates" id="selectedDatesArray">
                         
                         <div class="mb-3">

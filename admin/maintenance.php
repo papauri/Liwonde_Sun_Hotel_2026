@@ -17,6 +17,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $action = $_POST['action'] ?? '';
 
+        $resolveRoomAndUnit = static function (?int $roomId, ?int $roomUnitId) use ($pdo): array {
+            $roomLabel = 'Common Area';
+            $unitLabel = null;
+
+            if ($roomId !== null && $roomId > 0) {
+                $roomStmt = $pdo->prepare("SELECT name FROM rooms WHERE id = ? LIMIT 1");
+                $roomStmt->execute([$roomId]);
+                $roomLabel = (string)($roomStmt->fetchColumn() ?: ('Room #' . $roomId));
+            }
+
+            if ($roomUnitId !== null && $roomUnitId > 0) {
+                $unitStmt = $pdo->prepare("SELECT unit_label FROM room_units WHERE id = ? LIMIT 1");
+                $unitStmt->execute([$roomUnitId]);
+                $unitLabel = (string)($unitStmt->fetchColumn() ?: ('Unit #' . $roomUnitId));
+            }
+
+            return [$roomLabel, $unitLabel];
+        };
+
+        $logMaintenance = static function (string $actionName, string $details) use ($pdo, $user): void {
+            try {
+                logAdminActivity(
+                    $pdo,
+                    isset($user['id']) ? (int)$user['id'] : null,
+                    isset($user['username']) ? (string)$user['username'] : null,
+                    $actionName,
+                    $details,
+                    $_SERVER['REMOTE_ADDR'] ?? null,
+                    $_SERVER['HTTP_USER_AGENT'] ?? null
+                );
+            } catch (Throwable $e) {
+                // Keep maintenance flow unaffected even if activity logging fails.
+            }
+        };
+
         $validTypes    = ['maintenance','deep_cleaning','room_service','inspection','renovation','pest_control','other'];
         $validPriority = ['low','medium','high','urgent'];
         $validStatuses = ['pending','in_progress','completed','cancelled'];
@@ -26,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ── Create Task ─────────────────────────────────────────────────
             if ($action === 'create_task') {
                 $roomId         = ($_POST['room_id'] ?? '') !== '' ? (int)$_POST['room_id'] : null;
+                $roomUnitId     = ($_POST['room_unit_id'] ?? '') !== '' ? (int)$_POST['room_unit_id'] : null;
                 $taskType       = $_POST['task_type']       ?? 'maintenance';
                 $title          = maintenanceSanitize($_POST['title']        ?? '', 200);
                 $description    = maintenanceSanitize($_POST['description']  ?? '', 2000);
@@ -46,6 +82,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!in_array($priority,    $validPriority, true)) throw new Exception('Invalid priority.');
                 if ($scheduledStart === '' || $scheduledEnd === '') throw new Exception('Scheduled start and end are required.');
                 if (strtotime($scheduledEnd) <= strtotime($scheduledStart)) throw new Exception('End date/time must be after start.');
+                if ($roomUnitId !== null && $roomId === null) throw new Exception('Select a room before choosing a room unit.');
+                if ($roomUnitId !== null) {
+                    $unitCheck = $pdo->prepare("SELECT COUNT(*) FROM room_units WHERE id = ? AND room_id = ? AND is_active = 1");
+                    $unitCheck->execute([$roomUnitId, $roomId]);
+                    if ((int)$unitCheck->fetchColumn() === 0) {
+                        throw new Exception('Selected room unit is invalid for the chosen room.');
+                    }
+                }
 
                 // Build list of (start, end) pairs — 1 for single, N for recurring
                 $occurrences = [['start' => $scheduledStart, 'end' => $scheduledEnd]];
@@ -78,15 +122,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $ins = $pdo->prepare("INSERT INTO room_maintenance_tasks
-                    (room_id, task_type, title, description, priority, assigned_to, employee_id, assigned_to_name,
+                    (room_id, room_unit_id, task_type, title, description, priority, assigned_to, employee_id, assigned_to_name,
                      scheduled_start, scheduled_end, status, blocks_availability,
                      recurrence_group_id, notes, created_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)");
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)");
 
                 $createdPairs = [];
                 foreach ($occurrences as $occ) {
                     $ins->execute([
-                        $roomId, $taskType, $title, $description ?: null, $priority, $assignedTo, $employeeId, $assignedToName,
+                        $roomId, $roomUnitId, $taskType, $title, $description ?: null, $priority, $assignedTo, $employeeId, $assignedToName,
                         $occ['start'], $occ['end'], $blocksAvail, $recurrenceGroupId,
                         $notes ?: null, $user['id'],
                     ]);
@@ -94,8 +138,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 foreach ($createdPairs as $tid => $occ) {
-                    syncMaintenanceBlockedDates($pdo, $tid, $roomId, $occ['start'], $occ['end'], (bool)$blocksAvail, 'pending');
+                    syncMaintenanceBlockedDates($pdo, $tid, $roomId, $roomUnitId, $occ['start'], $occ['end'], (bool)$blocksAvail, 'pending');
                 }
+
+                [$roomLabel, $unitLabel] = $resolveRoomAndUnit($roomId, $roomUnitId);
+                $logMaintenance('maintenance_task_create', sprintf(
+                    'Created %d maintenance task(s): "%s" [%s] room="%s"%s, priority=%s, blocks=%s.',
+                    count($createdPairs),
+                    $title,
+                    $taskType,
+                    $roomLabel,
+                    $unitLabel ? ', unit="' . $unitLabel . '"' : '',
+                    $priority,
+                    $blocksAvail ? 'yes' : 'no'
+                ));
 
                 $n = count($createdPairs);
                 $message = $n === 1 ? 'Task created successfully.' : "{$n} recurring tasks created.";
@@ -104,6 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($action === 'edit_task') {
                 $taskId         = (int)($_POST['task_id'] ?? 0);
                 $roomId         = ($_POST['room_id'] ?? '') !== '' ? (int)$_POST['room_id'] : null;
+                $roomUnitId     = ($_POST['room_unit_id'] ?? '') !== '' ? (int)$_POST['room_unit_id'] : null;
                 $taskType       = $_POST['task_type']      ?? 'maintenance';
                 $title          = maintenanceSanitize($_POST['title']        ?? '', 200);
                 $description    = maintenanceSanitize($_POST['description']  ?? '', 2000);
@@ -122,6 +179,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!in_array($priority,    $validPriority, true)) throw new Exception('Invalid priority.');
                 if ($scheduledStart === '' || $scheduledEnd === '') throw new Exception('Scheduled start/end required.');
                 if (strtotime($scheduledEnd) <= strtotime($scheduledStart)) throw new Exception('End must be after start.');
+                if ($roomUnitId !== null && $roomId === null) throw new Exception('Select a room before choosing a room unit.');
+                if ($roomUnitId !== null) {
+                    $unitCheck = $pdo->prepare("SELECT COUNT(*) FROM room_units WHERE id = ? AND room_id = ? AND is_active = 1");
+                    $unitCheck->execute([$roomUnitId, $roomId]);
+                    if ((int)$unitCheck->fetchColumn() === 0) {
+                        throw new Exception('Selected room unit is invalid for the chosen room.');
+                    }
+                }
 
                 $row = $pdo->prepare("SELECT status FROM room_maintenance_tasks WHERE id = ?");
                 $row->execute([$taskId]);
@@ -129,16 +194,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($currentStatus === false) throw new Exception('Task not found.');
 
                 $pdo->prepare("UPDATE room_maintenance_tasks SET
-                    room_id=?, task_type=?, title=?, description=?,
+                    room_id=?, room_unit_id=?, task_type=?, title=?, description=?,
                     priority=?, assigned_to=?, employee_id=?, assigned_to_name=?, scheduled_start=?, scheduled_end=?,
                     blocks_availability=?, notes=?
                     WHERE id=?")->execute([
-                    $roomId, $taskType, $title, $description ?: null,
+                    $roomId, $roomUnitId, $taskType, $title, $description ?: null,
                     $priority, $assignedTo, $employeeId, $assignedToName, $scheduledStart, $scheduledEnd,
                     $blocksAvail, $notes ?: null, $taskId,
                 ]);
 
-                syncMaintenanceBlockedDates($pdo, $taskId, $roomId, $scheduledStart, $scheduledEnd, (bool)$blocksAvail, $currentStatus);
+                syncMaintenanceBlockedDates($pdo, $taskId, $roomId, $roomUnitId, $scheduledStart, $scheduledEnd, (bool)$blocksAvail, $currentStatus);
+                [$roomLabel, $unitLabel] = $resolveRoomAndUnit($roomId, $roomUnitId);
+                $logMaintenance('maintenance_task_update', sprintf(
+                    'Updated task #%d: "%s" [%s] room="%s"%s, priority=%s, blocks=%s, window=%s -> %s.',
+                    $taskId,
+                    $title,
+                    $taskType,
+                    $roomLabel,
+                    $unitLabel ? ', unit="' . $unitLabel . '"' : '',
+                    $priority,
+                    $blocksAvail ? 'yes' : 'no',
+                    $scheduledStart,
+                    $scheduledEnd
+                ));
                 $message = 'Task updated successfully.';
 
             // ── Update Status ───────────────────────────────────────────────
@@ -150,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Invalid status update.');
                 }
 
-                $row = $pdo->prepare("SELECT room_id, scheduled_start, scheduled_end, blocks_availability FROM room_maintenance_tasks WHERE id = ?");
+                $row = $pdo->prepare("SELECT room_id, room_unit_id, scheduled_start, scheduled_end, blocks_availability FROM room_maintenance_tasks WHERE id = ?");
                 $row->execute([$taskId]);
                 $task = $row->fetch(PDO::FETCH_ASSOC);
                 if (!$task) throw new Exception('Task not found.');
@@ -167,12 +245,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 syncMaintenanceBlockedDates(
-                    $pdo, $taskId, (int)$task['room_id'],
+                    $pdo, $taskId, (int)$task['room_id'], isset($task['room_unit_id']) ? (int)$task['room_unit_id'] : null,
                     $task['scheduled_start'], $task['scheduled_end'],
                     (bool)$task['blocks_availability'], $newStatus
                 );
 
                 $labels = ['pending'=>'Pending','in_progress'=>'In Progress','completed'=>'Completed','cancelled'=>'Cancelled'];
+                [$roomLabel, $unitLabel] = $resolveRoomAndUnit(
+                    isset($task['room_id']) ? (int)$task['room_id'] : null,
+                    isset($task['room_unit_id']) ? (int)$task['room_unit_id'] : null
+                );
+                $logMaintenance('maintenance_task_status', sprintf(
+                    'Task #%d status changed to %s for room="%s"%s.',
+                    $taskId,
+                    $labels[$newStatus] ?? $newStatus,
+                    $roomLabel,
+                    $unitLabel ? ', unit="' . $unitLabel . '"' : ''
+                ));
                 $message = 'Task marked as ' . ($labels[$newStatus] ?? $newStatus) . '.';
 
             // ── Delete Task ─────────────────────────────────────────────────
@@ -180,8 +269,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $taskId = (int)($_POST['task_id'] ?? 0);
                 if ($taskId <= 0) throw new Exception('Invalid task ID.');
 
+                $taskStmt = $pdo->prepare("SELECT title, task_type, room_id, room_unit_id FROM room_maintenance_tasks WHERE id = ? LIMIT 1");
+                $taskStmt->execute([$taskId]);
+                $taskRow = $taskStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
                 removeMaintenanceBlockedDates($pdo, $taskId);
                 $pdo->prepare("DELETE FROM room_maintenance_tasks WHERE id=?")->execute([$taskId]);
+
+                if ($taskRow) {
+                    [$roomLabel, $unitLabel] = $resolveRoomAndUnit(
+                        isset($taskRow['room_id']) ? (int)$taskRow['room_id'] : null,
+                        isset($taskRow['room_unit_id']) ? (int)$taskRow['room_unit_id'] : null
+                    );
+                    $logMaintenance('maintenance_task_delete', sprintf(
+                        'Deleted task #%d: "%s" [%s] room="%s"%s.',
+                        $taskId,
+                        (string)($taskRow['title'] ?? ''),
+                        (string)($taskRow['task_type'] ?? ''),
+                        $roomLabel,
+                        $unitLabel ? ', unit="' . $unitLabel . '"' : ''
+                    ));
+                }
                 $message = 'Task deleted.';
             }
 
@@ -220,6 +328,26 @@ try {
     $rooms = $pdo->query("SELECT id, name FROM rooms WHERE is_active=1 ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {}
 
+$roomUnitsByRoom = [];
+try {
+    ensureRoomUnitInfrastructure();
+    foreach ($rooms as $rm) {
+        syncRoomUnitsForRoom((int)$rm['id']);
+    }
+    $roomUnitsRows = $pdo->query("SELECT id, room_id, unit_label FROM room_units WHERE is_active = 1 ORDER BY room_id ASC, id ASC")
+        ->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($roomUnitsRows as $unit) {
+        $rid = (int)$unit['room_id'];
+        if (!isset($roomUnitsByRoom[$rid])) {
+            $roomUnitsByRoom[$rid] = [];
+        }
+        $roomUnitsByRoom[$rid][] = [
+            'id' => (int)$unit['id'],
+            'unit_label' => (string)($unit['unit_label'] ?? ''),
+        ];
+    }
+} catch (Throwable $e) {}
+
 $staffMembers = [];
 try {
     $staffMembers = $pdo->query("SELECT id, full_name, role FROM admin_users ORDER BY full_name")->fetchAll(PDO::FETCH_ASSOC);
@@ -248,12 +376,14 @@ $tasks = [];
 try {
     $sql = "SELECT t.*,
         r.name        AS room_name,
+        ru.unit_label AS room_unit_label,
         au.full_name  AS assignee_name,
         au.role       AS assignee_role,
         e.full_name   AS employee_name,
         e.position_title AS employee_position
     FROM room_maintenance_tasks t
     LEFT JOIN rooms r       ON r.id  = t.room_id
+    LEFT JOIN room_units ru ON ru.id = t.room_unit_id
     LEFT JOIN admin_users au ON au.id = t.assigned_to
     LEFT JOIN employees e   ON e.id   = t.employee_id
     {$whereClause}
@@ -678,6 +808,9 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
                         <div class="sc-title"><?php echo htmlspecialchars($t['title']); ?></div>
                         <div class="sc-room">
                             <?php echo $t['room_name'] ? htmlspecialchars($t['room_name']) : 'Common Area'; ?>
+                            <?php if (!empty($t['room_unit_label'])): ?>
+                            — <?php echo htmlspecialchars($t['room_unit_label']); ?>
+                            <?php endif; ?>
                             <?php if ($t['assignee_name']): ?>
                             &mdash; <?php echo htmlspecialchars($t['assignee_name']); ?>
                             <?php elseif ($t['employee_name']): ?>
@@ -704,7 +837,7 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
                     </h3>
 
                     <form method="POST" action="maintenance.php">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <?php if ($editTask): ?>
                             <input type="hidden" name="action"  value="edit_task">
                             <input type="hidden" name="task_id" value="<?php echo (int)$editTask['id']; ?>">
@@ -757,6 +890,13 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
                                         <?php echo htmlspecialchars($rm['name']); ?>
                                     </option>
                                     <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="room_unit_group" style="display:none;">
+                                <label for="maint_room_unit">Exact Room Unit</label>
+                                <select id="maint_room_unit" name="room_unit_id">
+                                    <option value="">Whole room / no specific unit</option>
                                 </select>
                             </div>
 
@@ -959,6 +1099,9 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
                                     </td>
                                     <td>
                                         <?php echo $task['room_name'] ? htmlspecialchars($task['room_name']) : '<em style="color:#9ca3af">Common Area</em>'; ?>
+                                        <?php if (!empty($task['room_unit_label'])): ?>
+                                            <br><span style="font-size:11px;color:#6b7280;"><i class="fas fa-door-closed"></i> <?php echo htmlspecialchars($task['room_unit_label']); ?></span>
+                                        <?php endif; ?>
                                         <?php if (!$task['blocks_availability']): ?>
                                             <br><span style="font-size:10px;color:#9ca3af">No block</span>
                                         <?php else: ?>
@@ -1008,7 +1151,7 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
                                         <div class="action-group">
                                             <?php if ($task['status'] === 'pending'): ?>
                                             <form method="POST" style="display:inline">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"    value="update_status">
                                                 <input type="hidden" name="task_id"   value="<?php echo (int)$task['id']; ?>">
                                                 <input type="hidden" name="status"    value="in_progress">
@@ -1020,7 +1163,7 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
 
                                             <?php if ($task['status'] === 'in_progress'): ?>
                                             <form method="POST" style="display:inline">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"    value="update_status">
                                                 <input type="hidden" name="task_id"   value="<?php echo (int)$task['id']; ?>">
                                                 <input type="hidden" name="status"    value="completed">
@@ -1032,7 +1175,7 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
 
                                             <?php if (in_array($task['status'],['pending','in_progress'],true)): ?>
                                             <form method="POST" style="display:inline">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"    value="update_status">
                                                 <input type="hidden" name="task_id"   value="<?php echo (int)$task['id']; ?>">
                                                 <input type="hidden" name="status"    value="cancelled">
@@ -1044,7 +1187,7 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
 
                                             <?php if ($task['status'] === 'cancelled'): ?>
                                             <form method="POST" style="display:inline">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"    value="update_status">
                                                 <input type="hidden" name="task_id"   value="<?php echo (int)$task['id']; ?>">
                                                 <input type="hidden" name="status"    value="pending">
@@ -1060,9 +1203,9 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
                                             </a>
 
                                             <!-- Delete -->
-                                            <form method="POST" style="display:inline"
-                                                  onsubmit="return confirm('Delete this task? This will also unblock the room dates.')">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                                                        <form method="POST" style="display:inline"
+                                                                                                    onsubmit="return confirm('Delete this task? This will also unblock the room dates.')">
+                                                                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"    value="delete_task">
                                                 <input type="hidden" name="task_id"   value="<?php echo (int)$task['id']; ?>">
                                                 <button class="btn-inline btn-delete" title="Delete task">
@@ -1085,6 +1228,9 @@ $statusLabels   = ['pending'=>'Pending','in_progress'=>'In Progress','completed'
 </div>
 
 <script>
+const maintenanceRoomUnitsByRoom = <?php echo json_encode($roomUnitsByRoom); ?>;
+const initialMaintenanceRoomUnitId = '<?php echo htmlspecialchars((string)($editTask['room_unit_id'] ?? ''), ENT_QUOTES); ?>';
+
 function toggleRepeat(val) {
     var el = document.getElementById('repeat_details');
     var unit = document.getElementById('repeat_unit');
@@ -1108,6 +1254,53 @@ function toggleRepeat(val) {
                         + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
         }
     });
+})();
+
+function updateRoomUnitSelect() {
+    var roomSelect = document.getElementById('maint_room');
+    var group = document.getElementById('room_unit_group');
+    var unitSelect = document.getElementById('maint_room_unit');
+    if (!roomSelect || !group || !unitSelect) return;
+
+    var roomId = roomSelect.value;
+    var shouldShow = roomId !== '';
+
+    group.style.display = shouldShow ? '' : 'none';
+    unitSelect.disabled = !shouldShow;
+
+    var previousValue = unitSelect.value || initialMaintenanceRoomUnitId;
+    unitSelect.innerHTML = '<option value="">Whole room / no specific unit</option>';
+
+    if (!shouldShow) {
+        unitSelect.value = '';
+        return;
+    }
+
+    var units = maintenanceRoomUnitsByRoom[roomId] || [];
+    if (units.length === 0) {
+        var emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = 'No units configured for this room';
+        emptyOption.disabled = true;
+        unitSelect.appendChild(emptyOption);
+        return;
+    }
+
+    units.forEach(function(unit) {
+        var option = document.createElement('option');
+        option.value = String(unit.id);
+        option.textContent = unit.unit_label || ('Unit #' + unit.id);
+        if (String(option.value) === String(previousValue)) {
+            option.selected = true;
+        }
+        unitSelect.appendChild(option);
+    });
+}
+
+(function() {
+    var roomSelect = document.getElementById('maint_room');
+    if (roomSelect) roomSelect.addEventListener('change', updateRoomUnitSelect);
+    updateRoomUnitSelect();
 })();
 </script>
 </body>

@@ -240,7 +240,7 @@ try {
         <div class="lookup-card">
             <form method="POST">
                 <?php echo getCsrfField(); ?>
-                <input type="hidden" name="lookup" value="1">
+<input type="hidden" name="lookup" value="1">
                 
                 <div class="form-group">
                     <label for="booking_reference"><i class="fas fa-hashtag" style="color: var(--gold);"></i> Booking Reference</label>
@@ -343,7 +343,7 @@ try {
                 </p>
                 <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this booking? This action cannot be undone.')">
                     <?php echo getCsrfField(); ?>
-                    <input type="hidden" name="cancel_booking" value="1">
+<input type="hidden" name="cancel_booking" value="1">
                     <input type="hidden" name="booking_reference" value="<?php echo htmlspecialchars($booking['booking_reference']); ?>">
                     <input type="hidden" name="guest_email" value="<?php echo htmlspecialchars($booking['guest_email']); ?>">
                     <div class="form-group" style="margin-bottom: 12px;">

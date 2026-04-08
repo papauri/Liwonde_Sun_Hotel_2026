@@ -383,6 +383,16 @@ $currency_symbol = getSetting('currency_symbol');
         <?php endif; ?>
         
         <h2 class="section-title">Dashboard Overview</h2>
+
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; margin-bottom:18px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px;">
+            <div style="color:#334155; font-size:14px;">
+                <strong><i class="fas fa-envelope"></i> Email Routing</strong>
+                <span style="color:#64748b;"> Edit sender and department recipients for bookings, conference, gym, and restaurant.</span>
+            </div>
+            <a href="booking-settings.php#booking_admin_email" class="btn btn-primary btn-sm">
+                <i class="fas fa-pen"></i> Edit Email Settings
+            </a>
+        </div>
         
         <div class="stats-grid">
             <div class="stat-card stat-card-warning">

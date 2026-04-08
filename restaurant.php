@@ -1429,7 +1429,7 @@ try {
 
                     <form method="POST" class="reservation-form validate-form" action="restaurant.php#book" id="restaurantReservationForm">
                         <?php echo getCsrfField(); ?>
-                        <input type="hidden" name="restaurant_reservation_form" value="1">
+<input type="hidden" name="restaurant_reservation_form" value="1">
                         
                         <!-- Hidden settings for client-side validation -->
                         <input type="hidden" id="minAdvanceDays" value="<?php echo htmlspecialchars(getSetting('restaurant_min_advance_days', '1')); ?>">

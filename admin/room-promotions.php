@@ -169,6 +169,7 @@ $current_page = 'room-promotions.php';
         <div class="card">
             <h3 style="margin-top:0; color:#0a1f36;"><?php echo $editing_promo ? 'Edit Promo' : 'Create Promo'; ?></h3>
             <form method="POST">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="<?php echo $editing_promo ? 'update' : 'create'; ?>">
                 <?php if ($editing_promo): ?>
                     <input type="hidden" name="id" value="<?php echo (int)$editing_promo['id']; ?>">
@@ -270,11 +271,13 @@ $current_page = 'room-promotions.php';
                                         <div class="row-actions">
                                             <a class="btn btn-muted btn-small" href="room-promotions.php?edit=<?php echo (int)$promo['id']; ?>">Edit</a>
                                             <form method="POST" style="display:inline;">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action" value="toggle">
                                                 <input type="hidden" name="id" value="<?php echo (int)$promo['id']; ?>">
                                                 <button type="submit" class="btn btn-muted btn-small"><?php echo (int)$promo['is_active'] === 1 ? 'Disable' : 'Enable'; ?></button>
                                             </form>
                                             <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this promo?');">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action" value="delete">
                                                 <input type="hidden" name="id" value="<?php echo (int)$promo['id']; ?>">
                                                 <button type="submit" class="btn btn-small" style="background:#dc3545; color:#fff;">Delete</button>

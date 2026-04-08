@@ -369,6 +369,7 @@ $rooms_json = json_encode(array_map(function($r) {
             <?php endif; ?>
             
             <form method="POST" id="createBookingForm">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="create_booking" value="1">
                 
                 <!-- Room Selection -->

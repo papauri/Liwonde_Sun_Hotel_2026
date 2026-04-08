@@ -47,10 +47,15 @@ if (isset($_GET['msg'])) {
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+        $error = 'Invalid security token. Please refresh and try again.';
+    }
+
     $action = $_POST['action'] ?? '';
     
     try {
-        switch ($action) {
+        if ($error === '') {
+            switch ($action) {
             case 'toggle_cache':
                 $cache_type = $_POST['cache_type'] ?? '';
                 $enabled = isset($_POST['enabled']) ? (int)$_POST['enabled'] : 0;
@@ -85,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         switch ($type) {
                             case 'all':
                                 $before = count(glob(CACHE_DIR . '/*.cache'));
-                                $image_before = count(glob(IMAGE_CACHE_DIR . '/*.jpg'));
+                                $image_before = countImageCacheFiles();
                                 clearCache();
                                 $files_cleared += $before + $image_before;
                                 $cleared++;
@@ -97,7 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $cleared++;
                                 break;
                             case 'settings':
-                                $before = count(glob(CACHE_DIR . '/setting_*.cache'));
+                                $before = count(glob(CACHE_DIR . '/setting_*.cache'))
+                                        + count(glob(CACHE_DIR . '/settings_group_*.cache'));
                                 clearSettingsCache();
                                 $files_cleared += $before;
                                 $cleared++;
@@ -107,8 +113,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         + count(glob(CACHE_DIR . '/room_*.cache'))
                                         + count(glob(CACHE_DIR . '/facilities_*.cache'))
                                         + count(glob(CACHE_DIR . '/gallery_*.cache'))
-                                        + count(glob(CACHE_DIR . '/hero_*.cache'));
-                                $image_before = count(glob(IMAGE_CACHE_DIR . '/*.jpg'));
+                                    + count(glob(CACHE_DIR . '/hero_*.cache'))
+                                    + count(glob(CACHE_DIR . '/gallery_images*.cache'))
+                                    + count(glob(CACHE_DIR . '/hero_slides*.cache'));
+                                $image_before = countImageCacheFiles();
                                 clearRoomCache();
                                 $files_cleared += $before + $image_before;
                                 $cleared++;
@@ -120,9 +128,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $cleared++;
                                 break;
                             case 'images':
-                                $before = count(glob(IMAGE_CACHE_DIR . '/*.jpg'));
+                                $before = countImageCacheFiles();
                                 clearImageCache();
                                 $files_cleared += $before;
+                                $cleared++;
+                                break;
+                            case 'content':
+                                $files_cleared += clearContentCache();
                                 $cleared++;
                                 break;
                         }
@@ -171,6 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = "Global caching " . ($enabled ? 'enabled' : 'disabled') . "!";
                 $success = true;
                 break;
+            }
         }
     } catch (PDOException $e) {
         $error = 'Database error: ' . $e->getMessage();
@@ -240,6 +253,16 @@ function countCacheByPattern($caches, $patterns) {
     }
 }
 
+function countImageCacheFiles() {
+    $extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+    $total = 0;
+    foreach ($extensions as $ext) {
+        $files = glob(IMAGE_CACHE_DIR . '/*.' . $ext);
+        $total += is_array($files) ? count($files) : 0;
+    }
+    return $total;
+}
+
 // Define cache types - based on actual cache patterns in the system
 $cache_types = [
     'email' => [
@@ -252,19 +275,25 @@ $cache_types = [
         'name' => 'Site Settings',
         'icon' => 'fa-cog',
         'description' => 'General site settings and configuration',
-        'patterns' => ['setting_*']
+        'patterns' => ['setting_*', 'settings_group_*']
     ],
     'rooms' => [
         'name' => 'Rooms & Images',
         'icon' => 'fa-bed',
         'description' => 'Room data, prices, facilities, and image cache',
-        'patterns' => ['rooms_*', 'room_*', 'facilities_*', 'gallery_*', 'hero_*']
+        'patterns' => ['rooms_*', 'room_*', 'facilities_*', 'gallery_*', 'hero_*', 'gallery_images*', 'hero_slides*']
     ],
     'tables' => [
         'name' => 'Database Tables',
         'icon' => 'fa-database',
         'description' => 'Cached database table data',
         'patterns' => ['table_*']
+    ],
+    'content' => [
+        'name' => 'Content Data',
+        'icon' => 'fa-newspaper',
+        'description' => 'Reviews, testimonials, policies, footer links, and content snippets',
+        'patterns' => ['about_us*', 'footer_links*', 'hotel_reviews_*', 'testimonials_*', 'policies*']
     ],
     'images' => [
         'name' => 'Image Cache',
@@ -352,11 +381,18 @@ $cache_types = [
         }
         
         .cache-section {
-            background: white;
-            border-radius: 12px;
+            background: #fff;
+            border-radius: 14px;
+            border: 1px solid #e9eef5;
             padding: 24px;
             margin-bottom: 24px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+            transition: box-shadow 0.25s ease, border-color 0.25s ease;
+        }
+
+        .cache-section:hover {
+            border-color: #d8e1ec;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.09);
         }
         
         .cache-section h2 {
@@ -366,6 +402,52 @@ $cache_types = [
             margin-bottom: 20px;
             padding-bottom: 12px;
             border-bottom: 2px solid var(--gold);
+        }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+            text-decoration: none;
+        }
+
+        .btn-action:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-action:focus-visible {
+            outline: 2px solid rgba(212, 175, 55, 0.45);
+            outline-offset: 2px;
+        }
+
+        .btn-save {
+            background: linear-gradient(180deg, #f1cc67 0%, #d4af37 100%);
+            color: #0a1929;
+            box-shadow: 0 8px 16px rgba(212, 175, 55, 0.28);
+        }
+
+        .btn-save:hover {
+            background: linear-gradient(180deg, #f3d47d 0%, #ddb947 100%);
+            box-shadow: 0 10px 18px rgba(212, 175, 55, 0.34);
+        }
+
+        .btn-delete {
+            background: linear-gradient(180deg, #ef6b7a 0%, #dc3545 100%);
+            color: #fff;
+            box-shadow: 0 8px 16px rgba(220, 53, 69, 0.25);
+        }
+
+        .btn-delete:hover {
+            background: linear-gradient(180deg, #f07e8b 0%, #e14a58 100%);
+            box-shadow: 0 10px 18px rgba(220, 53, 69, 0.32);
         }
         
         .cache-toggle-grid {
@@ -435,30 +517,48 @@ $cache_types = [
         
         .cache-toggle-btn {
             width: 100%;
-            padding: 8px 16px;
+            padding: 10px 14px;
             border: none;
-            border-radius: 6px;
+            border-radius: 10px;
             font-weight: 600;
+            font-size: 13px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .cache-toggle-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .cache-toggle-btn:focus-visible {
+            outline: 2px solid rgba(212, 175, 55, 0.45);
+            outline-offset: 2px;
         }
         
         .cache-toggle-btn.enable {
-            background: #28a745;
+            background: linear-gradient(180deg, #35c85a 0%, #28a745 100%);
             color: white;
+            box-shadow: 0 8px 14px rgba(40, 167, 69, 0.28);
         }
         
         .cache-toggle-btn.enable:hover {
-            background: #218838;
+            background: linear-gradient(180deg, #42cf66 0%, #2eb34c 100%);
+            box-shadow: 0 10px 16px rgba(40, 167, 69, 0.34);
         }
         
         .cache-toggle-btn.disable {
-            background: #dc3545;
+            background: linear-gradient(180deg, #ef6b7a 0%, #dc3545 100%);
             color: white;
+            box-shadow: 0 8px 14px rgba(220, 53, 69, 0.26);
         }
         
         .cache-toggle-btn.disable:hover {
-            background: #c82333;
+            background: linear-gradient(180deg, #f07e8b 0%, #e14a58 100%);
+            box-shadow: 0 10px 16px rgba(220, 53, 69, 0.32);
         }
         
         .bulk-clear-form {
@@ -617,6 +717,35 @@ $cache_types = [
             background: #f8f9fa;
         }
 
+        .cache-table td code {
+            display: inline-block;
+            max-width: 320px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: bottom;
+        }
+
+        .badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding: 4px 8px;
+            border-radius: 999px;
+        }
+
+        .badge-active {
+            background: rgba(40, 167, 69, 0.12);
+            color: #1e7e34;
+        }
+
+        .badge-expired {
+            background: rgba(220, 53, 69, 0.12);
+            color: #b02a37;
+        }
+
         @media (max-width: 768px) {
             .cache-section {
                 padding: 16px;
@@ -749,7 +878,8 @@ $cache_types = [
         <div class="cache-section">
             <h2><i class="fas fa-power-off"></i> Global Cache Control</h2>
             <form method="POST" style="display: flex; align-items: center; gap: 20px;">
-                <input type="hidden" name="action" value="set_global_cache">
+                <?php echo getCsrfField(); ?>
+<input type="hidden" name="action" value="set_global_cache">
                 
                 <div class="switch-container">
                     <label class="switch">
@@ -790,7 +920,8 @@ $cache_types = [
                     </div>
                     <p class="cache-toggle-desc"><?php echo $info['description']; ?></p>
                     <form method="POST">
-                        <input type="hidden" name="action" value="toggle_cache">
+                        <?php echo getCsrfField(); ?>
+<input type="hidden" name="action" value="toggle_cache">
                         <input type="hidden" name="cache_type" value="<?php echo $type; ?>">
                         <input type="hidden" name="enabled" value="<?php echo $enabled ? 0 : 1; ?>">
                         <button type="submit" class="cache-toggle-btn <?php echo $enabled ? 'disable' : 'enable'; ?>">
@@ -807,7 +938,8 @@ $cache_types = [
         <div class="cache-section">
             <h2><i class="fas fa-eraser"></i> Bulk Cache Clearing</h2>
             <form method="POST">
-                <input type="hidden" name="action" value="clear_cache">
+                <?php echo getCsrfField(); ?>
+<input type="hidden" name="action" value="clear_cache">
                 
                 <div class="bulk-clear-form">
                     <label class="cache-checkbox-item">
@@ -817,7 +949,7 @@ $cache_types = [
                     
                     <label class="cache-checkbox-item">
                         <input type="checkbox" name="cache_types[]" value="settings">
-                        <span><i class="fas fa-cog"></i> Site Settings (<?php echo count(array_filter($caches, function($c) { return strpos($c['key'], 'setting_') === 0; })); ?> files)</span>
+                        <span><i class="fas fa-cog"></i> Site Settings (<?php echo countCacheByPattern($caches, ['setting_*', 'settings_group_*']); ?> files)</span>
                     </label>
                     
                     <label class="cache-checkbox-item" style="border-color: var(--gold); background: rgba(212, 175, 55, 0.05);">
@@ -826,15 +958,21 @@ $cache_types = [
                             $room_count = count(array_filter($caches, function($c) { 
                                 return strpos($c['key'], 'rooms_') === 0 || strpos($c['key'], 'room_') === 0 || 
                                        strpos($c['key'], 'facilities_') === 0 || strpos($c['key'], 'gallery_') === 0 || 
-                                       strpos($c['key'], 'hero_') === 0; 
+                                       strpos($c['key'], 'hero_') === 0 || strpos($c['key'], 'gallery_images') === 0 ||
+                                       strpos($c['key'], 'hero_slides') === 0;
                             }));
                             echo $room_count; ?> files)</span>
+                    </label>
+
+                    <label class="cache-checkbox-item" style="border-color: #2563eb; background: rgba(37, 99, 235, 0.05);">
+                        <input type="checkbox" name="cache_types[]" value="content">
+                        <span><i class="fas fa-newspaper"></i> <strong>Content Data</strong> (<?php echo countCacheByPattern($caches, ['about_us*', 'footer_links*', 'hotel_reviews_*', 'testimonials_*', 'policies*']); ?> files)</span>
                     </label>
                     
                     <label class="cache-checkbox-item" style="border-color: #17a2b8; background: rgba(23, 162, 184, 0.05);">
                         <input type="checkbox" name="cache_types[]" value="images">
                         <span><i class="fas fa-image"></i> <strong>Image Cache</strong> (<?php 
-                            $image_count = is_dir(IMAGE_CACHE_DIR) ? count(glob(IMAGE_CACHE_DIR . '/*.jpg')) : 0;
+                            $image_count = countImageCacheFiles();
                             echo $image_count; ?> images)</span>
                     </label>
                     
@@ -860,7 +998,8 @@ $cache_types = [
         <div class="cache-section">
             <h2><i class="fas fa-clock"></i> Scheduled Cache Clearing</h2>
             <form method="POST">
-                <input type="hidden" name="action" value="set_schedule">
+                <?php echo getCsrfField(); ?>
+<input type="hidden" name="action" value="set_schedule">
                 
                 <div class="schedule-form">
                     <div class="switch-container">

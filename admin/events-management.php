@@ -707,6 +707,7 @@ try {
             </div>
             <div id="ueSettingsBody" style="display: none; margin-top: 16px;">
                 <form method="POST" style="display: flex; flex-direction: column; gap: 14px;">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="action" value="save_upcoming_settings">
                     
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -868,6 +869,7 @@ try {
     <?php
     renderModal('eventModal', 'Add New Event', '
         <form method="POST" action="events-management.php" id="eventForm" enctype="multipart/form-data">
+            <?php echo getCsrfField(); ?>
             <input type="hidden" name="action" id="formAction" value="add">
             <input type="hidden" name="id" id="eventId">
             

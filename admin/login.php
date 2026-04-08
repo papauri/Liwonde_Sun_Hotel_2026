@@ -14,6 +14,7 @@ if (isset($_SESSION['admin_user_id'])) {
 }
 
 require_once '../config/database.php';
+require_once '../config/security.php';
 require_once '../includes/activity-logger.php';
 
 $error_message = '';
@@ -30,12 +31,16 @@ $max_attempts = 5;
 $lockout_minutes = 15;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        $error_message = 'Security token expired. Please refresh and try again.';
+    }
+
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
 
-    if ($username && $password) {
+    if ($error_message === '' && $username && $password) {
         try {
             // Check for IP-based rate limiting (too many failed attempts from this IP)
             $rate_stmt = $pdo->prepare("
@@ -501,6 +506,7 @@ $site_name = getSetting('site_name');
             <?php endif; ?>
 
             <form method="POST" action="login.php">
+                <?php echo getCsrfField(); ?>
                 <div class="form-group">
                     <label for="username">Username</label>
                     <div class="input-wrapper">

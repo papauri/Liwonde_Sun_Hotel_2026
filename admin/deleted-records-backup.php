@@ -683,6 +683,7 @@ try {
                                     <td>
                                         <?php if (in_array($source_table, $allowed_tables, true)): ?>
                                             <form method="POST" onsubmit="return confirm('Restore this record back into ' + <?php echo json_encode($source_table); ?> + '?');">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action" value="restore_backup">
                                                 <input type="hidden" name="backup_id" value="<?php echo (int)$backup['id']; ?>">
                                                 <button type="submit" class="btn btn-success btn-sm">
@@ -691,6 +692,7 @@ try {
                                             </form>
                                             <?php if ($live_exists): ?>
                                                 <form method="POST" style="margin-top:8px;" onsubmit="return confirm('Delete the current live record again from ' + <?php echo json_encode($source_table); ?> + '? A fresh backup snapshot will be created first.');">
+                                                    <?php echo getCsrfField(); ?>
                                                     <input type="hidden" name="action" value="redelete_live">
                                                     <input type="hidden" name="backup_id" value="<?php echo (int)$backup['id']; ?>">
                                                     <button type="submit" class="btn btn-danger btn-sm">

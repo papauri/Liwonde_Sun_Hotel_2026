@@ -8,6 +8,7 @@
 
     let listenersBound = false;
     let resizeTimer = null;
+    let contentLoadedTimer = null;
 
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
@@ -39,9 +40,18 @@
         });
 
         document.addEventListener('admin:contentLoaded', function() {
-            addTableDataLabels();
-            detectOverflowingTables();
-            optimizeQuickActions();
+            // Defer expensive table scans until content settles to reduce long task/reflow spikes.
+            if (contentLoadedTimer) {
+                clearTimeout(contentLoadedTimer);
+            }
+
+            contentLoadedTimer = setTimeout(function() {
+                window.requestAnimationFrame(function() {
+                    addTableDataLabels();
+                    detectOverflowingTables();
+                    optimizeQuickActions();
+                });
+            }, 50);
         });
     }
 
@@ -122,6 +132,10 @@
         const tables = document.querySelectorAll('.booking-table, .table');
         
         tables.forEach(table => {
+            if (table.dataset.mobileLabelsReady === '1') {
+                return;
+            }
+
             const headers = table.querySelectorAll('thead th');
             const tbody = table.querySelector('tbody');
             
@@ -139,6 +153,8 @@
                     }
                 });
             });
+
+            table.dataset.mobileLabelsReady = '1';
         });
     }
 
@@ -150,11 +166,6 @@
         
         tableContainers.forEach(container => {
             checkOverflow(container);
-            
-            // Re-check on resize
-            window.addEventListener('resize', function() {
-                checkOverflow(container);
-            });
         });
     }
 

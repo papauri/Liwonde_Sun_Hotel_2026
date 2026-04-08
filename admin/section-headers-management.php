@@ -401,7 +401,7 @@ $page_title = 'Section Headers Management';
                     <p class="text-muted">Manage dynamic section headers across all pages</p>
                 </div>
                 <form method="post" style="margin-top: 8px;" onsubmit="return confirm('Are you sure you want to reset ALL section headers to factory defaults? This will DELETE all custom changes!')">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="action" value="revert_defaults">
                     <button type="submit" class="btn-secondary" style="padding: 10px 20px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;">
                         <i class="fas fa-undo-alt"></i> Revert All to Defaults
@@ -450,7 +450,7 @@ $page_title = 'Section Headers Management';
         <div class="header-card" style="margin-bottom: 20px; border-left: 4px solid #28a745;">
             <h3 style="margin-top: 0; color: var(--navy);"><i class="fas fa-plus-circle"></i> Add New Section Header</h3>
             <form method="POST" style="display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="create_header">
                 <div>
                     <label style="display:block; font-weight:600; margin-bottom:6px;">Section Key</label>
@@ -525,7 +525,7 @@ $page_title = 'Section Headers Management';
                             </button>
                             
                             <form method="post" style="display: inline;" onsubmit="return confirm('Reset this section to factory default?')">
-                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                <?php echo getCsrfField(); ?>
                                 <input type="hidden" name="action" value="reset_single">
                                 <input type="hidden" name="section_key" value="<?php echo htmlspecialchars($header['section_key']); ?>">
                                 <input type="hidden" name="page" value="<?php echo htmlspecialchars($header['page']); ?>">
@@ -564,9 +564,9 @@ $page_title = 'Section Headers Management';
                     </div>
                     
                     <!-- Edit Form (Hidden by default) -->
-                    <form method="POST" id="edit_<?php echo htmlspecialchars($header['section_key']); ?>_<?php echo htmlspecialchars($header['page']); ?>" 
-                          style="display: none; padding: 20px; background: #fff; border: 2px solid var(--gold); border-radius: 6px;">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                        <form method="POST" id="edit_<?php echo htmlspecialchars($header['section_key']); ?>_<?php echo htmlspecialchars($header['page']); ?>" 
+                                                    style="display: none; padding: 20px; background: #fff; border: 2px solid var(--gold); border-radius: 6px;">
+                                                <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="update_header">
                         <input type="hidden" name="section_key" value="<?php echo htmlspecialchars($header['section_key']); ?>">
                         <input type="hidden" name="page" value="<?php echo htmlspecialchars($header['page']); ?>">

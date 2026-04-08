@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Calendar-Based Room Management
  * Hotel Website - Admin Panel

@@ -79,6 +79,7 @@ function seedDepartmentEmailSettings() {
     }
 
     $map = [
+        'booking_admin_email' => trim((string)getSetting('admin_notification_email', '')),
         'conference_admin_email' => trim((string)getSetting('conference_email', '')),
         'gym_admin_email' => trim((string)getSetting('gym_email', '')),
         'restaurant_admin_email' => trim((string)getSetting('email_restaurant', getSetting('restaurant_email', ''))),
@@ -210,6 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'email_from_name' => $_POST['email_from_name'] ?? '',
                 'email_from_email' => $_POST['email_from_email'] ?? '',
                 'email_admin_email' => $_POST['email_admin_email'] ?? '',
+                'booking_admin_email' => trim($_POST['booking_admin_email'] ?? ''),
                 'conference_admin_email' => trim($_POST['conference_admin_email'] ?? ''),
                 'gym_admin_email' => trim($_POST['gym_admin_email'] ?? ''),
                 'restaurant_admin_email' => trim($_POST['restaurant_admin_email'] ?? ''),
@@ -248,6 +250,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $department_labels = [
+                'booking_admin_email' => 'Booking admin email address is invalid',
                 'conference_admin_email' => 'Conference admin email address is invalid',
                 'gym_admin_email' => 'Gym admin email address is invalid',
                 'restaurant_admin_email' => 'Restaurant admin email address is invalid',
@@ -627,7 +630,7 @@ $current_max_days = getLiveMaxAdvanceBookingDays(30);
 
             <form method="POST" action="booking-settings.php">
                 <?php echo getCsrfField(); ?>
-                <div class="form-group">
+<div class="form-group">
                     <label for="max_advance_booking_days">Maximum Advance Booking Days</label>
                     <input type="number" 
                            id="max_advance_booking_days" 
@@ -669,8 +672,7 @@ $current_max_days = getLiveMaxAdvanceBookingDays(30);
 
             <form method="POST" action="booking-settings.php">
                 <?php echo getCsrfField(); ?>
-                
-                <div class="form-group">
+<div class="form-group">
                     <label for="restaurant_min_advance_days">Minimum Advance Days for Reservations</label>
                     <input type="number" 
                            id="restaurant_min_advance_days" 
@@ -790,9 +792,9 @@ $current_max_days = getLiveMaxAdvanceBookingDays(30);
             
             <form method="POST" action="booking-settings.php">
                 <?php echo getCsrfField(); ?>
-                <input type="hidden" name="email_settings" value="1">
+<input type="hidden" name="email_settings" value="1">
                 
-                <h3 style="color: #0A1929; margin-top: 25px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0;">
+                <h3 id="email-settings" style="color: #0A1929; margin-top: 25px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0;">
                     <i class="fas fa-server"></i> SMTP Server Settings
                 </h3>
                 
@@ -915,6 +917,19 @@ $current_max_days = getLiveMaxAdvanceBookingDays(30);
                 <h3 style="color: #0A1929; margin-top: 30px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #e0e0e0;">
                     <i class="fas fa-users-cog"></i> Department Notification Emails
                 </h3>
+
+                <div class="form-group">
+                    <label for="booking_admin_email">Bookings Admin Email</label>
+                    <input type="email"
+                           id="booking_admin_email"
+                           name="booking_admin_email"
+                           class="form-control"
+                           value="<?php echo htmlspecialchars($current_settings['booking_admin_email'] ?? getSetting('admin_notification_email', $current_settings['email_admin_email'] ?? '')); ?>">
+                    <p class="help-text">
+                        <i class="fas fa-info-circle"></i>
+                        Receives room booking notifications from the website.
+                    </p>
+                </div>
 
                 <div class="form-group">
                     <label for="conference_admin_email">Conference Admin Email</label>

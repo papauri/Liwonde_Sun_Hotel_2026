@@ -366,6 +366,7 @@ try {
                         <td><?php echo htmlspecialchars($reservation['occasion'] ?? '—'); ?></td>
                         <td>
                             <form method="POST" style="display:inline;">
+                                <?php echo getCsrfField(); ?>
                                 <input type="hidden" name="reservation_action" value="update_status">
                                 <input type="hidden" name="reservation_id" value="<?php echo $reservation['id']; ?>">
                                 <select name="new_status" class="status-select" onchange="this.form.submit();">
@@ -386,6 +387,7 @@ try {
                                     <i class="fas fa-eye"></i> View
                                 </button>
                                 <form method="POST" style="display:inline;">
+                                    <?php echo getCsrfField(); ?>
                                     <input type="hidden" name="reservation_action" value="delete">
                                     <input type="hidden" name="reservation_id" value="<?php echo $reservation['id']; ?>">
                                     <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this reservation?');">

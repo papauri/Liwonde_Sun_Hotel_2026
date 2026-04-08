@@ -372,6 +372,7 @@ $site_name = getSetting('site_name');
             <?php endif; ?>
 
             <form method="POST">
+                <?php echo getCsrfField(); ?>
                 <div class="form-group">
                     <label for="email">Email Address</label>
                     <div class="input-wrapper">

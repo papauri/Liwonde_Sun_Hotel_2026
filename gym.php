@@ -691,6 +691,7 @@ try {
                 <p>Complete form and our team will confirm your booking via email.</p>
             </div>
             <form method="POST" class="booking-form validate-form" novalidate>
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="gym_booking_form" value="1">
                 <div class="form-grid">
                     <div class="form-group">

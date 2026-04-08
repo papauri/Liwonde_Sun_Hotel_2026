@@ -144,6 +144,7 @@ function _canShowNavItem($permission_key) {
         <?php endif; ?>
         <?php if (_canShowNavItem('booking_settings')): ?>
         <li><a href="booking-settings.php" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-cog"></i> Booking Settings</a></li>
+        <li><a href="booking-settings.php#email-settings" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-envelope"></i> Email Settings</a></li>
         <?php endif; ?>
         <?php if (_canShowNavItem('cache')): ?>
         <li><a href="cache-management.php" class="<?php echo $current_page === 'cache-management.php' ? 'active' : ''; ?>"><i class="fas fa-bolt"></i> Cache</a></li>
@@ -289,14 +290,105 @@ function _canShowNavItem($permission_key) {
         container.setAttribute('aria-busy', isLoading ? 'true' : 'false');
     }
 
-    function updateActiveNav(pathname) {
+    function normalizeHash(hash) {
+        if (!hash) {
+            return '';
+        }
+
+        var normalized = String(hash).trim();
+        if (normalized === '' || normalized === '#') {
+            return '';
+        }
+
+        return normalized.charAt(0) === '#' ? normalized : ('#' + normalized);
+    }
+
+    function scrollToHashTarget(hash, smooth) {
+        var normalizedHash = normalizeHash(hash);
+        if (!normalizedHash) {
+            return false;
+        }
+
+        var target = document.querySelector(normalizedHash);
+        if (!target) {
+            return false;
+        }
+
+        var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var behavior = (!prefersReducedMotion && smooth !== false) ? 'smooth' : 'auto';
+        target.scrollIntoView({ behavior: behavior, block: 'start' });
+        return true;
+    }
+
+    function updateActiveNav(pathname, hash) {
         if (!nav) return;
         var currentPath = (pathname || '').split('/').pop();
+        var currentHash = normalizeHash(typeof hash === 'string' ? hash : window.location.hash);
+        var hasHash = currentHash !== '';
+        var activated = 0;
+
         nav.querySelectorAll('a').forEach(function(link) {
             var href = link.getAttribute('href') || '';
             var linkPath = href.split('?')[0].split('#')[0].split('/').pop();
-            var shouldActivate = currentPath && linkPath === currentPath;
+            var hashPart = href.indexOf('#') >= 0 ? href.slice(href.indexOf('#')) : '';
+            var linkHash = normalizeHash(hashPart);
+            var shouldActivate = false;
+
+            if (currentPath && linkPath === currentPath) {
+                if (hasHash) {
+                    shouldActivate = linkHash === currentHash;
+                } else {
+                    shouldActivate = linkHash === '';
+                }
+            }
+
             link.classList.toggle('active', shouldActivate);
+            if (shouldActivate) {
+                activated++;
+            }
+        });
+
+        // Fallback when no hash-specific nav link exists.
+        if (activated === 0 && currentPath) {
+            var fallback = nav.querySelectorAll('a');
+            for (var i = 0; i < fallback.length; i++) {
+                var fallbackHref = fallback[i].getAttribute('href') || '';
+                var fallbackPath = fallbackHref.split('?')[0].split('#')[0].split('/').pop();
+                if (fallbackPath === currentPath) {
+                    fallback[i].classList.add('active');
+                    break;
+                }
+            }
+        }
+
+        scrollNavToActive();
+    }
+
+    function scrollNavToActive(forceSmooth) {
+        if (!nav) {
+            return;
+        }
+
+        var activeLink = nav.querySelector('a.active');
+        if (!activeLink) {
+            return;
+        }
+
+        var navRect = nav.getBoundingClientRect();
+        var linkRect = activeLink.getBoundingClientRect();
+        var currentLeft = nav.scrollLeft;
+
+        var linkLeftInNav = linkRect.left - navRect.left + currentLeft;
+        var targetLeft = Math.max(0, linkLeftInNav - ((navRect.width - linkRect.width) / 2));
+        var maxScrollLeft = Math.max(0, nav.scrollWidth - nav.clientWidth);
+        targetLeft = Math.min(targetLeft, maxScrollLeft);
+
+        var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var behavior = (!prefersReducedMotion && forceSmooth !== false) ? 'smooth' : 'auto';
+
+        nav.scrollTo({
+            left: targetLeft,
+            behavior: behavior
         });
     }
 
@@ -420,7 +512,8 @@ function _canShowNavItem($permission_key) {
                 document.title = doc.title;
             }
 
-            updateActiveNav(new URL(url, window.location.origin).pathname);
+            var targetUrl = new URL(url, window.location.origin);
+            updateActiveNav(targetUrl.pathname, targetUrl.hash);
 
             if (pushState) {
                 window.history.pushState({ path: url }, '', url);
@@ -429,7 +522,10 @@ function _canShowNavItem($permission_key) {
             await runPageScripts(doc, remoteContent, url);
                 syncDynamicStyles(doc);
             document.dispatchEvent(new CustomEvent('admin:contentLoaded', { detail: { url: url } }));
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            if (!scrollToHashTarget(targetUrl.hash, true)) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
         } catch (error) {
             console.error('Admin content load failed', error);
             window.location.href = url;
@@ -498,11 +594,33 @@ function _canShowNavItem($permission_key) {
             var isOpen = nav.classList.toggle('nav-open');
             toggle.setAttribute('aria-expanded', isOpen);
             icon.className = isOpen ? 'fas fa-times' : 'fas fa-bars';
+
+            if (isOpen) {
+                scrollNavToActive();
+            }
         });
 
         document.addEventListener('click', function(event) {
             var link = event.target.closest('a');
             if (!shouldUseAjaxNavigation(link, event)) {
+                return;
+            }
+
+            var targetUrl;
+            var currentUrl;
+            try {
+                targetUrl = new URL(link.href, window.location.href);
+                currentUrl = new URL(window.location.href);
+            } catch (error) {
+                return;
+            }
+
+            // Hash-only changes on the same page should not trigger a full AJAX content fetch.
+            if (targetUrl.pathname === currentUrl.pathname && targetUrl.search === currentUrl.search && targetUrl.hash !== currentUrl.hash) {
+                event.preventDefault();
+                window.history.pushState({ path: targetUrl.href }, '', targetUrl.href);
+                updateActiveNav(targetUrl.pathname, targetUrl.hash);
+                scrollToHashTarget(targetUrl.hash, true);
                 return;
             }
 
@@ -540,9 +658,14 @@ function _canShowNavItem($permission_key) {
         });
 
         window.addEventListener('resize', normalizeNavForViewport);
+        window.addEventListener('resize', function() {
+            scrollNavToActive(false);
+        });
         normalizeNavForViewport();
 
-        updateActiveNav(window.location.pathname);
+        updateActiveNav(window.location.pathname, window.location.hash);
+        scrollToHashTarget(window.location.hash, false);
+        scrollNavToActive(false);
     }
 })();
 </script>

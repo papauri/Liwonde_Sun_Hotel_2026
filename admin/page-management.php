@@ -482,8 +482,8 @@ $csrf_token = generateCsrfToken();
             <?php else: ?>
 
             <form method="POST" id="orderForm">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="save_order">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                 <input type="hidden" name="page_order" id="pageOrderInput">
             </form>
 
@@ -538,9 +538,9 @@ $csrf_token = generateCsrfToken();
                             <div class="action-group">
                                 <!-- Toggle Enable/Disable -->
                                 <form method="POST" style="display:inline;">
+                                    <?php echo getCsrfField(); ?>
                                     <input type="hidden" name="action" value="toggle_enabled">
                                     <input type="hidden" name="page_id" value="<?php echo $page['id']; ?>">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                     <?php if ($page['is_enabled']): ?>
                                         <button type="submit" class="btn-toggle btn-disable" title="Disable this page" onclick="return confirm('Disable this page? It will become inaccessible to visitors.')">
                                             <i class="fas fa-power-off"></i>
@@ -554,9 +554,9 @@ $csrf_token = generateCsrfToken();
 
                                 <!-- Toggle Nav Visibility -->
                                 <form method="POST" style="display:inline;">
+                                    <?php echo getCsrfField(); ?>
                                     <input type="hidden" name="action" value="toggle_nav">
                                     <input type="hidden" name="page_id" value="<?php echo $page['id']; ?>">
-                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                                     <button type="submit" class="btn-toggle btn-nav-toggle" title="<?php echo $page['show_in_nav'] ? 'Hide from navigation' : 'Show in navigation'; ?>">
                                         <i class="fas <?php echo $page['show_in_nav'] ? 'fa-eye-slash' : 'fa-eye'; ?>"></i>
                                     </button>
@@ -590,8 +590,8 @@ $csrf_token = generateCsrfToken();
             <h2><i class="fas fa-plus-circle"></i> Add New Page</h2>
 
             <form method="POST">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="add_page">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
 
                 <div class="add-page-grid">
                     <div>
@@ -629,9 +629,9 @@ $csrf_token = generateCsrfToken();
         <div class="edit-modal">
             <h3><i class="fas fa-pencil-alt"></i> Edit Page</h3>
             <form method="POST" id="editForm">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="edit_page">
                 <input type="hidden" name="page_id" id="edit_page_id">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
 
                 <div class="form-group">
                     <label>Page Key</label>
