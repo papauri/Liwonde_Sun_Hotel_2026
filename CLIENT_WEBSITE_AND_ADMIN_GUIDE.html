@@ -107,6 +107,44 @@
       background: #d9effc;
     }
 
+    .ad-spotlight {
+      margin-top: 14px;
+      background: linear-gradient(140deg, #0d3954, #1d5f86 55%, #b77821);
+      border: 1px solid #2a668a;
+      border-radius: 14px;
+      padding: 16px;
+      color: #f4fbff;
+      box-shadow: 0 12px 24px rgba(16, 53, 76, 0.2);
+    }
+
+    .ad-spotlight h2 {
+      color: #fff7d8;
+      border-bottom: 1px solid rgba(255, 239, 194, 0.35);
+      margin-bottom: 8px;
+    }
+
+    .ad-spotlight p {
+      margin: 0 0 12px;
+      color: #eaf8ff;
+    }
+
+    .ad-spotlight-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .ad-spotlight .ad-img {
+      border: 1px solid rgba(255, 234, 187, 0.5);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+    }
+
+    .ad-spotlight .ad-iframe {
+      margin-top: 10px;
+      min-height: 430px;
+      border: 1px solid rgba(255, 234, 187, 0.5);
+    }
+
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -215,10 +253,17 @@
     }
 
     .company-note {
-      margin-top: 10px;
+      margin-top: 12px;
+      display: inline-block;
+      padding: 8px 14px;
+      border-radius: 999px;
       font-size: 14px;
-      color: #37505d;
-      font-weight: 600;
+      color: #fff7db;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      border: 1px solid rgba(255, 244, 206, 0.7);
+      background: linear-gradient(135deg, rgba(206, 141, 47, 0.95), rgba(137, 76, 15, 0.95));
+      box-shadow: 0 8px 20px rgba(36, 23, 4, 0.3);
     }
 
     @media (max-width: 900px) {
@@ -228,6 +273,10 @@
 
       .ad-iframe {
         min-height: 440px;
+      }
+
+      .ad-spotlight-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -251,6 +300,16 @@
       <a class="quick-link" href="#ad">Marketing Ad</a>
       <a class="quick-link" href="#handover">Handover</a>
     </nav>
+
+    <section class="ad-spotlight" aria-labelledby="campaign-spotlight-title">
+      <h2 id="campaign-spotlight-title">Campaign Spotlight</h2>
+      <p>Your ad is embedded here at the top for immediate visibility in presentations and client walkthroughs.</p>
+      <div class="ad-spotlight-grid">
+        <img src="marketing-ad.png" alt="Main marketing ad" class="ad-img" />
+        <img src="marketing-ad/ad-phenomenal.png" alt="Alternate marketing ad" class="ad-img" />
+      </div>
+      <iframe src="marketing-ad.html" title="Live campaign ad preview" class="ad-iframe"></iframe>
+    </section>
 
     <section class="grid">
       <article id="overview" class="card col-8">
