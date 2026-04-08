@@ -81,6 +81,32 @@
       margin-top: 18px;
     }
 
+    .quick-links {
+      margin-top: 14px;
+      background: #f8fbfd;
+      border: 1px solid #cfe0ea;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .quick-link {
+      text-decoration: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #8bb0c5;
+      background: #eaf5fc;
+      color: #123f5b;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .quick-link:hover {
+      background: #d9effc;
+    }
+
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -188,6 +214,13 @@
       text-align: center;
     }
 
+    .company-note {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #37505d;
+      font-weight: 600;
+    }
+
     @media (max-width: 900px) {
       .col-8, .col-6, .col-4 {
         grid-column: span 12;
@@ -205,12 +238,24 @@
       <h1>Liwonde Sun Hotel 2026</h1>
       <p class="subtitle">Complete Website and Admin Guide (Client Edition)</p>
       <p class="subtitle" style="margin-top:10px; font-size:16px;">Not Just A Website. A Management System.</p>
+      <p class="company-note">Designed and delivered by ProManaged IT.</p>
     </section>
 
+    <nav class="quick-links" aria-label="Quick links">
+      <a class="quick-link" href="#overview">Overview</a>
+      <a class="quick-link" href="#public-site">Public Website</a>
+      <a class="quick-link" href="#admin-system">Admin System</a>
+      <a class="quick-link" href="#admin-full">Full Admin Capabilities</a>
+      <a class="quick-link" href="#operations">Operations Flow</a>
+      <a class="quick-link" href="#security">Security</a>
+      <a class="quick-link" href="#ad">Marketing Ad</a>
+      <a class="quick-link" href="#handover">Handover</a>
+    </nav>
+
     <section class="grid">
-      <article class="card col-8">
+      <article id="overview" class="card col-8">
         <h2>Platform Summary</h2>
-        <p>Your project includes both a guest website and a full admin operations system in one connected platform.</p>
+        <p>Your project includes both a guest website and a complete hotel operations platform in one connected system. This setup supports guest marketing, booking conversion, internal coordination, and management reporting from a single digital environment.</p>
         <div>
           <span class="pill">Public Website</span>
           <span class="pill">Bookings</span>
@@ -218,7 +263,7 @@
           <span class="pill">Admin Control</span>
           <span class="pill">Reports</span>
         </div>
-        <p class="ok">Status: Live-ready architecture with operational and content workflows.</p>
+        <p class="ok">Status: Live-ready architecture with operational, content, and reporting workflows.</p>
       </article>
 
       <article class="card col-4">
@@ -232,7 +277,7 @@
         </ul>
       </article>
 
-      <article class="card col-6">
+      <article id="public-site" class="card col-6">
         <h2>Public Website Scope</h2>
         <ul>
           <li>Home page and branding</li>
@@ -241,9 +286,16 @@
           <li>Conference, events, restaurant, gym pages</li>
           <li>Reviews and privacy/cookie support</li>
         </ul>
+        <h3 style="margin-top:14px;">Guest Journey</h3>
+        <ol>
+          <li>Guest discovers the property through visual and service pages.</li>
+          <li>Guest checks room options and availability.</li>
+          <li>Guest submits booking request.</li>
+          <li>Guest receives confirmation and can perform lookup follow-up.</li>
+        </ol>
       </article>
 
-      <article class="card col-6">
+      <article id="admin-system" class="card col-6">
         <h2>Admin System Scope</h2>
         <ul>
           <li>Dashboard, bookings, calendar, check-ins</li>
@@ -253,9 +305,76 @@
           <li>Reports and CSV export</li>
           <li>Users, employees, login/reset/access controls</li>
         </ul>
+        <h3 style="margin-top:14px;">Main Admin Departments Covered</h3>
+        <ul>
+          <li>Front Office and Reservations</li>
+          <li>Housekeeping and Maintenance</li>
+          <li>Finance and Accounting</li>
+          <li>Content and Marketing Management</li>
+          <li>Management Reporting and Audit Tracking</li>
+        </ul>
       </article>
 
-      <article class="card col-12">
+      <article id="admin-full" class="card col-12">
+        <h2>What Can Be Done From Admin Side (Full)</h2>
+        <h3>Reservations and Front Office</h3>
+        <ul>
+          <li>Create, update, and track bookings from one dashboard</li>
+          <li>View booking details and process guest check-ins</li>
+          <li>Handle tentative bookings and convert them to confirmed stays</li>
+          <li>Manage room blocked dates for operational planning</li>
+        </ul>
+
+        <h3>Rooms and Maintenance Control</h3>
+        <ul>
+          <li>Manage room inventory and room setup details</li>
+          <li>Schedule and track maintenance tasks</li>
+          <li>Assign maintenance to exact room units where applicable</li>
+          <li>Synchronize maintenance impact with room/date availability</li>
+        </ul>
+
+        <h3>Finance and Revenue Management</h3>
+        <ul>
+          <li>Record and manage payments</li>
+          <li>Create and review invoice information</li>
+          <li>Monitor accounting summaries and payment status</li>
+          <li>Use financial and performance reports for decision-making</li>
+        </ul>
+
+        <h3>Website, Content, and Marketing Management</h3>
+        <ul>
+          <li>Edit website pages and key section content without code changes</li>
+          <li>Manage image galleries and media content</li>
+          <li>Manage menu items and hospitality content updates</li>
+          <li>Control section headers, themes, and branded presentation</li>
+          <li>Manage events, conference information, gym content, and restaurant flows</li>
+        </ul>
+
+        <h3>Guest Engagement and Service Quality</h3>
+        <ul>
+          <li>Review and manage guest reviews</li>
+          <li>Track guest-facing interactions tied to operational modules</li>
+          <li>Improve service quality using review and activity feedback</li>
+        </ul>
+
+        <h3>Users, Access, and Administration</h3>
+        <ul>
+          <li>Manage users and employee records</li>
+          <li>Control secure login, password reset, and account access</li>
+          <li>Apply role-based access patterns for operational safety</li>
+          <li>Track administrative actions for accountability</li>
+        </ul>
+
+        <h3>Analytics and Reporting</h3>
+        <ul>
+          <li>Open visual reports for operational and management insights</li>
+          <li>Export report data to CSV for finance and leadership review</li>
+          <li>Review activity logs for audit and governance checks</li>
+          <li>Use maintenance and booking reporting to support planning</li>
+        </ul>
+      </article>
+
+      <article id="operations" class="card col-12">
         <h2>Daily Operations Workflow</h2>
         <ol>
           <li>Open dashboard and review arrivals/departures.</li>
@@ -265,15 +384,22 @@
           <li>Update site content (pages/gallery/menu) when needed.</li>
           <li>Export reports for management review.</li>
         </ol>
+        <h3 style="margin-top:14px;">Weekly Management Workflow</h3>
+        <ol>
+          <li>Review occupancy, booking trends, and revenue movement.</li>
+          <li>Audit maintenance actions and room availability impact.</li>
+          <li>Review guest reviews and service quality feedback.</li>
+          <li>Export reports for leadership planning and finance checks.</li>
+        </ol>
       </article>
 
-      <article class="card col-12">
+      <article id="ad" class="card col-12">
         <h2>Marketing Ad Section</h2>
         <div class="ad-wrap">
-          <h3>Static Campaign Creative</h3>
+          <h3>Featured Campaign Creative (Embedded In Guide)</h3>
           <img src="marketing-ad.png" alt="Liwonde Sun Hotel marketing ad" class="ad-img" />
 
-          <h3>Animated Ad Preview</h3>
+          <h3>Live Animated Ad Preview</h3>
           <iframe src="marketing-ad.html" title="Animated marketing ad" class="ad-iframe"></iframe>
 
           <div class="btn-row">
@@ -285,7 +411,7 @@
         </div>
       </article>
 
-      <article class="card col-12">
+      <article id="security" class="card col-12">
         <h2>Security and Control</h2>
         <ul>
           <li>Protected admin login and authenticated actions</li>
@@ -293,18 +419,41 @@
           <li>Role-based access flow for internal users</li>
           <li>Operational logging to support reporting and accountability</li>
         </ul>
+        <h3 style="margin-top:14px;">Operational Assurance</h3>
+        <ul>
+          <li>Controlled admin access for sensitive modules</li>
+          <li>Action traceability for accountability and audits</li>
+          <li>Secure workflow design to reduce accidental misuse</li>
+        </ul>
       </article>
 
-      <article class="card col-12">
+      <article id="handover" class="card col-12">
         <h2>Final Handover Note</h2>
         <p>
           Liwonde Sun Hotel now has a complete digital business platform that combines guest marketing,
           booking operations, administrative control, and business reporting in one system.
         </p>
+        <p>
+          Delivery acknowledgment: This platform has been built and delivered by ProManaged IT.
+        </p>
+      </article>
+
+      <article class="card col-12">
+        <h2>Comprehensive Module Coverage</h2>
+        <p>This implementation covers all major hotel operations and growth modules:</p>
+        <ul>
+          <li>Website pages, service pages, and media galleries</li>
+          <li>Reservation intake, confirmation, and lookup</li>
+          <li>Admin booking controls, calendar, and check-in processing</li>
+          <li>Room inventory, blocked date control, and unit-level maintenance tracking</li>
+          <li>Payments, invoices, accounting visibility, and report exports</li>
+          <li>Guest reviews, campaign content, menu/gallery management, and theme controls</li>
+          <li>User access, employee controls, and password reset flows</li>
+        </ul>
       </article>
     </section>
 
-    <p class="footer">Prepared for Liwonde Sun Hotel | Website and Admin Guide</p>
+    <p class="footer">Prepared for Liwonde Sun Hotel | Website and Admin Guide | Created by ProManaged IT</p>
   </div>
 </body>
 </html>
