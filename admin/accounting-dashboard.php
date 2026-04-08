@@ -872,8 +872,8 @@ try {
             <p><strong>Levy Rate:</strong> <?php echo number_format((float)$levyRate, 2); ?>%</p>
 
             <form method="POST" class="levy-settings-form">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="save_levy_settings" value="1">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                 <label class="checkbox-label">
                     <input type="checkbox" name="tourist_levy_enabled" value="1" <?php echo $levyEnabled ? 'checked' : ''; ?>>
                     Enable tourist levy

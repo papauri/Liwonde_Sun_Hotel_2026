@@ -2497,6 +2497,7 @@ $month_bookings = count(array_filter($bookings, fn($b) =>
                 <button class="close-modal" onclick="closeResendEmailModal()">&times;</button>
             </div>
             <form id="resendEmailForm" method="POST" action="">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="resend_email">
                 <input type="hidden" name="booking_id" id="modal_booking_id" value="">
                 

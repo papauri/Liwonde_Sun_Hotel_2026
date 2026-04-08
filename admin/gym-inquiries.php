@@ -425,6 +425,7 @@ try {
                                 <br><small style="color:#888;font-size:11px;">Status locked (expired)</small>
                             <?php else: ?>
                             <form method="POST" style="display:inline;">
+                                <?php echo getCsrfField(); ?>
                                 <input type="hidden" name="inquiry_action" value="update_status">
                                 <input type="hidden" name="inquiry_id" value="<?php echo $inquiry['id']; ?>">
                                 <select name="new_status" class="status-select" onchange="this.form.submit();">
@@ -448,6 +449,7 @@ try {
                                 </button>
                                 <?php if (!$is_gym_expired || $user['role'] === 'admin'): ?>
                                 <form method="POST" style="display:inline;">
+                                    <?php echo getCsrfField(); ?>
                                     <input type="hidden" name="inquiry_action" value="delete">
                                     <input type="hidden" name="inquiry_id" value="<?php echo $inquiry['id']; ?>">
                                     <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this inquiry?');">

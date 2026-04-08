@@ -822,6 +822,8 @@ function sendAdminNotificationEmail($booking) {
     global $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
     
     try {
+        $bookings_email = resolveDepartmentAdminEmail('booking_admin_email', 'admin_notification_email');
+
         $htmlBody = '
         <h1 style="color: #0A1929; text-align: center;">📋 New Booking Received</h1>
         <p>A new booking has been made on the website.</p>
@@ -873,7 +875,7 @@ function sendAdminNotificationEmail($booking) {
         
         // Send email
         return sendEmail(
-            $email_admin_email,
+            $bookings_email,
             'Reservations Team',
             'New Booking - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
             $htmlBody
@@ -2351,11 +2353,8 @@ function sendAdminBookingExpiredNotification($booking, $booking_type = 'tentativ
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        // Get admin notification email with fallback
-        $admin_notification_email = getSetting('admin_notification_email');
-        if (empty($admin_notification_email) || !filter_var($admin_notification_email, FILTER_VALIDATE_EMAIL)) {
-            $admin_notification_email = $email_admin_email;
-        }
+        // Resolve booking notification recipient from email settings first, then legacy keys.
+        $admin_notification_email = resolveDepartmentAdminEmail('booking_admin_email', 'admin_notification_email');
         
         // Determine reason based on booking type
         $reason = $booking_type === 'tentative'

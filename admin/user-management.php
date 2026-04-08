@@ -1325,7 +1325,7 @@ foreach ($all_permissions as $key => $info) {
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
             <strong style="color:#1f2937;"><i class="fas fa-list"></i> Employee Titles Catalog</strong>
             <form method="POST" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0;">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="add_employee_title">
                 <input type="text" name="title_name" placeholder="Add new title (e.g. Concierge)" required style="min-width:260px; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px;">
                 <button type="submit" class="btn-sm btn-edit"><i class="fas fa-plus"></i> Add Title</button>
@@ -1337,7 +1337,7 @@ foreach ($all_permissions as $key => $info) {
             <?php else: ?>
                 <?php foreach ($employee_titles as $t): ?>
                     <form method="POST" style="display:inline-flex; align-items:center; gap:6px; margin:0;">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="delete_employee_title">
                         <input type="hidden" name="title_id" value="<?php echo (int)$t['id']; ?>">
                         <span style="background:#f3f4f6; color:#374151; border:1px solid #e5e7eb; border-radius:999px; padding:6px 10px; font-size:12px;">
@@ -1428,7 +1428,7 @@ foreach ($all_permissions as $key => $info) {
     <!-- PERMISSIONS EDITOR -->
     <?php if ($editing_user && $editing_user['role'] !== 'admin'): ?>
     <form method="POST" id="permissionsForm">
-        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+        <?php echo getCsrfField(); ?>
         <input type="hidden" name="action" value="save_permissions">
         <input type="hidden" name="user_id" value="<?php echo $editing_user['id']; ?>">
         
@@ -1512,7 +1512,7 @@ foreach ($all_permissions as $key => $info) {
 <div class="modal-overlay" id="addUserModal-overlay" data-modal-overlay></div>
 <div class="modal-wrapper modal-md" id="addUserModal" data-modal>
         <form method="POST">
-            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+            <?php echo getCsrfField(); ?>
             <input type="hidden" name="action" value="add_user">
             
             <div class="modal-header">
@@ -1560,7 +1560,7 @@ foreach ($all_permissions as $key => $info) {
 <div class="modal-overlay" id="editUserModal-overlay" data-modal-overlay></div>
 <div class="modal-wrapper modal-md" id="editUserModal" data-modal>
         <form method="POST">
-            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+            <?php echo getCsrfField(); ?>
             <input type="hidden" name="action" value="update_user">
             <input type="hidden" name="user_id" id="edit-user-id">
             
@@ -1608,7 +1608,7 @@ foreach ($all_permissions as $key => $info) {
 
 <!-- DELETE FORM (hidden) -->
 <form method="POST" id="deleteForm" style="display:none;">
-    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+    <?php echo getCsrfField(); ?>
     <input type="hidden" name="action" value="delete_user">
     <input type="hidden" name="user_id" id="delete-user-id">
 </form>
@@ -1617,7 +1617,7 @@ foreach ($all_permissions as $key => $info) {
 <div class="modal-overlay" id="addEmployeeModal-overlay" data-modal-overlay></div>
 <div class="modal-wrapper modal-md" id="addEmployeeModal" data-modal>
         <form method="POST">
-            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+            <?php echo getCsrfField(); ?>
             <input type="hidden" name="action" value="add_employee">
 
             <div class="modal-header">
@@ -1704,7 +1704,7 @@ foreach ($all_permissions as $key => $info) {
 <div class="modal-overlay" id="editEmployeeModal-overlay" data-modal-overlay></div>
 <div class="modal-wrapper modal-md" id="editEmployeeModal" data-modal>
         <form method="POST">
-            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+            <?php echo getCsrfField(); ?>
             <input type="hidden" name="action" value="update_employee">
             <input type="hidden" name="employee_id" id="edit-emp-id">
 
@@ -1790,7 +1790,7 @@ foreach ($all_permissions as $key => $info) {
 
 <!-- DELETE EMPLOYEE FORM (hidden) -->
 <form method="POST" id="deleteEmployeeForm" style="display:none;">
-    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+    <?php echo getCsrfField(); ?>
     <input type="hidden" name="action" value="delete_employee">
     <input type="hidden" name="employee_id" id="delete-employee-id">
 </form>

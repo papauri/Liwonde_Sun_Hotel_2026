@@ -32,8 +32,10 @@ function uploadGalleryImage($fileInput) {
 }
 
 // Handle POST actions
+$isAjaxRequest = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        requireCsrfValidation();
         $action = $_POST['action'] ?? '';
 
         if ($action === 'add') {
@@ -151,8 +153,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Gallery item status updated!';
         }
 
-    } catch (PDOException $e) {
+    } catch (Exception $e) {
         $error = 'Error: ' . $e->getMessage();
+    }
+
+    if ($isAjaxRequest) {
+        header('Content-Type: application/json');
+        if ($error !== '') {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'message' => $error,
+            ]);
+        } else {
+            echo json_encode([
+                'success' => true,
+                'message' => $message !== '' ? $message : 'Action completed.',
+            ]);
+        }
+        exit;
     }
 }
 
@@ -420,7 +439,7 @@ sort($categories);
                 <h2 class="page-title"><i class="fas fa-images"></i> Gallery Management</h2>
                 <p style="color:#666; margin-top:4px;"><?php echo count($gallery_items); ?> items in gallery</p>
             </div>
-            <button class="btn-add-gallery" type="button" onclick="openAddModal()">
+            <button class="btn-add-gallery" type="button" onclick="openGalleryAddModal()">
                 <i class="fas fa-plus"></i> Add Gallery Item
             </button>
         </div>
@@ -434,9 +453,9 @@ sort($categories);
         
         <!-- Category Filter -->
         <div class="filter-bar">
-            <button class="filter-btn active" type="button" onclick="filterGallery('all', this)">All</button>
+            <button class="filter-btn active" type="button" onclick="filterGalleryItems('all', this)">All</button>
             <?php foreach ($categories as $cat): ?>
-                <button class="filter-btn" type="button" onclick="filterGallery('<?php echo htmlspecialchars($cat); ?>', this)">
+                <button class="filter-btn" type="button" onclick="filterGalleryItems('<?php echo htmlspecialchars($cat); ?>', this)">
                     <?php echo htmlspecialchars(ucfirst($cat)); ?>
                 </button>
             <?php endforeach; ?>
@@ -477,13 +496,13 @@ sort($categories);
                     </div>
                     
                     <div class="gallery-card-actions">
-                        <button class="btn-action btn-edit" type="button" onclick='openEditModal(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, "UTF-8"); ?>)'>
+                        <button class="btn-action btn-edit" type="button" onclick='openGalleryEditModal(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, "UTF-8"); ?>)'>
                             <i class="fas fa-edit"></i> Edit
                         </button>
-                        <button class="btn-action btn-toggle-active" type="button" onclick="toggleActive(<?php echo $item['id']; ?>)">
+                        <button class="btn-action btn-toggle-active" type="button" onclick="toggleGalleryActive(<?php echo $item['id']; ?>)">
                             <i class="fas fa-power-off"></i> Toggle
                         </button>
-                        <button class="btn-action btn-delete" type="button" onclick="if(confirm('Delete this gallery item?')) deleteItem(<?php echo $item['id']; ?>)">
+                        <button class="btn-action btn-delete" type="button" onclick="if(confirm('Delete this gallery item?')) deleteGalleryItem(<?php echo $item['id']; ?>)">
                             <i class="fas fa-trash-alt"></i> Delete
                         </button>
                     </div>
@@ -504,9 +523,10 @@ sort($categories);
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="modalTitle"><i class="fas fa-plus-circle"></i> Add Gallery Item</h3>
-                <button class="modal-close" type="button" onclick="closeModal()">&times;</button>
+                <button class="modal-close" type="button" onclick="closeGalleryModal()">&times;</button>
             </div>
             <form method="POST" enctype="multipart/form-data" id="galleryForm">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" id="formAction" value="add">
                 <input type="hidden" name="id" id="formId" value="">
                 
@@ -569,7 +589,7 @@ sort($categories);
                 </div>
                 
                 <div class="form-actions">
-                    <button type="button" onclick="closeModal()" style="padding:10px 24px; border:1px solid #ddd; border-radius:6px; background:white; cursor:pointer;">Cancel</button>
+                    <button type="button" onclick="closeGalleryModal()" style="padding:10px 24px; border:1px solid #ddd; border-radius:6px; background:white; cursor:pointer;">Cancel</button>
                     <button type="submit" id="formSubmitBtn" style="padding:10px 24px; border:none; border-radius:6px; background:var(--gold, #D4AF37); color:var(--deep-navy, #05090F); font-weight:600; cursor:pointer;">
                         <i class="fas fa-save"></i> Save
                     </button>
@@ -579,106 +599,179 @@ sort($categories);
     </div>
 
     <script>
-    function openAddModal() {
-        document.getElementById('modalTitle').innerHTML = '<i class="fas fa-plus-circle"></i> Add Gallery Item';
-        document.getElementById('formAction').value = 'add';
-        document.getElementById('formId').value = '';
-        document.getElementById('formTitle').value = '';
-        document.getElementById('formDescription').value = '';
-        document.getElementById('formCategory').value = 'general';
-        document.getElementById('formOrder').value = '0';
-        document.getElementById('formImageUrlExternal').value = '';
-        document.getElementById('formVideoUrl').value = '';
-        document.getElementById('currentImagePreview').style.display = 'none';
-        document.getElementById('currentVideoInfo').style.display = 'none';
-        document.getElementById('galleryModal').style.display = 'flex';
+    const galleryCsrfTokenFromServer = <?php echo json_encode($csrf_token ?? ''); ?>;
+
+    function getGalleryCsrfToken() {
+        const tokenInput = document.querySelector('#galleryForm input[name="csrf_token"]');
+        if (tokenInput && tokenInput.value) {
+            return tokenInput.value;
+        }
+        return galleryCsrfTokenFromServer;
+    }
+
+    function getGalleryDom() {
+        return {
+            modal: document.getElementById('galleryModal'),
+            title: document.getElementById('modalTitle'),
+            formAction: document.getElementById('formAction'),
+            formId: document.getElementById('formId'),
+            formTitle: document.getElementById('formTitle'),
+            formDescription: document.getElementById('formDescription'),
+            formCategory: document.getElementById('formCategory'),
+            formOrder: document.getElementById('formOrder'),
+            formImageUrlExternal: document.getElementById('formImageUrlExternal'),
+            formVideoUrl: document.getElementById('formVideoUrl'),
+            previewImg: document.getElementById('previewImg'),
+            currentImagePreview: document.getElementById('currentImagePreview'),
+            currentVideoInfo: document.getElementById('currentVideoInfo'),
+            currentVideoText: document.getElementById('currentVideoText')
+        };
+    }
+
+    function openGalleryAddModal() {
+        const dom = getGalleryDom();
+        if (!dom.modal || !dom.title) {
+            alert('Gallery modal is unavailable. Please refresh the page.');
+            return;
+        }
+
+        dom.title.innerHTML = '<i class="fas fa-plus-circle"></i> Add Gallery Item';
+        dom.formAction.value = 'add';
+        dom.formId.value = '';
+        dom.formTitle.value = '';
+        dom.formDescription.value = '';
+        dom.formCategory.value = 'general';
+        dom.formOrder.value = '0';
+        dom.formImageUrlExternal.value = '';
+        dom.formVideoUrl.value = '';
+        dom.currentImagePreview.style.display = 'none';
+        dom.currentVideoInfo.style.display = 'none';
+        dom.modal.style.display = 'flex';
     }
     
-    function openEditModal(item) {
-        document.getElementById('modalTitle').innerHTML = '<i class="fas fa-edit"></i> Edit Gallery Item';
-        document.getElementById('formAction').value = 'update';
-        document.getElementById('formId').value = item.id;
-        document.getElementById('formTitle').value = item.title;
-        document.getElementById('formDescription').value = item.description || '';
-        document.getElementById('formCategory').value = item.category || 'general';
-        document.getElementById('formOrder').value = item.display_order || 0;
+    function openGalleryEditModal(item) {
+        const dom = getGalleryDom();
+        if (!dom.modal || !dom.title) {
+            alert('Gallery modal is unavailable. Please refresh the page.');
+            return;
+        }
+
+        dom.title.innerHTML = '<i class="fas fa-edit"></i> Edit Gallery Item';
+        dom.formAction.value = 'update';
+        dom.formId.value = item.id;
+        dom.formTitle.value = item.title;
+        dom.formDescription.value = item.description || '';
+        dom.formCategory.value = item.category || 'general';
+        dom.formOrder.value = item.display_order || 0;
         
         // Show current image if exists
         if (item.image_url) {
             const imgSrc = item.image_url.match(/^https?:\/\//) ? item.image_url : '../' + item.image_url;
-            document.getElementById('previewImg').src = imgSrc;
-            document.getElementById('currentImagePreview').style.display = 'block';
-            document.getElementById('formImageUrlExternal').value = item.image_url.match(/^https?:\/\//) ? item.image_url : '';
+            dom.previewImg.src = imgSrc;
+            dom.currentImagePreview.style.display = 'block';
+            dom.formImageUrlExternal.value = item.image_url.match(/^https?:\/\//) ? item.image_url : '';
         } else {
-            document.getElementById('currentImagePreview').style.display = 'none';
+            dom.currentImagePreview.style.display = 'none';
         }
         
         // Show current video info
         if (item.video_path) {
-            document.getElementById('currentVideoText').textContent = item.video_path.substring(0, 60) + (item.video_path.length > 60 ? '...' : '') + ' (' + (item.video_type || 'unknown') + ')';
-            document.getElementById('currentVideoInfo').style.display = 'block';
+            dom.currentVideoText.textContent = item.video_path.substring(0, 60) + (item.video_path.length > 60 ? '...' : '') + ' (' + (item.video_type || 'unknown') + ')';
+            dom.currentVideoInfo.style.display = 'block';
             if (item.video_path.match(/^https?:\/\//)) {
-                document.getElementById('formVideoUrl').value = item.video_path;
+                dom.formVideoUrl.value = item.video_path;
             }
         } else {
-            document.getElementById('currentVideoInfo').style.display = 'none';
+            dom.currentVideoInfo.style.display = 'none';
         }
         
-        document.getElementById('galleryModal').style.display = 'flex';
+        dom.modal.style.display = 'flex';
     }
-    
-    function closeModal() {
-        document.getElementById('galleryModal').style.display = 'none';
+
+    async function postGalleryAction(formData, fallbackError) {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                throw new Error(payload.message || fallbackError || 'Request failed');
+            }
+            return payload;
+        }
+
+        if (!response.ok) {
+            throw new Error(fallbackError || 'Request failed');
+        }
+
+        return { success: true };
+    }
+
+    function closeGalleryModal() {
+        const modal = document.getElementById('galleryModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
     }
     
     // Close on outside click
     const galleryModal = document.getElementById('galleryModal');
     if (galleryModal) {
         galleryModal.addEventListener('click', function(e) {
-            if (e.target === this) closeModal();
+            if (e.target === this) closeGalleryModal();
         });
     }
-    
-    function toggleActive(id) {
+
+    function toggleGalleryActive(id) {
         const formData = new FormData();
+        formData.append('csrf_token', getGalleryCsrfToken());
         formData.append('action', 'toggle_active');
         formData.append('id', id);
-        fetch(window.location.href, {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-            .then(r => { if(r.ok) window.location.reload(); else alert('Error'); })
-            .catch(() => alert('Error'));
+
+        postGalleryAction(formData, 'Error updating gallery item status')
+            .then(() => window.location.reload())
+            .catch((error) => alert(error.message || 'Error updating gallery item status'));
     }
-    
-    function deleteItem(id) {
+
+    function deleteGalleryItem(id) {
         const formData = new FormData();
+        formData.append('csrf_token', getGalleryCsrfToken());
         formData.append('action', 'delete');
         formData.append('id', id);
-        fetch(window.location.href, {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-            .then(r => { if(r.ok) window.location.reload(); else alert('Error'); })
-            .catch(() => alert('Error'));
+
+        postGalleryAction(formData, 'Error deleting gallery item')
+            .then(() => window.location.reload())
+            .catch((error) => alert(error.message || 'Error deleting gallery item'));
     }
-    
-    function filterGallery(category, btn) {
+
+    function filterGalleryItems(category, btn) {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+
+        const normalizedCategory = String(category || '').trim().toLowerCase();
         
         document.querySelectorAll('.gallery-card').forEach(card => {
-            if (category === 'all' || card.dataset.category === category) {
+            const cardCategory = String(card.dataset.category || '').trim().toLowerCase();
+            if (normalizedCategory === 'all' || cardCategory === normalizedCategory) {
                 card.style.display = '';
             } else {
                 card.style.display = 'none';
             }
         });
     }
+
+    // Expose handlers globally so inline onclick callbacks keep working after AJAX page loads.
+    window.openGalleryAddModal = openGalleryAddModal;
+    window.openGalleryEditModal = openGalleryEditModal;
+    window.closeGalleryModal = closeGalleryModal;
+    window.toggleGalleryActive = toggleGalleryActive;
+    window.deleteGalleryItem = deleteGalleryItem;
+    window.filterGalleryItems = filterGalleryItems;
     </script>
     
     <?php require_once 'includes/admin-footer.php'; ?>

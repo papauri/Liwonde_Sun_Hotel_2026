@@ -315,6 +315,14 @@ try {
     $conference_enquiries = [];
     $error = 'Error fetching conference enquiries: ' . $e->getMessage();
 }
+$totalConferenceRooms = count($conference_rooms);
+$totalConferenceEnquiries = count($conference_enquiries);
+$pendingConferenceEnquiries = count(array_filter($conference_enquiries, function ($row) {
+    return ($row['status'] ?? '') === 'pending';
+}));
+$confirmedConferenceEnquiries = count(array_filter($conference_enquiries, function ($row) {
+    return ($row['status'] ?? '') === 'confirmed';
+}));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -603,12 +611,208 @@ try {
             }
         }
     </style>
+
+    <style>
+        .content.conference-shell {
+            display: grid;
+            gap: 22px;
+        }
+
+        .conference-hero {
+            background: linear-gradient(135deg, #071325 0%, #0f2743 52%, #1a436f 100%);
+            border-radius: 18px;
+            padding: 24px;
+            color: #f8fbff;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 18px 34px rgba(7, 19, 37, 0.35);
+        }
+
+        .conference-hero h1 {
+            margin: 0 0 8px;
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(24px, 3vw, 34px);
+            color: #ffe8a4;
+        }
+
+        .conference-hero p {
+            margin: 0;
+            color: rgba(248, 251, 255, 0.9);
+            font-size: 14px;
+        }
+
+        .hero-stats {
+            margin-top: 18px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(120px, 1fr));
+            gap: 12px;
+        }
+
+        .hero-stat {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 12px 14px;
+        }
+
+        .hero-stat .label {
+            margin: 0;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: rgba(255, 255, 255, 0.72);
+        }
+
+        .hero-stat .value {
+            margin: 4px 0 0;
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1;
+        }
+
+        .conference-shell .card {
+            border: 1px solid #dce5ef;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+            border-left: 0;
+            margin-bottom: 0;
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid #e7eef6;
+            background: linear-gradient(180deg, #fdfefe 0%, #f6f9fc 100%);
+        }
+
+        .section-header h2 {
+            margin: 0;
+            color: #0f2743;
+            font-size: 20px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-header p {
+            margin: 6px 0 0;
+            color: #5a6b7c;
+            font-size: 13px;
+        }
+
+        .section-body {
+            padding: 18px 20px 20px;
+        }
+
+        .conference-table {
+            min-width: 980px;
+        }
+
+        .conference-table thead th {
+            background: #102a45;
+            color: #f8fbff;
+            border: none;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+        }
+
+        .conference-table tbody tr:nth-child(even) {
+            background: #fbfdff;
+        }
+
+        .conference-table tbody tr:hover {
+            background: #f1f7ff;
+        }
+
+        .conference-table tr.is-expired {
+            opacity: 0.68;
+            background: #f3f4f6 !important;
+        }
+
+        .expired-pill {
+            margin-top: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            border-radius: 999px;
+            padding: 2px 9px;
+            background: #64748b;
+            color: #fff;
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+            min-width: 280px;
+        }
+
+        .quick-actions .btn,
+        .quick-actions button {
+            width: 100%;
+            font-size: 12px;
+            min-height: 34px;
+        }
+
+        .room-meta span {
+            border: 1px solid #d8e2ec;
+            border-radius: 999px;
+            padding: 4px 9px;
+            background: #fff;
+        }
+
+        .room-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .room-actions .btn {
+            width: 100%;
+        }
+
+        @media (max-width: 1024px) {
+            .hero-stats {
+                grid-template-columns: repeat(2, minmax(120px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .content.conference-shell {
+                gap: 16px;
+            }
+
+            .conference-hero {
+                padding: 18px;
+            }
+        }
+
+        @media (max-width: 520px) {
+            .hero-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .quick-actions {
+                grid-template-columns: 1fr;
+                min-width: 180px;
+            }
+
+            .conference-table {
+                min-width: 820px;
+            }
+
+            .room-actions {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
 
     <?php require_once 'includes/admin-header.php'; ?>
     
-    <div class="content">
+    <div class="content conference-shell">
         <?php if ($message): ?>
             <?php showAlert($message, 'success'); ?>
         <?php endif; ?>
@@ -616,9 +820,37 @@ try {
             <?php showAlert($error, 'error'); ?>
         <?php endif; ?>
 
+        <section class="conference-hero">
+            <h1><i class="fas fa-chalkboard-teacher"></i> Conference Operations</h1>
+            <p>Manage conference rooms, process event enquiries, and keep event logistics in one clear workflow.</p>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <p class="label">Rooms</p>
+                    <p class="value"><?php echo (int)$totalConferenceRooms; ?></p>
+                </div>
+                <div class="hero-stat">
+                    <p class="label">Enquiries</p>
+                    <p class="value"><?php echo (int)$totalConferenceEnquiries; ?></p>
+                </div>
+                <div class="hero-stat">
+                    <p class="label">Pending</p>
+                    <p class="value"><?php echo (int)$pendingConferenceEnquiries; ?></p>
+                </div>
+                <div class="hero-stat">
+                    <p class="label">Confirmed</p>
+                    <p class="value"><?php echo (int)$confirmedConferenceEnquiries; ?></p>
+                </div>
+            </div>
+        </section>
+
         <div class="card">
-            <h2>Add New Conference Room</h2>
+            <div class="section-header">
+                <h2><i class="fas fa-plus-circle"></i> Add New Conference Room</h2>
+                <p>Create a room profile with pricing, capacity, and amenities.</p>
+            </div>
+            <div class="section-body">
             <form method="POST" enctype="multipart/form-data">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="add">
                 <div class="form-grid">
                     <div class="form-group">
@@ -660,12 +892,17 @@ try {
                 </div>
                 <button type="submit" class="btn">Add Conference Room</button>
             </form>
+            </div>
         </div>
 
         <div class="card">
-            <h2>Conference Enquiries Management</h2>
+            <div class="section-header">
+                <h2><i class="fas fa-calendar-check"></i> Conference Enquiries Management</h2>
+                <p>Review, confirm, invoice, complete, and close enquiries faster.</p>
+            </div>
+            <div class="section-body">
             <div class="table-container">
-                <table class="table">
+                <table class="table conference-table">
                     <thead>
                         <tr>
                             <th>Reference</th>
@@ -691,7 +928,7 @@ try {
                         <?php else: ?>
                         <?php foreach ($conference_enquiries as $enquiry): ?>
                         <?php $is_conf_expired = !empty($enquiry['event_date']) && strtotime($enquiry['event_date']) < strtotime('today'); ?>
-                        <tr<?php if ($is_conf_expired) echo ' style="opacity:0.6;background-color:#f0f0f0 !important;"'; ?>>
+                        <tr class="<?php echo $is_conf_expired ? 'is-expired' : ''; ?>">
                             <td><strong><?php echo htmlspecialchars($enquiry['inquiry_reference']); ?></strong></td>
                             <td><?php echo htmlspecialchars($enquiry['company_name']); ?></td>
                             <td>
@@ -702,7 +939,7 @@ try {
                             <td>
                                 <?php echo date('M j, Y', strtotime($enquiry['event_date'])); ?>
                                 <?php if ($is_conf_expired): ?>
-                                    <br><span style="background:#6c757d;color:white;font-size:11px;padding:2px 7px;border-radius:4px;display:inline-block;margin-top:3px;">Expired</span>
+                                    <br><span class="expired-pill"><i class="fas fa-clock"></i> Expired</span>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -727,6 +964,7 @@ try {
                                 <div class="quick-actions">
                                     <?php if ($enquiry['status'] === 'pending' && !$is_conf_expired): ?>
                                         <form method="POST" style="display:inline;">
+                                            <?php echo getCsrfField(); ?>
                                             <input type="hidden" name="enquiry_action" value="confirm">
                                             <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
                                             <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Confirm this conference enquiry?');">
@@ -736,6 +974,7 @@ try {
                                     <?php endif; ?>
                                     <?php if ($enquiry['status'] === 'confirmed'): ?>
                                         <form method="POST" style="display:inline;">
+                                            <?php echo getCsrfField(); ?>
                                             <input type="hidden" name="enquiry_action" value="complete">
                                             <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
                                             <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Mark this conference as completed?');">
@@ -743,6 +982,7 @@ try {
                                             </button>
                                         </form>
                                         <form method="POST" style="display:inline;">
+                                            <?php echo getCsrfField(); ?>
                                             <input type="hidden" name="enquiry_action" value="send_invoice">
                                             <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
                                             <button type="submit" class="btn btn-info btn-sm" onclick="return confirm('Generate and send invoice for this conference?');">
@@ -752,6 +992,7 @@ try {
                                     <?php endif; ?>
                                     <?php if (in_array($enquiry['status'], ['pending', 'confirmed'])): ?>
                                         <form method="POST" style="display:inline;">
+                                            <?php echo getCsrfField(); ?>
                                             <input type="hidden" name="enquiry_action" value="cancel">
                                             <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
                                             <button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm('Cancel this conference enquiry?');">
@@ -764,6 +1005,7 @@ try {
                                     </button>
                                     <?php if ($is_conf_expired && $user['role'] === 'admin'): ?>
                                         <form method="POST" style="display:inline;">
+                                            <?php echo getCsrfField(); ?>
                                             <input type="hidden" name="enquiry_action" value="delete_enquiry">
                                             <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
                                             <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('PERMANENTLY delete this expired conference enquiry? This cannot be undone.');">
@@ -779,10 +1021,15 @@ try {
                     </tbody>
                 </table>
             </div>
+            </div>
         </div>
 
         <div class="card">
-            <h2>Manage Conference Rooms</h2>
+            <div class="section-header">
+                <h2><i class="fas fa-door-open"></i> Manage Conference Rooms</h2>
+                <p>Update room content, rates, and active availability from each room card.</p>
+            </div>
+            <div class="section-body">
             <div class="room-list">
                 <?php foreach ($conference_rooms as $room): ?>
                     <div class="room-item">
@@ -813,6 +1060,7 @@ try {
                         </div>
 
                         <form method="POST" enctype="multipart/form-data">
+                            <?php echo getCsrfField(); ?>
                             <input type="hidden" name="action" value="update">
                             <input type="hidden" name="id" value="<?php echo (int) $room['id']; ?>">
                             <div class="room-form-section">
@@ -864,6 +1112,7 @@ try {
                         </form>
                     </div>
                 <?php endforeach; ?>
+            </div>
             </div>
         </div>
     </div>
@@ -956,6 +1205,7 @@ try {
                     
                     <div class="modal-actions">
                         <form method="POST" style="display:inline;">
+                            <?php echo getCsrfField(); ?>
                             <input type="hidden" name="enquiry_action" value="update_amount">
                             <input type="hidden" name="enquiry_id" value="${enquiry.id}">
                             <div class="form-group" style="margin-bottom: 10px;">
@@ -965,6 +1215,7 @@ try {
                             <button type="submit" class="btn">Update Amount</button>
                         </form>
                         <form method="POST" style="display:inline;">
+                            <?php echo getCsrfField(); ?>
                             <input type="hidden" name="enquiry_action" value="update_notes">
                             <input type="hidden" name="enquiry_id" value="${enquiry.id}">
                             <div class="form-group" style="margin-bottom: 10px;">
@@ -997,24 +1248,29 @@ try {
         .enquiry-details {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 10px;
         }
         
         .detail-row {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
+            gap: 14px;
+            padding: 10px 0;
+            border-bottom: 1px solid #e8edf3;
         }
         
         .detail-row strong {
             min-width: 180px;
             color: var(--navy);
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
         
         .detail-row span {
             flex: 1;
             text-align: right;
+            color: #334155;
         }
         
         .modal-actions {
@@ -1040,6 +1296,20 @@ try {
         .badge-completed {
             background: #cce5ff;
             color: #004085;
+        }
+
+        @media (max-width: 640px) {
+            .detail-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+
+            .detail-row strong,
+            .detail-row span {
+                min-width: 0;
+                text-align: left;
+            }
         }
     </style>
     <script src="js/admin-components.js"></script>

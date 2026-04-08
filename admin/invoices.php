@@ -617,6 +617,7 @@ $site_name = getSetting('site_name');
                                             
                                             <?php if ($invoice['invoice_generated']): ?>
                                                 <form method="POST" style="display: inline;">
+                                                    <?php echo getCsrfField(); ?>
                                                     <input type="hidden" name="action" value="resend_invoice">
                                                     <input type="hidden" name="payment_id" value="<?php echo $invoice['id']; ?>">
                                                     <button type="submit" class="btn-action btn-resend" onclick="return confirm('Resend invoice email?');">
@@ -626,6 +627,7 @@ $site_name = getSetting('site_name');
                                             <?php endif; ?>
                                             
                                             <form method="POST" style="display: inline;">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action" value="regenerate_invoice">
                                                 <input type="hidden" name="payment_id" value="<?php echo $invoice['id']; ?>">
                                                 <button type="submit" class="btn-action btn-regenerate" onclick="return confirm('Regenerate invoice? This will create a new invoice number.');">

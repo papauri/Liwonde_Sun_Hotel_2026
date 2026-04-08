@@ -688,7 +688,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 <form id="reviewForm" method="POST" action="submit-review.php<?php echo $selected_room_id > 0 ? '?room_id=' . $selected_room_id : ''; ?>" novalidate>
                     <?php echo getCsrfField(); ?>
-                    <!-- Personal Information -->
+<!-- Personal Information -->
                     <div class="form-section-title">
                         <i class="fas fa-user"></i>
                         <span>Your Information</span>

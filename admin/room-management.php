@@ -357,13 +357,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Room unit infrastructure is not available.');
             }
 
+            $lock_stmt = $pdo->prepare("\n                SELECT booking_reference, status\n                FROM bookings\n                WHERE room_unit_id = ?\n                  AND status IN ('confirmed', 'checked-in')\n                LIMIT 1\n            ");
+
+            $current_stmt = $pdo->prepare("\n                SELECT unit_label\n                FROM room_units\n                WHERE id = ? AND room_id = ?\n                LIMIT 1\n            ");
+
             $update_stmt = $pdo->prepare("\n                UPDATE room_units\n                SET unit_label = ?\n                WHERE id = ? AND room_id = ?\n            ");
 
             $updated_count = 0;
+            $locked_count = 0;
             foreach ($unit_labels as $unit_id => $unit_label) {
                 $unit_id = (int)$unit_id;
                 $unit_label = trim((string)$unit_label);
                 if ($unit_id <= 0 || $unit_label === '') {
+                    continue;
+                }
+
+                $lock_stmt->execute([$unit_id]);
+                $locked_booking = $lock_stmt->fetch(PDO::FETCH_ASSOC);
+                if ($locked_booking) {
+                    $locked_count++;
+                    continue;
+                }
+
+                $current_stmt->execute([$unit_id, $room_id]);
+                $existing_label = $current_stmt->fetchColumn();
+                if ($existing_label === false) {
+                    continue;
+                }
+
+                if (trim((string)$existing_label) === $unit_label) {
                     continue;
                 }
 
@@ -376,6 +398,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = $updated_count > 0
                 ? 'Room unit labels updated successfully.'
                 : 'No unit label changes were detected.';
+
+            if ($locked_count > 0) {
+                $message .= ' ' . $locked_count . ' locked unit label(s) were skipped because they are tied to confirmed/check-in bookings.';
+            }
 
             if (is_ajax_request()) {
                 header('Content-Type: application/json');
@@ -941,6 +967,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                     <i class="fas fa-search"></i> Preview Backfill
                 </button>
                 <form method="POST" style="margin:0;">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="action" value="backfill_room_units">
                     <button class="btn-action" type="submit" style="background:#1f7a4f; color:#fff; padding:10px 16px; border-radius:8px;" title="Assign units to active bookings with missing unit IDs">
                         <i class="fas fa-random"></i> Backfill Units (<?php echo (int)$unassigned_active_bookings; ?>)
@@ -1011,14 +1038,20 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                         </div>
                         <?php if (!empty($room_units_for_card)): ?>
                             <form method="POST" class="unit-label-form" style="display:grid; gap:8px;">
+                                <?php echo getCsrfField(); ?>
                                 <input type="hidden" name="action" value="update_room_units">
                                 <input type="hidden" name="room_id" value="<?php echo (int)$room['id']; ?>">
                                 <?php foreach ($room_units_for_card as $unit_item): ?>
+                                    <?php $unit_booking_for_edit = $unit_booking_map[(int)$unit_item['id']] ?? null; ?>
+                                    <?php $unit_locked = $unit_booking_for_edit && in_array($unit_booking_for_edit['status'], ['confirmed', 'checked-in'], true); ?>
                                     <label style="display:grid; grid-template-columns:64px 1fr; gap:8px; align-items:center; font-size:11px; color:#666;">
                                         <span>#<?php echo htmlspecialchars($unit_item['unit_code']); ?></span>
-                                        <input type="text" name="unit_labels[<?php echo (int)$unit_item['id']; ?>]" value="<?php echo htmlspecialchars($unit_item['unit_label']); ?>" style="padding:6px 8px; border:1px solid #ddd; border-radius:6px; font-size:12px;">
+                                        <input type="text" name="unit_labels[<?php echo (int)$unit_item['id']; ?>]" value="<?php echo htmlspecialchars($unit_item['unit_label']); ?>" <?php echo $unit_locked ? 'readonly' : ''; ?> style="padding:6px 8px; border:1px solid <?php echo $unit_locked ? '#f5c2c7' : '#ddd'; ?>; border-radius:6px; font-size:12px; background:<?php echo $unit_locked ? '#fff5f5' : '#fff'; ?>; color:<?php echo $unit_locked ? '#842029' : '#111827'; ?>;" title="<?php echo $unit_locked ? 'Locked: confirmed/check-in booking assigned to this unit' : 'Editable'; ?>">
                                     </label>
                                 <?php endforeach; ?>
+                                <div style="font-size:11px; color:#6b7280;">
+                                    <i class="fas fa-lock"></i> Unit labels assigned to confirmed or checked-in bookings are locked to protect booking integrity.
+                                </div>
                                 <button type="submit" class="btn-action" style="background:#2f4a87; color:#fff; padding:7px 10px; border-radius:7px; font-size:12px; justify-self:start;">
                                     <i class="fas fa-save"></i> Save Unit Labels
                                 </button>
@@ -1044,6 +1077,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                                         </div>
                                         <?php if ($unit_booking && in_array($unit_booking['status'], ['confirmed', 'checked-in'], true)): ?>
                                             <form method="POST" style="margin:0;">
+                                                <?php echo getCsrfField(); ?>
                                                 <button type="button" class="btn-action" style="background:#fd7e14; color:#fff; padding:6px 10px; border-radius:6px; font-size:11px;" onclick="releaseUnitBooking(<?php echo (int)$unit_booking['id']; ?>, '<?php echo htmlspecialchars($unit_booking['booking_reference'], ENT_QUOTES); ?>');">
                                                     <i class="fas fa-unlock"></i> Release
                                                 </button>
@@ -1121,6 +1155,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                 <button class="modal-close" type="button" onclick="closeEditModal()">&times;</button>
             </div>
             <form method="POST" id="editForm">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" id="editAction" value="update">
                 <input type="hidden" name="id" id="editId">
                 
@@ -1232,6 +1267,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                 <button class="modal-close" type="button" onclick="closeAddModal()">&times;</button>
             </div>
             <form method="POST" enctype="multipart/form-data" id="addForm">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="add_room">
                 
                 <div class="modal-body">
@@ -1400,6 +1436,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                 </div>
                 <h4 style="margin:0 0 12px; color:#666;">Upload New Image</h4>
                 <form method="POST" enctype="multipart/form-data" id="imageUploadForm">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="action" value="upload_image">
                     <input type="hidden" name="room_id" id="uploadRoomId">
                     
@@ -1427,6 +1464,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
                 <button class="modal-close" type="button" onclick="closeVideoModal()">&times;</button>
             </div>
             <form method="POST" enctype="multipart/form-data" id="videoForm">
+                <?php echo getCsrfField(); ?>
                 <input type="hidden" name="action" value="update_video">
                 <input type="hidden" name="room_id" id="videoRoomId">
                 <div class="modal-body">
@@ -1465,6 +1503,7 @@ $currency = htmlspecialchars(getSetting('currency_symbol', 'MWK'));
             </div>
             <div class="modal-body">
                 <form method="POST" enctype="multipart/form-data" id="pictureUploadForm" style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #eee;">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="action" value="upload_picture">
                     <input type="hidden" name="room_id" id="pictureRoomId">
                     <div class="form-row">

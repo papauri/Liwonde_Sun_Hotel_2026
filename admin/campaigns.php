@@ -399,7 +399,7 @@ $siteName = getSetting('site_name', 'Hotel');
                     <section class="panel">
                         <h3>Create Campaign</h3>
                         <form method="POST">
-                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                            <?php echo getCsrfField(); ?>
                             <input type="hidden" name="action" value="create_campaign">
 
                             <div class="form-grid">
@@ -576,7 +576,7 @@ $siteName = getSetting('site_name', 'Hotel');
                                                 <div class="actions">
                                                     <?php if ($campaign['status'] !== 'active'): ?>
                                                         <form method="POST">
-                                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                            <?php echo getCsrfField(); ?>
                                                             <input type="hidden" name="action" value="update_status">
                                                             <input type="hidden" name="campaign_id" value="<?php echo (int)$campaign['id']; ?>">
                                                             <input type="hidden" name="status" value="active">
@@ -586,7 +586,7 @@ $siteName = getSetting('site_name', 'Hotel');
 
                                                     <?php if ($campaign['status'] === 'active'): ?>
                                                         <form method="POST">
-                                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                            <?php echo getCsrfField(); ?>
                                                             <input type="hidden" name="action" value="update_status">
                                                             <input type="hidden" name="campaign_id" value="<?php echo (int)$campaign['id']; ?>">
                                                             <input type="hidden" name="status" value="paused">
@@ -596,7 +596,7 @@ $siteName = getSetting('site_name', 'Hotel');
 
                                                     <?php if ($campaign['status'] !== 'ended'): ?>
                                                         <form method="POST">
-                                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                            <?php echo getCsrfField(); ?>
                                                             <input type="hidden" name="action" value="archive_campaign">
                                                             <input type="hidden" name="campaign_id" value="<?php echo (int)$campaign['id']; ?>">
                                                             <button type="submit" class="btn-inline btn-end">End</button>

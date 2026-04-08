@@ -848,6 +848,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             <div class="step"><strong>Step 2</strong>Create booking only when room is available.</div>
         </div>
         <form method="POST" class="grid">
+            <?php echo getCsrfField(); ?>
             <input name="guest_name" value="<?php echo e($payload['guest_name']); ?>" placeholder="Guest name">
             <input type="email" name="guest_email" value="<?php echo e($payload['guest_email']); ?>" placeholder="Guest email">
             <input name="guest_phone" value="<?php echo e($payload['guest_phone']); ?>" placeholder="Guest phone">
@@ -1368,7 +1369,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
 
             <?php if ($testClient): ?>
                 <form method="POST" style="margin-bottom:10px;" onsubmit="return confirm('Generate a new key for Test Client? The previous key will stop working.');">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="action" value="prepare_test_client_package">
                     <input type="hidden" name="test_client_id" value="<?php echo (int)$testClient['id']; ?>">
                     <button type="submit" class="btn btn-primary"><i class="fas fa-bolt"></i> Generate Test Client Package</button>
@@ -1423,7 +1424,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
 
                 <h3 style="margin-top:14px;"><i class="fas fa-flask"></i> Run Live Test From Website</h3>
                 <form method="POST" style="margin-bottom:10px;">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="action" value="run_test_client_request">
 
                     <div class="test-grid" style="margin-bottom:8px;">
@@ -1484,7 +1485,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
                 <div class="api-card">
                     <h3><i class="fas fa-plus-circle"></i> Create API Key</h3>
                     <form method="POST">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="create_key">
 
                         <div class="split-2">
@@ -1584,7 +1585,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
                                                 <a class="btn-sm btn-edit" href="api-keys.php?key_id=<?php echo (int)$key['id']; ?>">View</a>
 
                                                 <form method="POST" style="display:inline;">
-                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <?php echo getCsrfField(); ?>
                                                     <input type="hidden" name="action" value="toggle_status">
                                                     <input type="hidden" name="key_id" value="<?php echo (int)$key['id']; ?>">
                                                     <input type="hidden" name="is_active" value="<?php echo (int)$key['is_active'] === 1 ? 0 : 1; ?>">
@@ -1592,14 +1593,14 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
                                                 </form>
 
                                                 <form method="POST" style="display:inline;" onsubmit="return confirm('Regenerate this API key? Current key will stop working immediately.');">
-                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <?php echo getCsrfField(); ?>
                                                     <input type="hidden" name="action" value="regenerate_key">
                                                     <input type="hidden" name="key_id" value="<?php echo (int)$key['id']; ?>">
                                                     <button class="btn-sm btn-regen" type="submit">Rotate</button>
                                                 </form>
 
                                                 <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this API key permanently?');">
-                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <?php echo getCsrfField(); ?>
                                                     <input type="hidden" name="action" value="delete_key">
                                                     <input type="hidden" name="key_id" value="<?php echo (int)$key['id']; ?>">
                                                     <button class="btn-sm btn-delete" type="submit">Delete</button>
@@ -1629,7 +1630,7 @@ if ((isset($_GET['download_php']) || isset($_GET['download_zip'])) && $testClien
                     <div class="api-card">
                         <h3><i class="fas fa-pen"></i> Edit Key: <?php echo htmlspecialchars((string)$selectedKey['client_name']); ?></h3>
                         <form method="POST">
-                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                            <?php echo getCsrfField(); ?>
                             <input type="hidden" name="action" value="update_key">
                             <input type="hidden" name="key_id" value="<?php echo (int)$selectedKey['id']; ?>">
 

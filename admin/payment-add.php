@@ -1136,6 +1136,7 @@ $formAllowManualPayment = isset($_POST['allow_manual_payment']);
             <h2 class="section-title"><?php echo $editId ? 'Edit Payment' : 'Record New Payment'; ?></h2>
             
             <form method="POST">
+                <?php echo getCsrfField(); ?>
                 <div class="form-section">
                     <h3><i class="fas fa-calendar-check"></i> Booking Information</h3>
 

@@ -252,6 +252,7 @@ $site_name = getSetting('site_name');
 
             <?php if ($valid_token): ?>
                 <form method="POST">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
                     
                     <div class="form-group">

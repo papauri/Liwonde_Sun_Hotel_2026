@@ -415,7 +415,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                 <div class="gym-panel">
                     <h3><i class="fas fa-edit"></i> Edit Gym Page Content</h3>
                     <form method="POST" action="gym-management.php?tab=content" class="gform">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="update_content">
                         <input type="hidden" name="content_id" value="<?php echo (int)($gymContent['id'] ?? 0); ?>">
 
@@ -497,7 +497,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                         <?php endif; ?>
                     </h3>
                     <form method="POST" action="gym-management.php?tab=packages" class="gform">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="<?php echo $editPkg ? 'edit_package' : 'create_package'; ?>">
                         <?php if ($editPkg): ?>
                         <input type="hidden" name="item_id" value="<?php echo (int)$editPkg['id']; ?>">
@@ -620,9 +620,9 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                                         <div class="row-actions">
                                             <a href="gym-management.php?tab=packages&edit=<?php echo (int)$pkg['id']; ?>&type=package"
                                                class="btn-sm btn-edit-sm"><i class="fas fa-pen"></i> Edit</a>
-                                            <form method="POST" style="display:inline"
-                                                  onsubmit="return confirm('Delete this package?')">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                                                        <form method="POST" style="display:inline"
+                                                                                                    onsubmit="return confirm('Delete this package?')">
+                                                                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"  value="delete_package">
                                                 <input type="hidden" name="item_id" value="<?php echo (int)$pkg['id']; ?>">
                                                 <button class="btn-sm btn-del-sm"><i class="fas fa-trash"></i></button>
@@ -650,7 +650,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                 <div class="gym-panel">
                     <h3><?php echo $editCls ? '<i class="fas fa-edit"></i> Edit Class' : '<i class="fas fa-plus-circle"></i> New Class'; ?></h3>
                     <form method="POST" action="gym-management.php?tab=classes" class="gform">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="<?php echo $editCls ? 'edit_class' : 'create_class'; ?>">
                         <?php if ($editCls): ?>
                         <input type="hidden" name="item_id" value="<?php echo (int)$editCls['id']; ?>">
@@ -725,7 +725,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                                             <a href="gym-management.php?tab=classes&edit=<?php echo (int)$cls['id']; ?>&type=class"
                                                class="btn-sm btn-edit-sm"><i class="fas fa-pen"></i> Edit</a>
                                             <form method="POST" style="display:inline" onsubmit="return confirm('Delete this class?')">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"  value="delete_class">
                                                 <input type="hidden" name="item_id" value="<?php echo (int)$cls['id']; ?>">
                                                 <button class="btn-sm btn-del-sm"><i class="fas fa-trash"></i></button>
@@ -753,7 +753,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                 <div class="gym-panel">
                     <h3><?php echo $editFac ? '<i class="fas fa-edit"></i> Edit Facility' : '<i class="fas fa-plus-circle"></i> New Facility'; ?></h3>
                     <form method="POST" action="gym-management.php?tab=facilities" class="gform">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="<?php echo $editFac ? 'edit_facility' : 'create_facility'; ?>">
                         <?php if ($editFac): ?>
                         <input type="hidden" name="item_id" value="<?php echo (int)$editFac['id']; ?>">
@@ -816,7 +816,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                                             <a href="gym-management.php?tab=facilities&edit=<?php echo (int)$fac['id']; ?>&type=facility"
                                                class="btn-sm btn-edit-sm"><i class="fas fa-pen"></i> Edit</a>
                                             <form method="POST" style="display:inline" onsubmit="return confirm('Delete this facility?')">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"  value="delete_facility">
                                                 <input type="hidden" name="item_id" value="<?php echo (int)$fac['id']; ?>">
                                                 <button class="btn-sm btn-del-sm"><i class="fas fa-trash"></i></button>
@@ -844,7 +844,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                 <div class="gym-panel">
                     <h3><?php echo $editFeat ? '<i class="fas fa-edit"></i> Edit Feature' : '<i class="fas fa-plus-circle"></i> New Feature'; ?></h3>
                     <form method="POST" action="gym-management.php?tab=features" class="gform">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="action" value="<?php echo $editFeat ? 'edit_feature' : 'create_feature'; ?>">
                         <?php if ($editFeat): ?>
                         <input type="hidden" name="item_id" value="<?php echo (int)$editFeat['id']; ?>">
@@ -906,7 +906,7 @@ $siteName = function_exists('getSetting') ? getSetting('site_name', 'Hotel') : '
                                             <a href="gym-management.php?tab=features&edit=<?php echo (int)$feat['id']; ?>&type=feature"
                                                class="btn-sm btn-edit-sm"><i class="fas fa-pen"></i> Edit</a>
                                             <form method="POST" style="display:inline" onsubmit="return confirm('Delete this feature?')">
-                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                <?php echo getCsrfField(); ?>
                                                 <input type="hidden" name="action"  value="delete_feature">
                                                 <input type="hidden" name="item_id" value="<?php echo (int)$feat['id']; ?>">
                                                 <button class="btn-sm btn-del-sm"><i class="fas fa-trash"></i></button>

@@ -896,7 +896,7 @@ function resolveConferenceImage(?string $imagePath): string
 
     $modalContent = '
         <form method="POST" action="" id="inquiryForm" class="validate-form">
-            ' . getCsrfField() . '
+            <?php echo getCsrfField(); ?>
             <input type="hidden" name="conference_room_id" id="selectedRoomId">
             
             <div class="form-group">

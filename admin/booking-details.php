@@ -896,6 +896,7 @@ $currency_symbol = getSetting('currency_symbol');
                     <label>Update Payment</label>
                     <div class="value">
                         <form method="POST" style="display: inline;">
+                            <?php echo getCsrfField(); ?>
                             <select name="payment_status" class="form-control" onchange="this.form.submit()">
                                 <option value="">Mark as Paid...</option>
                                 <option value="paid">Mark Paid</option>
@@ -952,6 +953,7 @@ $currency_symbol = getSetting('currency_symbol');
                                 <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
                                     <strong style="font-size:16px;"><?php echo $currency_symbol; ?><?php echo number_format((float)$charge['amount'], 0); ?></strong>
                                     <form method="POST" onsubmit="return confirm('Remove this charge?');">
+                                        <?php echo getCsrfField(); ?>
                                         <input type="hidden" name="remove_charge" value="1">
                                         <input type="hidden" name="charge_id" value="<?php echo (int)$charge['id']; ?>">
                                         <button class="btn btn-danger" style="padding:6px 10px; font-size:12px;" type="submit"><i class="fas fa-trash"></i></button>
@@ -965,6 +967,7 @@ $currency_symbol = getSetting('currency_symbol');
                 <?php endif; ?>
 
                 <form method="POST" style="display:grid; grid-template-columns: 1fr 2fr 1fr auto; gap:10px; align-items:end; margin-bottom:12px;">
+                    <?php echo getCsrfField(); ?>
                     <div>
                         <label style="display:block; font-size:12px; color:#666; margin-bottom:4px;">Type</label>
                         <select name="charge_type" class="form-control" required>
@@ -986,6 +989,7 @@ $currency_symbol = getSetting('currency_symbol');
                 </form>
 
                 <form method="POST" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <?php echo getCsrfField(); ?>
                     <input type="hidden" name="toggle_levy" value="1">
                     <label style="display:flex; align-items:center; gap:8px; margin:0;">
                         <input type="checkbox" name="apply_levy" value="1" <?php echo $levy_applied ? 'checked' : ''; ?> <?php echo (!$levy_enabled || $levy_rate <= 0) ? 'disabled' : ''; ?>>
@@ -1007,6 +1011,7 @@ $currency_symbol = getSetting('currency_symbol');
                 <div class="action-buttons">
                     <?php if ($booking['status'] == 'tentative' || $booking['is_tentative'] == 1): ?>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('Convert this tentative booking to confirmed?')">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="booking_action" value="convert">
                         <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Convert to Confirmed</button>
                     </form>
@@ -1014,6 +1019,7 @@ $currency_symbol = getSetting('currency_symbol');
                     
                     <?php if ($booking['status'] == 'pending'): ?>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('Confirm this booking?')">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="booking_action" value="confirm">
                         <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Confirm Booking</button>
                     </form>
@@ -1022,6 +1028,7 @@ $currency_symbol = getSetting('currency_symbol');
                     <?php if ($booking['status'] == 'confirmed'): ?>
                     <?php $can_checkin = ($booking['actual_payment_status'] === 'paid' || $booking['actual_payment_status'] === 'completed'); ?>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('Check in this guest?')">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="booking_action" value="checkin">
                         <button type="submit" class="btn btn-primary" <?php echo $can_checkin ? '' : 'disabled title="Guest must pay before check-in"'; ?>>
                             <i class="fas fa-sign-in-alt"></i> Check In
@@ -1034,6 +1041,7 @@ $currency_symbol = getSetting('currency_symbol');
 
                     <?php if ($booking['status'] == 'checked-in'): ?>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('Check out this guest?')">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="booking_action" value="checkout">
                         <button type="submit" class="btn btn-warning"><i class="fas fa-sign-out-alt"></i> Check Out</button>
                     </form>
@@ -1041,6 +1049,7 @@ $currency_symbol = getSetting('currency_symbol');
                     
                     <?php if (in_array($booking['status'], ['confirmed', 'pending']) && strtotime($booking['check_in_date']) < strtotime('today')): ?>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('Mark this booking as no-show? The room will be released.')">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="booking_action" value="noshow">
                         <button type="submit" class="btn" style="background: #6c757d; color: white;"><i class="fas fa-user-slash"></i> No-Show</button>
                     </form>
@@ -1048,6 +1057,7 @@ $currency_symbol = getSetting('currency_symbol');
 
                     <?php if (!in_array($booking['status'], ['checked-out', 'cancelled', 'no-show'])): ?>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('Cancel this booking? This cannot be undone.')">
+                        <?php echo getCsrfField(); ?>
                         <input type="hidden" name="booking_action" value="cancel">
                         <input type="hidden" name="cancellation_reason" value="Cancelled by admin">
                         <button type="submit" class="btn btn-danger"><i class="fas fa-times"></i> Cancel Booking</button>
@@ -1065,6 +1075,7 @@ $currency_symbol = getSetting('currency_symbol');
             
             <div class="add-note-form">
                 <form method="POST">
+                    <?php echo getCsrfField(); ?>
                     <textarea name="note_text" placeholder="Add a note about this booking..." required></textarea>
                     <button type="submit" name="add_note" class="btn btn-primary" style="margin-top: 12px;">
                         <i class="fas fa-plus"></i> Add Note
