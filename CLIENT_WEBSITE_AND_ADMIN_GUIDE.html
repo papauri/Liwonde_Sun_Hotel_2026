@@ -27,6 +27,7 @@
       background: radial-gradient(circle at 20% 10%, #fff8ec 0%, var(--bg) 50%, #eadcc3 100%);
       line-height: 1.55;
       animation: pageIn 0.45s ease-out;
+      scroll-behavior: smooth;
     }
 
     @keyframes pageIn {
@@ -38,6 +39,39 @@
       max-width: 1100px;
       margin: 0 auto;
       padding: 28px 18px 60px;
+      position: relative;
+    }
+
+    .wrap::before,
+    .wrap::after {
+      content: "";
+      position: fixed;
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: -1;
+      opacity: 0.25;
+      filter: blur(60px);
+      animation: drift 12s ease-in-out infinite;
+    }
+
+    .wrap::before {
+      background: #82bad6;
+      top: -120px;
+      left: -80px;
+    }
+
+    .wrap::after {
+      background: #d9a461;
+      bottom: -120px;
+      right: -80px;
+      animation-delay: -6s;
+    }
+
+    @keyframes drift {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(22px) scale(1.08); }
     }
 
     .hero {
@@ -107,37 +141,12 @@
       color: #123f5b;
       font-weight: 600;
       font-size: 13px;
+      transition: all 0.25s ease;
     }
 
     .quick-link:hover {
       background: #d9effc;
-    }
-
-    .ad-spotlight {
-      margin-top: 14px;
-      background: linear-gradient(140deg, #0d3954, #1d5f86 55%, #b77821);
-      border: 1px solid #2a668a;
-      border-radius: 14px;
-      padding: 12px;
-      color: #f4fbff;
-      box-shadow: 0 12px 24px rgba(16, 53, 76, 0.2);
-    }
-
-    .ad-spotlight-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .ad-spotlight .ad-img {
-      border: 1px solid rgba(255, 234, 187, 0.5);
-      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
-    }
-
-    .ad-spotlight .ad-iframe {
-      margin-top: 0;
-      min-height: 220px;
-      border: 1px solid rgba(255, 234, 187, 0.5);
+      transform: translateY(-1px);
     }
 
     .card {
@@ -146,17 +155,18 @@
       border-radius: 14px;
       padding: 18px;
       box-shadow: 0 8px 20px rgba(61, 56, 47, 0.06);
-      animation: cardIn 0.5s ease-out both;
+      opacity: 0;
+      transform: translateY(18px) scale(0.99);
+      transition: opacity 0.6s ease, transform 0.6s ease, box-shadow 0.25s ease;
     }
 
-    .card:nth-child(1) { animation-delay: 0.04s; }
-    .card:nth-child(2) { animation-delay: 0.08s; }
-    .card:nth-child(3) { animation-delay: 0.12s; }
-    .card:nth-child(4) { animation-delay: 0.16s; }
+    .card.visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
 
-    @keyframes cardIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
+    .card:hover {
+      box-shadow: 0 14px 28px rgba(61, 56, 47, 0.12);
     }
 
     .col-12 { grid-column: span 12; }
@@ -205,47 +215,6 @@
       font-weight: bold;
     }
 
-    .ad-wrap {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 14px;
-    }
-
-    .ad-img {
-      width: 100%;
-      max-width: 100%;
-      height: auto;
-      border-radius: 12px;
-      border: 1px solid #c6bca9;
-      display: block;
-    }
-
-    .ad-iframe {
-      width: 100%;
-      min-height: 520px;
-      border: 1px solid #c6bca9;
-      border-radius: 12px;
-      background: #fff;
-    }
-
-    .btn-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .btn {
-      text-decoration: none;
-      padding: 10px 14px;
-      border-radius: 8px;
-      border: 1px solid #9bb9c9;
-      background: #f0f8ff;
-      color: #123f5b;
-      font-weight: 600;
-      font-size: 14px;
-    }
-
     .muted {
       color: var(--muted);
       font-size: 14px;
@@ -272,17 +241,20 @@
       box-shadow: 0 8px 20px rgba(36, 23, 4, 0.3);
     }
 
+    .section-tag {
+      display: inline-block;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #355d73;
+      font-weight: 700;
+      margin-bottom: 8px;
+      opacity: 0.85;
+    }
+
     @media (max-width: 900px) {
       .col-8, .col-6, .col-4 {
         grid-column: span 12;
-      }
-
-      .ad-iframe {
-        min-height: 440px;
-      }
-
-      .ad-spotlight-grid {
-        grid-template-columns: 1fr;
       }
     }
 
@@ -305,12 +277,12 @@
         padding: 7px 10px;
       }
 
-      .ad-iframe {
-        min-height: 360px;
+      .hero {
+        padding: 24px 18px;
       }
 
-      .ad-spotlight .ad-iframe {
-        min-height: 180px;
+      .company-note {
+        font-size: 12px;
       }
     }
   </style>
@@ -332,20 +304,12 @@
       <a class="quick-link" href="#operations">Operations Flow</a>
       <a class="quick-link" href="#out-of-scope">Out of Scope</a>
       <a class="quick-link" href="#security">Security</a>
-      <a class="quick-link" href="#ad">ProManaged IT Ad</a>
       <a class="quick-link" href="#handover">Handover</a>
     </nav>
 
-    <section class="ad-spotlight" aria-label="Top ad showcase">
-      <div class="ad-spotlight-grid">
-        <img src="marketing-ad.png" alt="ProManaged IT promotional ad - main" class="ad-img" />
-        <img src="marketing-ad/ad-phenomenal.png" alt="ProManaged IT promotional ad - alternate" class="ad-img" />
-      </div>
-      <p class="muted" style="margin-top:8px; color:#eaf8ff;">ProManaged IT promotional creative. This ad is not part of the Liwonde Sun Hotel website content.</p>
-    </section>
-
     <section class="grid">
       <article id="overview" class="card col-8">
+        <span class="section-tag">Project Overview</span>
         <h2>Platform Summary</h2>
         <p>Your project includes both a guest website and a complete hotel operations platform in one connected system. This setup supports guest marketing, booking conversion, internal coordination, and management reporting from a single digital environment.</p>
         <p><strong>Expectation note:</strong> This delivery is not positioned as a full replacement of your current internal core system. It is a practical management support platform built to strengthen and organize website-led operations.</p>
@@ -371,6 +335,7 @@
       </article>
 
       <article id="public-site" class="card col-6">
+        <span class="section-tag">Guest Experience</span>
         <h2>Public Website Scope</h2>
         <ul>
           <li>Home page and branding</li>
@@ -389,6 +354,7 @@
       </article>
 
       <article id="admin-system" class="card col-6">
+        <span class="section-tag">Back Office</span>
         <h2>Admin System Scope</h2>
         <ul>
           <li>Dashboard, bookings, calendar, check-ins</li>
@@ -409,6 +375,7 @@
       </article>
 
       <article id="admin-full" class="card col-12">
+        <span class="section-tag">Capabilities Matrix</span>
         <h2>What Can Be Done From Admin Side (Full)</h2>
         <h3>Reservations and Front Office</h3>
         <ul>
@@ -468,6 +435,7 @@
       </article>
 
       <article id="operations" class="card col-12">
+        <span class="section-tag">Daily and Weekly Process</span>
         <h2>Daily Operations Workflow</h2>
         <ol>
           <li>Open dashboard and review arrivals/departures.</li>
@@ -486,26 +454,8 @@
         </ol>
       </article>
 
-      <article id="ad" class="card col-12">
-        <h2>ProManaged IT Ad Section</h2>
-        <div class="ad-wrap">
-          <p class="muted"><strong>Ownership note:</strong> The ad creatives in this section are ProManaged IT promotional assets and are shown in this guide for presentation/reference only. They are not part of the hotel website deliverables.</p>
-          <h3>Featured Campaign Creative (Embedded In Guide)</h3>
-          <img src="marketing-ad.png" alt="ProManaged IT promotional ad" class="ad-img" />
-
-          <h3>Live Animated Ad Preview</h3>
-          <iframe src="marketing-ad.html" title="Animated marketing ad" class="ad-iframe" loading="lazy"></iframe>
-
-          <div class="btn-row">
-            <a class="btn" href="marketing-ad.html" target="_blank" rel="noopener">Open Main Animated Ad</a>
-            <a class="btn" href="marketing-ad/animated-ad.html" target="_blank" rel="noopener">Open Alternate Animated Ad</a>
-            <a class="btn" href="marketing-ad/ad-phenomenal.png" target="_blank" rel="noopener">Open Alternate Static Ad</a>
-          </div>
-          <p class="muted">Campaign line: Not Just A Website. A Management System.</p>
-        </div>
-      </article>
-
       <article id="security" class="card col-12">
+        <span class="section-tag">Trust and Protection</span>
         <h2>Security and Control</h2>
         <ul>
           <li>Protected admin login and authenticated actions</li>
@@ -522,6 +472,7 @@
       </article>
 
       <article id="out-of-scope" class="card col-12">
+        <span class="section-tag">Delivery Boundaries</span>
         <h2>Out of Scope (Expectation Boundaries)</h2>
         <p>
           To align expectations clearly, this delivery is a website support and management platform.
@@ -540,6 +491,7 @@
       </article>
 
       <article id="handover" class="card col-12">
+        <span class="section-tag">Final Alignment</span>
         <h2>Final Handover Note</h2>
         <p>
           Liwonde Sun Hotel now has a complete digital business platform that combines guest marketing,
@@ -554,6 +506,7 @@
       </article>
 
       <article class="card col-12">
+        <span class="section-tag">Coverage Snapshot</span>
         <h2>Comprehensive Module Coverage</h2>
         <p>This implementation covers all major hotel operations and growth modules:</p>
         <ul>
@@ -570,5 +523,47 @@
 
     <p class="footer">Prepared for Liwonde Sun Hotel | Website and Admin Guide | Created by ProManaged IT</p>
   </div>
+
+  <script>
+    (function () {
+      const cards = Array.from(document.querySelectorAll('.card'));
+      const sectionCards = cards.filter((card) => card.id);
+      const quickLinks = Array.from(document.querySelectorAll('.quick-link'));
+
+      const revealObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('visible');
+              revealObserver.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.14, rootMargin: '0px 0px -40px 0px' }
+      );
+
+      cards.forEach((card, index) => {
+        card.style.transitionDelay = `${Math.min(index * 35, 220)}ms`;
+        revealObserver.observe(card);
+      });
+
+      const navObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const targetId = entry.target.id;
+            quickLinks.forEach((link) => {
+              const isActive = link.getAttribute('href') === `#${targetId}`;
+              link.style.background = isActive ? '#cbe8fb' : '#eaf5fc';
+              link.style.borderColor = isActive ? '#4f8fb3' : '#8bb0c5';
+            });
+          });
+        },
+        { threshold: 0.35 }
+      );
+
+      sectionCards.forEach((card) => navObserver.observe(card));
+    })();
+  </script>
 </body>
 </html>
