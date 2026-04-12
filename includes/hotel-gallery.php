@@ -118,12 +118,14 @@ foreach ($gallery_images as $index => $image): ?>
             </button>
         </div>
         
-        <div class="gallery-dots">
-            <?php foreach ($gallery_images as $index => $image): ?>
-            <button class="gallery-dot <?php echo $index === 0 ? 'active' : ''; ?>" 
-                    data-index="<?php echo $index; ?>" 
-                    aria-label="Go to image <?php echo $index + 1; ?>"></button>
-            <?php endforeach; ?>
+        <div class="gallery-controls-bar">
+            <div class="gallery-dots" role="tablist" aria-label="Gallery slide indicators">
+                <?php foreach ($gallery_images as $index => $image): ?>
+                <button class="gallery-dot <?php echo $index === 0 ? 'active' : ''; ?>" 
+                        data-index="<?php echo $index; ?>" 
+                        aria-label="Go to image <?php echo $index + 1; ?>"></button>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
 </section>
