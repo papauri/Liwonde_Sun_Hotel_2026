@@ -63,10 +63,6 @@ if (!function_exists('resolveImageUrl')) {
         ?>
         
         <div class="gallery-carousel-wrapper">
-            <button class="gallery-nav-btn gallery-nav-prev" aria-label="Previous">
-                <i class="fas fa-chevron-left"></i>
-            </button>
-            
             <div class="gallery-carousel-container">
                 <div class="gallery-carousel-track">
                     <?php 
@@ -112,10 +108,6 @@ foreach ($gallery_images as $index => $image): ?>
                     <?php endforeach; ?>
                 </div>
             </div>
-            
-            <button class="gallery-nav-btn gallery-nav-next" aria-label="Next">
-                <i class="fas fa-chevron-right"></i>
-            </button>
         </div>
         
         <div class="gallery-controls-bar">
