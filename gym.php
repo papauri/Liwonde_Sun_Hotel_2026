@@ -305,14 +305,6 @@ try {
 </head>
 <body>
     <?php include 'includes/loader.php'; ?>
-    
-    <!-- Loading Animation -->
-    <div class="page-loader">
-        <div class="loader-content">
-            <div class="luxury-spinner"></div>
-            <p class="loader-text">Preparing Your Wellness Journey</p>
-        </div>
-    </div>
 
     <?php
     // Prepare modal content based on form submission result
@@ -771,24 +763,41 @@ try {
     <script src="js/main.js"></script>
     <script src="js/form-validation.js"></script>
     <script>
-        // Page loader
-        window.addEventListener('load', function() {
-            const loader = document.querySelector('.page-loader');
-            if (loader) {
-                loader.classList.add('fade-out');
-                setTimeout(() => { loader.style.display = 'none'; }, 500);
+        // Loader fail-safe: hide any known loader overlays even if one handler fails.
+        function hideGymLoaders() {
+            const primaryLoader = document.getElementById('page-loader');
+            if (primaryLoader) {
+                primaryLoader.classList.add('hidden');
+                setTimeout(() => {
+                    primaryLoader.style.display = 'none';
+                }, 450);
             }
-            
-            // Open result modal if present (after form submission)
+
+            document.querySelectorAll('.page-loader').forEach((loader) => {
+                loader.classList.add('fade-out');
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                }, 450);
+            });
+        }
+
+        function openGymResultModalIfPresent() {
             const resultModal = document.getElementById('gymBookingResult');
             if (resultModal) {
-                // Small delay to ensure page is fully loaded
                 setTimeout(function() {
                     resultModal.classList.add('active');
                     document.body.style.overflow = 'hidden';
-                }, 600);
+                }, 300);
             }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            hideGymLoaders();
+            openGymResultModalIfPresent();
         });
+
+        window.addEventListener('load', hideGymLoaders);
+        setTimeout(hideGymLoaders, 1800);
         
         // Modal close functionality for result modal
         const resultModal = document.getElementById('gymBookingResult');
