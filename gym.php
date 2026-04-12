@@ -1,4 +1,9 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+require_once 'config/security.php';
 require_once 'config/database.php';
 require_once 'includes/page-guard.php';
 require_once 'config/email.php';
@@ -8,10 +13,7 @@ require_once 'includes/image-proxy-helper.php';
 require_once 'includes/section-headers.php';
 require_once 'includes/countries-data.php';
 
-// Start session for any session-based functionality
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+sendSecurityHeaders();
 
 // Fetch site settings
 $site_name = getSetting('site_name');
@@ -79,6 +81,13 @@ $bookingSuccess = false;
 $bookingError = '';
 $bookingReference = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gym_booking_form'])) {
+    try {
+        requireCsrfValidation();
+    } catch (Exception $e) {
+        $bookingError = $e->getMessage();
+    }
+
+    if ($bookingError === '') {
     // Initialize validation errors array
     $validation_errors = [];
     $sanitized_data = [];
@@ -228,6 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gym_booking_form'])) 
         }
         
         error_log("Gym booking submitted successfully from: " . $sanitized_data['email'] . " with reference: " . $bookingReference);
+    }
     }
 }
 
@@ -763,24 +773,6 @@ try {
     <script src="js/main.js"></script>
     <script src="js/form-validation.js"></script>
     <script>
-        // Loader fail-safe: hide any known loader overlays even if one handler fails.
-        function hideGymLoaders() {
-            const primaryLoader = document.getElementById('page-loader');
-            if (primaryLoader) {
-                primaryLoader.classList.add('hidden');
-                setTimeout(() => {
-                    primaryLoader.style.display = 'none';
-                }, 450);
-            }
-
-            document.querySelectorAll('.page-loader').forEach((loader) => {
-                loader.classList.add('fade-out');
-                setTimeout(() => {
-                    loader.style.display = 'none';
-                }, 450);
-            });
-        }
-
         function openGymResultModalIfPresent() {
             const resultModal = document.getElementById('gymBookingResult');
             if (resultModal) {
@@ -792,12 +784,8 @@ try {
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            hideGymLoaders();
             openGymResultModalIfPresent();
         });
-
-        window.addEventListener('load', hideGymLoaders);
-        setTimeout(hideGymLoaders, 1800);
         
         // Modal close functionality for result modal
         const resultModal = document.getElementById('gymBookingResult');
