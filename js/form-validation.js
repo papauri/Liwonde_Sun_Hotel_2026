@@ -103,11 +103,11 @@
         guests: {
             required: true,
             min: 1,
-            max: 100,
+            max: 10,
             messages: {
                 required: 'Number of guests is required',
                 min: 'At least 1 guest is required',
-                max: 'Maximum 100 guests allowed'
+                max: 'Maximum 10 guests allowed'
             }
         },
 

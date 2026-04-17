@@ -9,7 +9,9 @@ $site_name = getSetting('site_name');
 $site_logo = getSetting('site_logo');
 $site_tagline = getSetting('site_tagline');
 $currency_symbol = getSetting('currency_symbol');
-$email_reservations = getSetting('email_reservations');
+$email_reservations = getSetting('email_reservations')
+    ?: getEmailSetting('booking_admin_email')
+    ?: getSetting('email_main');
 $phone_main = getSetting('phone_main');
 
 
@@ -430,8 +432,12 @@ foreach ($rooms as $room) {
                     <h2>Ready to reserve your stay?</h2>
                     <p>Pick your preferred suite and we will secure it instantly. Share your dates and guest count and our team will confirm right away.</p>
                     <div class="booking-cta__actions">
+                        <?php if (!empty($phone_main)): ?>
                         <a class="btn btn-primary" href="tel:<?php echo htmlspecialchars(preg_replace('/[^0-9+]/', '', $phone_main)); ?>"><i class="fas fa-phone"></i> Call Reservations</a>
+                        <?php endif; ?>
+                        <?php if (!empty($email_reservations)): ?>
                         <a class="btn btn-outline" href="mailto:<?php echo htmlspecialchars($email_reservations); ?>?subject=Room%20Reservation"><i class="fas fa-envelope"></i> Email Booking</a>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="booking-cta__card">
@@ -451,7 +457,7 @@ foreach ($rooms as $room) {
                         <span>Floor Space</span>
                         <strong><?php echo htmlspecialchars($hero_room['size_sqm'] ?? 40); ?> sqm</strong>
                     </div>
-                    <a class="btn btn-primary" href="index.php?room=<?php echo urlencode($hero_room['slug'] ?? ''); ?>#book">Proceed to Booking</a>
+                    <a class="btn btn-primary" href="booking.php?room_id=<?php echo (int)($hero_room['id'] ?? 0); ?>">Proceed to Booking</a>
                 </div>
             </div>
         </section>
