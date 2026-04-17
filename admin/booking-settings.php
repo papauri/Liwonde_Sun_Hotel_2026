@@ -107,8 +107,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Invalid security token. Please refresh and try again.');
         }
 
-        // Check which form was submitted
-        if (isset($_POST['max_advance_booking_days'])) {
+        if (isset($_POST['contact_settings'])) {
+            // Hotel contact information settings
+            $contact_fields = [
+                'site_name'          => ['label' => 'Hotel Name',            'max' => 150],
+                'site_tagline'       => ['label' => 'Tagline',               'max' => 255, 'optional' => true],
+                'site_url'           => ['label' => 'Website URL',           'max' => 255, 'optional' => true],
+                'phone_main'         => ['label' => 'Main Phone Number',     'max' => 30,  'optional' => true],
+                'phone_secondary'    => ['label' => 'Secondary Phone',       'max' => 30,  'optional' => true],
+                'email_main'         => ['label' => 'General Email',         'max' => 254, 'email' => true, 'optional' => true],
+                'email_reservations' => ['label' => 'Reservations Email',    'max' => 254, 'email' => true, 'optional' => true],
+                'email_info'         => ['label' => 'Info Email',            'max' => 254, 'email' => true, 'optional' => true],
+                'address_line1'      => ['label' => 'Address Line 1',        'max' => 255, 'optional' => true],
+                'address_line2'      => ['label' => 'Address Line 2',        'max' => 255, 'optional' => true],
+                'address_city'       => ['label' => 'City',                  'max' => 100, 'optional' => true],
+                'address_country'    => ['label' => 'Country',               'max' => 100, 'optional' => true],
+            ];
+
+            foreach ($contact_fields as $key => $meta) {
+                $value = trim($_POST[$key] ?? '');
+                if (empty($value) && empty($meta['optional'])) {
+                    throw new Exception($meta['label'] . ' is required.');
+                }
+                if (!empty($value) && strlen($value) > $meta['max']) {
+                    throw new Exception($meta['label'] . ' must not exceed ' . $meta['max'] . ' characters.');
+                }
+                if (!empty($value) && !empty($meta['email']) && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                    throw new Exception($meta['label'] . ' must be a valid email address.');
+                }
+                // Sanitize phone numbers to strip dangerous characters
+                if (!empty($value) && str_contains($key, 'phone')) {
+                    $value = preg_replace('/[^0-9+\-\s\(\)]/', '', $value);
+                }
+                if (!updateSetting($key, $value)) {
+                    throw new Exception('Failed to save ' . $meta['label'] . '.');
+                }
+                // Clear file cache for this setting
+                deleteCache("setting_{$key}");
+            }
+
+            $message = 'Hotel contact information updated successfully!';
+        } elseif (isset($_POST['max_advance_booking_days'])) {
             // Booking settings form
             $max_advance_days = (int)($_POST['max_advance_booking_days'] ?? 30);
             
@@ -1111,6 +1150,131 @@ $current_max_days = getLiveMaxAdvanceBookingDays(30);
             </div>
         </div>
         
+        <!-- Hotel Contact Information Card -->
+        <div class="settings-card" id="contact-settings">
+            <h2><i class="fas fa-address-card" style="color: #D4AF37;"></i> Hotel Contact Information</h2>
+            <p style="color:#555; margin-top:-10px; margin-bottom:20px;">
+                These details appear on your website — phone links, email links, footer, and booking buttons.
+            </p>
+
+            <form method="POST" action="booking-settings.php#contact-settings">
+                <?php echo getCsrfField(); ?>
+                <input type="hidden" name="contact_settings" value="1">
+
+                <h4 style="margin-bottom:15px; color:#0A1929; border-bottom:1px solid #e0e0e0; padding-bottom:8px;">
+                    <i class="fas fa-hotel"></i> Hotel Identity
+                </h4>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+                    <div class="form-group">
+                        <label for="site_name">Hotel Name <span style="color:#dc3545;">*</span></label>
+                        <input type="text" id="site_name" name="site_name" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('site_name', '')); ?>"
+                               placeholder="e.g. Liwonde Sun Hotel" maxlength="150" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="site_tagline">Tagline</label>
+                        <input type="text" id="site_tagline" name="site_tagline" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('site_tagline', '')); ?>"
+                               placeholder="e.g. Where Comfort Meets Nature" maxlength="255">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:20px;">
+                    <label for="site_url">Website URL</label>
+                    <input type="text" id="site_url" name="site_url" class="form-control"
+                           value="<?php echo htmlspecialchars(getSetting('site_url', '')); ?>"
+                           placeholder="https://www.example.com" maxlength="255">
+                </div>
+
+                <h4 style="margin-top:25px; margin-bottom:15px; color:#0A1929; border-bottom:1px solid #e0e0e0; padding-bottom:8px;">
+                    <i class="fas fa-phone"></i> Phone Numbers
+                </h4>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+                    <div class="form-group">
+                        <label for="phone_main">Main Phone Number</label>
+                        <input type="tel" id="phone_main" name="phone_main" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('phone_main', '')); ?>"
+                               placeholder="e.g. +265 999 123 456" maxlength="30">
+                        <p class="help-text"><i class="fas fa-info-circle"></i> Used for the "Call Reservations" button on the website.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="phone_secondary">Secondary Phone</label>
+                        <input type="tel" id="phone_secondary" name="phone_secondary" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('phone_secondary', '')); ?>"
+                               placeholder="e.g. +265 888 654 321" maxlength="30">
+                    </div>
+                </div>
+
+                <h4 style="margin-top:25px; margin-bottom:15px; color:#0A1929; border-bottom:1px solid #e0e0e0; padding-bottom:8px;">
+                    <i class="fas fa-envelope"></i> Email Addresses
+                </h4>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+                    <div class="form-group">
+                        <label for="email_main">General Enquiries Email</label>
+                        <input type="email" id="email_main" name="email_main" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('email_main', '')); ?>"
+                               placeholder="info@example.com" maxlength="254">
+                    </div>
+                    <div class="form-group">
+                        <label for="email_reservations">Reservations Email</label>
+                        <input type="email" id="email_reservations" name="email_reservations" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('email_reservations', '')); ?>"
+                               placeholder="reservations@example.com" maxlength="254">
+                        <p class="help-text"><i class="fas fa-info-circle"></i> Used for the "Email Booking" button on room pages.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="email_info">Info / General Email</label>
+                        <input type="email" id="email_info" name="email_info" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('email_info', '')); ?>"
+                               placeholder="info@example.com" maxlength="254">
+                    </div>
+                </div>
+
+                <h4 style="margin-top:25px; margin-bottom:15px; color:#0A1929; border-bottom:1px solid #e0e0e0; padding-bottom:8px;">
+                    <i class="fas fa-map-marker-alt"></i> Address
+                </h4>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+                    <div class="form-group">
+                        <label for="address_line1">Address Line 1</label>
+                        <input type="text" id="address_line1" name="address_line1" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('address_line1', '')); ?>"
+                               placeholder="e.g. P.O. Box 123" maxlength="255">
+                    </div>
+                    <div class="form-group">
+                        <label for="address_line2">Address Line 2</label>
+                        <input type="text" id="address_line2" name="address_line2" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('address_line2', '')); ?>"
+                               placeholder="e.g. Liwonde Road" maxlength="255">
+                    </div>
+                    <div class="form-group">
+                        <label for="address_city">City / Town</label>
+                        <input type="text" id="address_city" name="address_city" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('address_city', '')); ?>"
+                               placeholder="e.g. Liwonde" maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="address_country">Country</label>
+                        <input type="text" id="address_country" name="address_country" class="form-control"
+                               value="<?php echo htmlspecialchars(getSetting('address_country', '')); ?>"
+                               placeholder="e.g. Malawi" maxlength="100">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit">
+                    <i class="fas fa-save"></i> Save Contact Information
+                </button>
+            </form>
+
+            <div class="info-box" style="margin-top:25px;">
+                <h4><i class="fas fa-lightbulb"></i> How This Affects Your Website</h4>
+                <ul>
+                    <li><strong>Call Reservations button:</strong> Uses Main Phone Number — the button only appears when a number is set.</li>
+                    <li><strong>Email Booking button:</strong> Uses Reservations Email on room and booking pages.</li>
+                    <li><strong>Footer &amp; Contact pages:</strong> Display all contact details set here.</li>
+                    <li><strong>Changes are live immediately</strong> — no cache clearing needed.</li>
+                </ul>
+            </div>
+        </div>
+
         <div class="info-box" style="background: #fff3cd; border-left-color: #ffc107;">
             <h4><i class="fas fa-exclamation-triangle"></i> Important Security Note</h4>
             <p style="color: #856404; margin: 0;">

@@ -50,12 +50,13 @@ try {
 // Handle inquiry submission
 $inquiry_success = false;
 $inquiry_error = '';
+$success_reference = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validate CSRF token
-    requireCsrfValidation();
-    
     try {
+        // Validate CSRF token
+        requireCsrfValidation();
+        
         // Initialize validation errors array
         $validation_errors = [];
         $sanitized_data = [];
@@ -896,7 +897,7 @@ function resolveConferenceImage(?string $imagePath): string
 
     $modalContent = '
         <form method="POST" action="" id="inquiryForm" class="validate-form">
-            <?php echo getCsrfField(); ?>
+            ' . getCsrfField() . '
             <input type="hidden" name="conference_room_id" id="selectedRoomId">
             
             <div class="form-group">

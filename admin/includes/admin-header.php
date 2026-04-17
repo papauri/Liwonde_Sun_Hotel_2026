@@ -145,6 +145,7 @@ function _canShowNavItem($permission_key) {
         <?php if (_canShowNavItem('booking_settings')): ?>
         <li><a href="booking-settings.php" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-cog"></i> Booking Settings</a></li>
         <li><a href="booking-settings.php#email-settings" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-envelope"></i> Email Settings</a></li>
+        <li><a href="booking-settings.php#contact-settings" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-address-card"></i> Hotel Contact</a></li>
         <?php endif; ?>
         <?php if (_canShowNavItem('cache')): ?>
         <li><a href="cache-management.php" class="<?php echo $current_page === 'cache-management.php' ? 'active' : ''; ?>"><i class="fas fa-bolt"></i> Cache</a></li>

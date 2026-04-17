@@ -14,6 +14,26 @@ $user = [
 $message = '';
 $error = '';
 
+// Handle gym settings update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gym_settings'])) {
+    try {
+        if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+            throw new Exception('Invalid security token. Please refresh and try again.');
+        }
+        $max_guests = (int)($_POST['gym_max_guests'] ?? 10);
+        if ($max_guests < 1 || $max_guests > 100) {
+            throw new Exception('Max guests must be between 1 and 100.');
+        }
+        if (!updateSetting('gym_max_guests', (string)$max_guests)) {
+            throw new Exception('Failed to save gym max guests setting.');
+        }
+        deleteCache('setting_gym_max_guests');
+        $message = 'Gym settings updated successfully!';
+    } catch (Exception $e) {
+        $error = $e->getMessage();
+    }
+}
+
 // Handle status updates and deletions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['inquiry_action'])) {
     try {
@@ -257,6 +277,11 @@ try {
             to { transform: translateY(0); opacity: 1; }
         }
         
+        /* Table always scrolls horizontally — never squashes columns */
+        .table-container .table {
+            min-width: 920px;
+        }
+
         @media (max-width: 768px) {
             .filter-tabs {
                 width: 100%;
@@ -269,15 +294,6 @@ try {
 
             .search-bar input {
                 min-width: 0;
-            }
-
-            .table-container {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-
-            .table-container .table {
-                min-width: 920px;
             }
 
             .action-buttons .btn,
@@ -334,6 +350,38 @@ try {
 
         <div class="page-header">
             <h2 class="section-title"><i class="fas fa-dumbbell"></i> Gym Inquiries Management</h2>
+        </div>
+
+        <!-- Gym Settings Card -->
+        <div class="settings-card" style="background:#fff; border-radius:12px; padding:24px 28px; box-shadow:0 2px 8px rgba(0,0,0,.08); margin-bottom:28px;">
+            <h3 style="margin:0 0 6px; font-family:'Playfair Display',serif; font-size:18px; color:#0A1929;">
+                <i class="fas fa-sliders-h" style="color:#D4AF37; margin-right:8px;"></i>Gym Booking Settings
+            </h3>
+            <p style="margin:0 0 18px; color:#666; font-size:14px;">Configure limits that apply to the public gym booking form.</p>
+            <form method="POST" action="gym-inquiries.php" style="max-width:380px;">
+                <?php echo getCsrfField(); ?>
+                <input type="hidden" name="gym_settings" value="1">
+                <div style="margin-bottom:16px;">
+                    <label for="gym_max_guests" style="display:block; font-weight:600; font-size:14px; color:#0A1929; margin-bottom:6px;">
+                        Maximum Guests Per Booking
+                    </label>
+                    <input type="number"
+                           id="gym_max_guests"
+                           name="gym_max_guests"
+                           min="1"
+                           max="100"
+                           value="<?php echo (int)getSetting('gym_max_guests', '10'); ?>"
+                           required
+                           style="width:100%; padding:10px 12px; border:1px solid #d9e1ec; border-radius:10px; font-size:14px; background:#f9fbff;">
+                    <p style="margin:6px 0 0; font-size:12px; color:#6b7280;">
+                        <i class="fas fa-info-circle"></i>
+                        The guest input on the public gym form will enforce this as its maximum. Default is 10.
+                    </p>
+                </div>
+                <button type="submit" style="background:#0A1929; color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:14px; font-weight:600; cursor:pointer;">
+                    <i class="fas fa-save"></i> Save Settings
+                </button>
+            </form>
         </div>
 
         <!-- Filter Tabs -->

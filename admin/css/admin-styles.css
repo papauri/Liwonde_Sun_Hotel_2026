@@ -407,7 +407,9 @@ footer {
     background: white;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow);
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
     margin-bottom: 24px;
 }
 

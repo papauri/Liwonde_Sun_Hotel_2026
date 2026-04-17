@@ -19,6 +19,7 @@ sendSecurityHeaders();
 $site_name = getSetting('site_name');
 $site_logo = getSetting('site_logo');
 $email_main = getSetting('email_main');
+$gym_max_guests = max(1, (int)getSetting('gym_max_guests', '10'));
 
 
 // Fetch gym content
@@ -152,8 +153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gym_booking_form'])) 
         $sanitized_data['goals'] = sanitizeString($goals_validation['value'], 1000);
     }
     
-    // Validate guests (optional)
-    $guests_validation = validateNumber($_POST['guests'] ?? '', 1, 10, false);
+    // Validate guests (optional — limit from DB setting)
+    $guests_validation = validateNumber($_POST['guests'] ?? '', 1, $gym_max_guests, false);
     if (!$guests_validation['valid']) {
         $validation_errors['guests'] = $guests_validation['error'];
     } else {
@@ -723,7 +724,9 @@ try {
                     </div>
                     <div class="form-group">
                         <label for="guests">Guests</label>
-                        <input type="number" id="guests" name="guests" min="1" max="10" placeholder="1">
+                        <input type="number" id="guests" name="guests" min="1" max="<?php echo $gym_max_guests; ?>" placeholder="1"
+                               data-max-guests="<?php echo $gym_max_guests; ?>"
+                               data-rules='{"max":<?php echo $gym_max_guests; ?>,"messages":{"max":"Maximum <?php echo $gym_max_guests; ?> guests allowed"}}'>
                     </div>
                     <div class="form-group">
                         <label for="preferred_date" class="required">Preferred Date</label>
