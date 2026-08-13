@@ -1,6 +1,6 @@
 /**
  * Restaurant Section Styles
- * Rosalyn's Hotel 2026
+ * Liwonde Sun Hotel 2026
  * Styles for restaurant and dining pages
  */
 
@@ -1004,7 +1004,7 @@
     color: var(--color-text-secondary, #5E554D);
     font-size: clamp(0.85rem, 1.2vw, 0.95rem);
     line-height: 1.7;
-    max-width: 28ch;
+    max-width: var(--measure-xs);
 }
 
 /* ============================================

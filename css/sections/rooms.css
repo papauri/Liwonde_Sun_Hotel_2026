@@ -1,6 +1,6 @@
 /**
  * Rooms Section Styles
- * Rosalyn's Hotel 2026
+ * Liwonde Sun Hotel 2026
  * Styles for room display and gallery pages
  */
 
@@ -87,7 +87,7 @@
 }
 
 .rooms-hero__content p {
-    max-width: 64ch;
+    max-width: var(--measure);
     font-size: clamp(1.02rem, 1.6vw, 1.28rem);
     line-height: 1.75;
     color: rgba(255, 255, 255, 0.86) !important;
@@ -159,7 +159,7 @@
     }
 
     .rooms-hero__content p {
-        max-width: 52ch;
+        max-width: var(--measure);
     }
 }
 
@@ -833,7 +833,7 @@
     line-height: 1.85;
     color: var(--color-text-secondary, #5E554D);
     margin: 0;
-    max-width: 85ch;
+    max-width: var(--measure-wide);
 }
 
 /* Specs Grid */
@@ -1057,7 +1057,7 @@
     line-height: 1.7;
     color: rgba(255, 255, 255, 0.75);
     margin: 0 0 var(--spacing-xl, 32px) 0;
-    max-width: 50ch;
+    max-width: var(--measure-tight);
 }
 
 .booking-cta__actions {

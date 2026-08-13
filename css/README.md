@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains the completely restructured CSS for Rosalyn's Hotel 2026. The new architecture provides better maintainability, performance, and collaboration opportunities.
+This directory contains the completely restructured CSS for Liwonde Sun Hotel 2026. The new architecture provides better maintainability, performance, and collaboration opportunities.
 
 ## Directory Structure
 

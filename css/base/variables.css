@@ -1,6 +1,6 @@
 /**
  * CSS Custom Properties (Variables)
- * Rosalyn's Hotel 2026
+ * Liwonde Sun Hotel 2026
  * Optimized design tokens for consistency and performance
  */
 
@@ -186,6 +186,24 @@
    --container-content: 1120px;
    --container-gutter: clamp(1rem, 3.2vw, 2.25rem);
 
+   /* ---- Reading measure scale ----------------------------------------
+      One scale for every text block on the guest site. Before this there
+      were 19 hardcoded ch values across 9 files ranging 28ch-85ch, with
+      no shared source, so line lengths drifted section by section.
+
+      Pick by ROLE, never by eye:
+        --measure-xs     micro copy inside cards and tiles
+        --measure-tight  captions, testimonials, short subtitles
+        --measure        DEFAULT - body copy, section and hero intros
+        --measure-wide   long-form prose only (room detail, policies)
+
+      NB: 1ch here is ~0.64em, not the usual ~0.5em, because Jost has a
+      wide zero glyph. A given ch value renders wider than you'd expect. */
+   --measure-xs: 32ch;
+   --measure-tight: 46ch;
+   --measure: 58ch;
+   --measure-wide: 78ch;
+
    /* Section Padding */
    --section-padding: clamp(4rem, 6.5vw, 6.5rem);
    --section-padding-compact: clamp(2.8rem, 4.4vw, 4rem);
@@ -222,9 +240,9 @@
    --premium-space-section: clamp(4.75rem, 8vw, 8.2rem);
    --premium-space-section-mobile: clamp(3.1rem, 6.8vw, 4.8rem);
    --premium-space-intro: clamp(1.4rem, 2.5vw, 2.4rem);
-   /* Reading measure for body copy inside section intros. Kept in step with
-      the .section-header cap in typography.css so the two never disagree. */
-   --premium-content-measure: 58ch;
+   /* Legacy alias kept so older rules keep working. Aliased to --measure
+      rather than carrying its own value, so there is exactly one number. */
+   --premium-content-measure: var(--measure);
    --premium-card-radius: clamp(0.95rem, 1.2vw, 1.45rem);
    --premium-card-padding: clamp(1.15rem, 2.2vw, 1.9rem);
    --premium-card-padding-lg: clamp(1.6rem, 2.8vw, 2.5rem);
