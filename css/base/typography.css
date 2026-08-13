@@ -232,7 +232,10 @@ a:focus-visible {
 
 /* Premium editorial rhythm for section headers (masonry-style typography treatment) */
 .section-header {
-    max-width: min(70ch, 100%);
+    /* This block, not .section-header__description, is what actually bounds a
+       section intro: the child's measure never binds because the parent is
+       narrower. 70ch resolved to ~816px, which reads as a very long line. */
+    max-width: min(58ch, 100%);
     margin-inline: auto;
     margin-bottom: var(--premium-space-intro, var(--section-inner-gap, 1.5rem));
     text-align: center;

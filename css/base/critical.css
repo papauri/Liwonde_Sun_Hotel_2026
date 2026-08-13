@@ -418,9 +418,10 @@ textarea {
 .container,
 .container-fluid {
     width: 100%;
-    max-width: 1200px;
+    /* Was a hardcoded 1200px, which drifted from --container-content. */
+    max-width: var(--container-content, 1120px);
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 var(--container-gutter, 20px);
 }
 
 /* ============================================

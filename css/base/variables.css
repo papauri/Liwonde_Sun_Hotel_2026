@@ -181,7 +181,9 @@
    --container-lg: 1080px;
    --container-xl: 1240px;
    --container-2xl: 1536px;
-   --container-content: 1200px;
+   /* Single source of truth for the content rail. Keep --landing-content-max
+      in sync: two competing rails made sections disagree by 40px. */
+   --container-content: 1120px;
    --container-gutter: clamp(1rem, 3.2vw, 2.25rem);
 
    /* Section Padding */
@@ -199,8 +201,8 @@
    --grid-gap-lg: 2rem;
 
    /* Landing premium symmetry tokens */
-   --landing-max-width: min(1320px, 100%);
-   --landing-content-max: min(1240px, 100%);
+   --landing-max-width: min(1200px, 100%);
+   --landing-content-max: min(1120px, 100%);
    --landing-grid-gap: clamp(1rem, 1.5vw, 1.65rem);
    --landing-grid-gap-lg: clamp(1.25rem, 2vw, 2.2rem);
    --landing-card-radius: clamp(0.8rem, 1.1vw, 1.35rem);
@@ -220,7 +222,9 @@
    --premium-space-section: clamp(4.75rem, 8vw, 8.2rem);
    --premium-space-section-mobile: clamp(3.1rem, 6.8vw, 4.8rem);
    --premium-space-intro: clamp(1.4rem, 2.5vw, 2.4rem);
-   --premium-content-measure: 64ch;
+   /* Reading measure for body copy inside section intros. Kept in step with
+      the .section-header cap in typography.css so the two never disagree. */
+   --premium-content-measure: 58ch;
    --premium-card-radius: clamp(0.95rem, 1.2vw, 1.45rem);
    --premium-card-padding: clamp(1.15rem, 2.2vw, 1.9rem);
    --premium-card-padding-lg: clamp(1.6rem, 2.8vw, 2.5rem);
