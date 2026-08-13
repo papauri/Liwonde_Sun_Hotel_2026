@@ -182,8 +182,14 @@
    --container-xl: 1240px;
    --container-2xl: 1536px;
    /* Single source of truth for the content rail. Keep --landing-content-max
-      in sync: two competing rails made sections disagree by 40px. */
-   --container-content: 1120px;
+      in sync: two competing rails made sections disagree by 40px.
+
+      Fluid, not fixed. A flat 1120px filled only 30% of a 3440px display,
+      which read as a small site marooned in the middle rather than a wide
+      one. Grows with the viewport up to a 1760px ceiling; below ~1440px the
+      floor wins so narrower screens are unchanged. Text stays bounded by
+      --measure regardless, so wider rail never means longer lines. */
+   --container-content: clamp(1120px, 78vw, 1760px);
    --container-gutter: clamp(1rem, 3.2vw, 2.25rem);
 
    /* ---- Reading measure scale ----------------------------------------
@@ -219,8 +225,8 @@
    --grid-gap-lg: 2rem;
 
    /* Landing premium symmetry tokens */
-   --landing-max-width: min(1200px, 100%);
-   --landing-content-max: min(1120px, 100%);
+   --landing-max-width: min(clamp(1200px, 82vw, 1880px), 100%);
+   --landing-content-max: min(var(--container-content), 100%);
    --landing-grid-gap: clamp(1rem, 1.5vw, 1.65rem);
    --landing-grid-gap-lg: clamp(1.25rem, 2vw, 2.2rem);
    --landing-card-radius: clamp(0.8rem, 1.1vw, 1.35rem);

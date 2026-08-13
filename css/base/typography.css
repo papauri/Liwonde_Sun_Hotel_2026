@@ -32,6 +32,18 @@ main :is(section, .section, .section-padding, .editorial-section) :is(p, li) {
     max-width: var(--measure);
 }
 
+/* Long unbroken tokens must never escape their box. Guest-supplied text
+   (reviews, names, pasted URLs) has no spaces to wrap on, and a review quote
+   was overflowing its card by 287px. min-width:0 is needed too: flex and grid
+   children default to min-width:auto, which refuses to shrink below content. */
+p, li, blockquote, figcaption, dd, dt,
+h1, h2, h3, h4, h5, h6,
+[class*="__quote"], [class*="__description"], [class*="__summary"],
+[class*="__title"], [class*="__name"], [class*="__text"] {
+    overflow-wrap: break-word;
+    min-width: 0;
+}
+
 h1, h2, h3, h4, h5, h6,
 .section-header__title,
 .editorial-title,
