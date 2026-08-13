@@ -242,7 +242,10 @@ a:focus-visible {
 }
 
 .section-header--editorial {
-    max-width: min(78ch, 100%);
+    /* Left-aligned variant. Kept a touch wider than the centred default
+       because ragged-right copy carries a longer line comfortably, but
+       brought down from 78ch so it no longer reads as a separate rail. */
+    max-width: min(62ch, 100%);
     text-align: left;
     margin-inline: 0;
 }
