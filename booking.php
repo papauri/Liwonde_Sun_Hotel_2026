@@ -1213,13 +1213,11 @@ try {
                                     data-filter="all <?php echo htmlspecialchars($room_badge_value); ?>"
                                     data-badge="<?php echo htmlspecialchars($room['badge'] ?? ''); ?>">
                                     <input type="radio" name="room_id" value="<?php echo $room['id']; ?>" required>
-                                    <div class="room-option__thumb<?php echo empty($room['image_url']) ? ' room-option__thumb--placeholder' : ''; ?>">
-                                        <?php if (!empty($room['image_url'])): ?>
+                                    <?php if (!empty($room['image_url'])): ?>
+                                    <div class="room-option__thumb">
                                         <img src="<?php echo htmlspecialchars($room['image_url']); ?>" alt="<?php echo htmlspecialchars($room['name']); ?>" loading="lazy">
-                                        <?php else: ?>
-                                        <div class="room-thumb-placeholder"><i class="fas fa-bed"></i></div>
-                                        <?php endif; ?>
                                     </div>
+                                    <?php endif; ?>
                                     <div class="room-info">
                                         <h4><?php echo htmlspecialchars($room['name']); ?></h4>
                                         <p><?php echo htmlspecialchars($room['short_description']); ?></p>
@@ -1252,13 +1250,11 @@ try {
                                 data-max-guests="<?php echo $preselected_room['max_guests']; ?>"
                                 data-children-allowed="<?php echo (int)$preselected_room['children_allowed']; ?>">
                                 <input type="hidden" name="room_id" value="<?php echo $preselected_room['id']; ?>" id="preselectedRoomId">
-                                <div class="room-option__thumb<?php echo empty($preselected_room['image_url']) ? ' room-option__thumb--placeholder' : ''; ?>">
-                                    <?php if (!empty($preselected_room['image_url'])): ?>
+                                <?php if (!empty($preselected_room['image_url'])): ?>
+                                <div class="room-option__thumb">
                                     <img src="<?php echo htmlspecialchars($preselected_room['image_url']); ?>" alt="<?php echo htmlspecialchars($preselected_room['name']); ?>" loading="lazy">
-                                    <?php else: ?>
-                                    <div class="room-thumb-placeholder"><i class="fas fa-bed"></i></div>
-                                    <?php endif; ?>
                                 </div>
+                                <?php endif; ?>
                                 <div class="room-info">
                                     <h4><?php echo htmlspecialchars($preselected_room['name']); ?></h4>
                                     <p><?php echo htmlspecialchars($preselected_room['short_description']); ?></p>
