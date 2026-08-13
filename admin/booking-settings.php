@@ -1691,6 +1691,7 @@ foreach ($canonicalTemplateDefaults as $templateKey => $templateDefaults) {
 
             <div class="settings-card">
                 <h2><i class="fas fa-sliders-h" style="color: #8B7355;"></i> Service Modules &amp; Dedicated Notification Emails</h2>
+                <p class="help-text">Turning a service off here also removes its page — and every page that module governs — from the guest site navigation. The Events switch lives in <a href="module-settings.php">Module Settings</a>.</p>
                 <form method="POST" action="booking-settings.php">
                     <input type="hidden" name="service_channel_settings" value="1">
 

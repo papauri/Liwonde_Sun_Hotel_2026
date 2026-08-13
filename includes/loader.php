@@ -18,27 +18,17 @@ if (function_exists('getPageLoader') && $page_slug) {
 }
 
 // Build page loader subtext mapping for client-side navigation
-// This allows the loader to show the destination page's subtext during navigation
+// This allows the loader to show the destination page's subtext during navigation.
+// Driven straight off page_loaders (admin → Section Headers → Loading Screens),
+// so a loader added in admin is picked up by SPA navigation without a code change.
 $loaderSubtextMap = [];
-if (function_exists('getPageLoader')) {
-    // Map of ALL page slugs to their loader subtext
-    // Include all possible destinations to prevent fallback to source page subtext
-    $commonPages = [
-        'index', 'home',
-        'rooms-gallery', 'rooms-showcase', 'room',
-        'restaurant',
-        'events',
-        'gym',
-        'conference',
-        'booking', 'check-availability', 'booking-confirmation', 'booking-lookup',
-        'submit-review', 'review-confirmation'
-    ];
-    foreach ($commonPages as $slug) {
-        $subtext = getPageLoader($slug);
-        // Include empty strings so destination is always tracked in map
-        // This prevents fallback to source page's subtext
-        $loaderSubtextMap[$slug] = $subtext !== false ? $subtext : '';
-    }
+if (function_exists('getAllPageLoaders')) {
+    $loaderSubtextMap = getAllPageLoaders();
+}
+// Always track the current page so navigating back to it never falls back to
+// the previous page's subtext.
+if ($page_slug !== '' && !array_key_exists($page_slug, $loaderSubtextMap)) {
+    $loaderSubtextMap[$page_slug] = (string)$loaderSubtext;
 }
 
 // Ballena-style split tagline for the loader (presentation only)

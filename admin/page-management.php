@@ -268,6 +268,8 @@ require_once 'includes/section-headers.php';
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/base/critical.css">
+    <link rel="stylesheet" href="css/main.css">
     <script src="js/session-handler.js" defer></script>
 </head>
 <body>
@@ -490,6 +492,11 @@ try {
                                                 <?php if ($page['description']): ?>
                                                     <div style="font-size:12px;color:#888;margin-top:2px;"><?php echo htmlspecialchars($page['description']); ?></div>
                                                 <?php endif; ?>
+                                                <?php if (($page['page_key'] ?? '') === 'booking'): ?>
+                                                    <div style="font-size:12px;color:#8B7355;margin-top:2px;">
+                                                        <i class="fas fa-info-circle"></i> Renders as the Book Now button, not a menu item — its position is ignored, and hiding it removes the button from the whole site.
+                                                    </div>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
                                     </td>
@@ -605,6 +612,7 @@ try {
                     <div>
                         <label for="add_icon">Icon (Font Awesome)</label>
                         <input type="text" id="add_icon" name="icon" placeholder="e.g. fa-spa" value="fa-file">
+                        <p style="font-size:12px;color:#888;margin:4px 0 0;">Shows in the mobile menu and on the Book Now button. The desktop menu is text-only.</p>
                     </div>
                     <div>
                         <label for="add_page_heading">Page Heading</label>
@@ -653,6 +661,7 @@ try {
         <div class="form-group">
             <label for="edit_icon">Icon (Font Awesome)</label>
             <input type="text" id="edit_icon" name="icon">
+            <p style="font-size:12px;color:#888;margin:4px 0 0;">Shows in the mobile menu and on the Book Now button. The desktop menu is text-only.</p>
         </div>
         <div class="form-group">
             <label for="edit_description">Description</label>
