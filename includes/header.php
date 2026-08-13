@@ -102,21 +102,19 @@ if ($header_logo_kicker === '') {
             $_nav_booking = ['page_key' => 'booking', 'title' => 'Book Now', 'file_path' => 'booking.php', 'icon' => 'fa-calendar-check'];
         }
 
-        // Apply feature toggles
+        // Apply feature toggles. Filter on the file path, not the page_key, so
+        // every page rh_front_page_feature() governs is covered — including ones
+        // an admin adds later (gym-schedule.php, rooms-showcase.php, room.php …).
+        // This is the same resolver Page Management uses for its "preset off"
+        // badge, so the menu and the admin list can't drift apart.
         $bookingEnabled = function_exists('isBookingEnabled') ? isBookingEnabled() : true;
-        $conferenceEnabled = function_exists('isConferenceEnabled') ? isConferenceEnabled() : true;
-        $gymEnabled = function_exists('isGymEnabled') ? isGymEnabled() : true;
-        $restaurantEnabled = function_exists('isRestaurantEnabled') ? isRestaurantEnabled() : true;
-        $eventsEnabled = function_exists('isEventsEnabled') ? isEventsEnabled() : true;
-        
-        $_nav_pages = array_values(array_filter($_nav_pages, function ($navp) use ($bookingEnabled, $conferenceEnabled, $gymEnabled, $restaurantEnabled, $eventsEnabled) {
-            $key = $navp['page_key'] ?? '';
-            if ($key === 'rooms' && !$bookingEnabled) return false;
-            if ($key === 'conference' && !$conferenceEnabled) return false;
-            if ($key === 'gym' && !$gymEnabled) return false;
-            if ($key === 'restaurant' && !$restaurantEnabled) return false;
-            if ($key === 'events' && !$eventsEnabled) return false;
-            return true;
+
+        $_nav_pages = array_values(array_filter($_nav_pages, function ($navp) {
+            if (!function_exists('rh_front_page_feature')) {
+                return true;
+            }
+            $feature = rh_front_page_feature((string)($navp['file_path'] ?? ''));
+            return $feature === null || $feature['enabled'];
         }));
 
         if (!$bookingEnabled) {

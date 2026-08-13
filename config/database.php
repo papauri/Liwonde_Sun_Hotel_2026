@@ -2393,6 +2393,34 @@ function getPageLoader(string $page_slug): ?string
 }
 
 /**
+ * Helper: fetch every active page loader subtext, keyed by page slug.
+ *
+ * includes/loader.php ships this map to the client so SPA navigation can show
+ * the destination page's subtext. Driving it from the table (rather than a
+ * hardcoded slug list) means a loader added in admin appears during
+ * client-side navigation too.
+ */
+function getAllPageLoaders(): array
+{
+    global $pdo;
+    try {
+        $stmt = $pdo->query("
+            SELECT page_slug, subtext
+            FROM page_loaders
+            WHERE is_active = 1
+        ");
+        $map = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $map[(string)$row['page_slug']] = (string)($row['subtext'] ?? '');
+        }
+        return $map;
+    } catch (PDOException $e) {
+        error_log('Error fetching page loaders: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/**
  * Booking Lifecycle Constants and Helper Functions
  *
  * These functions standardize booking status transitions and validation
