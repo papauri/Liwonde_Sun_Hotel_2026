@@ -54,27 +54,13 @@ main>div>[class*="hero"]:first-child {
 }
 
 /* ============================================
-   PAGE LOADER
+   PAGE LOADER NOTE
+   The loader is styled entirely in css/components/loader.css
+   (.loader / .loader--active / .loader--hiding / .loader--hidden).
+   The old .page-loader rules that used to live here matched markup
+   includes/loader.php no longer emits — and painted a dark #1A1A1A
+   curtain where the loader is now sand — so they were removed.
    ============================================ */
-
-.page-loader {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #1A1A1A;
-    transition: opacity 0.5s ease;
-}
-
-.page-loader.fade-out {
-    opacity: 0;
-}
-
-.page-loader.hidden {
-    display: none;
-}
 
 /* ============================================
    CRITICAL HEADER NOTE
@@ -260,59 +246,20 @@ textarea {
     }
 }
 
-@media (max-width: 520px) {
-    .header__logo-kicker {
-        display: none;
-    }
-    .header__actions {
-        flex-shrink: 0;
-    }
-}
+/* The header height steps live in css/components/header.css
+   (--lsh-header-height, which also feeds --header-height/-mobile).
+   Track the variable rather than repeating pixel values here — the
+   hardcoded 90/100/104px used to drift from the real header height. */
 
 @media (min-width: 1024px) {
-
-    /* header height becomes 90px — align main offset to match */
-    main {
-        padding-top: 90px;
-    }
-
-    main>[class*="hero"]:first-child,
-    main>div>[class*="hero"]:first-child {
-        margin-top: -90px;
-    }
-
     .main-content {
         padding: 0 24px;
     }
 }
 
 @media (min-width: 1280px) {
-
-    /* header height becomes 100px — align main offset to match */
-    main {
-        padding-top: 100px;
-    }
-
-    main>[class*="hero"]:first-child,
-    main>div>[class*="hero"]:first-child {
-        margin-top: -100px;
-    }
-
     .main-content {
         padding: 0 32px;
-    }
-}
-
-@media (min-width: 1440px) {
-
-    /* header height becomes 104px — align main offset to match */
-    main {
-        padding-top: 104px;
-    }
-
-    main>[class*="hero"]:first-child,
-    main>div>[class*="hero"]:first-child {
-        margin-top: -104px;
     }
 }
 

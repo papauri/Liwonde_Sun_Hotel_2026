@@ -6,6 +6,9 @@
 
 // Set JSON header first
 header('Content-Type: application/json');
+// .htaccess gives application/json a 1-month Expires, which would otherwise pin
+// SPA navigations to markup from before the last front-end deploy.
+header('Cache-Control: no-store, no-cache, must-revalidate');
 
 // Error handling
 error_reporting(E_ALL);
@@ -210,18 +213,19 @@ function extractHeroData($html) {
         $hero['hasHero'] = false;
     }
     
-    // Try to extract hero title
-    if (preg_match('/<h1[^>]*class="[^"]*hero-title[^"]*"[^>]*>(.*?)<\/h1>/is', $html, $matches)) {
+    // Try to extract hero title (BEM: includes/hero.php emits .hero__title)
+    if (preg_match('/<h1[^>]*class="[^"]*hero__title[^"]*"[^>]*>(.*?)<\/h1>/is', $html, $matches)) {
         $hero['title'] = trim(strip_tags($matches[1]));
     }
-    
-    // Try to extract hero subtitle
-    if (preg_match('/<p[^>]*class="[^"]*hero-subtitle[^"]*"[^>]*>(.*?)<\/p>/is', $html, $matches)) {
+
+    // Try to extract hero subtitle — .hero__subtitle is a <span> inside the <h1>
+    if (preg_match('/<span[^>]*class="[^"]*hero__subtitle[^"]*"[^>]*>(.*?)<\/span>/is', $html, $matches)) {
         $hero['subtitle'] = trim(strip_tags($matches[1]));
     }
-    
-    // Try to extract hero background image
-    if (preg_match('/style="[^"]*background-image:\s*url\([\'"]?([^\'"\)]+)[\'"]?\)/i', $html, $matches)) {
+
+    // Try to extract the hero image (the hero uses <picture>/<img>, not a
+    // background-image, since the ballena redesign)
+    if (preg_match('/<div[^>]*class="[^"]*hero__media[^"]*"[^>]*>[\s\S]*?<img[^>]*src="([^"]+)"/i', $html, $matches)) {
         $hero['backgroundImage'] = $matches[1];
     }
     
