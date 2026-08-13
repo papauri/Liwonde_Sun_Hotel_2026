@@ -21,6 +21,22 @@ header('Content-Type: application/json');
 
 // Include database configuration
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../includes/permissions.php';
+
+// Start session and enforce admin auth/permission
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+if (!isset($_SESSION['admin_user_id'])) {
+    sendError('Authentication required', 401);
+}
+
+$method = $_SERVER['REQUEST_METHOD'];
+$required_permission = ($method === 'GET') ? 'rooms' : 'media_edit';
+if (!hasPermission((int)$_SESSION['admin_user_id'], $required_permission) && !hasPermission((int)$_SESSION['admin_user_id'], 'rooms')) {
+    sendError('Access denied', 403);
+}
 
 // Helper function to send JSON response
 function sendResponse($data, $statusCode = 200) {
@@ -99,8 +115,77 @@ function validateImageFile($file) {
     ];
 }
 
-// Get request method
-$method = $_SERVER['REQUEST_METHOD'];
+/**
+ * Sync canonical media mapping for a single room gallery row.
+ */
+function syncRoomGalleryManagedMediaById(int $pictureId): void {
+    global $pdo;
+
+    if (!function_exists('upsertManagedMediaForSource')) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("SELECT g.id, g.room_id, g.image_url, g.title, g.description, g.display_order, g.is_active, r.name AS room_name FROM gallery g LEFT JOIN rooms r ON r.id = g.room_id WHERE g.id = ? LIMIT 1");
+    $stmt->execute([$pictureId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row) {
+        return;
+    }
+
+    $mediaUrl = ((int)($row['is_active'] ?? 1) === 1) ? ($row['image_url'] ?? null) : null;
+
+    upsertManagedMediaForSource('gallery', (int)$row['id'], 'image_url', $mediaUrl, [
+        'title' => ($row['title'] ?: (($row['room_name'] ?? 'Room') . ' Gallery Image')),
+        'description' => $row['description'] ?? null,
+        'caption' => $row['description'] ?? null,
+        'alt_text' => ($row['title'] ?: (($row['room_name'] ?? 'Room') . ' gallery image')),
+        'placement_key' => 'rooms.gallery.image_url',
+        'page_slug' => 'room',
+        'section_key' => 'room_gallery',
+        'entity_type' => 'room',
+        'entity_id' => (int)($row['room_id'] ?? 0),
+        'display_order' => (int)($row['display_order'] ?? 0),
+        'use_case' => 'room_gallery_image',
+        'media_type' => 'image',
+    ]);
+}
+
+/**
+ * Sync canonical media mapping for a room featured image.
+ */
+function syncRoomFeaturedManagedMedia(int $roomId): void {
+    global $pdo;
+
+    if (!function_exists('upsertManagedMediaForSource')) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("SELECT id, name, image_url, short_description, description, display_order FROM rooms WHERE id = ? LIMIT 1");
+    $stmt->execute([$roomId]);
+    $room = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$room) {
+        return;
+    }
+
+    upsertManagedMediaForSource('rooms', (int)$room['id'], 'image_url', $room['image_url'] ?? null, [
+        'title' => ($room['name'] ?? 'Room') . ' (Image)',
+        'description' => $room['short_description'] ?? ($room['description'] ?? null),
+        'caption' => $room['short_description'] ?? null,
+        'alt_text' => $room['name'] ?? 'Room image',
+        'placement_key' => 'rooms.image_url',
+        'page_slug' => 'rooms-gallery',
+        'section_key' => 'rooms_collection',
+        'entity_type' => 'room',
+        'entity_id' => (int)$room['id'],
+        'display_order' => (int)($room['display_order'] ?? 0),
+        'use_case' => 'featured_image',
+        'media_type' => 'image',
+    ]);
+}
+
+// Get request method (already initialized above)
 
 // Parse request body for PUT/POST requests
 $input = [];
@@ -228,6 +313,8 @@ try {
             ]);
             
             $picture_id = $pdo->lastInsertId();
+
+            syncRoomGalleryManagedMediaById((int)$picture_id);
             
             sendResponse([
                 'success' => true,
@@ -283,6 +370,8 @@ try {
                     WHERE id = ?
                 ");
                 $stmt->execute([$galleryImage['image_url'], $room_id]);
+
+                syncRoomFeaturedManagedMedia($room_id);
                 
                 sendResponse([
                     'success' => true,
@@ -344,6 +433,8 @@ try {
                 ");
                 $stmt->execute([$picture_id]);
                 $updatedPicture = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                syncRoomGalleryManagedMediaById($picture_id);
                 
                 sendResponse([
                     'success' => true,
@@ -386,6 +477,18 @@ try {
             // Delete from database
             $stmt = $pdo->prepare("DELETE FROM gallery WHERE id = ?");
             $stmt->execute([$picture_id]);
+
+            if (function_exists('upsertManagedMediaForSource')) {
+                upsertManagedMediaForSource('gallery', $picture_id, 'image_url', null, [
+                    'placement_key' => 'rooms.gallery.image_url',
+                    'page_slug' => 'room',
+                    'section_key' => 'room_gallery',
+                    'entity_type' => 'room',
+                    'entity_id' => null,
+                    'use_case' => 'room_gallery_image',
+                    'media_type' => 'image',
+                ]);
+            }
             
             sendResponse([
                 'success' => true,
@@ -405,3 +508,4 @@ try {
     error_log("Error in room-pictures.php: " . $e->getMessage());
     sendError('An error occurred', 500, $e->getMessage());
 }
+

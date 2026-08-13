@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Enhanced Cache Management System
  * Easy cache control with toggles, scheduling, and bulk operations
@@ -12,14 +13,16 @@ ini_set('error_log', __DIR__ . '/../logs/php-errors.log');
 
 require_once 'admin-init.php';
 
+$csrf_token = $csrf_token ?? generateCsrfToken();
+
 // Set a custom error handler to prevent blank screens
-set_error_handler(function($errno, $errstr, $errfile, $errline) {
+set_error_handler(function ($errno, $errstr, $errfile, $errline) {
     error_log("Cache Management Error: [$errno] $errstr in $errfile:$errline");
     return true; // Prevent PHP error handler
 });
 
 // Set exception handler
-set_exception_handler(function($exception) {
+set_exception_handler(function ($exception) {
     error_log("Cache Management Exception: " . $exception->getMessage());
     echo "<div style='padding: 20px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 20px;'>";
     echo "<strong>Error:</strong> An unexpected error occurred. Please check the error log.";
@@ -37,6 +40,10 @@ $message = '';
 $error = '';
 $success = false;
 
+$allowedCacheTypes = ['email', 'settings', 'rooms', 'tables', 'images', 'pages', 'content'];
+$allowedBulkCacheTypes = array_merge($allowedCacheTypes, ['all']);
+$allowedScheduleIntervals = ['30sec', '1min', '5min', '15min', '30min', 'hourly', '6hours', '12hours', 'daily', 'weekly', 'custom'];
+
 // Include alert.php for showAlert function
 require_once __DIR__ . '/../includes/alert.php';
 
@@ -47,19 +54,21 @@ if (isset($_GET['msg'])) {
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
-        $error = 'Invalid security token. Please refresh and try again.';
-    }
-
     $action = $_POST['action'] ?? '';
-    
+
     try {
-        if ($error === '') {
-            switch ($action) {
+        if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
+            throw new RuntimeException('Invalid security token. Please refresh and try again.');
+        }
+
+        switch ($action) {
             case 'toggle_cache':
                 $cache_type = $_POST['cache_type'] ?? '';
-                $enabled = isset($_POST['enabled']) ? (int)$_POST['enabled'] : 0;
-                
+                if (!in_array($cache_type, $allowedCacheTypes, true)) {
+                    throw new RuntimeException('Invalid cache type selected.');
+                }
+                $enabled = (isset($_POST['enabled']) && (int)$_POST['enabled'] === 1) ? 1 : 0;
+
                 // Update or insert cache setting
                 $stmt = $pdo->prepare("
                     INSERT INTO site_settings (setting_key, setting_value, updated_at)
@@ -67,56 +76,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = NOW()
                 ");
                 $stmt->execute(["cache_{$cache_type}_enabled", $enabled, $enabled]);
-                
+
                 $message = "Cache '{$cache_type}' " . ($enabled ? 'enabled' : 'disabled') . " successfully!";
                 $success = true;
-                
+                rh_log_event('cache_management', 'info', 'Cache type toggled', ['cache_type' => $cache_type, 'enabled' => $enabled]);
+
                 // Redirect to force fresh read of database
-                header("Location: cache-management.php?msg=" . urlencode($message));
+                header('Location: cache-management.php?msg=' . urlencode($message));
                 exit;
                 break;
-                
+
             case 'clear_cache':
                 $cache_types = $_POST['cache_types'] ?? [];
-                
+                $cache_types = is_array($cache_types) ? $cache_types : [];
+                $cache_types = array_values(array_unique(array_intersect($cache_types, $allowedBulkCacheTypes)));
+                if (in_array('all', $cache_types, true)) {
+                    // Avoid duplicate counting and repeated clear calls when ALL is selected.
+                    $cache_types = ['all'];
+                }
+
                 if (empty($cache_types)) {
                     $error = 'Please select at least one cache type to clear.';
                 } else {
                     require_once __DIR__ . '/../config/cache.php';
+                    require_once __DIR__ . '/../config/page-cache.php';
                     $cleared = 0;
                     $files_cleared = 0;
-                    
+
                     foreach ($cache_types as $type) {
                         switch ($type) {
                             case 'all':
                                 $before = count(glob(CACHE_DIR . '/*.cache'));
-                                $image_before = countImageCacheFiles();
+                                $image_before = countDirectoryFiles(IMAGE_CACHE_DIR);
+                                $page_before = countDirectoryFiles(PAGE_CACHE_DIR);
                                 clearCache();
-                                $files_cleared += $before + $image_before;
+                                clearPageCache();
+                                $files_cleared += $before + $image_before + $page_before;
                                 $cleared++;
                                 break;
                             case 'email':
-                                $before = count(glob(CACHE_DIR . '/email_*.cache'));
+                                $before = count(glob(CACHE_DIR . '/email_*.cache'))
+                                    + count(glob(CACHE_DIR . '/email_setting_*.cache'))
+                                    + count(glob(CACHE_DIR . '/booking_email_template_*.cache'));
                                 clearEmailCache();
                                 $files_cleared += $before;
                                 $cleared++;
                                 break;
                             case 'settings':
                                 $before = count(glob(CACHE_DIR . '/setting_*.cache'))
-                                        + count(glob(CACHE_DIR . '/settings_group_*.cache'));
+                                    + count(glob(CACHE_DIR . '/settings_group_*.cache'));
                                 clearSettingsCache();
                                 $files_cleared += $before;
                                 $cleared++;
                                 break;
                             case 'rooms':
-                                $before = count(glob(CACHE_DIR . '/rooms_*.cache')) 
-                                        + count(glob(CACHE_DIR . '/room_*.cache'))
-                                        + count(glob(CACHE_DIR . '/facilities_*.cache'))
-                                        + count(glob(CACHE_DIR . '/gallery_*.cache'))
-                                    + count(glob(CACHE_DIR . '/hero_*.cache'))
-                                    + count(glob(CACHE_DIR . '/gallery_images*.cache'))
-                                    + count(glob(CACHE_DIR . '/hero_slides*.cache'));
-                                $image_before = countImageCacheFiles();
+                                $before = count(glob(CACHE_DIR . '/rooms_*.cache'))
+                                    + count(glob(CACHE_DIR . '/room_*.cache'))
+                                    + count(glob(CACHE_DIR . '/facilities_*.cache'))
+                                    + count(glob(CACHE_DIR . '/gallery_*.cache'))
+                                    + count(glob(CACHE_DIR . '/hero_*.cache'));
+                                $image_before = countDirectoryFiles(IMAGE_CACHE_DIR);
                                 clearRoomCache();
                                 $files_cleared += $before + $image_before;
                                 $cleared++;
@@ -128,33 +147,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $cleared++;
                                 break;
                             case 'images':
-                                $before = countImageCacheFiles();
+                                $before = countDirectoryFiles(IMAGE_CACHE_DIR);
                                 clearImageCache();
                                 $files_cleared += $before;
                                 $cleared++;
                                 break;
+                            case 'pages':
+                                $before = countDirectoryFiles(PAGE_CACHE_DIR);
+                                clearPageCache();
+                                $files_cleared += $before;
+                                $cleared++;
+                                break;
                             case 'content':
-                                $files_cleared += clearContentCache();
+                                $before = count(glob(CACHE_DIR . '/testimonials_*.cache'))
+                                    + count(glob(CACHE_DIR . '/policies_*.cache'))
+                                    + count(glob(CACHE_DIR . '/about_us_*.cache'));
+                                clearContentCache();
+                                $files_cleared += $before;
                                 $cleared++;
                                 break;
                         }
                     }
-                    
+
                     $message = "Successfully cleared {$files_cleared} cache files in {$cleared} cache type(s)!";
                     $success = true;
+                    rh_log_event('cache_management', 'info', 'Cache cleared', ['cache_types' => $cache_types, 'files_cleared' => $files_cleared]);
                 }
                 break;
-                
+
             case 'set_schedule':
                 $enabled = isset($_POST['schedule_enabled']) ? 1 : 0;
                 $interval = $_POST['schedule_interval'] ?? 'daily';
                 $time = $_POST['schedule_time'] ?? '00:00';
                 $custom_seconds = isset($_POST['custom_seconds']) ? (int)$_POST['custom_seconds'] : 60;
-                
+
+                if (!in_array($interval, $allowedScheduleIntervals, true)) {
+                    $interval = 'daily';
+                }
+                if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', (string)$time)) {
+                    $time = '00:00';
+                }
+
                 // Validate custom seconds (minimum 10 seconds, maximum 86400 seconds/24 hours)
                 if ($custom_seconds < 10) $custom_seconds = 10;
                 if ($custom_seconds > 86400) $custom_seconds = 86400;
-                
+
                 // Update schedule settings
                 $stmt = $pdo->prepare("
                     INSERT INTO site_settings (setting_key, setting_value, updated_at)
@@ -165,28 +202,123 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute(['cache_schedule_interval', $interval, $interval]);
                 $stmt->execute(['cache_schedule_time', $time, $time]);
                 $stmt->execute(['cache_custom_seconds', $custom_seconds, $custom_seconds]);
-                
-                $message = "Cache clearing schedule " . ($enabled ? 'enabled' : 'disabled') . "!";
+
+                $message = "Cache clearing schedule " . ($enabled ? 'enabled' : 'disabled') . " (" . $interval . ")!";
                 $success = true;
+                rh_log_event('cache_management', 'info', 'Cache schedule updated', ['enabled' => $enabled, 'interval' => $interval, 'time' => $time, 'custom_seconds' => $custom_seconds]);
                 break;
-                
+
             case 'set_global_cache':
                 $enabled = isset($_POST['global_cache_enabled']) ? 1 : 0;
-                
+
                 $stmt = $pdo->prepare("
                     INSERT INTO site_settings (setting_key, setting_value, updated_at)
                     VALUES ('cache_global_enabled', ?, NOW())
                     ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = NOW()
                 ");
                 $stmt->execute([$enabled, $enabled]);
-                
+
                 $message = "Global caching " . ($enabled ? 'enabled' : 'disabled') . "!";
                 $success = true;
+                rh_log_event('cache_management', 'info', 'Global cache setting updated', ['enabled' => $enabled]);
                 break;
-            }
+
+            case 'purge_seo_favicon':
+                // Purge SEO & Favicon related caches: page HTML, proxied logo, and bump asset version
+                require_once __DIR__ . '/../config/cache.php';
+                require_once __DIR__ . '/../config/page-cache.php';
+
+                // Build absolute logo URL similar to includes/seo-meta.php
+                $site_url = getSetting('site_url');
+                $base_url = $site_url ?: ('https://' . $_SERVER['HTTP_HOST']);
+                $site_logo = getSetting('site_logo');
+                $logo_abs = '';
+                if (!empty($site_logo)) {
+                    $logo_abs = (strpos($site_logo, 'http') === 0) ? $site_logo : ($base_url . $site_logo);
+                }
+
+                // Use the granular helpers when available; fall back to legacy combined helper
+                $pageCleared = false;
+                $proxyDeleted = false;
+                $newVersion = null;
+
+                if (function_exists('purge_all_page_caches') && function_exists('purge_proxied_image_for_url') && function_exists('bump_seo_asset_version')) {
+                    $pageCleared = (bool) purge_all_page_caches();
+                    if (!empty($logo_abs)) {
+                        $proxyDeleted = (bool) purge_proxied_image_for_url($logo_abs);
+                    }
+                    $newVersion = bump_seo_asset_version();
+                } elseif (function_exists('purgeSeoAndFaviconCaches')) {
+                    $res = purgeSeoAndFaviconCaches($logo_abs);
+                    $pageCleared = !empty($res['page_cache_cleared']);
+                    $proxyDeleted = !empty($res['proxied_logo_deleted']);
+                    $newVersion = $res['new_version'] ?? null;
+                } else {
+                    // Minimal fallback if helpers are unavailable
+                    if (function_exists('clearPageCache')) {
+                        $pageCleared = (bool) clearPageCache();
+                    }
+                }
+
+                $message = sprintf(
+                    "Purged SEO & Favicon caches. Page HTML cleared: %s. Proxied logo deleted: %s. New asset version: %s.",
+                    $pageCleared ? 'yes' : 'no',
+                    $proxyDeleted ? 'yes' : 'no',
+                    $newVersion ?: 'n/a'
+                );
+                $success = true;
+                rh_log_event('cache_management', 'info', 'SEO and favicon cache purge completed', ['page_cleared' => $pageCleared, 'proxy_deleted' => $proxyDeleted, 'new_version' => $newVersion]);
+                break;
+
+            case 'bump_sw':
+                // Bump SW_VERSION stamp in both public and admin service workers so
+                // all browsers discard their PWA cache on next visit.
+                // Include time + nonce so admins can trigger a fresh bump multiple
+                // times in the same day when needed.
+                $bumpStamp  = date('Y-m-d-His') . '-' . random_int(1000, 9999);
+                $swBumped   = [];
+                $swMissing  = [];
+                $swFiles    = [
+                    'Public SW'  => __DIR__ . '/../public-sw.js',
+                    'Admin SW'   => __DIR__ . '/sw.js',
+                ];
+                foreach ($swFiles as $label => $swPath) {
+                    if (!file_exists($swPath)) continue;
+                    $swContent = file_get_contents($swPath);
+                    $newContent = preg_replace(
+                        "/const\\s+SW_VERSION\\s*=\\s*'([^']*?)(?:-\\d{4}-\\d{2}-\\d{2}(?:-\\d{6})?(?:-\\d{4})?)?';/",
+                        "const SW_VERSION = '\$1-{$bumpStamp}';",
+                        $swContent,
+                        -1,
+                        $swCount
+                    );
+                    if ($swCount > 0 && is_string($newContent) && $newContent !== $swContent) {
+                        if (file_put_contents($swPath, $newContent) !== false) {
+                            $swBumped[] = $label;
+                        } else {
+                            $swMissing[] = $label;
+                        }
+                    } else {
+                        $swMissing[] = $label;
+                    }
+                }
+                if (!empty($swBumped)) {
+                    $message = 'Service Worker versions bumped to ' . $bumpStamp . ' (' . implode(', ', $swBumped) . '). All devices will refetch cached assets on next visit.';
+                    $success = true;
+                } else {
+                    $error = 'Could not update SW version strings for: ' . implode(', ', $swMissing) . '.';
+                }
+                rh_log_event('cache_management', 'info', 'SW versions bumped', ['stamp' => $bumpStamp, 'bumped' => $swBumped, 'failed' => $swMissing]);
+                break;
+
+            default:
+                $error = 'Unsupported cache action requested.';
+                rh_log_event('cache_management', 'warning', 'Unsupported cache action requested', ['action' => $action]);
+                break;
         }
-    } catch (PDOException $e) {
-        $error = 'Database error: ' . $e->getMessage();
+    } catch (Throwable $e) {
+        $error = 'Cache action failed: ' . $e->getMessage();
+        rh_log_event('cache_management', 'error', 'Cache action failed', ['action' => $action, 'error' => $e->getMessage()]);
     }
 }
 
@@ -194,12 +326,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $cache_settings = [];
 try {
     $stmt = $pdo->query("
-        SELECT setting_key, setting_value 
-        FROM site_settings 
+        SELECT setting_key, setting_value
+        FROM site_settings
         WHERE setting_key LIKE 'cache_%' OR setting_key LIKE '%_cache_%'
     ");
     $settings = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     foreach ($settings as $setting) {
         $cache_settings[$setting['setting_key']] = $setting['setting_value'];
     }
@@ -209,6 +341,7 @@ try {
 
 // Get cache statistics (with error handling)
 require_once __DIR__ . '/../config/cache.php';
+require_once __DIR__ . '/../config/page-cache.php';
 
 try {
     $stats = getCacheStats();
@@ -223,20 +356,38 @@ try {
         'total_size_formatted' => '0 B',
         'oldest_file' => null,
         'newest_file' => null,
-        'caches' => []
+        'caches' => [],
+        'main_cache' => ['files' => 0, 'size' => 0, 'size_formatted' => '0 B'],
+        'image_cache' => ['files' => 0, 'size' => 0, 'size_formatted' => '0 B'],
+        'page_cache' => ['files' => 0, 'size' => 0, 'size_formatted' => '0 B']
     ];
 }
 
 try {
-    $caches = listCache();
+    $caches = listAllCache();
 } catch (Exception $e) {
     error_log("Cache list error: " . $e->getMessage());
     // Empty cache list if error occurs
     $caches = [];
 }
 
+// Read current SW version strings for display
+$pwa_public_version = 'unknown';
+$pwa_admin_version  = 'unknown';
+$pwaPublicPath = __DIR__ . '/../public-sw.js';
+$pwaAdminPath  = __DIR__ . '/sw.js';
+if (file_exists($pwaPublicPath)) {
+    preg_match("/const SW_VERSION = '([^']+)'/", file_get_contents($pwaPublicPath), $pwaM);
+    $pwa_public_version = $pwaM[1] ?? 'unknown';
+}
+if (file_exists($pwaAdminPath)) {
+    preg_match("/const SW_VERSION = '([^']+)'/", file_get_contents($pwaAdminPath), $pwaM);
+    $pwa_admin_version = $pwaM[1] ?? 'unknown';
+}
+
 // Helper function to safely count cache files by pattern
-function countCacheByPattern($caches, $patterns) {
+function countCacheByPattern(array $caches, array $patterns)
+{
     try {
         $count = 0;
         foreach ($patterns as $pattern) {
@@ -253,14 +404,31 @@ function countCacheByPattern($caches, $patterns) {
     }
 }
 
-function countImageCacheFiles() {
-    $extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-    $total = 0;
-    foreach ($extensions as $ext) {
-        $files = glob(IMAGE_CACHE_DIR . '/*.' . $ext);
-        $total += is_array($files) ? count($files) : 0;
+// Helper function to safely count regular files inside a directory
+function countDirectoryFiles(string $directory)
+{
+    if (!is_dir($directory)) {
+        return 0;
     }
-    return $total;
+
+    $items = @scandir($directory);
+    if ($items === false) {
+        return 0;
+    }
+
+    $count = 0;
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $path = $directory . DIRECTORY_SEPARATOR . $item;
+        if (is_file($path)) {
+            $count++;
+        }
+    }
+
+    return $count;
 }
 
 // Define cache types - based on actual cache patterns in the system
@@ -275,13 +443,13 @@ $cache_types = [
         'name' => 'Site Settings',
         'icon' => 'fa-cog',
         'description' => 'General site settings and configuration',
-        'patterns' => ['setting_*', 'settings_group_*']
+        'patterns' => ['setting_*']
     ],
     'rooms' => [
         'name' => 'Rooms & Images',
         'icon' => 'fa-bed',
         'description' => 'Room data, prices, facilities, and image cache',
-        'patterns' => ['rooms_*', 'room_*', 'facilities_*', 'gallery_*', 'hero_*', 'gallery_images*', 'hero_slides*']
+        'patterns' => ['rooms_*', 'room_*', 'facilities_*', 'gallery_*', 'hero_*']
     ],
     'tables' => [
         'name' => 'Database Tables',
@@ -289,548 +457,68 @@ $cache_types = [
         'description' => 'Cached database table data',
         'patterns' => ['table_*']
     ],
-    'content' => [
-        'name' => 'Content Data',
-        'icon' => 'fa-newspaper',
-        'description' => 'Reviews, testimonials, policies, footer links, and content snippets',
-        'patterns' => ['about_us*', 'footer_links*', 'hotel_reviews_*', 'testimonials_*', 'policies*']
-    ],
     'images' => [
         'name' => 'Image Cache',
         'icon' => 'fa-image',
         'description' => 'Cached processed images',
         'patterns' => ['image_*']
+    ],
+    'pages' => [
+        'name' => 'Page HTML Cache',
+        'icon' => 'fa-file-code',
+        'description' => 'Full-page HTML output cache for frontend pages',
+        'patterns' => []
+    ],
+    'content' => [
+        'name' => 'Content & Reviews',
+        'icon' => 'fa-star',
+        'description' => 'Testimonials, policies, about-us section cache',
+        'patterns' => ['testimonials_*', 'policies', 'about_us']
     ]
 ];
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Cache Management - Admin Panel</title>
-    
+
+    <link rel="icon" href="../favicon.ico" sizes="any">
+    <link rel="shortcut icon" href="../favicon.ico">
+    <link rel="manifest" href="../manifest.php">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="../css/style.css">
-    <link rel="stylesheet" href="../css/theme-dynamic.php">
-    <link rel="stylesheet" href="css/admin-styles.css">
-    <link rel="stylesheet" href="css/admin-components.css">
-    
-    <style>
-        .cache-overview {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .cache-stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        
-        .cache-stat-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
-        
-        .cache-stat-icon.primary {
-            background: rgba(212, 175, 55, 0.1);
-            color: var(--gold);
-        }
-        
-        .cache-stat-icon.success {
-            background: rgba(40, 167, 69, 0.1);
-            color: #28a745;
-        }
-        
-        .cache-stat-icon.warning {
-            background: rgba(255, 193, 7, 0.1);
-            color: #ffc107;
-        }
-        
-        .cache-stat-icon.danger {
-            background: rgba(220, 53, 69, 0.1);
-            color: #dc3545;
-        }
-        
-        .cache-stat-info h3 {
-            font-size: 28px;
-            font-weight: 700;
-            color: var(--navy);
-            margin-bottom: 4px;
-        }
-        
-        .cache-stat-info p {
-            font-size: 14px;
-            color: #666;
-            margin: 0;
-        }
-        
-        .cache-section {
-            background: #fff;
-            border-radius: 14px;
-            border: 1px solid #e9eef5;
-            padding: 24px;
-            margin-bottom: 24px;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-            transition: box-shadow 0.25s ease, border-color 0.25s ease;
-        }
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/admin-styles.css?v=<?php echo @filemtime(__DIR__ . '/css/admin-styles.css'); ?>">
+    <link rel="stylesheet" href="css/admin-components.css?v=<?php echo @filemtime(__DIR__ . '/css/admin-components.css'); ?>">
 
-        .cache-section:hover {
-            border-color: #d8e1ec;
-            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.09);
-        }
-        
-        .cache-section h2 {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--navy);
-            margin-bottom: 20px;
-            padding-bottom: 12px;
-            border-bottom: 2px solid var(--gold);
-        }
-
-        .btn-action {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            border: none;
-            border-radius: 10px;
-            padding: 10px 16px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-            text-decoration: none;
-        }
-
-        .btn-action:hover {
-            transform: translateY(-1px);
-        }
-
-        .btn-action:focus-visible {
-            outline: 2px solid rgba(212, 175, 55, 0.45);
-            outline-offset: 2px;
-        }
-
-        .btn-save {
-            background: linear-gradient(180deg, #f1cc67 0%, #d4af37 100%);
-            color: #0a1929;
-            box-shadow: 0 8px 16px rgba(212, 175, 55, 0.28);
-        }
-
-        .btn-save:hover {
-            background: linear-gradient(180deg, #f3d47d 0%, #ddb947 100%);
-            box-shadow: 0 10px 18px rgba(212, 175, 55, 0.34);
-        }
-
-        .btn-delete {
-            background: linear-gradient(180deg, #ef6b7a 0%, #dc3545 100%);
-            color: #fff;
-            box-shadow: 0 8px 16px rgba(220, 53, 69, 0.25);
-        }
-
-        .btn-delete:hover {
-            background: linear-gradient(180deg, #f07e8b 0%, #e14a58 100%);
-            box-shadow: 0 10px 18px rgba(220, 53, 69, 0.32);
-        }
-        
-        .cache-toggle-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 16px;
-        }
-        
-        .cache-toggle-item {
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            padding: 16px;
-            transition: all 0.3s;
-        }
-        
-        .cache-toggle-item:hover {
-            border-color: var(--gold);
-        }
-        
-        .cache-toggle-item.active {
-            border-color: #28a745;
-            background: rgba(40, 167, 69, 0.05);
-        }
-        
-        .cache-toggle-item.inactive {
-            border-color: #dc3545;
-            background: rgba(220, 53, 69, 0.05);
-        }
-        
-        .cache-toggle-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        
-        .cache-toggle-name {
-            font-weight: 600;
-            color: var(--navy);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .cache-toggle-status {
-            font-size: 12px;
-            font-weight: 600;
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-        
-        .cache-toggle-status.enabled {
-            background: #28a745;
-            color: white;
-        }
-        
-        .cache-toggle-status.disabled {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .cache-toggle-desc {
-            font-size: 13px;
-            color: #666;
-            margin-bottom: 12px;
-        }
-        
-        .cache-toggle-btn {
-            width: 100%;
-            padding: 10px 14px;
-            border: none;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 13px;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .cache-toggle-btn:hover {
-            transform: translateY(-1px);
-        }
-
-        .cache-toggle-btn:focus-visible {
-            outline: 2px solid rgba(212, 175, 55, 0.45);
-            outline-offset: 2px;
-        }
-        
-        .cache-toggle-btn.enable {
-            background: linear-gradient(180deg, #35c85a 0%, #28a745 100%);
-            color: white;
-            box-shadow: 0 8px 14px rgba(40, 167, 69, 0.28);
-        }
-        
-        .cache-toggle-btn.enable:hover {
-            background: linear-gradient(180deg, #42cf66 0%, #2eb34c 100%);
-            box-shadow: 0 10px 16px rgba(40, 167, 69, 0.34);
-        }
-        
-        .cache-toggle-btn.disable {
-            background: linear-gradient(180deg, #ef6b7a 0%, #dc3545 100%);
-            color: white;
-            box-shadow: 0 8px 14px rgba(220, 53, 69, 0.26);
-        }
-        
-        .cache-toggle-btn.disable:hover {
-            background: linear-gradient(180deg, #f07e8b 0%, #e14a58 100%);
-            box-shadow: 0 10px 16px rgba(220, 53, 69, 0.32);
-        }
-        
-        .bulk-clear-form {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-        
-        .cache-checkbox-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .cache-checkbox-item:hover {
-            border-color: var(--gold);
-        }
-        
-        .cache-checkbox-item input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
-        }
-        
-        .cache-checkbox-item label {
-            cursor: pointer;
-            font-weight: 500;
-            color: var(--navy);
-            flex: 1;
-        }
-        
-        .btn-primary {
-            background: var(--gold);
-            color: var(--deep-navy);
-        }
-        
-        .btn-primary:hover {
-            background: #d4af37;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
-        }
-        
-        .schedule-form {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            align-items: end;
-        }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .form-group label {
-            font-weight: 600;
-            color: var(--navy);
-            font-size: 14px;
-        }
-        
-        .form-group select,
-        .form-group input[type="time"] {
-            padding: 10px 14px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: all 0.3s;
-        }
-        
-        .form-group select:focus,
-        .form-group input:focus {
-            outline: none;
-            border-color: var(--gold);
-        }
-        
-        .switch-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 30px;
-        }
-        
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 30px;
-        }
-        
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 24px;
-            width: 24px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
-        
-        input:checked + .slider {
-            background-color: var(--gold);
-        }
-        
-        input:checked + .slider:before {
-            transform: translateX(30px);
-        }
-        
-        .cache-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        
-        .cache-table th,
-        .cache-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        
-        .cache-table th {
-            background: #f8f9fa;
-            font-weight: 600;
-            color: var(--navy);
-            font-size: 13px;
-            text-transform: uppercase;
-        }
-        
-        .cache-table tr:hover {
-            background: #f8f9fa;
-        }
-
-        .cache-table td code {
-            display: inline-block;
-            max-width: 320px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            vertical-align: bottom;
-        }
-
-        .badge {
-            display: inline-block;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-            padding: 4px 8px;
-            border-radius: 999px;
-        }
-
-        .badge-active {
-            background: rgba(40, 167, 69, 0.12);
-            color: #1e7e34;
-        }
-
-        .badge-expired {
-            background: rgba(220, 53, 69, 0.12);
-            color: #b02a37;
-        }
-
-        @media (max-width: 768px) {
-            .cache-section {
-                padding: 16px;
-            }
-
-            .cache-overview {
-                grid-template-columns: 1fr;
-                gap: 12px;
-            }
-
-            .cache-stat-card {
-                padding: 16px;
-            }
-
-            .bulk-clear-form,
-            .schedule-form,
-            .cache-toggle-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .cache-section form[method="POST"][style*="display: flex"] {
-                flex-direction: column;
-                align-items: stretch !important;
-            }
-
-            .cache-section .btn-action,
-            .cache-section button[type="submit"] {
-                width: 100%;
-                justify-content: center;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .cache-table {
-                min-width: 760px;
-                font-size: 11px;
-            }
-
-            .cache-table th,
-            .cache-table td {
-                padding: 6px 8px;
-                white-space: nowrap;
-            }
-
-            .cache-table th:last-child,
-            .cache-table td:last-child {
-                position: sticky;
-                right: 0;
-                background: #fff;
-                z-index: 2;
-                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
-            }
-
-            .cache-table thead th:last-child {
-                background: #f8f9fa;
-                z-index: 3;
-            }
-        }
-
-        @media (max-width: 360px) {
-            .cache-table {
-                min-width: 700px;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="css/cache-management.css?v=<?php echo @filemtime(__DIR__ . '/css/cache-management.css'); ?>">
 </head>
+
 <body>
     <?php require_once 'includes/admin-header.php'; ?>
-    
-    <div class="content">
+
+    <div class="content cache-management-page">
         <div class="page-header">
             <h2 class="page-title">
                 <i class="fas fa-bolt"></i> Cache Management
             </h2>
-            <p class="text-muted">Control website caching for optimal performance</p>
+            <p class="text-muted">Control data, image, and page-output caching for current frontend sections and assets</p>
         </div>
-        
+
         <?php if ($message): ?>
             <?php showAlert($message, 'success'); ?>
         <?php endif; ?>
-        
+
         <?php if ($error): ?>
             <?php showAlert($error, 'error'); ?>
         <?php endif; ?>
-        
+
         <!-- Cache Statistics Overview -->
         <div class="cache-overview">
             <div class="cache-stat-card">
@@ -842,7 +530,7 @@ $cache_types = [
                     <p>Total Cache Files</p>
                 </div>
             </div>
-            
+
             <div class="cache-stat-card">
                 <div class="cache-stat-icon success">
                     <i class="fas fa-check-circle"></i>
@@ -852,7 +540,7 @@ $cache_types = [
                     <p>Active Caches</p>
                 </div>
             </div>
-            
+
             <div class="cache-stat-card">
                 <div class="cache-stat-icon warning">
                     <i class="fas fa-clock"></i>
@@ -862,7 +550,7 @@ $cache_types = [
                     <p>Expired Caches</p>
                 </div>
             </div>
-            
+
             <div class="cache-stat-card">
                 <div class="cache-stat-icon danger">
                     <i class="fas fa-hdd"></i>
@@ -873,220 +561,271 @@ $cache_types = [
                 </div>
             </div>
         </div>
-        
+
         <!-- Global Cache Control -->
         <div class="cache-section">
             <h2><i class="fas fa-power-off"></i> Global Cache Control</h2>
-            <form method="POST" style="display: flex; align-items: center; gap: 20px;">
-                <?php echo getCsrfField(); ?>
-<input type="hidden" name="action" value="set_global_cache">
-                
+            <form method="POST" class="cache-inline-form">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="action" value="set_global_cache">
+
                 <div class="switch-container">
                     <label class="switch">
-                        <input type="checkbox" name="global_cache_enabled" 
-                               <?php echo isset($cache_settings['cache_global_enabled']) && $cache_settings['cache_global_enabled'] ? 'checked' : ''; ?>>
+                        <input type="checkbox" name="global_cache_enabled"
+                            <?php echo !isset($cache_settings['cache_global_enabled']) || (string)$cache_settings['cache_global_enabled'] !== '0' ? 'checked' : ''; ?>>
                         <span class="slider"></span>
                     </label>
-                    <span style="font-weight: 600; color: var(--navy);">
+                    <span class="switch-label">
                         Enable All Caching
                     </span>
                 </div>
-                
+
                 <button type="submit" class="btn-action btn-save">
                     <i class="fas fa-save"></i> Save Setting
                 </button>
             </form>
         </div>
-        
+
         <!-- Individual Cache Toggles -->
         <div class="cache-section">
             <h2><i class="fas fa-toggle-on"></i> Individual Cache Controls</h2>
             <div class="cache-toggle-grid">
                 <?php foreach ($cache_types as $type => $info): ?>
-                <?php 
-                $enabled = isset($cache_settings["cache_{$type}_enabled"]) 
-                    ? $cache_settings["cache_{$type}_enabled"] 
-                    : 1; // Default enabled
-                ?>
-                <div class="cache-toggle-item <?php echo $enabled ? 'active' : 'inactive'; ?>">
-                    <div class="cache-toggle-header">
-                        <div class="cache-toggle-name">
-                            <i class="fas <?php echo $info['icon']; ?>"></i>
-                            <?php echo $info['name']; ?>
+                    <?php
+                    $enabled = isset($cache_settings["cache_{$type}_enabled"])
+                        ? (int)$cache_settings["cache_{$type}_enabled"]
+                        : 1; // Default enabled
+                    ?>
+                    <div class="cache-toggle-item <?php echo $enabled ? 'active' : 'inactive'; ?>">
+                        <div class="cache-toggle-header">
+                            <div class="cache-toggle-name">
+                                <i class="fas <?php echo $info['icon']; ?>"></i>
+                                <?php echo $info['name']; ?>
+                            </div>
+                            <span class="cache-toggle-status <?php echo $enabled ? 'enabled' : 'disabled'; ?>">
+                                <?php echo $enabled ? 'ON' : 'OFF'; ?>
+                            </span>
                         </div>
-                        <span class="cache-toggle-status <?php echo $enabled ? 'enabled' : 'disabled'; ?>">
-                            <?php echo $enabled ? 'ON' : 'OFF'; ?>
-                        </span>
+                        <p class="cache-toggle-desc"><?php echo $info['description']; ?></p>
+                        <form method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                            <input type="hidden" name="action" value="toggle_cache">
+                            <input type="hidden" name="cache_type" value="<?php echo $type; ?>">
+                            <input type="hidden" name="enabled" value="<?php echo $enabled ? 0 : 1; ?>">
+                            <button type="submit" class="cache-toggle-btn <?php echo $enabled ? 'disable' : 'enable'; ?>">
+                                <i class="fas fa-power-off"></i>
+                                <?php echo $enabled ? 'Disable' : 'Enable'; ?>
+                            </button>
+                        </form>
                     </div>
-                    <p class="cache-toggle-desc"><?php echo $info['description']; ?></p>
-                    <form method="POST">
-                        <?php echo getCsrfField(); ?>
-<input type="hidden" name="action" value="toggle_cache">
-                        <input type="hidden" name="cache_type" value="<?php echo $type; ?>">
-                        <input type="hidden" name="enabled" value="<?php echo $enabled ? 0 : 1; ?>">
-                        <button type="submit" class="cache-toggle-btn <?php echo $enabled ? 'disable' : 'enable'; ?>">
-                            <i class="fas fa-power-off"></i>
-                            <?php echo $enabled ? 'Disable' : 'Enable'; ?>
-                        </button>
-                    </form>
-                </div>
                 <?php endforeach; ?>
             </div>
         </div>
-        
+
         <!-- Bulk Cache Clearing -->
         <div class="cache-section">
             <h2><i class="fas fa-eraser"></i> Bulk Cache Clearing</h2>
             <form method="POST">
-                <?php echo getCsrfField(); ?>
-<input type="hidden" name="action" value="clear_cache">
-                
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="action" value="clear_cache">
+
                 <div class="bulk-clear-form">
                     <label class="cache-checkbox-item">
                         <input type="checkbox" name="cache_types[]" value="email">
-                        <span><i class="fas fa-envelope"></i> Email Settings (<?php echo count(array_filter($caches, function($c) { return strpos($c['key'], 'email_') === 0; })); ?> files)</span>
-                    </label>
-                    
-                    <label class="cache-checkbox-item">
-                        <input type="checkbox" name="cache_types[]" value="settings">
-                        <span><i class="fas fa-cog"></i> Site Settings (<?php echo countCacheByPattern($caches, ['setting_*', 'settings_group_*']); ?> files)</span>
-                    </label>
-                    
-                    <label class="cache-checkbox-item" style="border-color: var(--gold); background: rgba(212, 175, 55, 0.05);">
-                        <input type="checkbox" name="cache_types[]" value="rooms">
-                        <span><i class="fas fa-bed"></i> <strong>Rooms & Prices</strong> (<?php 
-                            $room_count = count(array_filter($caches, function($c) { 
-                                return strpos($c['key'], 'rooms_') === 0 || strpos($c['key'], 'room_') === 0 || 
-                                       strpos($c['key'], 'facilities_') === 0 || strpos($c['key'], 'gallery_') === 0 || 
-                                       strpos($c['key'], 'hero_') === 0 || strpos($c['key'], 'gallery_images') === 0 ||
-                                       strpos($c['key'], 'hero_slides') === 0;
-                            }));
-                            echo $room_count; ?> files)</span>
+                        <span><i class="fas fa-envelope"></i> Email Settings (<?php echo count(array_filter($caches, function ($c) {
+                                                                                    return strpos($c['key'], 'email_') === 0;
+                                                                                })); ?> files)</span>
                     </label>
 
-                    <label class="cache-checkbox-item" style="border-color: #2563eb; background: rgba(37, 99, 235, 0.05);">
-                        <input type="checkbox" name="cache_types[]" value="content">
-                        <span><i class="fas fa-newspaper"></i> <strong>Content Data</strong> (<?php echo countCacheByPattern($caches, ['about_us*', 'footer_links*', 'hotel_reviews_*', 'testimonials_*', 'policies*']); ?> files)</span>
+                    <label class="cache-checkbox-item">
+                        <input type="checkbox" name="cache_types[]" value="settings">
+                        <span><i class="fas fa-cog"></i> Site Settings (<?php echo count(array_filter($caches, function ($c) {
+                                                                            return strpos($c['key'], 'setting_') === 0;
+                                                                        })); ?> files)</span>
                     </label>
-                    
-                    <label class="cache-checkbox-item" style="border-color: #17a2b8; background: rgba(23, 162, 184, 0.05);">
+
+                    <label class="cache-checkbox-item cache-option-rooms">
+                        <input type="checkbox" name="cache_types[]" value="rooms">
+                        <span><i class="fas fa-bed"></i> <strong>Rooms & Prices</strong> (<?php
+                                                                                            $room_count = count(array_filter($caches, function ($c) {
+                                                                                                return strpos($c['key'], 'rooms_') === 0 || strpos($c['key'], 'room_') === 0 ||
+                                                                                                    strpos($c['key'], 'facilities_') === 0 || strpos($c['key'], 'gallery_') === 0 ||
+                                                                                                    strpos($c['key'], 'hero_') === 0;
+                                                                                            }));
+                                                                                            echo $room_count; ?> files)</span>
+                    </label>
+
+                    <label class="cache-checkbox-item cache-option-images">
                         <input type="checkbox" name="cache_types[]" value="images">
-                        <span><i class="fas fa-image"></i> <strong>Image Cache</strong> (<?php 
-                            $image_count = countImageCacheFiles();
-                            echo $image_count; ?> images)</span>
+                        <span><i class="fas fa-image"></i> <strong>Image Cache</strong> (<?php
+                                                                                            echo $stats['image_cache']['files']; ?> images, <?php echo $stats['image_cache']['size_formatted']; ?>)</span>
                     </label>
-                    
+
+                    <label class="cache-checkbox-item cache-option-pages">
+                        <input type="checkbox" name="cache_types[]" value="pages">
+                        <span><i class="fas fa-file-code"></i> <strong>Page HTML Cache</strong> (<?php
+                                                                                                    echo $stats['page_cache']['files']; ?> files, <?php echo $stats['page_cache']['size_formatted']; ?>)</span>
+                    </label>
+
                     <label class="cache-checkbox-item">
                         <input type="checkbox" name="cache_types[]" value="tables">
-                        <span><i class="fas fa-database"></i> Database Tables (<?php echo count(array_filter($caches, function($c) { return strpos($c['key'], 'table_') === 0; })); ?> files)</span>
+                        <span><i class="fas fa-database"></i> Database Tables (<?php echo count(array_filter($caches, function ($c) {
+                                                                                    return strpos($c['key'], 'table_') === 0;
+                                                                                })); ?> files)</span>
                     </label>
-                    
-                    <label class="cache-checkbox-item" style="border-color: #dc3545; background: rgba(220, 53, 69, 0.05);">
+
+                    <label class="cache-checkbox-item cache-option-all">
                         <input type="checkbox" name="cache_types[]" value="all">
-                        <span><i class="fas fa-trash"></i> <strong>ALL CACHES + IMAGES</strong></span>
+                        <span><i class="fas fa-trash"></i> <strong>ALL CACHES (<?php echo $stats['total_files']; ?> files, <?php echo $stats['total_size_formatted']; ?>)</strong></span>
                     </label>
                 </div>
-                
-                <button type="submit" class="btn-action btn-delete" 
-                        onclick="return confirm('Are you sure you want to clear the selected caches?');">
+
+                <button type="submit" class="btn-action btn-delete"
+                    onclick="return confirm('Are you sure you want to clear the selected caches?');">
                     <i class="fas fa-eraser"></i> Clear Selected Caches
                 </button>
             </form>
         </div>
-        
+
+        <!-- Quick Actions: SEO & Favicon Purge -->
+        <div class="cache-section">
+            <h2><i class="fas fa-wand-magic-sparkles"></i> Quick Actions</h2>
+            <form method="POST" onsubmit="return confirm('This will clear ALL page HTML caches and bump favicon/meta asset versions so browsers refetch them. Proceed?');">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="action" value="purge_seo_favicon">
+                <p class="cache-toggle-desc cache-list-intro">
+                    Runs a targeted purge to ensure favicon and SEO/meta changes are reflected immediately:
+                </p>
+                <ul class="cache-bullet-list">
+                    <li>Clear all Page HTML caches (refreshes meta tags across the site)</li>
+                    <li>Delete cached proxied logo (if logo is external and proxied)</li>
+                    <li>Bump a version parameter on favicon and touch-icon links to bypass CDN/browser cache</li>
+                </ul>
+                <button type="submit" class="btn-action btn-primary">
+                    <i class="fas fa-broom"></i> Purge SEO &amp; Favicon
+                </button>
+            </form>
+        </div>
+
+        <!-- PWA / Service Worker Version -->
+        <div class="cache-section">
+            <h2><i class="fas fa-mobile-screen-button"></i> PWA Service Worker</h2>
+            <p class="text-muted cache-section-intro">
+                Bumping the SW version forces all browsers and installed PWA instances to discard their cached assets and reload fresh copies on their next visit.
+                Do this after a significant release or when you update JS, CSS, or images.
+            </p>
+            <div class="sw-version-grid">
+                <div class="sw-version-card">
+                    <div class="sw-version-label">Public Site SW</div>
+                    <code class="sw-version-code"><?php echo htmlspecialchars($pwa_public_version, ENT_QUOTES, 'UTF-8'); ?></code>
+                </div>
+                <div class="sw-version-card">
+                    <div class="sw-version-label">Admin SW</div>
+                    <code class="sw-version-code"><?php echo htmlspecialchars($pwa_admin_version, ENT_QUOTES, 'UTF-8'); ?></code>
+                </div>
+            </div>
+            <form method="POST" onsubmit="return confirm('Bump both SW versions now? All browsers will re-download cached assets on next visit.');">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="action" value="bump_sw">
+                <button type="submit" class="btn-action btn-primary">
+                    <i class="fas fa-arrow-up-right-dots"></i> Bump SW Version Now
+                </button>
+            </form>
+        </div>
+
         <!-- Scheduled Cache Clearing -->
         <div class="cache-section">
             <h2><i class="fas fa-clock"></i> Scheduled Cache Clearing</h2>
             <form method="POST">
-                <?php echo getCsrfField(); ?>
-<input type="hidden" name="action" value="set_schedule">
-                
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="action" value="set_schedule">
+
                 <div class="schedule-form">
                     <div class="switch-container">
                         <label class="switch">
-                            <input type="checkbox" name="schedule_enabled" 
-                                   <?php echo isset($cache_settings['cache_schedule_enabled']) && $cache_settings['cache_schedule_enabled'] ? 'checked' : ''; ?>>
+                            <input type="checkbox" name="schedule_enabled"
+                                <?php echo isset($cache_settings['cache_schedule_enabled']) && $cache_settings['cache_schedule_enabled'] ? 'checked' : ''; ?>>
                             <span class="slider"></span>
                         </label>
-                        <span style="font-weight: 600; color: var(--navy);">
+                        <span class="switch-label">
                             Enable Auto-Clear
                         </span>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Clear Frequency</label>
-                        <select name="schedule_interval" id="schedule_interval" onchange="toggleCustomInterval()">
-                            <option value="30sec" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '30sec') ? 'selected' : ''; ?>>
+                        <select name="schedule_interval" id="schedule_interval">
+                            <option value="30sec"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '30sec') ? 'selected' : ''; ?>>
                                 Every 30 Seconds
                             </option>
-                            <option value="1min" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '1min') ? 'selected' : ''; ?>>
+                            <option value="1min"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '1min') ? 'selected' : ''; ?>>
                                 Every 1 Minute
                             </option>
-                            <option value="5min" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '5min') ? 'selected' : ''; ?>>
+                            <option value="5min"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '5min') ? 'selected' : ''; ?>>
                                 Every 5 Minutes
                             </option>
-                            <option value="15min" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '15min') ? 'selected' : ''; ?>>
+                            <option value="15min"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '15min') ? 'selected' : ''; ?>>
                                 Every 15 Minutes
                             </option>
-                            <option value="30min" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '30min') ? 'selected' : ''; ?>>
+                            <option value="30min"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '30min') ? 'selected' : ''; ?>>
                                 Every 30 Minutes
                             </option>
-                            <option value="hourly" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == 'hourly') ? 'selected' : ''; ?>>
+                            <option value="hourly"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == 'hourly') ? 'selected' : ''; ?>>
                                 Every Hour
                             </option>
-                            <option value="6hours" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '6hours') ? 'selected' : ''; ?>>
+                            <option value="6hours"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '6hours') ? 'selected' : ''; ?>>
                                 Every 6 Hours
                             </option>
-                            <option value="12hours" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '12hours') ? 'selected' : ''; ?>>
+                            <option value="12hours"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == '12hours') ? 'selected' : ''; ?>>
                                 Every 12 Hours
                             </option>
-                            <option value="daily" 
-                                    <?php echo (!isset($cache_settings['cache_schedule_interval']) || $cache_settings['cache_schedule_interval'] == 'daily') ? 'selected' : ''; ?>>
+                            <option value="daily"
+                                <?php echo (!isset($cache_settings['cache_schedule_interval']) || $cache_settings['cache_schedule_interval'] == 'daily') ? 'selected' : ''; ?>>
                                 Daily
                             </option>
-                            <option value="weekly" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == 'weekly') ? 'selected' : ''; ?>>
+                            <option value="weekly"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == 'weekly') ? 'selected' : ''; ?>>
                                 Weekly
                             </option>
-                            <option value="custom" 
-                                    <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == 'custom') ? 'selected' : ''; ?>>
+                            <option value="custom"
+                                <?php echo (isset($cache_settings['cache_schedule_interval']) && $cache_settings['cache_schedule_interval'] == 'custom') ? 'selected' : ''; ?>>
                                 Custom Interval
                             </option>
                         </select>
                     </div>
-                    
-                    <div class="form-group" id="custom_interval_group" style="display: none;">
+
+                    <div class="form-group custom-interval-group" id="custom_interval_group">
                         <label>Custom Interval (seconds)</label>
                         <input type="number" name="custom_seconds" id="custom_seconds"
-                               value="<?php echo $cache_settings['cache_custom_seconds'] ?? '60'; ?>"
-                               min="10" max="86400" step="1">
-                        <small style="color: #666; display: block; margin-top: 5px;">
+                            value="<?php echo $cache_settings['cache_custom_seconds'] ?? '60'; ?>"
+                            min="10" max="86400" step="1">
+                        <small class="form-help-text">
                             Min: 10 seconds (0.17 mins) | Max: 86400 seconds (24 hours)
                         </small>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Clear At Time</label>
-                        <input type="time" name="schedule_time" 
-                               value="<?php echo $cache_settings['cache_schedule_time'] ?? '00:00'; ?>"
-                               min="00:00" max="23:59">
+                        <input type="time" name="schedule_time"
+                            value="<?php echo $cache_settings['cache_schedule_time'] ?? '00:00'; ?>"
+                            min="00:00" max="23:59">
                     </div>
-                    
+
                     <button type="submit" class="btn-action btn-save">
                         <i class="fas fa-save"></i> Save Schedule
                     </button>
                 </div>
             </form>
-            
-            <div style="margin-top: 20px; padding: 16px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+
+            <div class="schedule-note">
                 <i class="fas fa-info-circle"></i>
                 <strong>Note:</strong> Scheduled cache clearing requires a cron job (Linux/Mac) or Task Scheduler (Windows) to be set up.
                 <br><br>
@@ -1097,66 +836,83 @@ $cache_types = [
                 <strong>Windows Task Scheduler:</strong><br>
                 Set trigger to run every 1 minute for best accuracy with short intervals.
             </div>
-            
+
             <script>
-            function toggleCustomInterval() {
-                const interval = document.getElementById('schedule_interval').value;
-                const customGroup = document.getElementById('custom_interval_group');
-                const timeGroup = document.querySelector('input[name="schedule_time"]').closest('.form-group');
-                
-                if (interval === 'custom') {
-                    customGroup.style.display = 'block';
-                    timeGroup.style.display = 'none';
-                } else if (['30sec', '1min', '5min', '15min', '30min', 'hourly'].includes(interval)) {
-                    customGroup.style.display = 'none';
-                    timeGroup.style.display = 'none';
-                } else {
-                    customGroup.style.display = 'none';
-                    timeGroup.style.display = 'block';
+                function toggleCustomInterval() {
+                    const intervalSelect = document.getElementById('schedule_interval');
+                    const customGroup = document.getElementById('custom_interval_group');
+                    const timeInput = document.querySelector('input[name="schedule_time"]');
+                    const timeGroup = timeInput ? timeInput.closest('.form-group') : null;
+
+                    if (!intervalSelect || !customGroup || !timeGroup) {
+                        return;
+                    }
+
+                    const interval = intervalSelect.value;
+                    const hideTimeGroup = interval === 'custom' || ['30sec', '1min', '5min', '15min', '30min', 'hourly'].includes(interval);
+                    const showCustomGroup = interval === 'custom';
+
+                    // Batch style writes in one frame to avoid repeated sync layout work.
+                    requestAnimationFrame(function() {
+                        customGroup.style.display = showCustomGroup ? 'block' : 'none';
+                        timeGroup.style.display = hideTimeGroup ? 'none' : 'block';
+                    });
                 }
-            }
-            
-            // Run on page load
-            document.addEventListener('DOMContentLoaded', toggleCustomInterval);
+
+                // Run on page load
+                document.addEventListener('DOMContentLoaded', function() {
+                    const intervalSelect = document.getElementById('schedule_interval');
+                    if (intervalSelect) {
+                        intervalSelect.addEventListener('change', toggleCustomInterval);
+                    }
+                    toggleCustomInterval();
+                });
             </script>
         </div>
-        
+
         <!-- Cache Files List -->
         <?php if (!empty($caches)): ?>
-        <div class="cache-section">
-            <h2><i class="fas fa-list"></i> Current Cache Files (<?php echo count($caches); ?>)</h2>
-            <div style="overflow-x: auto;">
-                <table class="cache-table">
-                    <thead>
-                        <tr>
-                            <th>File Name</th>
-                            <th>Cache Key</th>
-                            <th>Size</th>
-                            <th>Created</th>
-                            <th>Expires</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($caches as $cache): ?>
-                        <tr>
-                            <td><code><?php echo htmlspecialchars($cache['file']); ?></code></td>
-                            <td><?php echo htmlspecialchars($cache['key']); ?></td>
-                            <td><?php echo $cache['size_formatted']; ?></td>
-                            <td><?php echo $cache['created_formatted']; ?></td>
-                            <td><?php echo $cache['expires_formatted']; ?></td>
-                            <td>
-                                <span class="badge <?php echo $cache['expired'] ? 'badge-expired' : 'badge-active'; ?>">
-                                    <?php echo $cache['expired'] ? 'Expired' : 'Active'; ?>
-                                </span>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+            <div class="cache-section">
+                <h2><i class="fas fa-list"></i> Current Cache Files (<?php echo count($caches); ?>)</h2>
+                <div class="cache-table-wrap">
+                    <table class="cache-table">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th>File Name</th>
+                                <th>Cache Key</th>
+                                <th>Size</th>
+                                <th>Created</th>
+                                <th>Expires</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($caches as $cache): ?>
+                                <tr>
+                                    <td>
+                                        <span class="badge badge-<?php echo $cache['source']; ?>">
+                                            <?php echo htmlspecialchars($cache['source_label']); ?>
+                                        </span>
+                                    </td>
+                                    <td><code><?php echo htmlspecialchars($cache['file']); ?></code></td>
+                                    <td><?php echo htmlspecialchars($cache['key']); ?></td>
+                                    <td><?php echo $cache['size_formatted']; ?></td>
+                                    <td><?php echo $cache['created_formatted']; ?></td>
+                                    <td><?php echo $cache['expires_formatted']; ?></td>
+                                    <td>
+                                        <span class="badge <?php echo $cache['expired'] ? 'badge-expired' : 'badge-active'; ?>">
+                                            <?php echo $cache['expired'] ? 'Expired' : 'Active'; ?>
+                                        </span>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
         <?php endif; ?>
     </div>
-    
+
     <?php require_once 'includes/admin-footer.php'; ?>
+

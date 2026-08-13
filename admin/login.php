@@ -1,29 +1,120 @@
 <?php
+
 /**
  * Admin Login Page
  * Simple session-based authentication
  */
 
+// Include base URL override (if configured) before auto-detection
+$override_file = __DIR__ . '/../config/base-url-override.php';
+if (file_exists($override_file)) {
+    require_once $override_file;
+}
+
+// Include base URL configuration for proper redirects
+require_once __DIR__ . '/../config/base-url.php';
+
 // Start session
 session_start();
 
+function admin_sanitize_redirect(?string $rawRedirect): string
+{
+    $redirect = trim((string)$rawRedirect);
+    if ($redirect === '') {
+        return '';
+    }
+
+    $redirect = str_replace(["\r", "\n"], '', $redirect);
+    $decoded = trim(rawurldecode($redirect));
+    if ($decoded === '') {
+        return '';
+    }
+
+    // Block absolute URLs / protocol-relative redirects.
+    if (preg_match('/^[a-z][a-z0-9+.-]*:/i', $decoded) === 1 || str_starts_with($decoded, '//') || str_starts_with($decoded, '\\\\')) {
+        return '';
+    }
+
+    // Keep redirects inside admin pages only.
+    $decoded = ltrim($decoded, '/');
+    if (str_starts_with($decoded, 'admin/')) {
+        $decoded = substr($decoded, 6);
+    }
+
+    if ($decoded === '' || str_starts_with(strtolower($decoded), 'login.php') || str_contains($decoded, '..')) {
+        return '';
+    }
+
+    if (preg_match('/^[A-Za-z0-9._\-\/\?&=%#]+$/', $decoded) !== 1) {
+        return '';
+    }
+
+    return $decoded;
+}
+
+function admin_default_route_for_role(string $role): string
+{
+    if ($role === 'restaurant_staff') {
+        return 'pos.php';
+    }
+    if ($role === 'chef') {
+        return 'kds.php';
+    }
+    if ($role === 'bar_staff') {
+        return 'bds.php';
+    }
+    if ($role === 'coffee_staff') {
+        return 'cds.php';
+    }
+    if ($role === 'room_service') {
+        return 'room-service-dashboard.php';
+    }
+    return 'dashboard.php';
+}
+
+$requested_redirect = admin_sanitize_redirect(
+    $_POST['redirect'] ?? $_GET['redirect'] ?? ($_SESSION['admin_redirect_after_login'] ?? '')
+);
+if ($requested_redirect !== '') {
+    $_SESSION['admin_redirect_after_login'] = $requested_redirect;
+}
+
 // Check if already logged in
 if (isset($_SESSION['admin_user_id'])) {
-    header('Location: dashboard.php');
+    $sessionRedirect = admin_sanitize_redirect($_SESSION['admin_redirect_after_login'] ?? '');
+    if ($sessionRedirect !== '') {
+        unset($_SESSION['admin_redirect_after_login']);
+        header('Location: ' . $sessionRedirect);
+        exit;
+    }
+
+    header('Location: ' . admin_default_route_for_role((string)($_SESSION['admin_role'] ?? '')));
     exit;
 }
 
 require_once '../config/database.php';
-require_once '../config/security.php';
-require_once '../includes/activity-logger.php';
+require_once __DIR__ . '/../config/security.php';
+require_once __DIR__ . '/../includes/system-logger.php';
 
 $error_message = '';
 
-// Ensure audit tables exist.
+// Ensure admin_activity_log table exists
 try {
-    ensureActivityLogInfrastructure($pdo);
-} catch (Throwable $e) {
-    // Keep login page operational even if table checks fail.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS admin_activity_log (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id INT UNSIGNED NULL,
+        username VARCHAR(100) NULL,
+        action VARCHAR(50) NOT NULL,
+        details TEXT NULL,
+        ip_address VARCHAR(45) NULL,
+        user_agent VARCHAR(500) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_id (user_id),
+        INDEX idx_action (action),
+        INDEX idx_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (PDOException $e) {
+    // Table likely already exists
 }
 
 // Max failed attempts before temporary lockout
@@ -31,31 +122,31 @@ $max_attempts = 5;
 $lockout_minutes = 15;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-        $error_message = 'Security token expired. Please refresh and try again.';
-    }
-
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
 
-    if ($error_message === '' && $username && $password) {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        $error_message = 'Your session expired. Please try signing in again.';
+    } elseif ($username && $password) {
         try {
             // Check for IP-based rate limiting (too many failed attempts from this IP)
             $rate_stmt = $pdo->prepare("
-                SELECT COUNT(*) FROM admin_activity_log 
-                WHERE ip_address = ? AND action = 'login_failed' 
+                SELECT COUNT(*) FROM admin_activity_log
+                WHERE ip_address = ? AND action = 'login_failed'
                 AND created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)
             ");
             $rate_stmt->execute([$ip, $lockout_minutes]);
             $recent_ip_failures = $rate_stmt->fetchColumn();
-            
+
             if ($recent_ip_failures >= ($max_attempts * 2)) {
                 $error_message = 'Too many login attempts from this location. Please try again in ' . $lockout_minutes . ' minutes.';
-                
+
                 // Log the blocked attempt
-                logAdminActivity($pdo, null, $username, 'login_blocked', 'IP rate limit exceeded (' . $recent_ip_failures . ' attempts)', $ip, $ua);
+                $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (username, action, details, ip_address, user_agent) VALUES (?, 'login_blocked', ?, ?, ?)");
+                $log_stmt->execute([$username, 'IP rate limit exceeded (' . $recent_ip_failures . ' attempts)', $ip, $ua]);
+                rh_log_event('auth', 'warning', 'Login blocked — IP rate limit', ['username' => $username, 'ip' => $ip, 'attempts' => $recent_ip_failures]);
             } else {
                 $stmt = $pdo->prepare("SELECT id, username, password_hash, role, full_name, email, failed_login_attempts, is_active FROM admin_users WHERE username = ?");
                 $stmt->execute([$username]);
@@ -63,34 +154,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($user && !$user['is_active']) {
                     $error_message = 'This account has been deactivated. Contact your administrator.';
-                    
-                    logAdminActivity($pdo, (int)$user['id'], $username, 'login_failed', 'Account deactivated', $ip, $ua);
 
-                    $empRef = resolveEmployeeForAdminUser($pdo, (int)$user['id']);
-                    if (!empty($empRef['employee_id'])) {
-                        logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user['id'], null, 'login_failed', 'Account deactivated', 'admin_login', $ip, $ua);
-                    }
-                    
+                    $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'login_failed', ?, ?, ?)");
+                    $log_stmt->execute([$user['id'], $username, 'Account deactivated', $ip, $ua]);
+                    rh_log_event('auth', 'warning', 'Login rejected — account deactivated', ['username' => $username, 'user_id' => $user['id'], 'ip' => $ip]);
                 } elseif ($user && $user['failed_login_attempts'] >= $max_attempts) {
                     // Check if lockout period has passed by looking at last failed attempt
                     $last_fail = $pdo->prepare("
-                        SELECT created_at FROM admin_activity_log 
-                        WHERE user_id = ? AND action = 'login_failed' 
+                        SELECT created_at FROM admin_activity_log
+                        WHERE user_id = ? AND action = 'login_failed'
                         ORDER BY created_at DESC LIMIT 1
                     ");
                     $last_fail->execute([$user['id']]);
                     $last_fail_time = $last_fail->fetchColumn();
-                    
+
                     if ($last_fail_time && strtotime($last_fail_time) > strtotime("-{$lockout_minutes} minutes")) {
                         $remaining = $lockout_minutes - floor((time() - strtotime($last_fail_time)) / 60);
                         $error_message = 'Account temporarily locked due to too many failed attempts. Try again in ' . max(1, $remaining) . ' minute(s).';
-                        
-                        logAdminActivity($pdo, (int)$user['id'], $username, 'login_blocked', 'Account locked (' . $user['failed_login_attempts'] . ' failed attempts)', $ip, $ua);
 
-                        $empRef = resolveEmployeeForAdminUser($pdo, (int)$user['id']);
-                        if (!empty($empRef['employee_id'])) {
-                            logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user['id'], null, 'login_blocked', 'Account temporarily locked after failed attempts', 'admin_login', $ip, $ua);
-                        }
+                        $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'login_blocked', ?, ?, ?)");
+                        $log_stmt->execute([$user['id'], $username, 'Account locked (' . $user['failed_login_attempts'] . ' failed attempts)', $ip, $ua]);
+                        rh_log_event('auth', 'warning', 'Login blocked — account locked out', ['username' => $username, 'user_id' => $user['id'], 'ip' => $ip, 'failed_attempts' => $user['failed_login_attempts']]);
                     } else {
                         // Lockout expired, reset counter and allow attempt
                         $pdo->prepare("UPDATE admin_users SET failed_login_attempts = 0 WHERE id = ?")->execute([$user['id']]);
@@ -106,26 +190,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['admin_username'] = $user['username'];
                         $_SESSION['admin_role'] = $user['role'];
                         $_SESSION['admin_full_name'] = $user['full_name'];
-                        
+
                         $_SESSION['admin_user'] = [
                             'id' => $user['id'],
                             'username' => $user['username'],
                             'role' => $user['role'],
                             'full_name' => $user['full_name']
                         ];
-                        
+
                         // Reset failed attempts and update last_login
                         $pdo->prepare("UPDATE admin_users SET failed_login_attempts = 0, last_login = NOW() WHERE id = ?")->execute([$user['id']]);
-                        
-                        // Log successful login
-                        logAdminActivity($pdo, (int)$user['id'], $user['username'], 'login_success', 'Role: ' . $user['role'], $ip, $ua);
 
-                        $empRef = resolveEmployeeForAdminUser($pdo, (int)$user['id']);
-                        if (!empty($empRef['employee_id'])) {
-                            logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user['id'], (int)$user['id'], 'login_success', 'Employee-linked user login success', 'admin_login', $ip, $ua);
+                        // Log successful login
+                        $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'login_success', ?, ?, ?)");
+                        $log_stmt->execute([$user['id'], $user['username'], 'Role: ' . $user['role'], $ip, $ua]);
+                        rh_log_event('auth', 'info', 'Admin login successful', ['username' => $user['username'], 'role' => $user['role'], 'ip' => $ip]);
+
+                        $postLoginRedirect = admin_sanitize_redirect($_POST['redirect'] ?? ($_SESSION['admin_redirect_after_login'] ?? ''));
+                        if ($postLoginRedirect !== '') {
+                            unset($_SESSION['admin_redirect_after_login']);
+                            header('Location: ' . $postLoginRedirect);
+                            exit;
                         }
 
-                        header('Location: dashboard.php');
+                        unset($_SESSION['admin_redirect_after_login']);
+                        header('Location: ' . admin_default_route_for_role((string)$user['role']));
                         exit;
                     } else {
                         // Failed login
@@ -133,17 +222,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($user) {
                             $attempts = $user['failed_login_attempts'] + 1;
                             $pdo->prepare("UPDATE admin_users SET failed_login_attempts = ? WHERE id = ?")->execute([$attempts, $user['id']]);
-                            
+
                             $remaining = $max_attempts - $attempts;
                             $detail = 'Wrong password (attempt ' . $attempts . '/' . $max_attempts . ')';
-                            
-                            logAdminActivity($pdo, (int)$user['id'], $username, 'login_failed', $detail, $ip, $ua);
 
-                            $empRef = resolveEmployeeForAdminUser($pdo, (int)$user['id']);
-                            if (!empty($empRef['employee_id'])) {
-                                logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user['id'], null, 'login_failed', $detail, 'admin_login', $ip, $ua);
-                            }
-                            
+                            $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'login_failed', ?, ?, ?)");
+                            $log_stmt->execute([$user['id'], $username, $detail, $ip, $ua]);
+                            rh_log_event('auth', 'warning', 'Admin login failed — wrong password', ['username' => $username, 'user_id' => $user['id'], 'attempt' => $attempts, 'ip' => $ip]);
+
                             if ($remaining > 0 && $remaining <= 2) {
                                 $error_message = 'Invalid username or password. ' . $remaining . ' attempt(s) remaining before lockout.';
                             } elseif ($remaining <= 0) {
@@ -153,8 +239,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         } else {
                             // Unknown username
-                            logAdminActivity($pdo, null, $username, 'login_failed', 'Unknown username', $ip, $ua);
-                            
+                            $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (username, action, details, ip_address, user_agent) VALUES (?, 'login_failed', 'Unknown username', ?, ?)");
+                            $log_stmt->execute([$username, $ip, $ua]);
+                            rh_log_event('auth', 'warning', 'Admin login failed — unknown username', ['username' => $username, 'ip' => $ip]);
+
                             $error_message = 'Invalid username or password.';
                         }
                     }
@@ -173,309 +261,21 @@ $site_name = getSetting('site_name');
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Login | <?php echo htmlspecialchars($site_name); ?></title>
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="../css/style.css">
-    
-    <style>
-        :root {
-            --gold: #D4AF37;
-            --navy: #0A1929;
-            --deep-navy: #050D14;
-        }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 50%, #1a2f45 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            position: relative;
-            overflow: hidden;
-        }
-        body::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(ellipse at 30% 20%, rgba(212, 175, 55, 0.06) 0%, transparent 50%),
-                        radial-gradient(ellipse at 70% 80%, rgba(212, 175, 55, 0.04) 0%, transparent 50%);
-            animation: bgFloat 15s ease-in-out infinite;
-        }
-        @keyframes bgFloat {
-            0%, 100% { transform: translate(0, 0); }
-            50% { transform: translate(-2%, -1%); }
-        }
-        .login-container {
-            width: 100%;
-            max-width: 440px;
-            position: relative;
-            z-index: 1;
-        }
-        .login-card {
-            background: white;
-            border-radius: 24px;
-            padding: 48px 40px;
-            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(212, 175, 55, 0.1);
-        }
-        .login-header {
-            text-align: center;
-            margin-bottom: 36px;
-        }
-        .login-header .logo {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
-            box-shadow: 0 8px 30px rgba(212, 175, 55, 0.35);
-        }
-        .login-header .logo i {
-            font-size: 36px;
-            color: var(--deep-navy);
-        }
-        .login-header h1 {
-            font-family: 'Playfair Display', serif;
-            font-size: 26px;
-            color: var(--navy);
-            margin-bottom: 6px;
-            letter-spacing: -0.3px;
-        }
-        .login-header p {
-            color: #888;
-            font-size: 13px;
-            font-weight: 400;
-        }
-        .alert-danger {
-            background: #fff0f0;
-            border-left: 4px solid #dc3545;
-            color: #721c24;
-            padding: 12px 16px;
-            border-radius: 10px;
-            margin-bottom: 24px;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .alert-danger::before {
-            content: '\f071';
-            font-family: 'Font Awesome 6 Free';
-            font-weight: 900;
-            color: #dc3545;
-        }
-        .alert-success {
-            background: #f0fff4;
-            border-left: 4px solid #28a745;
-            color: #155724;
-            padding: 12px 16px;
-            border-radius: 10px;
-            margin-bottom: 24px;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .alert-success::before {
-            content: '\f058';
-            font-family: 'Font Awesome 6 Free';
-            font-weight: 900;
-            color: #28a745;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        .form-group label {
-            display: block;
-            font-weight: 600;
-            color: var(--navy);
-            margin-bottom: 8px;
-            font-size: 13px;
-            letter-spacing: 0.3px;
-        }
-        .input-wrapper {
-            position: relative;
-            width: 100%;
-        }
-        .input-wrapper i {
-            position: absolute;
-            left: 14px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #aaa;
-            font-size: 15px;
-            z-index: 2;
-            pointer-events: none;
-            transition: color 0.3s ease;
-        }
-        .input-wrapper:focus-within i {
-            color: var(--gold);
-        }
-        .form-control {
-            width: 100%;
-            height: 50px;
-            padding: 12px 14px 12px 42px !important;
-            border: 2px solid #e8e8e8;
-            border-radius: 12px;
-            font-size: 14px;
-            line-height: 1.2;
-            transition: all 0.3s ease;
-            font-family: 'Poppins', sans-serif;
-            background: #fafafa;
-            color: var(--navy);
-        }
-
-        .input-wrapper.password-field .form-control {
-            padding-right: 48px !important;
-        }
-        .form-control::placeholder {
-            color: #bbb;
-            font-weight: 300;
-        }
-        .form-control:focus {
-            outline: none;
-            border-color: var(--gold);
-            box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.1);
-            background: #fff;
-        }
-        .form-control:hover {
-            border-color: #ccc;
-        }
-        .password-toggle {
-            position: absolute;
-            right: 9px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 32px;
-            height: 32px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: none;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            color: #aaa;
-            font-size: 15px;
-            padding: 0;
-            z-index: 3;
-            transition: color 0.3s ease;
-        }
-        .password-toggle:hover {
-            color: var(--gold);
-            background: rgba(212, 175, 55, 0.08);
-        }
-        .password-toggle:focus-visible {
-            outline: 2px solid rgba(212, 175, 55, 0.4);
-            outline-offset: 1px;
-        }
-        .btn-login {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%);
-            color: var(--deep-navy);
-            border: none;
-            border-radius: 12px;
-            font-size: 15px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            margin-top: 8px;
-            position: relative;
-            overflow: hidden;
-        }
-        .btn-login::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            transform: translateX(-100%);
-            transition: transform 0.5s ease;
-        }
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(212, 175, 55, 0.4);
-        }
-        .btn-login:hover::after {
-            transform: translateX(100%);
-        }
-        .btn-login:active {
-            transform: translateY(0);
-        }
-        .login-footer {
-            margin-top: 28px;
-            text-align: center;
-            padding-top: 20px;
-            border-top: 1px solid #f0f0f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .login-footer a {
-            color: #888;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            transition: color 0.3s ease;
-        }
-        .login-footer a:hover {
-            color: var(--gold);
-        }
-        .login-footer a i {
-            margin-right: 4px;
-        }
-        @media (max-width: 480px) {
-            .login-card {
-                padding: 36px 24px;
-                border-radius: 20px;
-            }
-            .form-control {
-                height: 48px;
-                font-size: 14px;
-                padding-left: 40px !important;
-            }
-            .input-wrapper.password-field .form-control {
-                padding-right: 46px !important;
-            }
-            .input-wrapper i {
-                left: 13px;
-                font-size: 14px;
-            }
-            .password-toggle {
-                right: 8px;
-                width: 30px;
-                height: 30px;
-            }
-            .login-header h1 {
-                font-size: 22px;
-            }
-            .login-footer {
-                flex-direction: column;
-                gap: 12px;
-            }
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <link rel="manifest" href="manifest.php">
+    <!-- Keep login page lean: do not load full frontend bundle to avoid duplicate imports -->
+    <link rel="stylesheet" href="css/admin-auth.css?v=<?php echo @filemtime(__DIR__ . '/css/admin-auth.css'); ?>">
 </head>
+
 <body>
     <div class="login-container">
         <div class="login-card">
@@ -495,7 +295,7 @@ $site_name = getSetting('site_name');
 
             <?php if (isset($_GET['reset']) && $_GET['reset'] === 'sent'): ?>
                 <div class="alert-success">
-                    Password reset instructions were sent to your email.
+                    Password reset link sent to your email.
                 </div>
             <?php endif; ?>
 
@@ -505,32 +305,37 @@ $site_name = getSetting('site_name');
                 </div>
             <?php endif; ?>
 
-            <form method="POST" action="login.php">
+            <form method="POST" action="login.php" id="loginForm" novalidate>
                 <?php echo getCsrfField(); ?>
+                <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($requested_redirect, ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="form-group">
                     <label for="username">Username</label>
                     <div class="input-wrapper">
                         <i class="fas fa-user"></i>
-                        <input type="text" id="username" name="username" class="form-control" 
-                               placeholder="Enter your username" required autofocus
-                               value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>">
+                        <input type="text" id="username" name="username" class="form-control"
+                            placeholder="Enter your username" autofocus autocomplete="username"
+                            value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>">
                     </div>
+                    <span class="field-error" id="username-error" aria-live="polite"></span>
                 </div>
 
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <div class="input-wrapper password-field">
+                    <div class="input-wrapper has-toggle">
                         <i class="fas fa-lock"></i>
-                        <input type="password" id="password" name="password" class="form-control" 
-                               placeholder="Enter your password" required>
-                        <button type="button" class="password-toggle" onclick="togglePassword()" aria-label="Show or hide password">
+                        <input type="password" id="password" name="password" class="form-control"
+                            placeholder="Enter your password" autocomplete="current-password">
+                        <button type="button" class="password-toggle" id="toggleBtn"
+                            aria-label="Show password" title="Show/hide password">
                             <i class="fas fa-eye" id="toggleIcon"></i>
                         </button>
                     </div>
+                    <span class="field-error" id="password-error" aria-live="polite"></span>
                 </div>
 
-                <button type="submit" class="btn-login">
-                    <i class="fas fa-sign-in-alt"></i> Sign In
+                <button type="submit" class="btn-login" id="loginBtn">
+                    <span class="btn-text"><i class="fas fa-sign-in-alt"></i> Sign In</span>
+                    <span class="btn-spinner"></span>
                 </button>
             </form>
 
@@ -544,19 +349,129 @@ $site_name = getSetting('site_name');
             </div>
         </div>
     </div>
-    
+
     <script>
-    function togglePassword() {
-        const input = document.getElementById('password');
-        const icon = document.getElementById('toggleIcon');
-        if (input.type === 'password') {
-            input.type = 'text';
-            icon.classList.replace('fa-eye', 'fa-eye-slash');
-        } else {
-            input.type = 'password';
-            icon.classList.replace('fa-eye-slash', 'fa-eye');
-        }
-    }
+        (function() {
+            'use strict';
+
+            const form = document.getElementById('loginForm');
+            const usernameEl = document.getElementById('username');
+            const passwordEl = document.getElementById('password');
+            const toggleBtn = document.getElementById('toggleBtn');
+            const toggleIcon = document.getElementById('toggleIcon');
+            const loginBtn = document.getElementById('loginBtn');
+
+            /* ── Toggle password visibility ─────────────────────────────── */
+            toggleBtn.addEventListener('click', function() {
+                const isPassword = passwordEl.type === 'password';
+                passwordEl.type = isPassword ? 'text' : 'password';
+                toggleIcon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+                toggleBtn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+                passwordEl.focus();
+            });
+
+            /* ── Field error helpers ─────────────────────────────────────── */
+            function setError(inputEl, errorId, message) {
+                inputEl.classList.add('is-invalid');
+                inputEl.classList.remove('is-valid');
+                document.getElementById(errorId).textContent = message;
+            }
+
+            function clearError(inputEl, errorId) {
+                inputEl.classList.remove('is-invalid');
+                document.getElementById(errorId).textContent = '';
+            }
+
+            function markValid(inputEl) {
+                inputEl.classList.remove('is-invalid');
+                inputEl.classList.add('is-valid');
+            }
+
+            /* ── Per-field validation ────────────────────────────────────── */
+            function validateUsername() {
+                const val = usernameEl.value.trim();
+                if (!val) {
+                    setError(usernameEl, 'username-error', 'Username is required.');
+                    return false;
+                }
+                if (val.length < 3) {
+                    setError(usernameEl, 'username-error', 'Username must be at least 3 characters.');
+                    return false;
+                }
+                if (val.length > 100) {
+                    setError(usernameEl, 'username-error', 'Username is too long.');
+                    return false;
+                }
+                clearError(usernameEl, 'username-error');
+                markValid(usernameEl);
+                return true;
+            }
+
+            function validatePassword() {
+                const val = passwordEl.value;
+                if (!val) {
+                    setError(passwordEl, 'password-error', 'Password is required.');
+                    return false;
+                }
+                if (val.length < 6) {
+                    setError(passwordEl, 'password-error', 'Password must be at least 6 characters.');
+                    return false;
+                }
+                clearError(passwordEl, 'password-error');
+                markValid(passwordEl);
+                return true;
+            }
+
+            /* ── Live validation on blur ─────────────────────────────────── */
+            usernameEl.addEventListener('blur', function() {
+                if (usernameEl.value.length > 0) validateUsername();
+            });
+
+            passwordEl.addEventListener('blur', function() {
+                if (passwordEl.value.length > 0) validatePassword();
+            });
+
+            /* Clear error as soon as the user starts typing again */
+            usernameEl.addEventListener('input', function() {
+                if (usernameEl.classList.contains('is-invalid')) {
+                    clearError(usernameEl, 'username-error');
+                }
+            });
+
+            passwordEl.addEventListener('input', function() {
+                if (passwordEl.classList.contains('is-invalid')) {
+                    clearError(passwordEl, 'password-error');
+                }
+            });
+
+            /* ── Form submit ─────────────────────────────────────────────── */
+            form.addEventListener('submit', function(e) {
+                const validUser = validateUsername();
+                const validPass = validatePassword();
+
+                if (!validUser || !validPass) {
+                    e.preventDefault();
+                    /* Focus the first invalid field */
+                    if (!validUser) usernameEl.focus();
+                    else passwordEl.focus();
+                    return;
+                }
+
+                /* Prevent double-submit */
+                loginBtn.disabled = true;
+                loginBtn.classList.add('loading');
+            });
+
+            /* Re-enable button if the user navigates back (browser bfcache) */
+            window.addEventListener('pageshow', function(e) {
+                if (e.persisted) {
+                    loginBtn.disabled = false;
+                    loginBtn.classList.remove('loading');
+                }
+            });
+        })();
     </script>
 </body>
+
 </html>
+

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Payments API Endpoint
  *
@@ -36,29 +37,30 @@ if (!defined('API_ACCESS_ALLOWED') || !isset($auth) || !isset($client)) {
 
 // Get request method and path
 $method = $_SERVER['REQUEST_METHOD'];
-$requestUri = $_SERVER['REQUEST_URI'] ?? '';
-$path = parse_url($requestUri, PHP_URL_PATH) ?? '';
+$requestUri = $_SERVER['REQUEST_URI'];
+$path = parse_url($requestUri, PHP_URL_PATH);
 
 // Extract payment ID from path if present
-$paymentId = isset($_GET['id']) ? (int)$_GET['id'] : null;
-
-if (preg_match('#/api/(?:index\.php/)?payments(?:/|\.php/)?(\d+)$#i', $path, $matches)) {
-    $paymentId = (int)$matches[1];
+$pathParts = explode('/', trim($path, '/'));
+$paymentId = null;
+if (count($pathParts) >= 3 && is_numeric($pathParts[2])) {
+    $paymentId = (int)$pathParts[2];
 }
 
-if (!is_int($paymentId) || $paymentId <= 0) {
-    $paymentId = null;
-}
+require_once __DIR__ . '/../includes/finance-sequences.php';
+finance_ensure_sequence_tables($pdo);
 
 try {
     switch ($method) {
         case 'GET':
             if ($paymentId) {
+                // Get single payment
                 if (!$auth->checkPermission($client, 'payments.view')) {
                     ApiResponse::error('Permission denied: payments.view', 403);
                 }
                 getPayment($pdo, $paymentId);
             } else {
+                // List payments
                 if (!$auth->checkPermission($client, 'payments.view')) {
                     ApiResponse::error('Permission denied: payments.view', 403);
                 }
@@ -104,413 +106,11 @@ try {
     ApiResponse::error('Failed to process request: ' . $e->getMessage(), 500);
 }
 
-function getPaymentTableColumns(PDO $pdo) {
-    static $columns = null;
-
-    if ($columns !== null) {
-        return $columns;
-    }
-
-    $columns = [];
-
-    try {
-        $stmt = $pdo->query("SHOW COLUMNS FROM payments");
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $column) {
-            $columns[$column['Field']] = true;
-        }
-    } catch (Throwable $e) {
-        error_log('Unable to inspect payments columns: ' . $e->getMessage());
-    }
-
-    return $columns;
-}
-
-function normalizeApiPaymentStatus($status) {
-    $status = strtolower(trim((string)$status));
-    $map = ['paid' => 'completed'];
-
-    if (isset($map[$status])) {
-        $status = $map[$status];
-    }
-
-    $allowed = ['pending', 'completed', 'failed', 'refunded', 'partially_refunded', 'cancelled'];
-    return in_array($status, $allowed, true) ? $status : 'pending';
-}
-
-function normalizeLegacyPaymentStatus($status) {
-    switch ($status) {
-        case 'completed':
-            return 'completed';
-        case 'refunded':
-        case 'partially_refunded':
-            return 'refunded';
-        case 'failed':
-        case 'cancelled':
-            return 'failed';
-        default:
-            return 'pending';
-    }
-}
-
-function inferApiPaymentType($paymentStatus, $paymentAmount, $subtotalDueBeforePayment, $subtotalPaidBeforePayment, $allowManualPayment) {
-    if ($paymentStatus === 'refunded' || $paymentStatus === 'partially_refunded' || $paymentAmount < 0) {
-        return 'refund';
-    }
-
-    if ($paymentStatus !== 'completed') {
-        return $subtotalPaidBeforePayment <= 0.01 ? 'deposit' : 'partial_payment';
-    }
-
-    if ($allowManualPayment && $paymentAmount > ($subtotalDueBeforePayment + 0.01)) {
-        return 'adjustment';
-    }
-
-    if ($paymentAmount >= max(0, $subtotalDueBeforePayment - 0.01)) {
-        return 'full_payment';
-    }
-
-    return $subtotalPaidBeforePayment <= 0.01 ? 'deposit' : 'partial_payment';
-}
-
-function generateUniquePaymentReference(PDO $pdo) {
-    do {
-        $paymentReference = 'PAY' . date('Ym') . strtoupper(substr(uniqid(), -6));
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE payment_reference = ?");
-        $stmt->execute([$paymentReference]);
-    } while ((int)$stmt->fetchColumn() > 0);
-
-    return $paymentReference;
-}
-
-function generateUniqueReceiptNumber(PDO $pdo) {
-    do {
-        $receiptNumber = 'RCP' . date('Y') . str_pad((string)rand(1, 99999), 5, '0', STR_PAD_LEFT);
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE receipt_number = ?");
-        $stmt->execute([$receiptNumber]);
-    } while ((int)$stmt->fetchColumn() > 0);
-
-    return $receiptNumber;
-}
-
-function getRowPaymentStatus(array $payment) {
-    $status = trim((string)($payment['payment_status'] ?? ''));
-    if ($status === '') {
-        $status = trim((string)($payment['status'] ?? 'pending'));
-    }
-    return normalizeApiPaymentStatus($status);
-}
-
-function getRowTransactionReference(array $payment) {
-    $candidates = [
-        $payment['transaction_reference'] ?? null,
-        $payment['payment_reference_number'] ?? null,
-        $payment['transaction_id'] ?? null
-    ];
-
-    foreach ($candidates as $candidate) {
-        $candidate = trim((string)$candidate);
-        if ($candidate !== '') {
-            return $candidate;
-        }
-    }
-
-    return null;
-}
-
-function fetchBookingDetailsForPayment(PDO $pdo, $bookingType, $bookingId) {
-    if ($bookingType === 'room') {
-        $stmt = $pdo->prepare("
-            SELECT 
-                b.id,
-                b.booking_reference,
-                b.guest_name,
-                b.guest_email,
-                b.total_amount,
-                b.total_with_vat,
-                b.amount_paid,
-                b.amount_due,
-                b.vat_rate,
-                COALESCE((
-                    SELECT SUM(COALESCE(p.payment_amount, 0))
-                    FROM payments p
-                    WHERE p.booking_type = 'room'
-                    AND p.booking_id = b.id
-                    AND p.payment_status = 'completed'
-                    AND p.deleted_at IS NULL
-                ), 0) as subtotal_paid,
-                GREATEST(0, COALESCE(b.total_amount, 0) - COALESCE((
-                    SELECT SUM(COALESCE(p.payment_amount, 0))
-                    FROM payments p
-                    WHERE p.booking_type = 'room'
-                    AND p.booking_id = b.id
-                    AND p.payment_status = 'completed'
-                    AND p.deleted_at IS NULL
-                ), 0)) as subtotal_due
-            FROM bookings b
-            WHERE b.id = ?
-        ");
-        $stmt->execute([$bookingId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-    }
-
-    if ($bookingType === 'conference') {
-        $stmt = $pdo->prepare("
-            SELECT 
-                ci.id,
-                ci.inquiry_reference as enquiry_reference,
-                ci.company_name as organization_name,
-                ci.contact_person as contact_name,
-                ci.email as contact_email,
-                ci.total_amount,
-                ci.total_with_vat,
-                ci.amount_paid,
-                ci.amount_due,
-                ci.vat_rate,
-                ci.deposit_required,
-                ci.deposit_paid,
-                COALESCE((
-                    SELECT SUM(COALESCE(p.payment_amount, 0))
-                    FROM payments p
-                    WHERE p.booking_type = 'conference'
-                    AND p.booking_id = ci.id
-                    AND p.payment_status = 'completed'
-                    AND p.deleted_at IS NULL
-                ), 0) as subtotal_paid,
-                GREATEST(0, COALESCE(ci.total_amount, 0) - COALESCE((
-                    SELECT SUM(COALESCE(p.payment_amount, 0))
-                    FROM payments p
-                    WHERE p.booking_type = 'conference'
-                    AND p.booking_id = ci.id
-                    AND p.payment_status = 'completed'
-                    AND p.deleted_at IS NULL
-                ), 0)) as subtotal_due
-            FROM conference_inquiries ci
-            WHERE ci.id = ?
-        ");
-        $stmt->execute([$bookingId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-    }
-
-    return null;
-}
-
-function resolveBookingForPayment(PDO $pdo, $bookingType, $bookingId, $bookingLookup = '') {
-    $bookingId = (int)$bookingId;
-    if ($bookingId > 0) {
-        return fetchBookingDetailsForPayment($pdo, $bookingType, $bookingId);
-    }
-
-    $bookingLookup = trim((string)$bookingLookup);
-    if ($bookingLookup === '') {
-        return null;
-    }
-
-    if ($bookingType === 'room') {
-        if (ctype_digit($bookingLookup)) {
-            return fetchBookingDetailsForPayment($pdo, 'room', (int)$bookingLookup);
-        }
-
-        $stmt = $pdo->prepare("SELECT id FROM bookings WHERE UPPER(booking_reference) = UPPER(?) LIMIT 1");
-        $stmt->execute([$bookingLookup]);
-        $resolvedId = (int)$stmt->fetchColumn();
-        return $resolvedId > 0 ? fetchBookingDetailsForPayment($pdo, 'room', $resolvedId) : null;
-    }
-
-    if ($bookingType === 'conference') {
-        if (ctype_digit($bookingLookup)) {
-            return fetchBookingDetailsForPayment($pdo, 'conference', (int)$bookingLookup);
-        }
-
-        $stmt = $pdo->prepare("SELECT id FROM conference_inquiries WHERE UPPER(inquiry_reference) = UPPER(?) LIMIT 1");
-        $stmt->execute([$bookingLookup]);
-        $resolvedId = (int)$stmt->fetchColumn();
-        return $resolvedId > 0 ? fetchBookingDetailsForPayment($pdo, 'conference', $resolvedId) : null;
-    }
-
-    return null;
-}
-
-function parseApiRoomFolioCharges(PDO $pdo, array $input) {
-    $rows = $input['folio_charges'] ?? [];
-    if (!is_array($rows) || empty($rows)) {
-        return [];
-    }
-
-    $charges = [];
-    $foodStmt = $pdo->prepare("SELECT id, category, item_name, price, is_available FROM food_menu WHERE id = ? LIMIT 1");
-    $drinkStmt = $pdo->prepare("SELECT id, category, item_name, price, is_available FROM drink_menu WHERE id = ? LIMIT 1");
-
-    foreach ($rows as $row) {
-        if (!is_array($row)) {
-            continue;
-        }
-
-        $kind = strtolower(trim((string)($row['kind'] ?? '')));
-        if ($kind === '') {
-            continue;
-        }
-
-        $quantity = max(1, (int)($row['quantity'] ?? 1));
-
-        if ($kind === 'food' || $kind === 'drink') {
-            $itemId = (int)($row['item_id'] ?? 0);
-            if ($itemId <= 0) {
-                throw new Exception('Select a valid menu item for each food or drink folio charge.');
-            }
-
-            $stmt = $kind === 'food' ? $foodStmt : $drinkStmt;
-            $stmt->execute([$itemId]);
-            $item = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$item || (int)$item['is_available'] !== 1) {
-                throw new Exception('One of the selected menu items is no longer available.');
-            }
-
-            $charges[] = [
-                'charge_type' => 'menu',
-                'description' => ucfirst($kind) . ': ' . $item['item_name'] . ' x' . $quantity . ' (' . $item['category'] . ')',
-                'amount' => round((float)$item['price'] * $quantity, 2)
-            ];
-            continue;
-        }
-
-        if ($kind === 'custom') {
-            $description = trim((string)($row['description'] ?? ''));
-            $unitPrice = round((float)($row['unit_price'] ?? 0), 2);
-            if ($description === '') {
-                throw new Exception('Custom folio charges need a description.');
-            }
-            if ($unitPrice <= 0) {
-                throw new Exception('Custom folio charges must have a unit price greater than zero.');
-            }
-
-            $charges[] = [
-                'charge_type' => 'other',
-                'description' => $description . ' x' . $quantity,
-                'amount' => round($unitPrice * $quantity, 2)
-            ];
-        }
-    }
-
-    return $charges;
-}
-
-function insertRoomFolioCharges(PDO $pdo, $bookingId, array $charges) {
-    if (empty($charges)) {
-        return 0.0;
-    }
-
-    ensureBookingAdditionalChargesTable();
-
-    $stmt = $pdo->prepare("INSERT INTO booking_additional_charges (booking_id, charge_type, description, amount, created_by) VALUES (?, ?, ?, ?, ?)");
-    $total = 0.0;
-    foreach ($charges as $charge) {
-        $amount = round((float)$charge['amount'], 2);
-        $stmt->execute([(int)$bookingId, $charge['charge_type'], $charge['description'], $amount, null]);
-        $total += $amount;
-    }
-
-    return round($total, 2);
-}
-
-function buildPaymentWriteData(array $paymentColumns, array $payload) {
-    $paymentStatus = $payload['payment_status'];
-    $legacyStatus = normalizeLegacyPaymentStatus($paymentStatus);
-    $hasDetectedColumns = !empty($paymentColumns);
-
-    $baseData = [
-        'payment_reference' => $payload['payment_reference'],
-        'booking_type' => $payload['booking_type'],
-        'booking_id' => $payload['booking_id'],
-        'booking_reference' => $payload['booking_reference'],
-        'payment_date' => $payload['payment_date'],
-        'payment_amount' => $payload['payment_amount'],
-        'vat_rate' => $payload['vat_rate'],
-        'vat_amount' => $payload['vat_amount'],
-        'total_amount' => $payload['total_amount'],
-        'payment_method' => $payload['payment_method'],
-        'payment_status' => $paymentStatus,
-        'notes' => $payload['notes'],
-        'cc_emails' => $payload['cc_emails'],
-        'receipt_number' => $payload['receipt_number'],
-        'processed_by' => $payload['processed_by']
-    ];
-
-    $data = [];
-    foreach ($baseData as $field => $value) {
-        if (!$hasDetectedColumns || isset($paymentColumns[$field])) {
-            $data[$field] = $value;
-        }
-    }
-
-    if (!empty($payload['payment_type'])) {
-        if (!$hasDetectedColumns || isset($paymentColumns['payment_type'])) {
-            $data['payment_type'] = $payload['payment_type'];
-        }
-    }
-
-    if (isset($paymentColumns['conference_id'])) {
-        $data['conference_id'] = $payload['booking_type'] === 'conference' ? $payload['booking_id'] : null;
-    }
-
-    if (!$hasDetectedColumns || isset($paymentColumns['invoice_generated'])) {
-        $data['invoice_generated'] = $paymentStatus === 'completed' ? 1 : 0;
-    }
-
-    if (!$hasDetectedColumns || isset($paymentColumns['amount'])) {
-        $data['amount'] = $payload['payment_amount'];
-    }
-
-    if (!$hasDetectedColumns || isset($paymentColumns['status'])) {
-        $data['status'] = $legacyStatus;
-    }
-
-    if (array_key_exists('transaction_reference', $payload)) {
-        $transactionReference = $payload['transaction_reference'];
-        if (isset($paymentColumns['transaction_reference'])) {
-            $data['transaction_reference'] = $transactionReference;
-        }
-        if (isset($paymentColumns['payment_reference_number'])) {
-            $data['payment_reference_number'] = $transactionReference;
-        }
-        if (isset($paymentColumns['transaction_id'])) {
-            $data['transaction_id'] = $transactionReference;
-        }
-    }
-
-    return $data;
-}
-
-function insertPaymentRecord(PDO $pdo, array $paymentColumns, array $payload) {
-    $data = buildPaymentWriteData($paymentColumns, $payload);
-    $fields = array_keys($data);
-    $placeholders = implode(', ', array_fill(0, count($fields), '?'));
-    $sql = "INSERT INTO payments (" . implode(', ', $fields) . ") VALUES (" . $placeholders . ")";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute(array_values($data));
-
-    return (int)$pdo->lastInsertId();
-}
-
-function updatePaymentRecord(PDO $pdo, array $paymentColumns, $paymentId, array $payload) {
-    $data = buildPaymentWriteData($paymentColumns, $payload);
-    unset($data['payment_reference'], $data['booking_type'], $data['booking_id'], $data['booking_reference'], $data['conference_id']);
-
-    $assignments = [];
-    foreach (array_keys($data) as $field) {
-        $assignments[] = $field . ' = ?';
-    }
-
-    $sql = "UPDATE payments SET " . implode(', ', $assignments) . ", updated_at = NOW() WHERE id = ?";
-    $stmt = $pdo->prepare($sql);
-    $params = array_values($data);
-    $params[] = $paymentId;
-    $stmt->execute($params);
-}
-
 /**
  * List all payments with optional filters
  */
-function listPayments($pdo) {
+function listPayments(PDO $pdo)
+{
     // Get query parameters for filtering
     $bookingType = isset($_GET['booking_type']) ? trim($_GET['booking_type']) : null;
     $bookingId = isset($_GET['booking_id']) ? (int)$_GET['booking_id'] : null;
@@ -521,8 +121,33 @@ function listPayments($pdo) {
     $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
     $limit = isset($_GET['limit']) ? min(100, max(1, (int)$_GET['limit'])) : 50;
     $offset = ($page - 1) * $limit;
-    
-    $fromSql = "
+
+    if ($bookingId && !$bookingType) {
+        ApiResponse::error('booking_type is required when booking_id is provided', 400);
+    }
+
+    // Build query
+    // Get dynamic conference field names for compatibility
+    $conferenceFields = finance_conference_fields($pdo);
+
+    $sql = "
+        SELECT
+            p.*,
+            CASE
+                WHEN p.booking_type = 'room' THEN CONCAT('Room Booking - ', b.guest_name)
+                WHEN p.booking_type = 'conference' THEN CONCAT('Conference - ', ci.{$conferenceFields['company']})
+                ELSE p.booking_type
+            END as booking_description,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.booking_reference
+                WHEN p.booking_type = 'conference' THEN ci.{$conferenceFields['reference']}
+                ELSE NULL
+            END as booking_reference,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.guest_email
+                WHEN p.booking_type = 'conference' THEN ci.{$conferenceFields['email']}
+                ELSE NULL
+            END as contact_email
         FROM payments p
         LEFT JOIN bookings b ON p.booking_type = 'room' AND p.booking_id = b.id
         LEFT JOIN conference_inquiries ci ON p.booking_type = 'conference' AND p.booking_id = ci.id
@@ -532,84 +157,68 @@ function listPayments($pdo) {
     $params = [];
 
     if ($bookingType) {
-        $fromSql .= " AND p.booking_type = ?";
+        $sql .= " AND p.booking_type = ?";
         $params[] = $bookingType;
     }
 
     if ($bookingId) {
-        $fromSql .= " AND p.booking_id = ?";
+        $sql .= " AND p.booking_id = ?";
         $params[] = $bookingId;
     }
 
     if ($status) {
-        $fromSql .= " AND COALESCE(NULLIF(p.payment_status, ''), p.status, 'pending') = ?";
-        $params[] = normalizeApiPaymentStatus($status);
+        $sql .= " AND p.payment_status = ?";
+        $params[] = $status;
     }
 
     if ($paymentMethod) {
-        $fromSql .= " AND p.payment_method = ?";
+        $sql .= " AND p.payment_method = ?";
         $params[] = $paymentMethod;
     }
 
     if ($startDate) {
-        $fromSql .= " AND p.payment_date >= ?";
+        $sql .= " AND p.payment_date >= ?";
         $params[] = $startDate;
     }
 
     if ($endDate) {
-        $fromSql .= " AND p.payment_date <= ?";
+        $sql .= " AND p.payment_date <= ?";
         $params[] = $endDate;
     }
 
-    // Build query
-    $sql = "
-        SELECT 
-            p.*,
-            CASE 
-                WHEN p.booking_type = 'room' THEN CONCAT('Room Booking - ', b.guest_name)
-                WHEN p.booking_type = 'conference' THEN CONCAT('Conference - ', ci.company_name)
-                ELSE p.booking_type
-            END as booking_description,
-            CASE 
-                WHEN p.booking_type = 'room' THEN b.booking_reference
-                WHEN p.booking_type = 'conference' THEN ci.inquiry_reference
-                ELSE NULL
-            END as booking_reference,
-            CASE 
-                WHEN p.booking_type = 'room' THEN b.guest_email
-                WHEN p.booking_type = 'conference' THEN ci.email
-                ELSE NULL
-            END as contact_email
-    " . $fromSql;
-    
-    // Get total count
-    $countSql = "SELECT COUNT(*) as total " . $fromSql;
+    // Get total count — extract FROM…WHERE directly to avoid leaving non-aggregate
+    // CASE expressions in the SELECT clause (which breaks strict SQL mode).
+    $fromPos = stripos($sql, 'FROM payments p');
+    $countSql = 'SELECT COUNT(*) as total ' . substr($sql, $fromPos);
     $countStmt = $pdo->prepare($countSql);
     $countStmt->execute($params);
-    $total = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
-    
+    $total = (int)($countStmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
+
     // Add ordering and pagination
     $sql .= " ORDER BY p.payment_date DESC, p.created_at DESC";
     $sql .= " LIMIT ? OFFSET ?";
     $params[] = $limit;
     $params[] = $offset;
-    
+
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Calculate summary statistics
+
+    // Calculate summary statistics - use consistent payment status check
     $summarySql = "
-        SELECT 
+        SELECT
             COUNT(*) as total_payments,
-            SUM(CASE WHEN COALESCE(NULLIF(payment_status, ''), status, 'pending') = 'completed' THEN total_amount ELSE 0 END) as total_collected,
-            SUM(CASE WHEN COALESCE(NULLIF(payment_status, ''), status, 'pending') = 'pending' THEN total_amount ELSE 0 END) as total_pending,
-            SUM(CASE WHEN COALESCE(NULLIF(payment_status, ''), status, 'pending') IN ('refunded', 'partially_refunded') THEN total_amount ELSE 0 END) as total_refunded,
-            SUM(vat_amount) as total_vat_collected
+            SUM(CASE WHEN payment_status IN ('completed', 'paid') AND COALESCE(payment_type, '') != 'refund' THEN total_amount ELSE 0 END) as total_collected,
+            SUM(CASE WHEN payment_status IN ('pending', 'partial', 'partially_refunded') AND COALESCE(payment_type, '') != 'refund' THEN total_amount ELSE 0 END) as total_pending,
+            SUM(CASE WHEN COALESCE(payment_type, '') = 'refund' THEN COALESCE(refund_amount, total_amount) ELSE 0 END) as total_refunded,
+            (
+                SUM(CASE WHEN payment_status IN ('completed', 'paid') AND COALESCE(payment_type, '') != 'refund' THEN vat_amount ELSE 0 END)
+                - SUM(CASE WHEN COALESCE(payment_type, '') = 'refund' AND refund_status IN ('completed','processing') THEN vat_amount ELSE 0 END)
+            ) as total_vat_collected
         FROM payments
         WHERE deleted_at IS NULL
     ";
-    
+
     $summaryParams = [];
     if ($bookingType) {
         $summarySql .= " AND booking_type = ?";
@@ -627,14 +236,13 @@ function listPayments($pdo) {
         $summarySql .= " AND payment_date <= ?";
         $summaryParams[] = $endDate;
     }
-    
+
     $summaryStmt = $pdo->prepare($summarySql);
     $summaryStmt->execute($summaryParams);
     $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC);
-    
+
     $response = [
-        'payments' => array_map(function($payment) {
-            $resolvedStatus = getRowPaymentStatus($payment);
+        'payments' => array_map(function ($payment) {
             return [
                 'id' => (int)$payment['id'],
                 'payment_reference' => $payment['payment_reference'],
@@ -651,8 +259,10 @@ function listPayments($pdo) {
                     'total' => (float)$payment['total_amount']
                 ],
                 'payment_method' => $payment['payment_method'],
-                'status' => $resolvedStatus,
-                'transaction_reference' => getRowTransactionReference($payment),
+                'status' => $payment['payment_status'],
+                'transaction_reference' => $payment['transaction_reference'],
+                'receipt_number' => $payment['receipt_number'],
+                'invoice_number' => $payment['invoice_number'],
                 'notes' => $payment['notes'],
                 'created_at' => $payment['created_at'],
                 'updated_at' => $payment['updated_at']
@@ -673,26 +283,64 @@ function listPayments($pdo) {
             'currency' => getSetting('currency_symbol')
         ]
     ];
-    
+
     ApiResponse::success($response, 'Payments retrieved successfully');
 }
 
 /**
  * Get single payment details
  */
-function getPayment($pdo, $paymentId) {
-    $stmt = $pdo->prepare("\n        SELECT \n            p.*,\n            CASE \n                WHEN p.booking_type = 'room' THEN CONCAT('Room Booking - ', b.guest_name)\n                WHEN p.booking_type = 'conference' THEN CONCAT('Conference - ', ci.company_name)\n                ELSE p.booking_type\n            END as booking_description,\n            CASE \n                WHEN p.booking_type = 'room' THEN b.booking_reference\n                WHEN p.booking_type = 'conference' THEN ci.inquiry_reference\n                ELSE NULL\n            END as booking_reference\n        FROM payments p\n        LEFT JOIN bookings b ON p.booking_type = 'room' AND p.booking_id = b.id\n        LEFT JOIN conference_inquiries ci ON p.booking_type = 'conference' AND p.booking_id = ci.id\n        WHERE p.id = ? AND p.deleted_at IS NULL\n    ");
+function getPayment(PDO $pdo, int $paymentId)
+{
+    $conferenceFields = finance_conference_fields($pdo);
+
+    $stmt = $pdo->prepare("
+        SELECT
+            p.*,
+            CASE
+                WHEN p.booking_type = 'room' THEN CONCAT('Room Booking - ', b.guest_name)
+                WHEN p.booking_type = 'conference' THEN CONCAT('Conference - ', ci.{$conferenceFields['company']})
+                ELSE p.booking_type
+            END as booking_description,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.booking_reference
+                WHEN p.booking_type = 'conference' THEN ci.{$conferenceFields['reference']}
+                ELSE NULL
+            END as booking_reference,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.guest_name
+                WHEN p.booking_type = 'conference' THEN ci.{$conferenceFields['contact_name']}
+                ELSE NULL
+            END as customer_name,
+            CASE
+                WHEN p.booking_type = 'room' THEN b.guest_email
+                WHEN p.booking_type = 'conference' THEN ci.{$conferenceFields['email']}
+                ELSE NULL
+            END as customer_email
+        FROM payments p
+        LEFT JOIN bookings b ON p.booking_type = 'room' AND p.booking_id = b.id
+        LEFT JOIN conference_inquiries ci ON p.booking_type = 'conference' AND p.booking_id = ci.id
+        WHERE p.id = ? AND p.deleted_at IS NULL
+    ");
     $stmt->execute([$paymentId]);
     $payment = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$payment) {
-        ApiResponse::error('Payment not found', 404);
+        ApiResponse::error('Payment not found. It may have been deleted or does not exist.', 404);
     }
 
+    // Get booking details
     $bookingDetails = null;
-
     if ($payment['booking_type'] === 'room') {
-        $bookingStmt = $pdo->prepare("\n            SELECT b.*, r.name as room_name\n            FROM bookings b\n            LEFT JOIN rooms r ON b.room_id = r.id\n            WHERE b.id = ?\n        ");
+        $bookingStmt = $pdo->prepare("
+            SELECT
+                b.*,
+                r.name as room_name,
+                r.price_per_night
+            FROM bookings b
+            LEFT JOIN rooms r ON b.room_id = r.id
+            WHERE b.id = ?
+        ");
         $bookingStmt->execute([$payment['booking_id']]);
         $booking = $bookingStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -701,13 +349,17 @@ function getPayment($pdo, $paymentId) {
                 'type' => 'room',
                 'id' => (int)$booking['id'],
                 'reference' => $booking['booking_reference'],
+                'room' => [
+                    'id' => (int)$booking['room_id'],
+                    'name' => $booking['room_name'],
+                    'price_per_night' => (float)$booking['price_per_night']
+                ],
                 'guest' => [
                     'name' => $booking['guest_name'],
                     'email' => $booking['guest_email'],
                     'phone' => $booking['guest_phone']
                 ],
-                'room' => [
-                    'type' => $booking['room_name'] ?? ($booking['occupancy_type'] ?? null),
+                'dates' => [
                     'check_in' => $booking['check_in_date'],
                     'check_out' => $booking['check_out_date'],
                     'nights' => (int)$booking['number_of_nights']
@@ -724,7 +376,10 @@ function getPayment($pdo, $paymentId) {
             ];
         }
     } elseif ($payment['booking_type'] === 'conference') {
-        $confStmt = $pdo->prepare("\n            SELECT * FROM conference_inquiries WHERE id = ?\n        ");
+        $conferenceFields = finance_conference_fields($pdo);
+        $confStmt = $pdo->prepare("
+            SELECT * FROM conference_inquiries WHERE id = ?
+        ");
         $confStmt->execute([$payment['booking_id']]);
         $enquiry = $confStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -732,18 +387,18 @@ function getPayment($pdo, $paymentId) {
             $bookingDetails = [
                 'type' => 'conference',
                 'id' => (int)$enquiry['id'],
-                'reference' => $enquiry['inquiry_reference'],
+                'reference' => $enquiry[$conferenceFields['reference']] ?? '',
                 'organization' => [
-                    'name' => $enquiry['company_name'],
-                    'contact_person' => $enquiry['contact_person'],
-                    'email' => $enquiry['email'],
-                    'phone' => $enquiry['phone']
+                    'name' => $enquiry[$conferenceFields['company']] ?? '',
+                    'contact_person' => $enquiry[$conferenceFields['contact_name']] ?? '',
+                    'email' => $enquiry[$conferenceFields['email']] ?? '',
+                    'phone' => $enquiry[$conferenceFields['phone']] ?? ''
                 ],
                 'event' => [
                     'type' => $enquiry['event_type'],
-                    'start_date' => $enquiry['event_date'],
-                    'end_date' => $enquiry['event_date'],
-                    'expected_attendees' => (int)$enquiry['number_of_attendees']
+                    'start_date' => $enquiry[$conferenceFields['start_date']] ?? null,
+                    'end_date' => $enquiry[$conferenceFields['end_date']] ?? null,
+                    'expected_attendees' => (int)($enquiry[$conferenceFields['expected_attendees']] ?? 0)
                 ],
                 'amounts' => [
                     'total_amount' => (float)$enquiry['total_amount'],
@@ -761,8 +416,6 @@ function getPayment($pdo, $paymentId) {
         }
     }
 
-    $resolvedStatus = getRowPaymentStatus($payment);
-
     $response = [
         'payment' => [
             'id' => (int)$payment['id'],
@@ -778,8 +431,8 @@ function getPayment($pdo, $paymentId) {
                 'total' => (float)$payment['total_amount']
             ],
             'payment_method' => $payment['payment_method'],
-            'status' => $resolvedStatus,
-            'transaction_reference' => getRowTransactionReference($payment),
+            'status' => $payment['payment_status'],
+            'transaction_reference' => $payment['transaction_reference'],
             'receipt_number' => $payment['receipt_number'],
             'processed_by' => $payment['processed_by'],
             'notes' => $payment['notes'],
@@ -794,137 +447,168 @@ function getPayment($pdo, $paymentId) {
 /**
  * Create a new payment
  */
-function createPayment($pdo) {
+function createPayment(PDO $pdo)
+{
+    require_once __DIR__ . '/../includes/idempotency.php';
     // Get request body
     $rawInput = file_get_contents('php://input');
     $input = json_decode($rawInput, true);
-    
+
     if (!$input) {
         ApiResponse::error('Invalid JSON request body', 400);
     }
-    
+
+    // Idempotency: API clients pass `client_uuid`. Replays return the original payment
+    // record — critical for offline-queue replays and retry-on-timeout integrations.
+    $__incomingClientUuid = isset($input['client_uuid']) ? (string)$input['client_uuid'] : null;
+    if ($__existingPayment = idem_find_existing_payment($pdo, $__incomingClientUuid)) {
+        ApiResponse::success([
+            'payment_id' => (int)$__existingPayment['id'],
+            'payment_reference' => $__existingPayment['payment_reference'],
+            'idempotent_replay' => true,
+        ], 'Payment already exists for this client_uuid', 200);
+    }
+
     // Validate required fields
     $requiredFields = [
-        'booking_type', 'payment_amount',
-        'payment_method', 'payment_status'
+        'booking_type',
+        'booking_id',
+        'payment_amount',
+        'payment_method',
+        'payment_status'
     ];
-    
+
     $missingFields = [];
     foreach ($requiredFields as $field) {
         if (!isset($input[$field]) || $input[$field] === '') {
             $missingFields[$field] = ucfirst(str_replace('_', ' ', $field)) . ' is required';
         }
     }
-    
+
     if (!empty($missingFields)) {
         ApiResponse::validationError($missingFields);
     }
-    
+
     // Validate booking type
-    if (!in_array($input['booking_type'], ['room', 'conference'], true)) {
+    if (!in_array($input['booking_type'], ['room', 'conference'])) {
         ApiResponse::validationError(['booking_type' => 'Must be either "room" or "conference"']);
     }
-    
+
     // Validate payment method
     $validMethods = ['cash', 'bank_transfer', 'credit_card', 'debit_card', 'mobile_money', 'cheque', 'other'];
-    if (!in_array($input['payment_method'], $validMethods, true)) {
+    if (!in_array($input['payment_method'], $validMethods)) {
         ApiResponse::validationError(['payment_method' => 'Invalid payment method']);
     }
 
-    $paymentStatus = normalizeApiPaymentStatus($input['payment_status']);
-    $paymentAmount = round((float)$input['payment_amount'], 2);
+    // Validate payment status
+    // 'paid' and 'partial' can be set by the POS sync internally; allow them in API too for consistency.
+    $validStatuses = ['pending', 'partial', 'completed', 'paid', 'failed', 'refunded', 'partially_refunded'];
+    if (!in_array($input['payment_status'], $validStatuses)) {
+        ApiResponse::validationError(['payment_status' => 'Invalid payment status']);
+    }
+
+    // Get VAT settings
+    $vatEnabled = getSetting('vat_enabled') === '1';
+    $vatRate = $vatEnabled ? (float)getSetting('vat_rate') : 0;
+
+    // Validate payment amount
+    $paymentAmount = (float)$input['payment_amount'];
     if ($paymentAmount <= 0) {
         ApiResponse::validationError(['payment_amount' => 'Payment amount must be greater than zero']);
     }
 
-    $bookingId = (int)($input['booking_id'] ?? 0);
-    $bookingLookup = trim((string)($input['booking_lookup'] ?? ''));
-    if ($bookingId <= 0 && $bookingLookup === '') {
-        ApiResponse::validationError(['booking_id' => 'Provide booking_id or booking_lookup']);
+    // payment_amount is the gross (VAT-inclusive) amount — extract VAT portion.
+    $vatRate = isset($input['vat_rate']) ? (float)$input['vat_rate'] : $vatRate;
+    $vatAmount = $vatRate > 0 ? round($paymentAmount * ($vatRate / (100 + $vatRate)), 2) : 0.0;
+    $totalAmount = $paymentAmount;
+
+    // Validate booking exists
+    if ($input['booking_type'] === 'room') {
+        $bookingStmt = $pdo->prepare("SELECT id, status FROM bookings WHERE id = ?");
+        $bookingStmt->execute([(int)$input['booking_id']]);
+        if (!$bookingStmt->fetch()) {
+            ApiResponse::error('Room booking not found', 404);
+        }
+    } else {
+        $enquiryStmt = $pdo->prepare("SELECT id, status FROM conference_inquiries WHERE id = ?");
+        $enquiryStmt->execute([(int)$input['booking_id']]);
+        if (!$enquiryStmt->fetch()) {
+            ApiResponse::error('Conference enquiry not found', 404);
+        }
     }
 
-    $allowManualPayment = !empty($input['allow_manual_payment']);
-    $bookingDetails = resolveBookingForPayment($pdo, $input['booking_type'], $bookingId, $bookingLookup);
+    // Generate unique payment reference
+    do {
+        $paymentRef = 'PAY' . date('Ym') . strtoupper(substr(uniqid(), -6));
+        $refCheck = $pdo->prepare("SELECT COUNT(*) as count FROM payments WHERE payment_reference = ?");
+        $refCheck->execute([$paymentRef]);
+        $refExists = $refCheck->fetch(PDO::FETCH_ASSOC)['count'] > 0;
+    } while ($refExists);
 
-    if (!$bookingDetails) {
-        ApiResponse::error($input['booking_type'] === 'room' ? 'Room booking not found' : 'Conference enquiry not found', 404);
-    }
-
-    $bookingId = (int)$bookingDetails['id'];
-
-    if ($input['booking_type'] === 'room' && isset($input['folio_charges'])) {
-        ensureBookingAdditionalChargesTable();
-    }
-    
     // Start transaction
     $pdo->beginTransaction();
-    
+
     try {
-        $folioCharges = [];
-        if ($input['booking_type'] === 'room' && isset($input['folio_charges'])) {
-            $folioCharges = parseApiRoomFolioCharges($pdo, $input);
-        }
+        $paymentDate = isset($input['payment_date']) ? $input['payment_date'] : date('Y-m-d');
+        $receiptNumber = in_array($input['payment_status'], ['completed', 'paid'], true)
+            ? finance_next_receipt_number($pdo, $paymentDate)
+            : null;
 
-        if (!empty($folioCharges)) {
-            insertRoomFolioCharges($pdo, $bookingId, $folioCharges);
-            recalculateRoomBookingFinancials($bookingId);
-            $bookingDetails = fetchBookingDetailsForPayment($pdo, $input['booking_type'], $bookingId);
-        }
+        // Insert payment
+        $insertStmt = $pdo->prepare("
+            INSERT INTO payments (
+                payment_reference, booking_type, booking_id, payment_date,
+                payment_amount, vat_rate, vat_amount, total_amount,
+                payment_method, payment_status, transaction_reference,
+                receipt_number, processed_by, notes, client_uuid
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
 
-        $subtotalDueBeforePayment = (float)($bookingDetails['subtotal_due'] ?? 0);
-        $subtotalPaidBeforePayment = (float)($bookingDetails['subtotal_paid'] ?? 0);
-
-        if ($paymentStatus === 'completed' && !$allowManualPayment && $paymentAmount > ($subtotalDueBeforePayment + 0.01)) {
-            throw new Exception('This payment exceeds the booking subtotal due. Set allow_manual_payment=true for intentional credits or adjustments.');
-        }
-
-        $vatEnabled = getSetting('vat_enabled') === '1';
-        $defaultVatRate = $vatEnabled ? (float)getSetting('vat_rate') : 0;
-        $paymentVatRate = isset($input['vat_rate'])
-            ? (float)$input['vat_rate']
-            : (isset($bookingDetails['vat_rate']) ? (float)$bookingDetails['vat_rate'] : $defaultVatRate);
-        $paymentVatAmount = round($paymentAmount * ($paymentVatRate / 100), 2);
-        $totalAmount = round($paymentAmount + $paymentVatAmount, 2);
-        $paymentRef = generateUniquePaymentReference($pdo);
-        $receiptNumber = $paymentStatus === 'completed' ? generateUniqueReceiptNumber($pdo) : null;
-        $paymentColumns = getPaymentTableColumns($pdo);
-        $bookingReference = $input['booking_type'] === 'room' ? $bookingDetails['booking_reference'] : $bookingDetails['enquiry_reference'];
-        $transactionReference = isset($input['transaction_reference']) ? trim((string)$input['transaction_reference']) : null;
-
-        $paymentId = insertPaymentRecord($pdo, $paymentColumns, [
-            'payment_reference' => $paymentRef,
-            'booking_type' => $input['booking_type'],
-            'booking_id' => $bookingId,
-            'booking_reference' => $bookingReference,
-            'payment_date' => isset($input['payment_date']) ? $input['payment_date'] : date('Y-m-d'),
-            'payment_amount' => $paymentAmount,
-            'vat_rate' => $paymentVatRate,
-            'vat_amount' => $paymentVatAmount,
-            'total_amount' => $totalAmount,
-            'payment_method' => $input['payment_method'],
-            'payment_type' => inferApiPaymentType($paymentStatus, $paymentAmount, $subtotalDueBeforePayment, $subtotalPaidBeforePayment, $allowManualPayment),
-            'payment_status' => $paymentStatus,
-            'transaction_reference' => $transactionReference !== '' ? $transactionReference : null,
-            'receipt_number' => $receiptNumber,
-            'cc_emails' => isset($input['cc_emails']) ? trim((string)$input['cc_emails']) : null,
-            'processed_by' => isset($input['processed_by']) ? trim((string)$input['processed_by']) : null,
-            'notes' => isset($input['notes']) ? trim((string)$input['notes']) : null
+        $__paymentClientUuid = idem_normalize_uuid($__incomingClientUuid ?? null);
+        $insertStmt->execute([
+            $paymentRef,
+            $input['booking_type'],
+            (int)$input['booking_id'],
+            $paymentDate,
+            $paymentAmount,
+            $vatRate,
+            $vatAmount,
+            $totalAmount,
+            $input['payment_method'],
+            $input['payment_status'],
+            isset($input['transaction_reference']) ? trim($input['transaction_reference']) : null,
+            $receiptNumber,
+            isset($input['processed_by']) ? trim($input['processed_by']) : null,
+            isset($input['notes']) ? trim($input['notes']) : null,
+            $__paymentClientUuid
         ]);
-        
+
+        $paymentId = $pdo->lastInsertId();
+
         // Update booking payment totals
         if ($input['booking_type'] === 'room') {
-            updateRoomBookingPayments($pdo, $bookingId);
+            updateRoomBookingPayments($pdo, (int)$input['booking_id']);
         } else {
-            updateConferenceEnquiryPayments($pdo, $bookingId);
+            updateConferenceEnquiryPayments($pdo, (int)$input['booking_id']);
         }
-        
+
         $pdo->commit();
-        
+
+        // Send receipt email automatically for completed/paid payments
+        if (in_array($input['payment_status'], ['completed', 'paid'], true)) {
+            try {
+                require_once __DIR__ . '/../config/receipts.php';
+                receipt_auto_send($pdo, (int)$paymentId, null);
+            } catch (Throwable $receiptEx) {
+                error_log('Auto receipt email failed for payment ' . $paymentId . ': ' . $receiptEx->getMessage());
+            }
+        }
+
         // Fetch created payment
         $fetchStmt = $pdo->prepare("SELECT * FROM payments WHERE id = ?");
         $fetchStmt->execute([$paymentId]);
         $payment = $fetchStmt->fetch(PDO::FETCH_ASSOC);
-        
+
         $response = [
             'payment' => [
                 'id' => (int)$payment['id'],
@@ -939,14 +623,12 @@ function createPayment($pdo) {
                     'total' => (float)$payment['total_amount']
                 ],
                 'payment_method' => $payment['payment_method'],
-                'status' => getRowPaymentStatus($payment),
-                'transaction_reference' => getRowTransactionReference($payment),
+                'status' => $payment['payment_status'],
                 'created_at' => $payment['created_at']
             ]
         ];
-        
+
         ApiResponse::success($response, 'Payment created successfully', 201);
-        
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;
@@ -956,141 +638,99 @@ function createPayment($pdo) {
 /**
  * Update an existing payment
  */
-function updatePayment($pdo, $paymentId) {
+function updatePayment(PDO $pdo, int $paymentId)
+{
     // Check if payment exists
     $checkStmt = $pdo->prepare("SELECT * FROM payments WHERE id = ? AND deleted_at IS NULL");
     $checkStmt->execute([$paymentId]);
     $existingPayment = $checkStmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$existingPayment) {
         ApiResponse::error('Payment not found. It may have been deleted or does not exist.', 404);
     }
-    
+
     // Get request body
     $rawInput = file_get_contents('php://input');
     $input = json_decode($rawInput, true);
-    
+
     if (!$input) {
         ApiResponse::error('Invalid JSON request body', 400);
     }
-    
+
+    // Build update data
+    $updateFields = [];
+    $params = [];
+
     $allowedFields = [
-        'payment_date', 'payment_amount', 'vat_rate', 'payment_method',
-        'payment_status', 'transaction_reference', 'notes', 'processed_by', 'allow_manual_payment'
+        'payment_date',
+        'payment_amount',
+        'payment_method',
+        'payment_status',
+        'transaction_reference',
+        'notes',
+        'processed_by'
     ];
 
-    $hasAnySupportedField = false;
     foreach ($allowedFields as $field) {
-        if (array_key_exists($field, $input)) {
-            $hasAnySupportedField = true;
-            break;
+        if (isset($input[$field])) {
+            $updateFields[] = "$field = ?";
+            $params[] = $input[$field];
         }
     }
 
-    if (!$hasAnySupportedField) {
+    if (empty($updateFields)) {
         ApiResponse::error('No valid fields to update', 400);
     }
 
-    $paymentAmount = array_key_exists('payment_amount', $input)
-        ? round((float)$input['payment_amount'], 2)
-        : round((float)$existingPayment['payment_amount'], 2);
-    if ($paymentAmount <= 0) {
-        ApiResponse::validationError(['payment_amount' => 'Payment amount must be greater than zero']);
+    // Recalculate VAT if amount changed
+    if (isset($input['payment_amount'])) {
+        $newAmount = (float)$input['payment_amount'];
+        $vatRate = isset($input['vat_rate']) ? (float)$input['vat_rate'] : (float)$existingPayment['vat_rate'];
+        $vatAmount = $vatRate > 0 ? round($newAmount * ($vatRate / (100 + $vatRate)), 2) : 0.0;
+        $totalAmount = $newAmount; // gross = what was entered
+
+        $updateFields[] = "vat_rate = ?";
+        $params[] = $vatRate;
+        $updateFields[] = "vat_amount = ?";
+        $params[] = $vatAmount;
+        $updateFields[] = "total_amount = ?";
+        $params[] = $totalAmount;
     }
 
-    $existingStatus = getRowPaymentStatus($existingPayment);
-    $paymentStatus = array_key_exists('payment_status', $input)
-        ? normalizeApiPaymentStatus($input['payment_status'])
-        : $existingStatus;
-    $allowManualPayment = !empty($input['allow_manual_payment']);
+    $needsReceiptNumber = isset($input['payment_status'])
+        && in_array($input['payment_status'], ['completed', 'paid'], true)
+        && !in_array((string)$existingPayment['payment_status'], ['completed', 'paid'], true)
+        && !$existingPayment['receipt_number'];
 
-    $bookingDetails = fetchBookingDetailsForPayment($pdo, $existingPayment['booking_type'], (int)$existingPayment['booking_id']);
-    if (!$bookingDetails) {
-        ApiResponse::error('Associated booking could not be found for this payment.', 404);
-    }
-
-    $subtotalDueBeforePayment = (float)($bookingDetails['subtotal_due'] ?? 0);
-    $subtotalPaidBeforePayment = (float)($bookingDetails['subtotal_paid'] ?? 0);
-
-    if ($existingStatus === 'completed') {
-        $subtotalDueBeforePayment += (float)$existingPayment['payment_amount'];
-        $subtotalPaidBeforePayment = max(0, $subtotalPaidBeforePayment - (float)$existingPayment['payment_amount']);
-    }
-
-    if ($paymentStatus === 'completed' && !$allowManualPayment && $paymentAmount > ($subtotalDueBeforePayment + 0.01)) {
-        ApiResponse::error('This payment exceeds the booking subtotal due. Set allow_manual_payment=true for intentional credits or adjustments.', 400);
-    }
-
-    $vatEnabled = getSetting('vat_enabled') === '1';
-    $defaultVatRate = $vatEnabled ? (float)getSetting('vat_rate') : 0;
-    $existingVatRate = isset($existingPayment['vat_rate']) ? (float)$existingPayment['vat_rate'] : $defaultVatRate;
-    $paymentVatRate = array_key_exists('vat_rate', $input)
-        ? (float)$input['vat_rate']
-        : (isset($bookingDetails['vat_rate']) ? (float)$bookingDetails['vat_rate'] : $existingVatRate);
-    $paymentVatAmount = round($paymentAmount * ($paymentVatRate / 100), 2);
-    $totalAmount = round($paymentAmount + $paymentVatAmount, 2);
-
-    $receiptNumber = $existingPayment['receipt_number'] ?? null;
-    if ($paymentStatus === 'completed' && $existingStatus !== 'completed' && empty($receiptNumber)) {
-        $receiptNumber = generateUniqueReceiptNumber($pdo);
-    }
-
-    $bookingReference = $existingPayment['booking_type'] === 'room'
-        ? ($bookingDetails['booking_reference'] ?? null)
-        : ($bookingDetails['enquiry_reference'] ?? null);
-
-    $transactionReference = getRowTransactionReference($existingPayment);
-    if (array_key_exists('transaction_reference', $input)) {
-        $transactionReference = trim((string)$input['transaction_reference']);
-    }
-
-    if ($existingPayment['booking_type'] === 'room') {
-        ensureBookingAdditionalChargesTable();
-    }
-    
     // Start transaction
     $pdo->beginTransaction();
-    
+
     try {
-        $paymentColumns = getPaymentTableColumns($pdo);
-        updatePaymentRecord($pdo, $paymentColumns, $paymentId, [
-            'payment_reference' => $existingPayment['payment_reference'],
-            'booking_type' => $existingPayment['booking_type'],
-            'booking_id' => (int)$existingPayment['booking_id'],
-            'booking_reference' => $bookingReference,
-            'payment_date' => array_key_exists('payment_date', $input) ? $input['payment_date'] : $existingPayment['payment_date'],
-            'payment_amount' => $paymentAmount,
-            'vat_rate' => $paymentVatRate,
-            'vat_amount' => $paymentVatAmount,
-            'total_amount' => $totalAmount,
-            'payment_method' => array_key_exists('payment_method', $input) ? $input['payment_method'] : $existingPayment['payment_method'],
-            'payment_type' => inferApiPaymentType($paymentStatus, $paymentAmount, $subtotalDueBeforePayment, $subtotalPaidBeforePayment, $allowManualPayment),
-            'payment_status' => $paymentStatus,
-            'transaction_reference' => $transactionReference !== '' ? $transactionReference : null,
-            'receipt_number' => $receiptNumber,
-            'cc_emails' => $existingPayment['cc_emails'] ?? null,
-            'processed_by' => array_key_exists('processed_by', $input)
-                ? trim((string)$input['processed_by'])
-                : ($existingPayment['processed_by'] ?? null),
-            'notes' => array_key_exists('notes', $input)
-                ? trim((string)$input['notes'])
-                : ($existingPayment['notes'] ?? null)
-        ]);
-        
+        if ($needsReceiptNumber) {
+            $updateFields[] = "receipt_number = ?";
+            $params[] = finance_next_receipt_number($pdo, isset($input['payment_date']) ? (string)$input['payment_date'] : date('Y-m-d'));
+        }
+
+        $params[] = $paymentId;
+
+        $sql = "UPDATE payments SET " . implode(', ', $updateFields) . ", updated_at = NOW() WHERE id = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+
         // Update booking payment totals
         if ($existingPayment['booking_type'] === 'room') {
             updateRoomBookingPayments($pdo, $existingPayment['booking_id']);
-        } else {
+        } elseif ($existingPayment['booking_type'] === 'conference') {
             updateConferenceEnquiryPayments($pdo, $existingPayment['booking_id']);
         }
-        
+
         $pdo->commit();
-        
+
         // Fetch updated payment
         $fetchStmt = $pdo->prepare("SELECT * FROM payments WHERE id = ?");
         $fetchStmt->execute([$paymentId]);
         $payment = $fetchStmt->fetch(PDO::FETCH_ASSOC);
-        
+
         $response = [
             'payment' => [
                 'id' => (int)$payment['id'],
@@ -1103,14 +743,12 @@ function updatePayment($pdo, $paymentId) {
                     'total' => (float)$payment['total_amount']
                 ],
                 'payment_method' => $payment['payment_method'],
-                'status' => getRowPaymentStatus($payment),
-                'transaction_reference' => getRowTransactionReference($payment),
+                'status' => $payment['payment_status'],
                 'updated_at' => $payment['updated_at']
             ]
         ];
-        
+
         ApiResponse::success($response, 'Payment updated successfully');
-        
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;
@@ -1120,39 +758,35 @@ function updatePayment($pdo, $paymentId) {
 /**
  * Soft delete a payment
  */
-function deletePayment($pdo, $paymentId) {
+function deletePayment(PDO $pdo, int $paymentId)
+{
     // Check if payment exists
     $checkStmt = $pdo->prepare("SELECT * FROM payments WHERE id = ? AND deleted_at IS NULL");
     $checkStmt->execute([$paymentId]);
     $payment = $checkStmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$payment) {
         ApiResponse::error('Payment not found. It may have been deleted or does not exist.', 404);
     }
 
-    if ($payment['booking_type'] === 'room') {
-        ensureBookingAdditionalChargesTable();
-    }
-    
     // Start transaction
     $pdo->beginTransaction();
-    
+
     try {
         // Soft delete
         $stmt = $pdo->prepare("UPDATE payments SET deleted_at = NOW() WHERE id = ?");
         $stmt->execute([$paymentId]);
-        
+
         // Update booking payment totals
         if ($payment['booking_type'] === 'room') {
             updateRoomBookingPayments($pdo, $payment['booking_id']);
-        } else {
+        } elseif ($payment['booking_type'] === 'conference') {
             updateConferenceEnquiryPayments($pdo, $payment['booking_id']);
         }
-        
+
         $pdo->commit();
-        
+
         ApiResponse::success(['id' => $paymentId], 'Payment deleted successfully');
-        
     } catch (Exception $e) {
         $pdo->rollBack();
         throw $e;
@@ -1162,73 +796,76 @@ function deletePayment($pdo, $paymentId) {
 /**
  * Update room booking payment totals
  */
-function updateRoomBookingPayments($pdo, $bookingId) {
-    recalculateRoomBookingFinancials((int)$bookingId);
-}
-
-/**
- * Update conference enquiry payment totals
- */
-function updateConferenceEnquiryPayments($pdo, $enquiryId) {
-    // Get enquiry total
-    $enquiryStmt = $pdo->prepare("SELECT total_amount, deposit_required FROM conference_inquiries WHERE id = ?");
-    $enquiryStmt->execute([$enquiryId]);
-    $enquiry = $enquiryStmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$enquiry) {
+function updateRoomBookingPayments(PDO $pdo, int $bookingId)
+{
+    if (function_exists('recalculateBookingFinancials')) {
+        recalculateBookingFinancials($bookingId);
         return;
     }
-    
-    $subtotalAmount = (float)$enquiry['total_amount'];
-    $depositRequired = (float)$enquiry['deposit_required'];
-    
+
+    // Get booking total
+    $bookingStmt = $pdo->prepare("SELECT total_amount FROM bookings WHERE id = ?");
+    $bookingStmt->execute([$bookingId]);
+    $booking = $bookingStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$booking) {
+        return;
+    }
+
+    $totalAmount = (float)$booking['total_amount'];
+
     // Calculate paid amounts
     $paidStmt = $pdo->prepare("
-        SELECT 
-            SUM(CASE WHEN COALESCE(NULLIF(payment_status, ''), status, 'pending') = 'completed' THEN COALESCE(payment_amount, 0) ELSE 0 END) as subtotal_paid,
-            SUM(CASE WHEN COALESCE(NULLIF(payment_status, ''), status, 'pending') = 'completed' THEN COALESCE(total_amount, 0) ELSE 0 END) as total_paid
+        SELECT
+            SUM(CASE
+                WHEN payment_status IN ('completed', 'paid') AND COALESCE(payment_type, '') != 'refund' THEN total_amount
+                WHEN COALESCE(payment_type, '') = 'refund' AND refund_status IN ('completed','processing') THEN -COALESCE(refund_amount, total_amount)
+                ELSE 0
+            END) as paid,
+            SUM(CASE
+                WHEN payment_status IN ('completed', 'paid') AND COALESCE(payment_type, '') != 'refund' THEN vat_amount
+                WHEN COALESCE(payment_type, '') = 'refund' AND refund_status IN ('completed','processing') THEN -vat_amount
+                ELSE 0
+            END) as vat_paid
         FROM payments
-        WHERE booking_type = 'conference' 
-        AND booking_id = ? 
+        WHERE booking_type = 'room'
+        AND booking_id = ?
         AND deleted_at IS NULL
     ");
-    $paidStmt->execute([$enquiryId]);
+    $paidStmt->execute([$bookingId]);
     $paid = $paidStmt->fetch(PDO::FETCH_ASSOC);
-    
-    $subtotalPaid = (float)($paid['subtotal_paid'] ?? 0);
-    $amountPaid = (float)($paid['total_paid'] ?? 0);
-    
-    // Calculate deposit paid
-    $depositPaid = min($subtotalPaid, $depositRequired);
-    
+
+    $amountPaid = (float)($paid['paid'] ?? 0);
+    $vatPaid = (float)($paid['vat_paid'] ?? 0);
+    $amountDue = max(0, $totalAmount - $amountPaid);
+
     // Get last payment date
     $lastPaymentStmt = $pdo->prepare("
         SELECT MAX(payment_date) as last_payment_date
         FROM payments
-        WHERE booking_type = 'conference' 
-        AND booking_id = ? 
-        AND COALESCE(NULLIF(payment_status, ''), status, 'pending') = 'completed'
+        WHERE booking_type = 'room'
+        AND booking_id = ?
+        AND payment_status IN ('completed', 'paid')
+        AND COALESCE(payment_type, '') != 'refund'
         AND deleted_at IS NULL
     ");
-    $lastPaymentStmt->execute([$enquiryId]);
+    $lastPaymentStmt->execute([$bookingId]);
     $lastPayment = $lastPaymentStmt->fetch(PDO::FETCH_ASSOC);
-    
-    // Calculate VAT rate from settings
-    $vatEnabled = getSetting('vat_enabled') === '1';
-    $vatRate = $vatEnabled ? (float)getSetting('vat_rate') : 0;
-    $vatAmount = round($subtotalAmount * ($vatRate / 100), 2);
-    $totalWithVat = round($subtotalAmount + $vatAmount, 2);
-    $amountDue = max(0, round($totalWithVat - $amountPaid, 2));
-    
-    // Update enquiry
+
+    // VAT per installation mode (exclusive on top / inclusive extracted / off).
+    $vatParts = vat_components($totalAmount);
+    $vatRate = $vatParts['rate'];
+    $vatAmount = $vatParts['vat'];
+    $totalWithVat = $vatParts['total'];
+
+    // Update booking
     $updateStmt = $pdo->prepare("
-        UPDATE conference_inquiries 
-        SET amount_paid = ?, 
+        UPDATE bookings
+        SET amount_paid = ?,
             amount_due = ?,
             vat_rate = ?,
             vat_amount = ?,
             total_with_vat = ?,
-            deposit_paid = ?,
             last_payment_date = ?
         WHERE id = ?
     ");
@@ -1238,8 +875,21 @@ function updateConferenceEnquiryPayments($pdo, $enquiryId) {
         $vatRate,
         $vatAmount,
         $totalWithVat,
-        $depositPaid,
         $lastPayment['last_payment_date'],
-        $enquiryId
+        $bookingId
     ]);
+}
+
+/**
+ * Update conference enquiry payment totals
+ */
+function updateConferenceEnquiryPayments(PDO $pdo, int $enquiryId)
+{
+    // Delegated to the single source of truth. The previous implementation here
+    // computed amount_due against the NET total_amount (understating balances
+    // when VAT is exclusive) and re-based total_with_vat to the current rate.
+    // syncConferenceInquiryPaymentSnapshot uses the gross/locked model shared
+    // with rooms/gym/events so every collection path produces identical balances.
+    require_once __DIR__ . '/../admin/includes/finance-account-sync.php';
+    syncConferenceInquiryPaymentSnapshot($pdo, $enquiryId);
 }

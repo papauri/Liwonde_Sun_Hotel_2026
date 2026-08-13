@@ -69,8 +69,61 @@ function getSectionHeader($section_key, $page = 'global', $fallback = []) {
 }
 
 /**
+ * Generate semantic ID for section header based on section key and page
+ *
+ * @param string $section_key Unique section key (e.g., 'home_rooms', 'gym_wellness')
+ * @param string $page Page identifier (e.g., 'index', 'gym', 'restaurant')
+ * @return string Generated ID attribute value
+ */
+function generateSectionHeaderId($section_key, $page) {
+    // Mapping of section keys to semantic IDs
+    $id_mapping = [
+        // Index page
+        'home_rooms' => 'rooms-header',
+        'home_facilities' => 'facilities-header',
+        'home_testimonials' => 'testimonials-header',
+        'hotel_gallery' => 'gallery-header',
+        'hotel_reviews' => 'reviews-header',
+        'upcoming_events' => 'upcoming-events-header',
+        'booking_widget' => 'booking-header',
+        // Events page
+        'events_overview' => 'events-header',
+        // Gym page
+        'gym_wellness' => 'wellness-header',
+        'gym_facilities' => 'gym-facilities-header',
+        'gym_classes' => 'classes-header',
+        'gym_training' => 'training-header',
+        'gym_packages' => 'packages-header',
+        // Restaurant page
+        'restaurant_menu' => 'menu-header',
+        'restaurant_gallery' => 'restaurant-gallery-header',
+        // Conference page
+        'conference_overview' => 'conference-header',
+        // Guest services page
+        'guest_services_main' => 'guest-services-header',
+        // Contact page
+        'contact_main' => 'contact-header',
+    ];
+    
+    // Return mapped ID if exists
+    if (isset($id_mapping[$section_key])) {
+        return $id_mapping[$section_key];
+    }
+    
+    // Fallback: generate ID from section key
+    // Remove page prefix if present
+    $id = preg_replace('/^' . preg_quote($page, '/') . '_/', '', $section_key);
+    // Convert underscores to hyphens
+    $id = str_replace('_', '-', $id);
+    // Append -header suffix
+    $id = $id . '-header';
+    
+    return $id;
+}
+
+/**
  * Render section header HTML
- * 
+ *
  * @param string $section_key Unique section key
  * @param string $page Page identifier
  * @param array $fallback Fallback values
@@ -85,20 +138,23 @@ function renderSectionHeader($section_key, $page = 'global', $fallback = [], $ad
         $classes .= ' ' . $additional_classes;
     }
     
-    echo '<div class="' . htmlspecialchars($classes) . '">';
+    // Generate semantic ID based on section key
+    $id = generateSectionHeaderId($section_key, $page);
+    
+    echo '<div class="' . htmlspecialchars($classes) . '"' . ($id ? ' id="' . htmlspecialchars($id) . '"' : '') . '>';
     
     if (!empty($header['label'])) {
-        echo '<span class="section-label">' . htmlspecialchars($header['label']) . '</span>';
+        echo '<span class="section-header__label">' . htmlspecialchars($header['label']) . '</span>';
     }
     
     if (!empty($header['subtitle'])) {
-        echo '<p class="section-subtitle">' . htmlspecialchars($header['subtitle']) . '</p>';
+        echo '<p class="section-header__subtitle">' . htmlspecialchars($header['subtitle']) . '</p>';
     }
     
-    echo '<h2 class="section-title">' . htmlspecialchars($header['title']) . '</h2>';
+    echo '<h2 class="section-header__title">' . htmlspecialchars($header['title']) . '</h2>';
     
     if (!empty($header['description'])) {
-        echo '<p class="section-description">' . htmlspecialchars($header['description']) . '</p>';
+        echo '<p class="section-header__description">' . htmlspecialchars($header['description']) . '</p>';
     }
     
     echo '</div>';

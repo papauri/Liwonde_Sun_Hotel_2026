@@ -1,24 +1,42 @@
 <?php
 /**
- * Hotel Gallery Section - Reusable Include
- * Displays a carousel of hotel gallery images with navigation controls
+ * Hotel Gallery Section - Editorial Redesign
+ * Implements a Passalacqua-inspired masonry layout
  * 
  * Required Variables:
- * - $gallery_images: Array of gallery image data with keys: image_url, title, description, category
- * - $site_name: Site name for context (optional)
+ * - $gallery_images: Array of gallery image data
+ * - $site_name: Site name for context
  */
+
+// Load section headers helper
+require_once __DIR__ . '/section-headers.php';
 
 // If gallery_images is not available, try to fetch it
 if (!isset($gallery_images) || empty($gallery_images)) {
     try {
         require_once __DIR__ . '/../config/database.php';
+
+        if (function_exists('getManagedMediaItems')) {
+            $managed_gallery = getManagedMediaItems('index_hotel_gallery', ['limit' => 12]);
+            if (!empty($managed_gallery)) {
+                $gallery_images = array_map(function ($item) {
+                    return [
+                        'image_url' => $item['media_url'] ?? null,
+                        'video_path' => ($item['media_type'] ?? '') === 'video' ? ($item['media_url'] ?? null) : null,
+                        'video_type' => ($item['media_type'] ?? '') === 'video' ? ($item['mime_type'] ?? 'url') : null,
+                        'title' => $item['title'] ?? '',
+                        'description' => $item['description'] ?? '',
+                        'category' => 'managed',
+                    ];
+                }, $managed_gallery);
+            }
+        }
         
-        // Check if getCachedGalleryImages function exists
-        if (function_exists('getCachedGalleryImages')) {
+        if ((empty($gallery_images) || !is_array($gallery_images)) && function_exists('getCachedGalleryImages')) {
             $gallery_images = getCachedGalleryImages();
-        } else {
+        } elseif (empty($gallery_images) || !is_array($gallery_images)) {
             // Fallback to direct query
-            $stmt = $pdo->query("
+            $stmt = $pdo->query(" 
                 SELECT image_url, title, description, category, video_path, video_type 
                 FROM hotel_gallery 
                 WHERE is_active = 1 
@@ -45,79 +63,64 @@ if (!function_exists('resolveImageUrl')) {
 }
 ?>
 
-<!-- Hotel Gallery Carousel Section -->
 <?php if (!empty($gallery_images)): ?>
-<section class="section hotel-gallery-section" id="gallery">
-    <div class="container">
-        <?php 
-        // Get section header from database
-        $gallery_description = isset($site_name) 
-            ? 'Immerse yourself in the beauty and luxury of ' . htmlspecialchars($site_name) 
-            : 'Immerse yourself in the beauty and luxury of our hotel';
-        
-        renderSectionHeader('hotel_gallery', 'index', [
-            'label' => 'Visual Journey',
-            'title' => 'Explore Our Hotel',
-            'description' => $gallery_description
-        ]); 
-        ?>
-        
-        <div class="gallery-carousel-wrapper">
-            <div class="gallery-carousel-container">
-                <div class="gallery-carousel-track">
-                    <?php 
-// Include video display helper
-require_once __DIR__ . '/video-display.php';
+<section class="editorial-section editorial-gallery-section landing-section" id="gallery" data-lazy-reveal>
+    <div class="editorial-container">
+        <!-- Section Header -->
+        <div class="scroll-reveal">
+            <?php renderSectionHeader('hotel_gallery', 'index', [
+                'label' => 'Visual Journey',
+                'title' => 'Explore Our World',
+                'description' => 'Immerse yourself in the beauty and luxury of our hotel'
+            ], 'editorial-header section-header--editorial'); ?>
+        </div>
 
-foreach ($gallery_images as $index => $image): ?>
-                    <div class="gallery-carousel-item" data-index="<?php echo $index; ?>">
-                        <div class="gallery-item-inner">
-                            <?php if (!empty($image['video_path'])): ?>
-                                <!-- Display video if available -->
-                                <div class="gallery-video">
-                                    <?php echo renderVideoEmbed($image['video_path'], $image['video_type'], [
-                                        'autoplay' => true,
-                                        'muted' => true,
-                                        'controls' => false,
-                                        'loop' => true,
-                                        'class' => 'gallery-video-embed',
-                                        'style' => 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;'
-                                    ]); ?>
-                                </div>
-                            <?php else: ?>
-                                <!-- Display image if no video -->
-                                <img src="<?php echo htmlspecialchars(resolveImageUrl($image['image_url'])); ?>" 
-                                     alt="<?php echo htmlspecialchars($image['title']); ?>" 
-                                     loading="lazy">
-                            <?php endif; ?>
-                            <div class="gallery-item-overlay">
-                                <div class="gallery-item-content">
-                                    <h4><?php echo htmlspecialchars($image['title']); ?></h4>
-                                    <?php if (!empty($image['description'])): ?>
-                                    <p><?php echo htmlspecialchars($image['description']); ?></p>
-                                    <?php endif; ?>
-                                    <?php if (!empty($image['category'])): ?>
-                                    <span class="gallery-category-badge">
-                                        <i class="fas fa-tag"></i> <?php echo htmlspecialchars($image['category']); ?>
-                                    </span>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
+        <!-- Masonry Grid -->
+        <div class="editorial-gallery">
+            <?php require_once __DIR__ . '/video-display.php'; ?>
+            
+            <?php
+            // Display all gallery images - grid now expands dynamically
+            $display_images = $gallery_images;
+            
+            foreach ($display_images as $index => $image):
+            ?>
+            <div class="editorial-gallery-item scroll-reveal">
+                <?php if (!empty($image['video_path'])): ?>
+                    <div class="editorial-gallery-item__video">
+                        <?php echo renderVideoEmbed($image['video_path'], $image['video_type'], [
+                            'autoplay' => true,
+                            'muted' => true,
+                            'controls' => false,
+                            'loop' => true,
+                            'lazy' => true,
+                            'preload' => 'metadata',
+                            'class' => 'gallery-video-embed',
+                            'style' => 'width: 100%; height: 100%; object-fit: cover;'
+                        ]); ?>
                     </div>
-                    <?php endforeach; ?>
+                <?php else: ?>
+                    <img src="<?php echo htmlspecialchars(resolveImageUrl($image['image_url'])); ?>"
+                         class="editorial-gallery-item__img"
+                         alt="<?php echo htmlspecialchars($image['title']); ?>"
+                         width="1200"
+                         height="750"
+                         loading="lazy"
+                          decoding="async">
+                <?php endif; ?>
+                
+                <div class="editorial-gallery-item__overlay">
+                    <div class="editorial-gallery-item__content">
+                        <?php if (!empty($image['category'])): ?>
+                        <span class="editorial-gallery-item__category">
+                            <?php echo htmlspecialchars($image['category']); ?>
+                        </span>
+                        <?php endif; ?>
+                        <h4 class="editorial-gallery-item__caption"><?php echo htmlspecialchars($image['title']); ?></h4>
+                    </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="gallery-controls-bar">
-            <div class="gallery-dots" role="tablist" aria-label="Gallery slide indicators">
-                <?php foreach ($gallery_images as $index => $image): ?>
-                <button class="gallery-dot <?php echo $index === 0 ? 'active' : ''; ?>" 
-                        data-index="<?php echo $index; ?>" 
-                        aria-label="Go to image <?php echo $index + 1; ?>"></button>
-                <?php endforeach; ?>
-            </div>
+            <?php endforeach; ?>
         </div>
     </div>
 </section>

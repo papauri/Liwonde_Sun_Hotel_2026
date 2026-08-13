@@ -138,8 +138,12 @@ function renderVideoEmbed($videoPath, $videoType = null, $options = []) {
         'muted' => true,
         'controls' => true,
         'loop' => true,
+        'lazy' => true,
+        'preload' => 'metadata',
+        'playsinline' => true,
         'class' => 'video-embed',
-        'style' => 'width: 100%; height: auto; border-radius: 8px;'
+        'style' => 'width: 100%; height: auto; border-radius: 8px;',
+        'quality' => 'hd1080' // Default to HD quality
     ];
     
     $opts = array_merge($defaults, $options);
@@ -152,44 +156,70 @@ function renderVideoEmbed($videoPath, $videoType = null, $options = []) {
         $muted = $opts['muted'] ? '1' : '0';
         $controls = $opts['controls'] ? '1' : '0';
         $loop = $opts['loop'] ? '1' : '0';
+        $quality = $opts['quality'];
+        $loading = $opts['lazy'] ? 'lazy' : 'eager';
         
         ob_start();
         ?>
-        <div class="<?php echo htmlspecialchars($opts['class']); ?> video-wrapper" style="<?php echo htmlspecialchars($opts['style']); ?> position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+        <div class="<?php echo htmlspecialchars($opts['class']); ?> video-wrapper">
         <?php
         switch ($platformInfo['platform']) {
             case 'youtube':
+                // YouTube HD quality parameters
+                $qualityParam = '';
+                if ($quality === 'hd1080') {
+                    $qualityParam = '&vq=hd1080';
+                } elseif ($quality === 'hd720') {
+                    $qualityParam = '&vq=hd720';
+                }
                 ?>
                 <iframe
-                    src="https://www.youtube.com/embed/<?php echo htmlspecialchars($platformInfo['id']); ?>?autoplay=<?php echo $autoplay; ?>&mute=<?php echo $muted; ?>&controls=<?php echo $controls; ?>&loop=<?php echo $loop; ?>&rel=0"
+                    src="https://www.youtube.com/embed/<?php echo htmlspecialchars($platformInfo['id']); ?>?autoplay=<?php echo $autoplay; ?>&mute=<?php echo $muted; ?>&controls=<?php echo $controls; ?>&loop=<?php echo $loop; ?>&rel=0<?php echo $qualityParam; ?>"
                     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowfullscreen
-                    loading="lazy">
+                    loading="<?php echo $loading; ?>"
+                    title="YouTube video player">
                 </iframe>
                 <?php
                 break;
                 
             case 'vimeo':
+                // Vimeo HD quality parameters
+                $qualityParam = '';
+                if ($quality === 'hd1080') {
+                    $qualityParam = '&quality=1080p';
+                } elseif ($quality === 'hd720') {
+                    $qualityParam = '&quality=720p';
+                }
                 ?>
                 <iframe
-                    src="https://player.vimeo.com/video/<?php echo htmlspecialchars($platformInfo['id']); ?>?autoplay=<?php echo $autoplay; ?>&muted=<?php echo $muted; ?>&controls=<?php echo $controls; ?>&loop=<?php echo $loop; ?>"
+                    src="https://player.vimeo.com/video/<?php echo htmlspecialchars($platformInfo['id']); ?>?autoplay=<?php echo $autoplay; ?>&muted=<?php echo $muted; ?>&controls=<?php echo $controls; ?>&loop=<?php echo $loop; ?>&background=1<?php echo $qualityParam; ?>"
                     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
                     allow="autoplay; fullscreen; picture-in-picture"
                     allowfullscreen
-                    loading="lazy">
+                    loading="<?php echo $loading; ?>"
+                    title="Vimeo video player">
                 </iframe>
                 <?php
                 break;
                 
             case 'dailymotion':
+                // Dailymotion quality parameters
+                $qualityParam = '';
+                if ($quality === 'hd1080') {
+                    $qualityParam = '&quality=1080';
+                } elseif ($quality === 'hd720') {
+                    $qualityParam = '&quality=720';
+                }
                 ?>
                 <iframe
-                    src="https://www.dailymotion.com/embed/video/<?php echo htmlspecialchars($platformInfo['id']); ?>?autoplay=<?php echo $autoplay; ?>&mute=<?php echo $muted; ?>&controls=<?php echo $controls; ?>&loop=<?php echo $loop; ?>"
+                    src="https://www.dailymotion.com/embed/video/<?php echo htmlspecialchars($platformInfo['id']); ?>?autoplay=<?php echo $autoplay; ?>&mute=<?php echo $muted; ?>&controls=<?php echo $controls; ?>&loop=<?php echo $loop; ?><?php echo $qualityParam; ?>"
                     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
                     allow="autoplay; fullscreen; picture-in-picture"
                     allowfullscreen
-                    loading="lazy">
+                    loading="<?php echo $loading; ?>"
+                    title="Dailymotion video player">
                 </iframe>
                 <?php
                 break;
@@ -216,13 +246,13 @@ function renderVideoEmbed($videoPath, $videoType = null, $options = []) {
         if (!$isVideoFile && !isVideoPlatformUrl($videoPath)) {
             ob_start();
             ?>
-            <div class="<?php echo htmlspecialchars($opts['class']); ?> video-wrapper" style="<?php echo htmlspecialchars($opts['style']); ?> position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+            <div class="<?php echo htmlspecialchars($opts['class']); ?> video-wrapper">
                 <iframe
                     src="<?php echo htmlspecialchars($videoPath); ?>"
                     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
                     allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                     allowfullscreen
-                    loading="lazy"
+                    loading="<?php echo $opts['lazy'] ? 'lazy' : 'eager'; ?>"
                     title="Video embed">
                 </iframe>
             </div>
@@ -284,6 +314,11 @@ function renderVideoEmbed($videoPath, $videoType = null, $options = []) {
     $muted = $opts['muted'] ? 'muted' : '';
     $controls = $opts['controls'] ? 'controls' : '';
     $loop = $opts['loop'] ? 'loop' : '';
+    $playsinline = $opts['playsinline'] ? 'playsinline' : '';
+
+    $preload = in_array($opts['preload'], ['none', 'metadata', 'auto'], true)
+        ? $opts['preload']
+        : 'metadata';
     
     ob_start();
     ?>
@@ -292,9 +327,10 @@ function renderVideoEmbed($videoPath, $videoType = null, $options = []) {
         <?php echo $muted; ?>
         <?php echo $controls; ?>
         <?php echo $loop; ?>
+        <?php echo $playsinline; ?>
         class="<?php echo htmlspecialchars($opts['class']); ?>"
         style="<?php echo htmlspecialchars($opts['style']); ?>"
-        preload="metadata">
+        preload="<?php echo htmlspecialchars($preload); ?>">
         <source src="<?php echo htmlspecialchars($videoUrl); ?>" type="<?php echo htmlspecialchars($videoType); ?>">
         Your browser does not support video playback.
     </video>

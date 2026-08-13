@@ -22,13 +22,13 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         .header {
-            background: linear-gradient(135deg, #D4AF37 0%, #c19b2e 100%);
+            background: linear-gradient(135deg, #8B7355 0%, #6B5740 100%);
             padding: 30px 40px;
             text-align: center;
         }
         .header h1 {
             margin: 0;
-            color: #0A1929;
+            color: #1A1A1A;
             font-size: 24px;
         }
         .alert-banner {
@@ -43,11 +43,11 @@
             padding: 40px;
         }
         h2 {
-            color: #0A1929;
+            color: #1A1A1A;
             font-size: 20px;
             margin: 30px 0 15px 0;
             padding-bottom: 10px;
-            border-bottom: 2px solid #D4AF37;
+            border-bottom: 2px solid #8B7355;
         }
         .booking-info {
             background-color: #f8f9fa;
@@ -58,7 +58,7 @@
         .booking-reference {
             font-size: 24px;
             font-weight: bold;
-            color: #D4AF37;
+            color: #8B7355;
             text-align: center;
             margin: 0 0 15px 0;
         }
@@ -80,7 +80,7 @@
             margin-bottom: 5px;
         }
         .info-value {
-            color: #0A1929;
+            color: #1A1A1A;
             font-weight: 600;
         }
         .action-buttons {
@@ -97,13 +97,13 @@
             transition: all 0.3s ease;
         }
         .btn-primary {
-            background: linear-gradient(135deg, #D4AF37 0%, #c19b2e 100%);
-            color: #0A1929;
+            background: linear-gradient(135deg, #8B7355 0%, #6B5740 100%);
+            color: #1A1A1A;
         }
         .btn-primary:hover {
             opacity: 0.9;
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(212, 175, 55, 0.3);
+            box-shadow: 0 4px 8px rgba(139, 115, 85, 0.3);
         }
         .btn-secondary {
             background: #6c757d;
@@ -113,7 +113,7 @@
             background: #5a6268;
         }
         .footer {
-            background-color: #0A1929;
+            background-color: #1A1A1A;
             color: #fff;
             padding: 20px;
             text-align: center;
@@ -173,7 +173,7 @@
                     </div>
                     <div class="info-item" style="grid-column: 1 / -1;">
                         <div class="info-label">Total Amount</div>
-                        <div class="info-value" style="font-size: 20px; color: #D4AF37;"><?php echo $total_amount; ?></div>
+                        <div class="info-value" style="font-size: 20px; color: #8B7355;"><?php echo $total_amount; ?></div>
                     </div>
                 </div>
             </div>

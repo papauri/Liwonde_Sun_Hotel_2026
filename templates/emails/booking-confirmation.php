@@ -22,41 +22,41 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         .header {
-            background: linear-gradient(135deg, #0A1929 0%, #1a3a52 100%);
+            background: linear-gradient(135deg, #1A1A1A 0%, #2A2A2A 100%);
             padding: 40px 40px;
             text-align: center;
         }
         .logo {
             font-size: 32px;
             font-weight: bold;
-            color: #D4AF37;
+            color: #8B7355;
             margin: 0;
-            font-family: 'Playfair Display', Georgia, serif;
+            font-family: 'Cormorant Garamond', Georgia, serif;
         }
         .content {
             padding: 40px;
         }
         h1 {
-            color: #0A1929;
+            color: #1A1A1A;
             margin: 0 0 10px 0;
             font-size: 28px;
         }
         h2 {
-            color: #D4AF37;
+            color: #8B7355;
             font-size: 20px;
             margin: 30px 0 15px 0;
             padding-bottom: 10px;
-            border-bottom: 2px solid #D4AF37;
+            border-bottom: 2px solid #8B7355;
         }
         .booking-reference {
             background-color: #f8f9fa;
             padding: 15px;
-            border-left: 4px solid #D4AF37;
+            border-left: 4px solid #8B7355;
             margin: 20px 0;
             font-size: 16px;
         }
         .booking-reference strong {
-            color: #0A1929;
+            color: #1A1A1A;
             font-size: 18px;
         }
         .details-grid {
@@ -76,7 +76,7 @@
             font-weight: 600;
         }
         .detail-value {
-            color: #0A1929;
+            color: #1A1A1A;
             font-weight: 600;
         }
         .special-requests {
@@ -110,30 +110,30 @@
         }
         .contact-box h3 {
             margin: 0 0 15px 0;
-            color: #0A1929;
+            color: #1A1A1A;
         }
         .contact-item {
             margin: 10px 0;
             color: #666;
         }
         .contact-item strong {
-            color: #0A1929;
+            color: #1A1A1A;
         }
         .footer {
-            background-color: #0A1929;
+            background-color: #1A1A1A;
             color: #fff;
             padding: 20px;
             text-align: center;
-            font-size: 12px;
+                font-family: 'Cormorant Garamond', Georgia, serif;
         }
         .footer a {
-            color: #D4AF37;
+            color: #8B7355;
             text-decoration: none;
         }
         .cta-button {
             display: inline-block;
-            background: linear-gradient(135deg, #D4AF37 0%, #c19b2e 100%);
-            color: #0A1929;
+            background: linear-gradient(135deg, #8B7355 0%, #6B5740 100%);
+            color: #1A1A1A;
             padding: 12px 30px;
             text-decoration: none;
             border-radius: 6px;
@@ -193,7 +193,7 @@
                 </div>
                 <div class="detail-row" style="border-bottom: none;">
                     <span class="detail-label">Total Amount:</span>
-                    <span class="detail-value" style="color: #D4AF37; font-size: 20px;"><?php echo $total_amount; ?></span>
+                    <span class="detail-value" style="color: #8B7355; font-size: 20px;"><?php echo $total_amount; ?></span>
                 </div>
             </div>
             
@@ -213,10 +213,10 @@
             <div class="contact-box">
                 <h3>📞 Need Assistance?</h3>
                 <div class="contact-item">
-                    <strong>Phone:</strong> <a href="tel:<?php echo $phone_main; ?>" style="color: #0A1929; text-decoration: none;"><?php echo $phone_main; ?></a>
+                    <strong>Phone:</strong> <a href="tel:<?php echo $phone_main; ?>" style="color: #1A1A1A; text-decoration: none;"><?php echo $phone_main; ?></a>
                 </div>
                 <div class="contact-item">
-                    <strong>Email:</strong> <a href="mailto:<?php echo $email_reservations; ?>" style="color: #0A1929; text-decoration: none;"><?php echo $email_reservations; ?></a>
+                    <strong>Email:</strong> <a href="mailto:<?php echo $email_reservations; ?>" style="color: #1A1A1A; text-decoration: none;"><?php echo $email_reservations; ?></a>
                 </div>
                 <?php if ($whatsapp_number): ?>
                 <div class="contact-item">

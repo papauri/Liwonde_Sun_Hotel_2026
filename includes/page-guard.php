@@ -14,13 +14,10 @@
 
 if (!isset($pdo)) return; // No DB connection — skip guard
 
-require_once __DIR__ . '/campaign-attribution.php';
-captureCampaignAttribution($pdo);
-
 $_pg_file = basename($_SERVER['PHP_SELF']);
 
-// Never block the home page or booking confirmation
-$_pg_skip = ['index.php', 'booking-confirmation.php', 'review-confirmation.php', 'submit-review.php', 'test-base-url.php'];
+// Never block the home page, booking confirmation, or core contact pages
+$_pg_skip = ['index.php', 'booking-confirmation.php', 'review-confirmation.php', 'submit-review.php', 'test-base-url.php', 'contact-us.php'];
 if (in_array($_pg_file, $_pg_skip, true)) return;
 
 try {
@@ -33,7 +30,9 @@ try {
 
     // If explicitly disabled, redirect to home
     if (!(int)$_pg_row['is_enabled']) {
-        if (function_exists('siteUrl')) {
+        if (defined('BASE_URL')) {
+            header('Location: ' . BASE_URL);
+        } elseif (function_exists('siteUrl')) {
             header('Location: ' . siteUrl('/'));
         } else {
             header('Location: /');

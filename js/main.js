@@ -1,103 +1,80 @@
 /**
  * Hotel Website - Main JavaScript
  * Premium Interactions & Animations
+ * 
+ * NOTE: Page transitions, scroll animations, smooth scrolling, header effects,
+ * scroll-to-top, and intersection observer animations are now handled by
+ * js/page-transitions.js. This file contains only non-transition site utilities.
  */
 
-// Page Loader — hide quickly once everything is ready
-window.addEventListener('load', function() {
-    const loader = document.getElementById('page-loader');
-    if (loader) {
-        // Brief delay for paint, then reveal content
-        setTimeout(() => {
-            loader.classList.add('hidden');
-        }, 200);
-    }
-});
-
-// Also hide the loader when the page is shown after navigating back
-window.addEventListener('pageshow', function(event) {
-    // If the page was restored from the bfcache (back-forward cache), hide the loader
-    if (event.persisted) {
-        const loader = document.getElementById('page-loader');
-        if (loader) {
-            loader.classList.add('hidden');
-        }
-    }
-});
-
-// Show loader on page navigation (only for actual page changes, not hash links)
-document.addEventListener('click', function(e) {
-    const link = e.target.closest('a');
-    if (link && link.href && !link.target && link.href.startsWith(window.location.origin)) {
-        // Check if this is a hash link to the same page
-        const url = new URL(link.href);
-        const currentUrl = new URL(window.location.href);
-
-        // If it's the same page with just a hash change, don't show loader
-        if (url.pathname === currentUrl.pathname && url.hash) {
-            return; // Don't show loader for same-page hash navigation
-        }
-
-        // Don't show loader if the link is prevented by other handlers (like smooth scroll)
-        if (e.defaultPrevented) {
-            return;
-        }
-
-        // Only show loader for actual page navigation (different path)
-        if (url.pathname !== currentUrl.pathname) {
-            const loader = document.getElementById('page-loader');
-            if (loader) {
-                loader.classList.remove('hidden');
-            }
-        }
-    }
-});
+// NOTE: Navigation is now handled by js/navigation-unified.js
+// This prevents conflicts between multiple navigation systems
+// The unified system handles both SPA and traditional navigation with proper loader visibility
 
 document.addEventListener('DOMContentLoaded', function() {
-        // Room Featured Image AJAX Upload
-        const imageUploadForm = document.getElementById('imageUploadForm');
-        const currentImage = document.getElementById('currentImage');
-        const currentImageContainer = document.getElementById('currentImageContainer');
-        if (imageUploadForm) {
-            imageUploadForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                const formData = new FormData(imageUploadForm);
-                fetch('room-management.php', {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                })
-                .then(async res => {
-                    let text = await res.text();
-                    try {
-                        let data = JSON.parse(text);
-                        if (data.success && data.image_url) {
-                            if (currentImage) {
-                                currentImage.src = '../' + data.image_url;
-                                currentImageContainer.style.display = 'block';
-                            }
-                            alert('Image uploaded successfully!');
+    // Room Featured Image AJAX Upload
+    const imageUploadForm = document.getElementById('imageUploadForm');
+    const currentImage = document.getElementById('currentImage');
+    const currentImageContainer = document.getElementById('currentImageContainer');
+    if (imageUploadForm) {
+        imageUploadForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(imageUploadForm);
+            fetch('room-management.php', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(async res => {
+                let text = await res.text();
+                try {
+                    let data = JSON.parse(text);
+                    if (data.success && data.image_url) {
+                        if (currentImage) {
+                            currentImage.src = '../' + data.image_url;
+                            currentImageContainer.style.display = 'block';
+                        }
+                        // Success: no noisy alerts in production
+                    } else {
+                        if (window.Modal && typeof Modal.showMessage === 'function') {
+                            Modal.showMessage({
+                                title: 'Upload failed',
+                                message: data.message ? `<p>${data.message}</p>` : '<p>There was a problem uploading the image. Please try again.</p>'
+                            });
                         } else {
                             alert(data.message || 'Upload failed.');
                         }
-                    } catch (err) {
-                        console.error('Invalid JSON response:', text);
+                    }
+                } catch (err) {
+                    if (window.Modal && typeof Modal.showMessage === 'function') {
+                        Modal.showMessage({
+                            title: 'Server error',
+                            message: '<p>The server returned an unexpected response. Please try again in a moment.</p>'
+                        });
+                    } else {
                         alert('Upload failed. Server error or invalid response.');
                     }
-                })
-                .catch((err) => {
-                    console.error('Network or JS error:', err);
+                }
+            })
+            .catch((err) => {
+                if (window.Modal && typeof Modal.showMessage === 'function') {
+                    Modal.showMessage({
+                        title: 'Network error',
+                        message: '<p>We could not reach the server. Please check your connection and try again.</p>'
+                    });
+                } else {
                     alert('Upload failed. Network or server error.');
-                });
+                }
             });
-        }
-    
+        });
+    }
+
     // Time and Temperature Widget
     function updateTimeAndTemp() {
         const timeParts = new Intl.DateTimeFormat('en-GB', {
-            timeZone: 'Africa/Blantyre',
+            timeZone: window._siteTimezone || 'UTC',
             hour12: true,
             hour: '2-digit',
             minute: '2-digit'
@@ -137,270 +114,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Update every minute
     setInterval(updateTimeAndTemp, 60000);
-    
-    // Smooth scrolling for ALL internal links (navigation, footer, CTA buttons, etc.)
-    function initSmoothScrolling() {
-        // Select all links that contain hash fragments
-        const allLinks = document.querySelectorAll('a[href*="#"]');
-        
-        allLinks.forEach(link => {
-            // Remove any existing click listeners to avoid duplicates
-            link.removeEventListener('click', handleSmoothScroll);
-            link.addEventListener('click', handleSmoothScroll);
-        });
-    }
-    
-    function handleSmoothScroll(e) {
-        const href = this.getAttribute('href');
 
-        // Skip if it's just a hash or empty
-        if (href === '#' || href === '') return;
-
-        let linkUrl;
-        try {
-            linkUrl = new URL(href, window.location.href);
-        } catch (err) {
-            return;
-        }
-
-        const targetId = linkUrl.hash;
-        if (!targetId || targetId === '#') {
-            return;
-        }
-
-        const currentUrl = new URL(window.location.href);
-        const normalizedTargetPath = linkUrl.pathname.replace(/\/+$/, '');
-        const normalizedCurrentPath = currentUrl.pathname.replace(/\/+$/, '');
-        const isCurrentPageLink = linkUrl.origin === currentUrl.origin && normalizedTargetPath === normalizedCurrentPath;
-
-        if (!isCurrentPageLink) {
-            // Let browser navigate to target page + anchor normally.
-            return;
-        }
-
-        const targetSection = document.querySelector(targetId);
-        if (!targetSection) {
-            return;
-        }
-
-        if (isCurrentPageLink) {
-            // Prevent default for same-page anchors
-            e.preventDefault();
-
-            // Calculate scroll position with header offset
-            const headerOffset = 80;
-            const elementPosition = targetSection.getBoundingClientRect().top;
-            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-            // Smooth scroll to target
-            window.scrollTo({
-                top: offsetPosition,
-                behavior: 'smooth'
-            });
-
-            // Update URL hash without page jump
-            if (history.pushState) {
-                history.pushState(null, null, targetId);
-            } else {
-                window.location.hash = targetId;
-            }
-
-            // Special handling for contact link - highlight the contact information
-            if (targetId === '#contact') {
-                // Add temporary highlight effect to contact information specifically
-                const contactInfo = targetSection.querySelector('.minimalist-contact-info') ||
-                                  targetSection.querySelector('.contact-info') ||
-                                  targetSection.querySelector('ul') ||
-                                  targetSection;
-                contactInfo.classList.add('contact-highlighted');
-                setTimeout(() => {
-                    contactInfo.classList.remove('contact-highlighted');
-                }, 2000); // Remove highlight after 2 seconds
-            }
-
-            // Close mobile menu if open
-            const navMenu = document.querySelector('.nav-menu');
-            if (navMenu && navMenu.classList.contains('active')) {
-                navMenu.classList.remove('active');
-                document.querySelector('.mobile-menu-btn')?.classList.remove('active');
-                document.querySelector('.mobile-menu-overlay')?.classList.remove('active');
-                document.body.style.overflow = '';
-            }
-        }
-        // If it's not a current page link, let it work normally (external link)
-    }
-
-    // Handle browser back/forward buttons to prevent loader issues
-    window.addEventListener('popstate', function(event) {
-        // Don't show loader when navigating with browser back/forward buttons
-        // Allow normal navigation to occur
-
-        // Optionally, scroll to the section corresponding to the hash in the URL
-        setTimeout(() => {
-            if (window.location.hash) {
-                const targetElement = document.querySelector(window.location.hash);
-                if (targetElement) {
-                    const headerOffset = 80;
-                    const elementPosition = targetElement.getBoundingClientRect().top;
-                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-                    window.scrollTo({
-                        top: offsetPosition,
-                        behavior: 'smooth'
-                    });
-                }
-            }
-        }, 100); // Small delay to ensure DOM is ready
-    });
-    
-    // Initialize smooth scrolling on page load
-    initSmoothScrolling();
-    
-    // Re-initialize when new content is added dynamically
-    const smoothScrollObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.addedNodes.length) {
-                initSmoothScrolling();
-            }
-        });
-    });
-    
-    // Start observing the document body for added nodes
-    smoothScrollObserver.observe(document.body, { childList: true, subtree: true });
-
-    
-    // Supreme Premium Header Scroll Effect
-    const header = document.querySelector('.header');
-    let lastScroll = 0;
-    
-    window.addEventListener('scroll', function() {
-        const currentScroll = window.pageYOffset;
-        
-        if (currentScroll > 50) {
-            header.classList.add('scrolled');
-        } else {
-            header.classList.remove('scrolled');
-        }
-        
-        lastScroll = currentScroll;
-    });
-    
-    // Active nav link on scroll - DISABLED
-    // PHP now handles active states server-side based on current page
-    // JavaScript scroll-based highlighting disabled to prevent conflicts
-    // The is_nav_active() function in header.php sets the correct active class
-    
-    // Intersection Observer for fade-in animations
-    // Keep reveal animations off on mobile to avoid scroll-time "staggering".
-    const cards = document.querySelectorAll('.room-card, .facility-card, .testimonial-card');
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const enableRevealAnimations = window.innerWidth > 768 && !prefersReducedMotion;
-
-    if (enableRevealAnimations) {
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
-        };
-
-        const intersectionObserver = new IntersectionObserver(function(entries) {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.style.opacity = '1';
-                    entry.target.style.transform = 'translateY(0)';
-                    intersectionObserver.unobserve(entry.target);
-                }
-            });
-        }, observerOptions);
-
-        cards.forEach((card, index) => {
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(30px)';
-            card.style.transition = `all 0.6s ease ${index * 0.1}s`;
-            intersectionObserver.observe(card);
-        });
-    } else {
-        cards.forEach(card => {
-            card.style.opacity = '1';
-            card.style.transform = 'none';
-            card.style.transition = 'none';
-        });
-    }
-
-    // Scroll to Top Button
-    const scrollToTopBtn = document.getElementById('scrollToTop');
-    
-    if (scrollToTopBtn) {
-        // Show/hide button based on scroll position
-        window.addEventListener('scroll', function() {
-            if (window.pageYOffset > 300) {
-                scrollToTopBtn.classList.add('visible');
-            } else {
-                scrollToTopBtn.classList.remove('visible');
-            }
-        });
-        
-        // Scroll to top on click
-        scrollToTopBtn.addEventListener('click', function() {
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
-        });
-    }
-    
-    // Mobile menu functionality
-    const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
-    const navMenu = document.querySelector('.nav-menu');
-    const mobileMenuOverlay = document.querySelector('.mobile-menu-overlay');
-
-    if (mobileMenuBtn && navMenu) {
-        const setMenuOpen = (open) => {
-            navMenu.classList.toggle('active', open);
-            mobileMenuBtn.classList.toggle('active', open);
-            if (mobileMenuOverlay) mobileMenuOverlay.classList.toggle('active', open);
-
-            mobileMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-            mobileMenuBtn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-
-            document.body.style.overflow = open ? 'hidden' : '';
-
-            if (open) {
-                // Ensure menu is at top of screen and visible
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-        };
-
-        const isMenuOpen = () => navMenu.classList.contains('active');
-
-        // Primary toggle
-        mobileMenuBtn.addEventListener('click', function() {
-            setMenuOpen(!isMenuOpen());
-        });
-
-        // Close menu when clicking overlay
-        if (mobileMenuOverlay) {
-            mobileMenuOverlay.addEventListener('click', function() {
-                setMenuOpen(false);
-            });
-        }
-
-        // Close menu when clicking on a link
-        navMenu.querySelectorAll('a').forEach(link => {
-            link.addEventListener('click', function() {
-                setMenuOpen(false);
-            });
-        });
-
-        // Close on ESC
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && isMenuOpen()) setMenuOpen(false);
-        });
-
-        // Safety: if we resize to desktop, force-close and unlock scroll
-        window.addEventListener('resize', function() {
-            if (window.innerWidth >= 1191 && isMenuOpen()) setMenuOpen(false);
-        });
-    }
+    // Mobile menu functionality is handled by js/navigation-unified.js
+    // This prevents conflicts between multiple navigation systems
     
     // Hero carousel
     const heroSlides = document.querySelectorAll('.hero-slide');
@@ -482,47 +198,165 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Add hover effect to room cards
-    const roomCards = document.querySelectorAll('.room-card');
-    roomCards.forEach(card => {
-        card.addEventListener('mouseenter', function() {
-            this.style.transform = 'translateY(-10px) scale(1.02)';
-        });
-        
-        card.addEventListener('mouseleave', function() {
-            this.style.transform = 'translateY(0) scale(1)';
-        });
-    });
-    
-    // Lazy loading for images
-    const images = document.querySelectorAll('img[data-src]');
-    const imageObserver = new IntersectionObserver((entries, observer) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                const img = entry.target;
-                img.src = img.dataset.src;
-                img.removeAttribute('data-src');
-                imageObserver.unobserve(img);
+    // Unified media lazy-loading strategy
+    const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const supportsIntersectionObserver = 'IntersectionObserver' in window;
+
+    const mediaInHero = (el) => Boolean(el && el.closest('.hero, .rooms-hero, .header__logo'));
+    const isMobileViewport = () => (window.innerWidth || document.documentElement.clientWidth || 0) <= 1023;
+    const isLikelyAboveFold = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const rect = el.getBoundingClientRect();
+        const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        const viewportBuffer = isMobileViewport() ? 1.7 : 1.1;
+        const topCutoff = isMobileViewport() ? -220 : -120;
+        return rect.top < (vh * viewportBuffer) && rect.bottom > topCutoff;
+    };
+
+    const applyLazyLoadingDefaults = (root = document) => {
+        const lcpCandidate = root.querySelector('.hero__image, .hero picture img, .hero img');
+        const images = root.querySelectorAll('img');
+        images.forEach((img) => {
+            if (img.hasAttribute('data-no-lazy')) return;
+
+            const isLcp = lcpCandidate && img === lcpCandidate;
+            const forceEager = isLcp || mediaInHero(img) || isLikelyAboveFold(img);
+            const loadingValue = forceEager ? 'eager' : 'lazy';
+
+            if (!img.hasAttribute('loading') || (forceEager && img.getAttribute('loading') === 'lazy')) {
+                img.setAttribute('loading', loadingValue);
+            }
+
+            if (!img.hasAttribute('decoding')) {
+                img.setAttribute('decoding', 'async');
+            }
+
+            if (isLcp) {
+                img.setAttribute('fetchpriority', 'high');
+            } else if (img.getAttribute('fetchpriority') === 'high') {
+                img.setAttribute('fetchpriority', 'auto');
             }
         });
-    });
+
+        const iframes = root.querySelectorAll('iframe');
+        iframes.forEach((frame) => {
+            if (frame.hasAttribute('data-no-lazy')) return;
+            const forceEager = mediaInHero(frame) || isLikelyAboveFold(frame);
+            if (!frame.hasAttribute('loading') || (forceEager && frame.getAttribute('loading') === 'lazy')) {
+                frame.setAttribute('loading', forceEager ? 'eager' : 'lazy');
+            }
+        });
+
+        const videos = root.querySelectorAll('video');
+        videos.forEach((video) => {
+            if (video.hasAttribute('data-no-lazy')) return;
+            const forceEager = mediaInHero(video) || isLikelyAboveFold(video);
+            if (!video.hasAttribute('preload')) {
+                video.setAttribute('preload', forceEager ? 'auto' : 'metadata');
+            }
+        });
+    };
+
+    applyLazyLoadingDefaults(document);
     
-    images.forEach(img => imageObserver.observe(img));
+    // JS lazy sources/backgrounds for progressively-loaded sections
+    const hydrateLazyTarget = (target) => {
+        if (!target) return;
+
+        if (target.dataset.src) {
+            if (target.tagName === 'SOURCE') {
+                target.srcset = target.dataset.src;
+            } else {
+                target.src = target.dataset.src;
+            }
+            target.removeAttribute('data-src');
+        }
+
+        const bgSource = target.dataset.bg || target.dataset.lazyBg;
+        if (bgSource) {
+            target.style.backgroundImage = `url('${bgSource}')`;
+            target.removeAttribute('data-bg');
+            target.removeAttribute('data-lazy-bg');
+        }
+    };
+
+    let sharedLazyObserver = null;
+    if (supportsIntersectionObserver) {
+        sharedLazyObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+                hydrateLazyTarget(entry.target);
+                observer.unobserve(entry.target);
+            });
+        }, {
+            root: null,
+            rootMargin: isMobileViewport() ? '650px 0px' : '420px 0px',
+            threshold: 0.01
+        });
+    }
+
+    let sharedRevealObserver = null;
+    if (supportsIntersectionObserver && !prefersReducedMotion && !isMobileViewport()) {
+        sharedRevealObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+                entry.target.classList.add('is-revealed');
+                observer.unobserve(entry.target);
+            });
+        }, {
+            root: null,
+            rootMargin: '120px 0px',
+            threshold: 0.1
+        });
+    }
+
+    const initLazyObservers = (root = document) => {
+        // JS lazy sources/backgrounds for progressively-loaded sections
+        const lazyTargets = root.querySelectorAll('[data-src], [data-bg], [data-lazy-bg]');
+        if (supportsIntersectionObserver && sharedLazyObserver) {
+            lazyTargets.forEach((target) => sharedLazyObserver.observe(target));
+        } else {
+            lazyTargets.forEach(hydrateLazyTarget);
+        }
+
+        // Reduced-motion-safe reveal fallback for data-lazy-reveal hooks
+        const lazyRevealItems = root.querySelectorAll('[data-lazy-reveal]');
+        if (lazyRevealItems.length) {
+            if (prefersReducedMotion || !supportsIntersectionObserver || isMobileViewport()) {
+                lazyRevealItems.forEach((el) => el.classList.add('is-revealed'));
+            } else if (sharedRevealObserver) {
+                lazyRevealItems.forEach((el) => sharedRevealObserver.observe(el));
+            }
+        }
+    };
+
+    initLazyObservers(document);
+
+    window.addEventListener('spa:contentLoaded', () => {
+        applyLazyLoadingDefaults(document);
+        initLazyObservers(document);
+    });
 
     // Policy modals - Using new Modal component
     const policyLinks = document.querySelectorAll('.policy-link');
     const policyOverlay = document.querySelector('[data-policy-overlay]');
     
-    function openPolicy(slug) {
-        const modalId = 'policy-' + slug;
-        const modal = document.getElementById(modalId);
-        
-        if (typeof Modal !== 'undefined' && Modal.open) {
-            Modal.open(modalId);
-        } else {
-            console.error('Modal component not available');
+        function openPolicy(slug) {
+            const modalId = 'policy-' + slug;
+            const modal = document.getElementById(modalId);
+            
+        	if (typeof Modal !== 'undefined' && Modal.open) {
+                Modal.open(modalId);
+            } else if (modal) {
+                // Graceful fallback: activate modal classes
+                modal.classList.add('modal--active');
+                document.body.classList.add('modal-open');
+            } else if (window.Modal && typeof Modal.showMessage === 'function') {
+                Modal.showMessage({ title: 'Notice', message: '<p>Content is not available right now. Please try again later.</p>' });
+            } else {
+                alert('Content is not available right now. Please try again later.');
+            }
         }
-    }
     
     policyLinks.forEach(link => {
         link.addEventListener('click', function(e) {
@@ -540,67 +374,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-
-    // Room Detail Carousel - DISABLED (Using Grid Layout Instead)
-    // The carousel functionality has been replaced with a modern grid layout
-    // in rooms-showcase.php. Keep this code commented out for reference.
-    /*
-    const roomCarousel = document.getElementById('roomCarousel');
-    if (roomCarousel) {
-        const slides = roomCarousel.querySelectorAll('.carousel-slide');
-        const carouselDots = document.getElementById('carouselDots');
-        const prevBtn = roomCarousel.querySelector('.carousel-prev');
-        const nextBtn = roomCarousel.querySelector('.carousel-next');
-        
-        let currentSlide = 0;
-
-        // Create dots
-        slides.forEach((_, index) => {
-            const dot = document.createElement('button');
-            dot.className = `carousel-dot ${index === 0 ? 'active' : ''}`;
-            dot.setAttribute('aria-label', `Go to slide ${index + 1}`);
-            dot.addEventListener('click', () => goToSlide(index));
-            carouselDots.appendChild(dot);
-        });
-
-        function updateCarousel() {
-            slides.forEach(slide => slide.classList.remove('active'));
-            carouselDots.querySelectorAll('.carousel-dot').forEach(dot => dot.classList.remove('active'));
-            
-            slides[currentSlide].classList.add('active');
-            carouselDots.children[currentSlide].classList.add('active');
-        }
-
-        function goToSlide(index) {
-            currentSlide = (index + slides.length) % slides.length;
-            updateCarousel();
-        }
-
-        function nextSlide() {
-            currentSlide = (currentSlide + 1) % slides.length;
-            updateCarousel();
-        }
-
-        function prevSlide() {
-            currentSlide = (currentSlide - 1 + slides.length) % slides.length;
-            updateCarousel();
-        }
-
-        if (prevBtn) prevBtn.addEventListener('click', prevSlide);
-        if (nextBtn) nextBtn.addEventListener('click', nextSlide);
-
-        // Keyboard navigation
-        document.addEventListener('keydown', (e) => {
-            if (roomCarousel.offsetParent !== null) { // Only if visible
-                if (e.key === 'ArrowLeft') prevSlide();
-                if (e.key === 'ArrowRight') nextSlide();
-            }
-        });
-
-        // Auto-advance carousel every 6 seconds
-        setInterval(nextSlide, 6000);
-    }
-    */
 
     // Room Filter Chips
     const filterChips = document.querySelectorAll('.chip');
@@ -656,17 +429,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (galleryCarousel && galleryItems.length > 0) {
         let currentGalleryIndex = 0;
         let itemsToShow = getItemsToShow();
-        const carouselWrapper = document.querySelector('.gallery-carousel-wrapper');
-
-        function getMaxGalleryIndex() {
-            return Math.max(0, galleryItems.length - itemsToShow);
-        }
-
-        function updateGalleryNavState() {
-            if (!carouselWrapper) return;
-            const isStatic = getMaxGalleryIndex() === 0;
-            carouselWrapper.classList.toggle('is-static', isStatic);
-        }
+        let cachedItemWidth = galleryItems[0].offsetWidth; // Cache to avoid forced reflow
         
         function getItemsToShow() {
             if (window.innerWidth <= 768) return 1;
@@ -674,12 +437,25 @@ document.addEventListener('DOMContentLoaded', function() {
             return 4;
         }
         
+        // Update cached width on resize
+        const updateCachedWidth = () => {
+            cachedItemWidth = galleryItems[0].offsetWidth;
+        };
+        
+        // Debounced resize handler
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                itemsToShow = getItemsToShow();
+                updateCachedWidth();
+                updateCarousel(false);
+            }, 100);
+        }, { passive: true });
+        
         function updateCarousel(smooth = true) {
-            const itemWidth = galleryItems[0].offsetWidth;
+            const itemWidth = cachedItemWidth; // Use cached value
             const gap = 20;
-            const maxIndex = getMaxGalleryIndex();
-
-            currentGalleryIndex = Math.max(0, Math.min(currentGalleryIndex, maxIndex));
             const offset = currentGalleryIndex * (itemWidth + gap);
             
             galleryCarousel.style.transition = smooth ? 'transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none';
@@ -689,19 +465,16 @@ document.addEventListener('DOMContentLoaded', function() {
             galleryDots.forEach((dot, index) => {
                 dot.classList.toggle('active', index === currentGalleryIndex);
             });
-
-            updateGalleryNavState();
         }
         
         function nextSlide() {
-            const maxIndex = getMaxGalleryIndex();
-            currentGalleryIndex = currentGalleryIndex >= maxIndex ? 0 : currentGalleryIndex + 1;
+            const maxIndex = Math.max(0, galleryItems.length - itemsToShow);
+            currentGalleryIndex = Math.min(currentGalleryIndex + 1, maxIndex);
             updateCarousel();
         }
         
         function prevSlide() {
-            const maxIndex = getMaxGalleryIndex();
-            currentGalleryIndex = currentGalleryIndex <= 0 ? maxIndex : currentGalleryIndex - 1;
+            currentGalleryIndex = Math.max(currentGalleryIndex - 1, 0);
             updateCarousel();
         }
         
@@ -717,8 +490,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Dot navigation
         galleryDots.forEach((dot, index) => {
             dot.addEventListener('click', () => {
-                const maxIndex = getMaxGalleryIndex();
-                currentGalleryIndex = Math.min(index, maxIndex);
+                currentGalleryIndex = index;
                 updateCarousel();
             });
         });
@@ -727,6 +499,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let autoplayInterval = setInterval(nextSlide, 4000);
         
         // Pause on hover
+        const carouselWrapper = document.querySelector('.gallery-carousel-wrapper');
         if (carouselWrapper) {
             carouselWrapper.addEventListener('mouseenter', () => {
                 clearInterval(autoplayInterval);
@@ -745,7 +518,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const newItemsToShow = getItemsToShow();
                 if (newItemsToShow !== itemsToShow) {
                     itemsToShow = newItemsToShow;
-                    currentGalleryIndex = Math.min(currentGalleryIndex, getMaxGalleryIndex());
+                    currentGalleryIndex = Math.min(currentGalleryIndex, Math.max(0, galleryItems.length - itemsToShow));
                     updateCarousel(false);
                 }
             }, 250);

@@ -1,672 +1,533 @@
 <?php
+
 /**
  * Admin Header HTML Output
- * Shared header and navbar for admin pages
+ * Shared header and navbar for admin pages.
  *
  * NOTE: This file outputs HTML. Include admin-init.php FIRST
  * before including this file to ensure proper initialization.
  *
  * Usage:
- * 1. require_once 'admin-init.php';  // BEFORE <head>
- * 2. ... <head> with CSS links ...
- * 3. require_once 'includes/admin-header.php';  // AFTER <head>
+ *   require_once 'admin-init.php';                  // BEFORE <head>
+ *   ... <head> with CSS links ...
+ *   require_once 'includes/admin-header.php';       // AFTER <head>
  */
 
 // Load permissions system
 require_once __DIR__ . '/permissions.php';
 
-// Get the current user's permissions (cached for this request)
-$_user_permissions = getUserPermissions($user['id']);
+// Resolve the current user from $user (set by admin-init.php) or fall back to session.
+if (!isset($user) || !is_array($user)) {
+    $user = [
+        'id'        => $_SESSION['admin_user_id']   ?? 0,
+        'username'  => $_SESSION['admin_username']  ?? '',
+        'role'      => $_SESSION['admin_role']      ?? 'guest',
+        'full_name' => $_SESSION['admin_full_name'] ?? 'Guest',
+    ];
+}
 
-/**
- * Check if nav item should be shown for current user
- */
-function _canShowNavItem($permission_key) {
-    global $_user_permissions;
-    if (!$permission_key) return true; // No permission required (e.g. "View Website")
-    return isset($_user_permissions[$permission_key]) && $_user_permissions[$permission_key];
+// Get the current user's permissions (cached for this request)
+$_user_permissions = getUserPermissions((int)($user['id'] ?? 0));
+
+if (!function_exists('_canShowNavItem')) {
+    /**
+     * Check if a nav item should be shown for the current user.
+     * Empty $permission_key means always-visible.
+     */
+    function _canShowNavItem(?string $permission_key): bool
+    {
+        global $_user_permissions;
+        if (!$permission_key) return true;
+        return isset($_user_permissions[$permission_key]) && $_user_permissions[$permission_key];
+    }
+}
+
+if (!function_exists('_renderNavLink')) {
+    /**
+     * Render a single nav <li> if the user has permission and the module is enabled.
+     */
+    function _renderNavLink(string $href, string $icon, string $label, ?string $perm, string $current_page, string $iconStyle = '', $moduleKey = null): void
+    {
+        if (!_canShowNavItem($perm)) return;
+        if ($moduleKey !== null && function_exists('rh_module_key_enabled')) {
+            $keys = is_array($moduleKey) ? $moduleKey : [(string)$moduleKey];
+            foreach ($keys as $_mk) {
+                if (!rh_module_key_enabled((string)$_mk)) return;
+            }
+        }
+        $hrefPath   = (string)(parse_url($href, PHP_URL_PATH) ?: $href);
+        $isActive   = (strpos($href, '../') !== 0 && basename($hrefPath) === $current_page) ? ' active' : '';
+        $iconAttr   = $iconStyle !== '' ? ' style="' . htmlspecialchars($iconStyle) . '"' : '';
+        // Full-screen station pages and external guides always open in a new tab
+        $_newTabPages = ['pos.php', 'kds.php', 'bds.php', 'cds.php'];
+        $extra      = (strpos($href, '../') === 0 || in_array(basename($hrefPath), $_newTabPages, true)) ? ' target="_blank" rel="noopener"' : '';
+        $linkClass  = 'admin-nav-link' . $isActive;
+        $navKey     = trim((string)preg_replace('/[^a-z0-9]+/', '-', strtolower($href)), '-');
+        echo '<li class="nav-item" data-nav-key="' . htmlspecialchars($navKey) . '" data-nav-label="' . htmlspecialchars($label) . '">'
+            . '<a href="' . htmlspecialchars($href) . '" class="' . $linkClass . '"' . $extra . '>'
+            . '<i class="' . htmlspecialchars($icon) . '"' . $iconAttr . '></i> '
+            . '<span>' . htmlspecialchars($label) . '</span></a>'
+            . '<button type="button" class="nav-favorite-btn" data-nav-key="' . htmlspecialchars($navKey) . '" aria-label="Add ' . htmlspecialchars($label) . ' to favorites" aria-pressed="false" title="Add to favorites">'
+            . '<i class="far fa-star"></i>'
+            . '</button></li>';
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Nav structure: ordered groups, each with a heading and a list of items.
+// Items: [href, icon, label, permission_key (or null for always-on), iconStyle]
+// ---------------------------------------------------------------------------
+// Element format: [href, icon, label, perm, iconStyle, moduleKey]
+// moduleKey = null means always visible (not gated by a module)
+$_nav_groups = [
+    'Operations' => [
+        ['dashboard.php',     'fas fa-tachometer-alt', 'Dashboard',      'dashboard',     '', null],
+        ['bookings.php',      'fas fa-calendar-check', 'Bookings',       'bookings',      '', 'bookings'],
+        ['calendar.php',      'fas fa-calendar',       'Calendar',       'calendar',      '', 'bookings'],
+        ['blocked-dates.php', 'fas fa-ban',            'Blocked Dates',  'blocked_dates', '', 'bookings'],
+    ],
+    'Rooms & Service' => [
+        ['room-management.php',   'fas fa-bed',       'Rooms',            'rooms',            '', 'bookings'],
+        ['individual-rooms.php',  'fas fa-door-open', 'Individual Rooms', 'rooms',            '', 'bookings'],
+        ['room-maintenance.php',  'fas fa-tools',     'Room Maintenance', 'room_maintenance', '', 'bookings'],
+        ['housekeeping.php',      'fas fa-broom',     'Housekeeping',     'housekeeping',     '', 'housekeeping'],
+    ],
+    'Stations' => [
+        ['pos.php',                    'fas fa-cash-register',  'POS Till',          'pos_till',          'color:#8B7355;', 'pos'],
+        ['kds.php',                    'fas fa-utensils',       'Kitchen (KDS)',      'kds_view',          'color:#c82333;', ['pos', 'station_kds']],
+        ['bds.php',                    'fas fa-cocktail',       'Bar Display (BDS)', 'bds_view',          'color:#5e35b1;', ['pos', 'station_bds']],
+        ['cds.php',                    'fas fa-mug-hot',        'Coffee Bar (CDS)',  'cds_view',          'color:#6f4e37;', ['pos', 'station_cds']],
+        ['room-service-dashboard.php', 'fas fa-bell-concierge', 'Room Service',      'room_service_view', 'color:#0c8d6c;', ['pos', 'station_room_service']],
+        ['kds-report.php',             'fas fa-file-invoice',   'Station Reports',   'kds_reports',       '', ['pos', 'restaurant_page']],
+        ['station-settings.php',       'fas fa-clock',          'Station Hours',     'stock_management',  '', ['pos', 'restaurant_page']],
+        ['deals.php',                  'fas fa-tags',           'Deals & Promos',    'stock_management',  '', 'pos'],
+        ['offline-log.php',            'fas fa-cloud-arrow-up', 'Offline Log',       'offline_log_view',  '', 'pos'],
+    ],
+    'Guides' => [
+        ['../docs/guides/index.html',                         'fas fa-book-open',          'All Guides',          null, '', null],
+        ['../docs/guides/99-admin-dashboard-full-guide.html', 'fas fa-scroll',             'Admin Bible',         null, '', null],
+        ['../docs/guides/01-pos-till.html',                   'fas fa-cash-register',      'POS Guide',           null, '', 'pos'],
+        ['../docs/guides/02-kds-kitchen.html',                'fas fa-utensils',           'KDS Guide',           null, '', ['pos', 'station_kds']],
+        ['../docs/guides/03-bds-bar.html',                    'fas fa-cocktail',           'BDS Guide',           null, '', ['pos', 'station_bds']],
+        ['../docs/guides/04-cds-coffee.html',                 'fas fa-mug-hot',            'CDS Guide',           null, '', ['pos', 'station_cds']],
+        ['../docs/guides/05-room-service.html',               'fas fa-bell-concierge',     'Room Service Guide',  null, '', ['pos', 'station_room_service']],
+        ['../docs/guides/06-housekeeping.html',               'fas fa-broom',              'Housekeeping Guide',  null, '', 'housekeeping'],
+        ['../docs/guides/07-reception-bookings.html',         'fas fa-calendar-check',     'Reception Guide',     null, '', 'bookings'],
+        ['../docs/guides/08-stock-orders.html',               'fas fa-boxes',              'Stock Guide',         null, '', 'stock'],
+        ['../docs/guides/12-email-templates.php',             'fas fa-envelope-open-text', 'Email Template Tags', null, '', null],
+    ],
+    'Content' => [
+        ['gallery-management.php',    'fas fa-images',       'Gallery',           'gallery',           '', 'website_cms'],
+        ['media-management.php',      'fas fa-photo-video',  'Media Portal',      'media_management',  '', 'website_cms'],
+        ['conference-management.php', 'fas fa-briefcase',    'Conference Rooms',  'conference',        '', 'conference'],
+        ['gym-management.php',        'fas fa-dumbbell',     'Gym Packages',      'gym_packages',      '', 'gym'],
+        ['gym-inquiries.php',         'fas fa-inbox',        'Gym Inquiries',     'gym',               '', 'gym'],
+        ['gym-members.php',           'fas fa-id-card',      'Gym Members',       'gym',               '', 'gym'],
+        ['gym-checkin.php',           'fas fa-barcode',      'Gym Check-In',      'gym_checkin',       '', 'gym'],
+        ['gym-schedule.php',          'fas fa-calendar-day', 'Gym Schedule',      'gym',               '', 'gym'],
+        ['gym-classes.php',           'fas fa-people-group', 'Gym Classes',       'gym',               '', 'gym'],
+        ['gym-reports.php',           'fas fa-chart-line',   'Gym Reports',       'gym_reports',       '', 'gym'],
+        ['menu-management.php',       (function_exists('isRestaurantEnabled') && isRestaurantEnabled()) ? 'fas fa-utensils' : 'fas fa-box-open', (function_exists('isRestaurantEnabled') && isRestaurantEnabled()) ? 'Menu' : 'Products', 'menu', '', 'pos'],
+        ['events-management.php',     'fas fa-calendar-alt', 'Events',            'events',            '', ['website_cms', 'events']],
+        ['events-inquiries.php',      'fas fa-calendar-check', 'Event Bookings',  'events_bookings',   '', ['website_cms', 'events']],
+        ['reviews.php',               'fas fa-star',         'Reviews',           'reviews',           '', 'website_cms'],
+        ['contact-inquiries.php',     'fas fa-envelope',     'Contact Inquiries', 'contact',           '', 'website_cms'],
+        ['footer-management.php',     'fas fa-layer-group',  'Footer Management', 'footer_management', '', 'website_cms'],
+    ],
+    'Stock' => [
+        ['stock-dashboard.php',       'fas fa-boxes',          'Stock Dashboard',   'stock_dashboard',  '', 'stock'],
+        ['stock-ingredients.php',     (function_exists('isRestaurantEnabled') && isRestaurantEnabled()) ? 'fas fa-carrot' : 'fas fa-boxes-stacked', (function_exists('isRestaurantEnabled') && isRestaurantEnabled()) ? 'Ingredients' : 'Stock Items', 'stock_management', '', 'stock'],
+        ['stock-recipes.php',         'fas fa-book-open',      'Recipes',           'stock_management', '', ['stock', 'restaurant_page']],
+        ['stock-batches.php',         'fas fa-layer-group',    'Batch Tracker',     'stock_batches',    '', 'stock'],
+        ['stock-suppliers.php',       'fas fa-truck-field',    'Suppliers',         'stock_management', '', 'stock'],
+        ['stock-reorder.php',         'fas fa-cart-flatbed',   'Reorder / Buying',  'stock_management', '', 'stock'],
+        ['purchase-orders.php',       'fas fa-file-invoice',   'Purchase Orders',   'stock_management', '', 'stock'],
+        ['stock-orders.php',          'fas fa-receipt',        (function_exists('isRestaurantEnabled') && isRestaurantEnabled()) ? 'Restaurant Orders' : 'Orders', 'stock_orders', '', 'stock'],
+        ['restaurant-tables.php',     'fas fa-chair',          'Restaurant Tables', 'stock_management', '', ['stock', 'restaurant_page']],
+        ['stock-barcode-receive.php', 'fas fa-barcode',        'Receive Stock',     'stock_management', '', 'stock'],
+        ['stock-count.php',           'fas fa-clipboard-check','Stock Count',       'stock_count',      '', 'stock'],
+        ['stock-wastage.php',         'fas fa-trash-alt',      'Wastage Log',       'stock_wastage',    '', 'stock'],
+        ['stock-reports.php',         'fas fa-chart-area',     'Stock Reports',     'stock_reports',    '', 'stock'],
+    ],
+    'Finance' => [
+        ['accounting-dashboard.php', 'fas fa-calculator',          'Accounting',     'accounting',       '',              'finance'],
+        ['pos-accounting.php',       'fas fa-cash-register',       'POS Accounting', 'pos_accounting',   'color:#8B7355;',['finance', 'pos']],
+        ['payments.php',             'fas fa-money-bill-wave',     'Payments',       'payments',         '',              'finance'],
+        ['receipts.php',             'fas fa-receipt',             'Receipts',       'receipts',         '',              'finance'],
+        ['invoices.php',             'fas fa-file-invoice-dollar', 'Invoices',       'invoices',         '',              ['finance', 'billing']],
+        ['credit-notes.php',         'fas fa-file-invoice',        'Credit Notes',   'invoices',         '',              ['finance', 'advance_booking']],
+        ['quotations.php',           'fas fa-file-contract',       'Quotations',     'invoices',         '',              ['finance', 'billing']],
+        ['payment-add.php',          'fas fa-plus-circle',         'Add Payment',    'payment_add',      '',              'finance'],
+        ['reports.php',              'fas fa-chart-bar',           'Reports',        'reports',          '',              'finance'],
+        ['end-of-day-report.php',    'fas fa-sun',                 'End of Day',     'reports',          'color:#B18247;','finance'],
+        ['rate-plans.php',           'fas fa-tags',                'Rate Plans',     'booking_settings', '',              'bookings'],
+        ['packages.php',             'fas fa-gift',                'Packages',       'booking_settings', '',              'bookings'],
+    ],
+    'Configuration' => [
+        ['module-settings.php',            'fas fa-puzzle-piece',       'Module Settings',   'module_settings', '', null],
+        ['booking-settings.php',           'fas fa-cog',                'Booking Settings',  'booking_settings', '', null],
+        ['booking-settings.php?section=email-templates#email-templates', 'fas fa-envelope-open-text', 'Email Previewer', 'booking_settings', '', null],
+        ['whatsapp-settings.php',          'fab fa-whatsapp',           'WhatsApp Settings', 'whatsapp_settings',  'color:#25D366;', null],
+        ['facebook-settings.php',          'fab fa-facebook-f',         'Facebook Settings', 'facebook_settings',  'color:#1877F2;', null],
+        ['page-management.php',            'fas fa-file-alt',           'Page Management',   'pages',              '', 'website_cms'],
+        ['cache-management.php',           'fas fa-bolt',               'Cache Management',  'cache',              '', null],
+        ['backup-management.php',          'fas fa-database',           'Backup Management', 'backup_management',  '', null],
+        ['system-logs.php',                'fas fa-clipboard-list',     'System Logs',       'system_logs',        '', null],
+        ['api-keys.php',                   'fas fa-key',                'API Keys',          'api_keys',           '', null],
+        ['user-management.php',            'fas fa-users-cog',          'User Management',   'user_management',    '', null],
+        ['visitor-analytics.php',          'fas fa-chart-line',         'Visitor Analytics', 'visitor_analytics',  '', null],
+        ['section-headers-management.php', 'fas fa-heading',            'Section Headers',   'section_headers',    '', 'website_cms'],
+    ],
+];
+
+$_nav_group_icons = [
+    'Operations' => 'fas fa-compass',
+    'Rooms & Service' => 'fas fa-bed',
+    'Stations' => 'fas fa-display',
+    'Guides' => 'fas fa-book',
+    'Content' => 'fas fa-layer-group',
+    'Stock' => 'fas fa-boxes',
+    'Finance' => 'fas fa-calculator',
+    'Configuration' => 'fas fa-sliders-h',
+    'External' => 'fas fa-external-link-alt',
+];
+
+$current_page = $current_page ?? basename($_SERVER['PHP_SELF']);
+$site_name    = $site_name    ?? (function_exists('getSetting') ? (getSetting('site_name') ?: 'Admin') : 'Admin');
+$_admin_user_id_for_sw = (int)($user['id'] ?? 0);
+
+$_admin_nav_label_map = [];
+foreach ($_nav_groups as $_group_items) {
+    foreach ($_group_items as $_item) {
+        $_href = (string)($_item[0] ?? '');
+        if ($_href === '' || str_starts_with($_href, '../')) {
+            continue;
+        }
+        $_basename = basename(parse_url($_href, PHP_URL_PATH) ?: $_href);
+        if ($_basename === '' || !str_ends_with($_basename, '.php')) {
+            continue;
+        }
+        $_admin_nav_label_map[$_basename] = (string)($_item[2] ?? $_basename);
+    }
+}
+
+$_admin_parent_fallback_map = [
+    'booking-details.php' => 'bookings.php',
+    'edit-booking.php' => 'bookings.php',
+    'create-booking.php' => 'bookings.php',
+    'process-checkin.php' => 'bookings.php',
+    'tentative-bookings.php' => 'bookings.php',
+    'payment-details.php' => 'payments.php',
+    'payment-refund.php' => 'payments.php',
+    'payment-add.php' => 'payments.php',
+    'stock-receipt.php' => 'stock-orders.php',
+    'order-lifecycle.php' => 'stock-orders.php',
+];
+
+$_admin_parse_parent_target = static function (string $candidate, string $currentPage): ?array {
+    $candidate = trim($candidate);
+    if ($candidate === '') {
+        return null;
+    }
+
+    $parts = parse_url($candidate);
+    if ($parts === false) {
+        return null;
+    }
+
+    $host = strtolower((string)($parts['host'] ?? ''));
+    $currentHost = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host !== '' && $currentHost !== '' && $host !== $currentHost) {
+        return null;
+    }
+
+    $path = (string)($parts['path'] ?? '');
+    if ($path === '') {
+        return null;
+    }
+
+    $page = basename($path);
+    if ($page === '' || !str_ends_with($page, '.php')) {
+        return null;
+    }
+    if ($page === $currentPage || in_array($page, ['login.php', 'logout.php'], true)) {
+        return null;
+    }
+
+    $query = isset($parts['query']) && $parts['query'] !== '' ? ('?' . $parts['query']) : '';
+
+    return [
+        'page' => $page,
+        'href' => $page . $query,
+    ];
+};
+
+$_admin_is_top_level_page = isset($_admin_nav_label_map[$current_page]);
+$_admin_back_target = null;
+
+foreach (['return_to', 'return', 'back_to'] as $_return_key) {
+    if (!isset($_GET[$_return_key])) {
+        continue;
+    }
+    $_candidate = $_admin_parse_parent_target((string)$_GET[$_return_key], $current_page);
+    if ($_candidate !== null) {
+        $_admin_back_target = $_candidate;
+        break;
+    }
+}
+
+if ($_admin_back_target === null && !$_admin_is_top_level_page) {
+    $_ref = (string)($_SERVER['HTTP_REFERER'] ?? '');
+    $_candidate = $_admin_parse_parent_target($_ref, $current_page);
+    if ($_candidate !== null) {
+        $_admin_back_target = $_candidate;
+    }
+}
+
+if ($_admin_back_target === null && isset($_admin_parent_fallback_map[$current_page])) {
+    $_parent_page = (string)$_admin_parent_fallback_map[$current_page];
+    $_admin_back_target = [
+        'page' => $_parent_page,
+        'href' => $_parent_page,
+    ];
+}
+
+$_admin_back_label = '';
+if ($_admin_back_target !== null) {
+    $_parent_page = (string)($_admin_back_target['page'] ?? '');
+    $_parent_label = $_admin_nav_label_map[$_parent_page] ?? ucwords(str_replace('-', ' ', preg_replace('/\.php$/', '', $_parent_page)));
+    $_admin_back_label = 'Back to ' . $_parent_label;
 }
 ?>
-<div class="admin-header">
-    <h1><i class="fas fa-hotel"></i> <?php echo htmlspecialchars($site_name); ?></h1>
+<script>
+    /* no-FOUC: apply saved sidebar state before first CSS paint */
+    (function() {
+        try {
+            var uid = '<?php echo $_admin_user_id_for_sw; ?>';
+            var ck = 'rhAdminSidebarCollapsed:v1:' + uid;
+            var stored = localStorage.getItem(ck);
+            // Auto-collapse to rail on tablet widths (769–1024px) when no preference has been saved
+            var autoCollapse = stored === null && window.matchMedia('(min-width: 769px) and (max-width: 1024px)').matches;
+            if (stored === '1' || autoCollapse) {
+                document.body.classList.add('admin-sidebar-collapsed');
+            }
+            var wk = 'rhAdminSidebarWidth:v1:' + uid;
+            var w = parseInt(localStorage.getItem(wk), 10);
+            if (w && w >= 220 && w <= 480) {
+                document.documentElement.style.setProperty('--admin-sidebar-width', w + 'px');
+            }
+        } catch (e) {}
+    })();
+    // PWA settings: configure install prompt dismiss period
+    window.RH_PWA_DISMISS_DAYS = <?php echo (int)getSetting('pwa_install_dismiss_days', '14'); ?>;
+    // Inject manifest link if not already in <head> — required for beforeinstallprompt to fire.
+    (function() {
+        if (document.querySelector('link[rel="manifest"]')) return;
+
+        var manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+
+        var candidates = [];
+        try {
+            candidates = [
+                new URL('manifest.php', window.location.href).toString(),
+                new URL('../manifest.php', window.location.href).toString(),
+            ];
+        } catch (e) {
+            candidates = ['manifest.php', '../manifest.php'];
+        }
+
+        function attachManifest(href) {
+            manifestLink.href = href;
+            document.head.appendChild(manifestLink);
+        }
+
+        function probeManifest(index) {
+            if (index >= candidates.length) {
+                attachManifest('manifest.php');
+                return;
+            }
+
+            fetch(candidates[index], {
+                    method: 'HEAD',
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                })
+                .then(function(response) {
+                    if (response.ok) {
+                        attachManifest(candidates[index]);
+                        return;
+                    }
+                    probeManifest(index + 1);
+                })
+                .catch(function() {
+                    probeManifest(index + 1);
+                });
+        }
+
+        probeManifest(0);
+    })();
+    // Register admin service worker — required for PWA installability criteria.
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('sw.js', {
+                    scope: './'
+                })
+                .catch(function() {
+                    /* SW unavailable — non-fatal */
+                });
+        });
+    }
+</script>
+<div id="adminPageLoader" class="admin-page-loader is-visible" data-boot-loader="1" role="status" aria-live="polite" aria-hidden="false">
+    <div class="admin-page-loader-card">
+        <div class="admin-page-loader-brand"><i class="fas fa-hotel" aria-hidden="true"></i><span id="adminPageLoaderBrand"><?php echo htmlspecialchars($site_name); ?></span></div>
+        <div class="admin-page-loader-spinner" aria-hidden="true">
+            <span></span><span></span><span></span>
+        </div>
+        <div class="admin-page-loader-title">Loading admin workspace</div>
+        <div class="admin-page-loader-text" id="adminPageLoaderText">Preparing your admin view...</div>
+        <div class="admin-page-loader-bar"><span></span></div>
+    </div>
+</div>
+<header class="admin-header">
+    <div class="admin-header-brand">
+        <i class="fas fa-hotel"></i>
+        <h1><?php echo htmlspecialchars($site_name); ?></h1>
+    </div>
     <div class="user-info">
-        <div>
+        <!-- Connectivity indicator — JS in offline-queue.js keeps this updated -->
+        <div id="rhConnPill" title="Network status" style="
+            display:inline-flex;align-items:center;gap:5px;
+            padding:4px 11px;border-radius:999px;font-size:.75rem;font-weight:700;
+            background:#d1fae5;color:#065f46;cursor:default;
+            transition:background .3s,color .3s;user-select:none;">
+            <i class="fas fa-circle" id="rhConnDot" style="font-size:.55rem"></i>
+            <span id="rhConnLabel">Online</span>
+        </div>
+        <div class="user-meta">
             <div class="user-name"><?php echo htmlspecialchars($user['full_name']); ?></div>
-            <div class="user-role"><?php echo htmlspecialchars($user['role']); ?></div>
+            <div class="user-role"><i class="fas fa-user-shield"></i> <?php echo htmlspecialchars(ucfirst($user['role'])); ?></div>
         </div>
         <button class="admin-nav-toggle" id="adminNavToggle" aria-label="Toggle navigation" aria-expanded="false">
             <i class="fas fa-bars" id="navToggleIcon"></i>
         </button>
-        <a href="logout.php" class="btn-logout">
+        <a href="change-password.php" class="btn-logout" title="Change my password" style="margin-right:6px;">
+            <i class="fas fa-key"></i>
+        </a>
+        <a href="logout.php" class="btn-logout" title="Sign out">
             <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
         </a>
     </div>
-</div>
-<nav class="admin-nav">
-    <ul>
+</header>
 
-        <!-- ── OVERVIEW ─────────────────────────────────── -->
-        <?php if (_canShowNavItem('dashboard')): ?>
-        <li><a href="dashboard.php" class="<?php echo $current_page === 'dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
-        <?php endif; ?>
+<nav class="admin-nav" aria-label="Admin navigation" data-admin-nav data-admin-user-id="<?php echo (int)($user['id'] ?? 0); ?>" data-admin-csrf="<?php echo htmlspecialchars((string)($csrf_token ?? '')); ?>">
+    <div class="admin-nav-inner">
+        <div class="admin-nav-title-row">
+            <div class="admin-nav-brand-mark"><i class="fas fa-hotel"></i></div>
+            <div class="admin-nav-title-copy">
+                <div class="admin-nav-title-main">Admin Menu</div>
+                <div class="admin-nav-title-sub"><?php echo htmlspecialchars($site_name); ?></div>
+            </div>
+            <button type="button" class="admin-sidebar-collapse-toggle" id="adminSidebarCollapse" aria-label="Collapse sidebar" aria-pressed="false" title="Collapse sidebar">
+                <i class="fas fa-angles-left"></i>
+            </button>
+        </div>
 
-        <!-- ── RESERVATIONS ──────────────────────────────── -->
-        <?php if (_canShowNavItem('bookings') || _canShowNavItem('calendar') || _canShowNavItem('blocked_dates')): ?>
-        <li class="nav-section-label">Reservations</li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('bookings')): ?>
-        <li><a href="bookings.php" class="<?php echo $current_page === 'bookings.php' ? 'active' : ''; ?>"><i class="fas fa-calendar-check"></i> Bookings</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('calendar')): ?>
-        <li><a href="calendar.php" class="<?php echo $current_page === 'calendar.php' ? 'active' : ''; ?>"><i class="fas fa-calendar"></i> Calendar</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('blocked_dates')): ?>
-        <li><a href="blocked-dates.php" class="<?php echo $current_page === 'blocked-dates.php' ? 'active' : ''; ?>"><i class="fas fa-ban"></i> Blocked Dates</a></li>
-        <?php endif; ?>
+        <div class="admin-nav-search">
+            <i class="fas fa-search"></i>
+            <input type="search" id="adminNavSearch" placeholder="Search menus" aria-label="Search admin menus" autocomplete="off">
+        </div>
 
-        <!-- ── FINANCE ───────────────────────────────────── -->
-        <?php if (_canShowNavItem('payments') || _canShowNavItem('payment_add') || _canShowNavItem('invoices') || _canShowNavItem('accounting') || _canShowNavItem('reports')): ?>
-        <li class="nav-section-label">Finance</li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('payments')): ?>
-        <li><a href="payments.php" class="<?php echo $current_page === 'payments.php' ? 'active' : ''; ?>"><i class="fas fa-money-bill-wave"></i> Payments</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('payment_add')): ?>
-        <li><a href="payment-add.php" class="<?php echo $current_page === 'payment-add.php' ? 'active' : ''; ?>"><i class="fas fa-plus-circle"></i> Add Payment</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('invoices')): ?>
-        <li><a href="invoices.php" class="<?php echo $current_page === 'invoices.php' ? 'active' : ''; ?>"><i class="fas fa-file-invoice-dollar"></i> Invoices</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('accounting')): ?>
-        <li><a href="accounting-dashboard.php" class="<?php echo $current_page === 'accounting-dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-calculator"></i> Accounting</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('reports')): ?>
-        <li><a href="reports.php" class="<?php echo $current_page === 'reports.php' ? 'active' : ''; ?>"><i class="fas fa-chart-bar"></i> Reports</a></li>
-        <li><a href="visitor-analytics.php" class="<?php echo $current_page === 'visitor-analytics.php' ? 'active' : ''; ?>"><i class="fas fa-chart-line"></i> Visitor Analytics</a></li>
-        <?php endif; ?>
+        <section class="nav-group nav-favorites-group" data-nav-group="favorites">
+            <button type="button" class="nav-group-toggle" aria-expanded="true" aria-controls="nav-group-favorites">
+                <span class="nav-group-label"><i class="fas fa-star"></i><span class="nav-group-title">Favorites</span></span>
+                <span class="nav-group-count" id="adminFavoriteCount">0</span>
+                <i class="fas fa-chevron-down nav-group-chevron"></i>
+            </button>
+            <ul class="nav-group-items" id="nav-group-favorites"></ul>
+            <p class="admin-nav-empty" id="adminFavoritesEmpty">Star menus you use often and they will stay here.</p>
+        </section>
 
-        <!-- ── MARKETING ─────────────────────────────────── -->
-        <?php if (_canShowNavItem('campaigns')): ?>
-        <li class="nav-section-label">Marketing</li>
-        <li><a href="campaigns.php" class="<?php echo $current_page === 'campaigns.php' ? 'active' : ''; ?>"><i class="fas fa-bullhorn"></i> Campaigns</a></li>
-        <?php endif; ?>
+        <?php foreach ($_nav_groups as $group_label => $items):
+            $visibleCount = 0;
+            $isActiveGroup = false;
+            foreach ($items as $it) {
+                if (!_canShowNavItem($it[3] ?? null)) continue;
+                $_modKeys = $it[5] ?? null;
+                if ($_modKeys !== null && function_exists('rh_module_key_enabled')) {
+                    $_mkList = is_array($_modKeys) ? $_modKeys : [(string)$_modKeys];
+                    $_mkOk = true;
+                    foreach ($_mkList as $_mk) { if (!rh_module_key_enabled((string)$_mk)) { $_mkOk = false; break; } }
+                    if (!$_mkOk) continue;
+                }
+                $visibleCount++;
+                if (basename($it[0]) === $current_page) {
+                    $isActiveGroup = true;
+                }
+            }
+            if ($visibleCount === 0) continue;
+            $group_id = trim((string)preg_replace('/[^a-z0-9]+/', '-', strtolower($group_label)), '-');
+            $group_icon = $_nav_group_icons[$group_label] ?? 'fas fa-folder';
+        ?>
+            <section class="nav-group <?php echo $isActiveGroup ? 'is-active-group' : ''; ?>" data-nav-group="<?php echo htmlspecialchars($group_id); ?>">
+                <button type="button" class="nav-group-toggle" aria-expanded="true" aria-controls="nav-group-<?php echo htmlspecialchars($group_id); ?>">
+                    <span class="nav-group-label"><i class="<?php echo htmlspecialchars($group_icon); ?>"></i><span class="nav-group-title"><?php echo htmlspecialchars($group_label); ?></span></span>
+                    <span class="nav-group-count"><?php echo (int)$visibleCount; ?></span>
+                    <i class="fas fa-chevron-down nav-group-chevron"></i>
+                </button>
+                <ul class="nav-group-items" id="nav-group-<?php echo htmlspecialchars($group_id); ?>">
+                    <?php foreach ($items as $it): ?>
+                        <?php _renderNavLink($it[0], $it[1], $it[2], $it[3] ?? null, $current_page, $it[4] ?? '', $it[5] ?? null); ?>
+                    <?php endforeach; ?>
+                </ul>
+            </section>
+        <?php endforeach; ?>
 
-        <!-- ── SERVICES ──────────────────────────────────── -->
-        <?php if (_canShowNavItem('conference') || _canShowNavItem('events') || _canShowNavItem('rooms') || _canShowNavItem('employees') || _canShowNavItem('gym') || _canShowNavItem('gym_management') || _canShowNavItem('maintenance')): ?>
-        <li class="nav-section-label">Services</li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('employees')): ?>
-        <li><a href="employees.php" class="<?php echo $current_page === 'employees.php' ? 'active' : ''; ?>"><i class="fas fa-user-tie"></i> Employees</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('maintenance')): ?>
-        <li><a href="maintenance.php" class="<?php echo $current_page === 'maintenance.php' ? 'active' : ''; ?>"><i class="fas fa-tools"></i> Maintenance</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('conference')): ?>
-        <li><a href="conference-management.php" class="<?php echo $current_page === 'conference-management.php' ? 'active' : ''; ?>"><i class="fas fa-briefcase"></i> Conference Rooms</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('events')): ?>
-        <li><a href="events-management.php" class="<?php echo $current_page === 'events-management.php' ? 'active' : ''; ?>"><i class="fas fa-calendar-alt"></i> Events</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('rooms')): ?>
-        <li><a href="room-management.php" class="<?php echo $current_page === 'room-management.php' ? 'active' : ''; ?>"><i class="fas fa-bed"></i> Rooms</a></li>
-        <li><a href="room-promotions.php" class="<?php echo $current_page === 'room-promotions.php' ? 'active' : ''; ?>"><i class="fas fa-tags"></i> Room Promotions</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('gym')): ?>
-        <li><a href="gym-inquiries.php" class="<?php echo $current_page === 'gym-inquiries.php' ? 'active' : ''; ?>"><i class="fas fa-dumbbell"></i> Gym Inquiries</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('gym_management')): ?>
-        <li><a href="gym-management.php" class="<?php echo $current_page === 'gym-management.php' ? 'active' : ''; ?>"><i class="fas fa-sliders-h"></i> Gym Management</a></li>
-        <?php endif; ?>
+        <section class="nav-group" data-nav-group="external">
+            <button type="button" class="nav-group-toggle" aria-expanded="true" aria-controls="nav-group-external">
+                <span class="nav-group-label"><i class="<?php echo htmlspecialchars($_nav_group_icons['External']); ?>"></i><span class="nav-group-title">External</span></span>
+                <span class="nav-group-count">1</span>
+                <i class="fas fa-chevron-down nav-group-chevron"></i>
+            </button>
+            <ul class="nav-group-items" id="nav-group-external">
+                <?php _renderNavLink('../index.php', 'fas fa-external-link-alt', 'View Website', null, $current_page); ?>
+            </ul>
+        </section>
 
-        <!-- ── CONTENT ───────────────────────────────────── -->
-        <?php if (_canShowNavItem('reviews') || _canShowNavItem('gallery') || _canShowNavItem('menu') || _canShowNavItem('pages') || _canShowNavItem('section_headers')): ?>
-        <li class="nav-section-label">Content</li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('reviews')): ?>
-        <li><a href="reviews.php" class="<?php echo $current_page === 'reviews.php' ? 'active' : ''; ?>"><i class="fas fa-star"></i> Reviews</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('gallery')): ?>
-        <li><a href="gallery-management.php" class="<?php echo $current_page === 'gallery-management.php' ? 'active' : ''; ?>"><i class="fas fa-images"></i> Gallery</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('menu')): ?>
-        <li><a href="menu-management.php" class="<?php echo $current_page === 'menu-management.php' ? 'active' : ''; ?>"><i class="fas fa-utensils"></i> Menu</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('pages')): ?>
-        <li><a href="page-management.php" class="<?php echo $current_page === 'page-management.php' ? 'active' : ''; ?>"><i class="fas fa-file-alt"></i> Page Management</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('section_headers')): ?>
-        <li><a href="section-headers-management.php" class="<?php echo $current_page === 'section-headers-management.php' ? 'active' : ''; ?>"><i class="fas fa-heading"></i> Section Headers</a></li>
-        <?php endif; ?>
-
-        <!-- ── SETTINGS ──────────────────────────────────── -->
-        <?php if (_canShowNavItem('booking_settings') || _canShowNavItem('cache') || _canShowNavItem('activity_logs') || _canShowNavItem('user_management') || ($user['role'] ?? '') === 'admin'): ?>
-        <li class="nav-section-label">Settings</li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('booking_settings')): ?>
-        <li><a href="booking-settings.php" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-cog"></i> Booking Settings</a></li>
-        <li><a href="booking-settings.php#email-settings" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-envelope"></i> Email Settings</a></li>
-        <li><a href="booking-settings.php#contact-settings" class="<?php echo $current_page === 'booking-settings.php' ? 'active' : ''; ?>"><i class="fas fa-address-card"></i> Hotel Contact</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('cache')): ?>
-        <li><a href="cache-management.php" class="<?php echo $current_page === 'cache-management.php' ? 'active' : ''; ?>"><i class="fas fa-bolt"></i> Cache</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('activity_logs')): ?>
-        <li><a href="activity-log.php" class="<?php echo $current_page === 'activity-log.php' ? 'active' : ''; ?>"><i class="fas fa-history"></i> Activity Logs</a></li>
-        <?php endif; ?>
-        <?php if (_canShowNavItem('user_management')): ?>
-        <li><a href="user-management.php" class="<?php echo $current_page === 'user-management.php' ? 'active' : ''; ?>"><i class="fas fa-users-cog"></i> User Management</a></li>
-        <?php endif; ?>
-        <?php if (($user['role'] ?? '') === 'admin'): ?>
-        <li><a href="api-keys.php" class="<?php echo $current_page === 'api-keys.php' ? 'active' : ''; ?>"><i class="fas fa-file-code"></i> PHP API Client</a></li>
-        <li><a href="deleted-records-backup.php" class="<?php echo $current_page === 'deleted-records-backup.php' ? 'active' : ''; ?>"><i class="fas fa-database"></i> Deleted Backups</a></li>
-        <?php endif; ?>
-
-        <!-- ── EXTERNAL ──────────────────────────────────── -->
-        <li class="nav-section-label">External</li>
-        <li><a href="../index.php" target="_blank"><i class="fas fa-external-link-alt"></i> View Website</a></li>
-
-    </ul>
-</nav>
-<style>
-    /* ── Nav section labels / separators ──────────────── */
-    .admin-nav li.nav-section-label {
-        display: block;
-        padding: 16px 20px 4px;
-        font-size: 9px;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: rgba(212, 175, 55, 0.75);  /* gold at reduced opacity */
-        pointer-events: none;
-        user-select: none;
-        border-top: 1px solid rgba(255, 255, 255, 0.06);
-        margin-top: 4px;
-    }
-
-    /* No top border on the very first label (Dashboard stands alone) */
-    .admin-nav li.nav-section-label:first-of-type {
-        border-top: none;
-        margin-top: 0;
-    }
-
-    /* ── Admin content loader ─────────────────────────── */
-    .admin-content-loader {
-        position: fixed;
-        inset: 0;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        background: rgba(15, 23, 42, 0.35);
-        backdrop-filter: blur(2px);
-        z-index: 2000;
-        pointer-events: none;
-    }
-
-    .admin-content-loader.show {
-        display: flex;
-    }
-
-    .admin-content-loader-card {
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
-        background: #ffffff;
-        color: #0f172a;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 12px 16px;
-        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
-        font-weight: 600;
-        font-size: 14px;
-    }
-
-    .admin-content-loader-spinner {
-        width: 20px;
-        height: 20px;
-        border: 3px solid #e2e8f0;
-        border-top-color: var(--gold);
-        border-radius: 50%;
-        animation: adminLoaderSpin 0.8s linear infinite;
-    }
-
-    @keyframes adminLoaderSpin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-</style>
-<div class="admin-content-loader" id="adminContentLoader" aria-hidden="true">
-    <div class="admin-content-loader-card" role="status" aria-live="polite">
-        <span class="admin-content-loader-spinner" aria-hidden="true"></span>
-        <span>Loading section...</span>
+        <p class="admin-nav-empty admin-nav-search-empty" id="adminNavSearchEmpty" hidden>No matching menus.</p>
     </div>
-</div>
+</nav>
+
+<?php /* SPA router — loaded once here; applies to every admin page automatically */ ?>
 <script>
-(function() {
-    var toggle = document.getElementById('adminNavToggle');
-    var nav = document.querySelector('.admin-nav');
-    var icon = document.getElementById('navToggleIcon');
-    var loader = document.getElementById('adminContentLoader');
-    var contentContainer = document.querySelector('.content, .admin-content');
-
-    function getContentContainer() {
-        if (!contentContainer || !document.body.contains(contentContainer)) {
-            contentContainer = document.querySelector('.content, .admin-content');
-        }
-        return contentContainer;
+    document.documentElement.classList.add('admin-dynamic-layout');
+    if (document.body) {
+        document.body.classList.add('admin-dynamic-layout');
     }
-
-    function clearStuckOverlays() {
-        if (loader) {
-            loader.classList.remove('show');
-            loader.setAttribute('aria-hidden', 'true');
-        }
-
-        var container = getContentContainer();
-        if (container) {
-            container.setAttribute('aria-busy', 'false');
-        }
-
-        document.querySelectorAll('.modal-overlay.active, [data-modal-overlay].active').forEach(function(el) {
-            el.classList.remove('active');
-        });
-        document.querySelectorAll('.modal-wrapper.active, [data-modal].active').forEach(function(el) {
-            el.classList.remove('active');
-        });
-        document.querySelectorAll('.bk-modal-overlay.open').forEach(function(el) {
-            el.classList.remove('open');
-        });
-        document.body.classList.remove('modal-open');
-    }
-
-    function setLoadingState(isLoading) {
-        var container = getContentContainer();
-        if (!loader || !container) {
-            return;
-        }
-
-        loader.classList.toggle('show', isLoading);
-        loader.setAttribute('aria-hidden', isLoading ? 'false' : 'true');
-        container.setAttribute('aria-busy', isLoading ? 'true' : 'false');
-    }
-
-    function normalizeHash(hash) {
-        if (!hash) {
-            return '';
-        }
-
-        var normalized = String(hash).trim();
-        if (normalized === '' || normalized === '#') {
-            return '';
-        }
-
-        return normalized.charAt(0) === '#' ? normalized : ('#' + normalized);
-    }
-
-    function scrollToHashTarget(hash, smooth) {
-        var normalizedHash = normalizeHash(hash);
-        if (!normalizedHash) {
-            return false;
-        }
-
-        var target = document.querySelector(normalizedHash);
-        if (!target) {
-            return false;
-        }
-
-        var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        var behavior = (!prefersReducedMotion && smooth !== false) ? 'smooth' : 'auto';
-        target.scrollIntoView({ behavior: behavior, block: 'start' });
-        return true;
-    }
-
-    function updateActiveNav(pathname, hash) {
-        if (!nav) return;
-        var currentPath = (pathname || '').split('/').pop();
-        var currentHash = normalizeHash(typeof hash === 'string' ? hash : window.location.hash);
-        var hasHash = currentHash !== '';
-        var activated = 0;
-
-        nav.querySelectorAll('a').forEach(function(link) {
-            var href = link.getAttribute('href') || '';
-            var linkPath = href.split('?')[0].split('#')[0].split('/').pop();
-            var hashPart = href.indexOf('#') >= 0 ? href.slice(href.indexOf('#')) : '';
-            var linkHash = normalizeHash(hashPart);
-            var shouldActivate = false;
-
-            if (currentPath && linkPath === currentPath) {
-                if (hasHash) {
-                    shouldActivate = linkHash === currentHash;
-                } else {
-                    shouldActivate = linkHash === '';
-                }
-            }
-
-            link.classList.toggle('active', shouldActivate);
-            if (shouldActivate) {
-                activated++;
-            }
-        });
-
-        // Fallback when no hash-specific nav link exists.
-        if (activated === 0 && currentPath) {
-            var fallback = nav.querySelectorAll('a');
-            for (var i = 0; i < fallback.length; i++) {
-                var fallbackHref = fallback[i].getAttribute('href') || '';
-                var fallbackPath = fallbackHref.split('?')[0].split('#')[0].split('/').pop();
-                if (fallbackPath === currentPath) {
-                    fallback[i].classList.add('active');
-                    break;
-                }
-            }
-        }
-
-        scrollNavToActive();
-    }
-
-    function scrollNavToActive(forceSmooth) {
-        if (!nav) {
-            return;
-        }
-
-        var activeLink = nav.querySelector('a.active');
-        if (!activeLink) {
-            return;
-        }
-
-        var navRect = nav.getBoundingClientRect();
-        var linkRect = activeLink.getBoundingClientRect();
-        var currentLeft = nav.scrollLeft;
-
-        var linkLeftInNav = linkRect.left - navRect.left + currentLeft;
-        var targetLeft = Math.max(0, linkLeftInNav - ((navRect.width - linkRect.width) / 2));
-        var maxScrollLeft = Math.max(0, nav.scrollWidth - nav.clientWidth);
-        targetLeft = Math.min(targetLeft, maxScrollLeft);
-
-        var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        var behavior = (!prefersReducedMotion && forceSmooth !== false) ? 'smooth' : 'auto';
-
-        nav.scrollTo({
-            left: targetLeft,
-            behavior: behavior
-        });
-    }
-
-    function closeMobileNav() {
-        if (!toggle || !nav || !icon) {
-            return;
-        }
-
-        nav.classList.remove('nav-open');
-        toggle.setAttribute('aria-expanded', 'false');
-        icon.className = 'fas fa-bars';
-    }
-
-    function normalizeNavForViewport() {
-        if (!toggle || !nav || !icon) {
-            return;
-        }
-
-        if (window.innerWidth > 768) {
-            // Ensure no mobile-only state leaks into desktop after resize.
-            closeMobileNav();
-            nav.style.maxHeight = '';
-        }
-    }
-
-    function syncDynamicStyles(doc) {
-        // Remove previous page-level injected styles.
-        document.querySelectorAll('style[data-admin-dynamic-style]').forEach(function(styleTag) {
-            styleTag.remove();
-        });
-
-        // Re-apply inline styles from fetched page head/body so per-page styling is preserved.
-        doc.querySelectorAll('head style, body style').forEach(function(styleTag) {
-            var cloned = document.createElement('style');
-            cloned.setAttribute('data-admin-dynamic-style', 'true');
-            cloned.textContent = styleTag.textContent || '';
-            document.head.appendChild(cloned);
-        });
-    }
-
-    async function runPageScripts(doc, remoteContent, requestUrl) {
-        var scripts = [];
-        doc.querySelectorAll('script').forEach(function(script) {
-            if (!remoteContent || !(remoteContent.compareDocumentPosition(script) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-                return;
-            }
-
-            var src = (script.getAttribute('src') || '').trim();
-            if (src && /js\/admin-(components|mobile)\.js(?:\?|$)/i.test(src)) {
-                return;
-            }
-
-            scripts.push({
-                src: src ? new URL(src, requestUrl).href : null,
-                code: script.textContent || ''
-            });
-        });
-
-        for (var i = 0; i < scripts.length; i++) {
-            var scriptInfo = scripts[i];
-            if (scriptInfo.src) {
-                var existingScript = Array.prototype.find.call(document.querySelectorAll('script[src]'), function(existing) {
-                    return new URL(existing.src, window.location.origin).href === scriptInfo.src;
-                });
-
-                if (existingScript) {
-                    continue;
-                }
-
-                var scriptEl = document.createElement('script');
-                scriptEl.src = scriptInfo.src;
-                scriptEl.async = false;
-                await new Promise(function(resolve) {
-                    scriptEl.onload = resolve;
-                    scriptEl.onerror = resolve;
-                    document.body.appendChild(scriptEl);
-                });
-            } else if (scriptInfo.code.trim()) {
-                try {
-                    new Function(scriptInfo.code)();
-                } catch (err) {
-                    console.error('Failed to run loaded script', err);
-                }
-            }
-        }
-    }
-
-    async function loadAdminContent(url, pushState) {
-        var container = getContentContainer();
-        if (!container) {
-            window.location.href = url;
-            return;
-        }
-
-        setLoadingState(true);
-
-        try {
-            var response = await fetch(url, {
-                credentials: 'same-origin',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Navigation request failed.');
-            }
-
-            var html = await response.text();
-            var doc = new DOMParser().parseFromString(html, 'text/html');
-            var remoteContent = doc.querySelector('.content');
-
-            if (!remoteContent) {
-                window.location.href = url;
-                return;
-            }
-
-            container.innerHTML = remoteContent.innerHTML;
-
-            if (doc.title) {
-                document.title = doc.title;
-            }
-
-            var targetUrl = new URL(url, window.location.origin);
-            updateActiveNav(targetUrl.pathname, targetUrl.hash);
-
-            if (pushState) {
-                window.history.pushState({ path: url }, '', url);
-            }
-
-            await runPageScripts(doc, remoteContent, url);
-                syncDynamicStyles(doc);
-            document.dispatchEvent(new CustomEvent('admin:contentLoaded', { detail: { url: url } }));
-
-            if (!scrollToHashTarget(targetUrl.hash, true)) {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-        } catch (error) {
-            console.error('Admin content load failed', error);
-            window.location.href = url;
-        } finally {
-            setLoadingState(false);
-            closeMobileNav();
-        }
-    }
-
-    function shouldUseAjaxNavigation(link, event) {
-        if (!link || !getContentContainer()) {
-            return false;
-        }
-
-        if (event && (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) {
-            return false;
-        }
-
-        if (link.target === '_blank' || link.hasAttribute('download') || link.hasAttribute('data-no-ajax')) {
-            return false;
-        }
-
-        var href = (link.getAttribute('href') || '').trim();
-        if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.toLowerCase().startsWith('javascript:')) {
-            return false;
-        }
-
-        var targetUrl;
-        try {
-            targetUrl = new URL(link.href, window.location.href);
-        } catch (error) {
-            return false;
-        }
-
-        if (targetUrl.origin !== window.location.origin) {
-            return false;
-        }
-
-        if (targetUrl.pathname.indexOf('/admin/') === -1) {
-            return false;
-        }
-
-        var fileName = targetUrl.pathname.split('/').pop().toLowerCase();
-        if (!fileName || !/\.php$/i.test(fileName) || fileName === 'logout.php') {
-            return false;
-        }
-
-        var currentUrl = new URL(window.location.href);
-        if (targetUrl.pathname === currentUrl.pathname && targetUrl.search === currentUrl.search && targetUrl.hash === currentUrl.hash) {
-            return false;
-        }
-
-        return true;
-    }
-
-    clearStuckOverlays();
-    window.addEventListener('pageshow', clearStuckOverlays);
-    document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') {
-            clearStuckOverlays();
-        }
-    });
-
-    if (toggle && nav) {
-        toggle.addEventListener('click', function() {
-            var isOpen = nav.classList.toggle('nav-open');
-            toggle.setAttribute('aria-expanded', isOpen);
-            icon.className = isOpen ? 'fas fa-times' : 'fas fa-bars';
-
-            if (isOpen) {
-                scrollNavToActive();
-            }
-        });
-
-        document.addEventListener('click', function(event) {
-            var link = event.target.closest('a');
-            if (!shouldUseAjaxNavigation(link, event)) {
-                return;
-            }
-
-            var targetUrl;
-            var currentUrl;
-            try {
-                targetUrl = new URL(link.href, window.location.href);
-                currentUrl = new URL(window.location.href);
-            } catch (error) {
-                return;
-            }
-
-            // Hash-only changes on the same page should not trigger a full AJAX content fetch.
-            if (targetUrl.pathname === currentUrl.pathname && targetUrl.search === currentUrl.search && targetUrl.hash !== currentUrl.hash) {
-                event.preventDefault();
-                window.history.pushState({ path: targetUrl.href }, '', targetUrl.href);
-                updateActiveNav(targetUrl.pathname, targetUrl.hash);
-                scrollToHashTarget(targetUrl.hash, true);
-                return;
-            }
-
-            event.preventDefault();
-            loadAdminContent(link.href, true);
-        });
-
-            // Show loader on synchronous form submissions across admin pages.
-            document.addEventListener('submit', function(event) {
-                var form = event.target;
-                if (!form || !form.matches('form')) {
-                    return;
-                }
-                if (form.hasAttribute('data-no-loader')) {
-                    return;
-                }
-
-                setLoadingState(true);
-                // Safety fallback if navigation is blocked by validation or prevented submit.
-                window.setTimeout(function() {
-                    setLoadingState(false);
-                }, 8000);
-            });
-
-        document.addEventListener('click', function(e) {
-            if (window.innerWidth <= 768 && !nav.contains(e.target) && !toggle.contains(e.target)) {
-                nav.classList.remove('nav-open');
-                toggle.setAttribute('aria-expanded', 'false');
-                icon.className = 'fas fa-bars';
-            }
-        });
-
-        window.addEventListener('popstate', function() {
-            loadAdminContent(window.location.href, false);
-        });
-
-        window.addEventListener('resize', normalizeNavForViewport);
-        window.addEventListener('resize', function() {
-            scrollNavToActive(false);
-        });
-        normalizeNavForViewport();
-
-        updateActiveNav(window.location.pathname, window.location.hash);
-        scrollToHashTarget(window.location.hash, false);
-        scrollNavToActive(false);
-    }
-})();
 </script>
+<script src="js/admin-page-intro.js" defer></script>
+<script src="js/admin-spa.js" defer></script>
+
+<?php /* Help FAB — rendered here, outside #rh-admin-page, so it survives SPA
+          content swaps and position:fixed is always relative to the viewport. */ ?>
+<?php require_once __DIR__ . '/help-tooltips.php'; ?>
+
+<?php /* #rh-admin-page wraps all per-page content.
+          This div is intentionally left unclosed here — each admin page's </body>
+          auto-closes it per the HTML5 spec. All page-specific content therefore
+          lands inside this wrapper, which carries the sidebar-offset margin. */ ?>
+<?php /** @var string $csrf_token */ ?>
+<div id="rh-admin-page">
+    <?php if ($_admin_back_target !== null && $_admin_back_label !== ''): ?>
+        <div class="content">
+            <a href="<?php echo htmlspecialchars((string)$_admin_back_target['href']); ?>" class="btn btn-secondary btn-sm" aria-label="<?php echo htmlspecialchars($_admin_back_label); ?>">
+                <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                <span><?php echo htmlspecialchars($_admin_back_label); ?></span>
+            </a>
+        </div>
+    <?php endif; ?>
+    <script>
+        window._rhCsrf = <?= json_encode($csrf_token ?? '') ?>;
+    </script>
+

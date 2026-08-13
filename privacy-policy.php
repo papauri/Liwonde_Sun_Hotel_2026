@@ -1,13 +1,15 @@
 <?php
+
 /**
  * Privacy Policy & Cookie Policy Page
  * Dynamically pulls site name from settings.
  */
-require_once 'config/security.php';
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
 require_once 'config/database.php';
 require_once 'includes/page-guard.php';
-
-sendSecurityHeaders();
 
 $site_name = getSetting('site_name', 'Our Hotel');
 $site_email = getSetting('email_main', 'info@example.com');
@@ -15,113 +17,38 @@ $site_address = getSetting('address_line1', '');
 $current_page = 'privacy-policy';
 $page_title = 'Privacy & Cookie Policy';
 
-// SEO meta
-$seo_title = "Privacy & Cookie Policy - $site_name";
-$seo_description = "Learn how $site_name collects, uses, and protects your personal data. Read our privacy policy and cookie usage information.";
+$seo_data = [
+    'title' => "Privacy & Cookie Policy - $site_name",
+    'description' => "Learn how $site_name collects, uses, and protects your personal data. Read our privacy policy and cookie usage information.",
+    'type' => 'website',
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars($seo_title); ?></title>
-    <meta name="description" content="<?php echo htmlspecialchars($seo_description); ?>">
-    <meta name="robots" content="index, follow">
+    <?php require_once 'includes/seo-meta.php'; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/header.css">
-    <link rel="stylesheet" href="css/footer.css">
-    <link rel="stylesheet" href="css/theme-dynamic.php">
-    <style>
-        .privacy-page { padding-top: 120px; padding-bottom: 80px; }
-        .privacy-container { max-width: 860px; margin: 0 auto; padding: 0 24px; }
-        .privacy-header { text-align: center; margin-bottom: 48px; }
-        .privacy-header h1 { font-family: 'Playfair Display', serif; font-size: 36px; color: var(--navy, #1a1a2e); margin-bottom: 12px; }
-        .privacy-header .subtitle { color: #888; font-size: 14px; }
-        .privacy-header .last-updated { display: inline-block; background: rgba(212,175,55,0.1); color: var(--gold, #D4AF37); padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 12px; }
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-        .privacy-nav { background: #fff; border-radius: 14px; padding: 24px; margin-bottom: 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-        .privacy-nav h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin: 0 0 12px 0; }
-        .privacy-nav ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .privacy-nav a { color: var(--navy, #1a1a2e); text-decoration: none; font-size: 14px; padding: 6px 0; display: block; transition: color 0.2s; }
-        .privacy-nav a:hover { color: var(--gold, #D4AF37); }
-        .privacy-nav a i { color: var(--gold, #D4AF37); margin-right: 8px; width: 16px; }
-
-        .policy-section { background: #fff; border-radius: 14px; padding: 32px; margin-bottom: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-        .policy-section h2 { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--navy, #1a1a2e); margin: 0 0 16px 0; padding-bottom: 12px; border-bottom: 2px solid var(--gold, #D4AF37); }
-        .policy-section h2 i { color: var(--gold, #D4AF37); margin-right: 10px; }
-        .policy-section h3 { font-size: 16px; color: var(--navy, #1a1a2e); margin: 20px 0 8px 0; }
-        .policy-section p, .policy-section li { font-size: 14px; line-height: 1.8; color: #555; }
-        .policy-section ul { padding-left: 20px; }
-        .policy-section ul li { margin-bottom: 6px; }
-        .policy-section ul li::marker { color: var(--gold, #D4AF37); }
-
-        .data-table-wrap {
-            width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            margin: 16px 0;
-            border-radius: 10px;
-        }
-        .data-table { width: 100%; border-collapse: collapse; margin: 0; border-radius: 10px; overflow: hidden; }
-        .data-table th { background: var(--navy, #1a1a2e); color: #fff; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .data-table td { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13px; color: #555; }
-        .data-table tr:last-child td { border-bottom: none; }
-        .data-table tr:nth-child(even) { background: #fafafa; }
-
-        .cookie-type-badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-        .badge-essential { background: #e8f5e9; color: #2e7d32; }
-        .badge-analytics { background: #e3f2fd; color: #1565c0; }
-        .badge-preference { background: #fff3e0; color: #e65100; }
-
-        .contact-card { background: linear-gradient(135deg, rgba(212,175,55,0.08), rgba(212,175,55,0.02)); border: 1px solid rgba(212,175,55,0.2); border-radius: 12px; padding: 24px; margin-top: 16px; }
-        .contact-card p { margin: 6px 0; }
-        .contact-card i { color: var(--gold, #D4AF37); margin-right: 8px; width: 16px; }
-
-        .rights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
-        .right-card { background: #f9f9f9; border-radius: 10px; padding: 16px; border-left: 3px solid var(--gold, #D4AF37); }
-        .right-card h4 { margin: 0 0 4px 0; font-size: 14px; color: var(--navy, #1a1a2e); }
-        .right-card p { margin: 0; font-size: 12px; }
-
-        @media (max-width: 768px) {
-            .privacy-page { padding-top: 100px; }
-            .privacy-header h1 { font-size: 28px; }
-            .privacy-nav ul { grid-template-columns: 1fr; }
-            .rights-grid { grid-template-columns: 1fr; }
-            .policy-section { padding: 24px 20px; }
-            .data-table {
-                min-width: 640px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .privacy-container { padding: 0 14px; }
-            .privacy-header h1 { font-size: 24px; }
-            .policy-section { padding: 20px 16px; }
-            .data-table {
-                min-width: 560px;
-            }
-            .data-table th,
-            .data-table td {
-                padding: 10px 12px;
-            }
-        }
-    </style>
+    <!-- Main CSS - Loads all stylesheets in correct order -->
+    <link rel="stylesheet" href="css/base/critical.css">
+    <link rel="stylesheet" href="css/main.css">
 </head>
+
 <body>
     <?php require_once 'includes/loader.php'; ?>
     <?php require_once 'includes/header.php'; ?>
 
-    <main class="privacy-page">
+    <main class="privacy-page" id="main-content">
         <div class="privacy-container">
 
             <div class="privacy-header">
-                <h1><i class="fas fa-shield-alt" style="color: var(--gold);"></i> Privacy & Cookie Policy</h1>
+                <h1><i class="fas fa-shield-alt text-old"></i> Privacy & Cookie Policy</h1>
                 <p class="subtitle"><?php echo htmlspecialchars($site_name); ?> is committed to protecting your privacy</p>
-                <span class="last-updated"><i class="fas fa-calendar-alt"></i> Last Updated: <?php echo date('F j, Y'); ?></span>
+                <span class="last-updated"><i class="fas fa-calendar-alt"></i> Last Updated: <?php echo htmlspecialchars(getSetting('privacy_policy_updated', 'June 24, 2026')); ?></span>
             </div>
 
             <!-- Table of Contents -->
@@ -181,44 +108,42 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
                 <h2><i class="fas fa-cookie-bite"></i> Cookies & Tracking Technologies</h2>
                 <p>Our website uses cookies — small text files stored on your device — to enhance your experience. Here are the cookies we use:</p>
 
-                <div class="data-table-wrap">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Cookie Name</th>
-                                <th>Type</th>
-                                <th>Purpose</th>
-                                <th>Duration</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><code>PHPSESSID</code></td>
-                                <td><span class="cookie-type-badge badge-essential">Essential</span></td>
-                                <td>Maintains your session while browsing (e.g., booking form state)</td>
-                                <td>Session</td>
-                            </tr>
-                            <tr>
-                                <td><code>cookie_consent</code></td>
-                                <td><span class="cookie-type-badge badge-essential">Essential</span></td>
-                                <td>Remembers your cookie consent preference</td>
-                                <td>1 year</td>
-                            </tr>
-                            <tr>
-                                <td><code>csrf_token</code></td>
-                                <td><span class="cookie-type-badge badge-essential">Essential</span></td>
-                                <td>Security token to prevent cross-site request forgery attacks</td>
-                                <td>Session</td>
-                            </tr>
-                            <tr>
-                                <td><code>visitor_session</code></td>
-                                <td><span class="cookie-type-badge badge-analytics">Analytics</span></td>
-                                <td>Tracks anonymous browsing session for traffic reports</td>
-                                <td>Session</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Cookie Name</th>
+                            <th>Type</th>
+                            <th>Purpose</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>PHPSESSID</code></td>
+                            <td><span class="cookie-type-badge badge-essential">Essential</span></td>
+                            <td>Maintains your session while browsing (e.g., booking form state)</td>
+                            <td>Session</td>
+                        </tr>
+                        <tr>
+                            <td><code>cookie_consent</code></td>
+                            <td><span class="cookie-type-badge badge-essential">Essential</span></td>
+                            <td>Remembers your cookie consent preference</td>
+                            <td>1 year</td>
+                        </tr>
+                        <tr>
+                            <td><code>csrf_token</code></td>
+                            <td><span class="cookie-type-badge badge-essential">Essential</span></td>
+                            <td>Security token to prevent cross-site request forgery attacks</td>
+                            <td>Session</td>
+                        </tr>
+                        <tr>
+                            <td><code>visitor_session</code></td>
+                            <td><span class="cookie-type-badge badge-analytics">Analytics</span></td>
+                            <td>Tracks anonymous browsing session for traffic reports</td>
+                            <td>Session</td>
+                        </tr>
+                    </tbody>
+                </table>
 
                 <h3>Managing Cookies</h3>
                 <p>When you first visit our website, a cookie banner will ask for your consent. You can choose to:</p>
@@ -236,54 +161,52 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
                 <p>To improve our services and understand our visitors better, we log anonymous session data when you browse our website. This is done through our own internal tracking system — we do <strong>not</strong> use third-party analytics services like Google Analytics.</p>
 
                 <h3>What We Log</h3>
-                <div class="data-table-wrap">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Data Point</th>
-                                <th>Example</th>
-                                <th>Purpose</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Device Type</td>
-                                <td>Desktop, Mobile, Tablet</td>
-                                <td>Optimise website layout for different devices</td>
-                            </tr>
-                            <tr>
-                                <td>Browser</td>
-                                <td>Chrome, Safari, Firefox</td>
-                                <td>Ensure compatibility across browsers</td>
-                            </tr>
-                            <tr>
-                                <td>Operating System</td>
-                                <td>Windows, macOS, Android, iOS</td>
-                                <td>Technical support and compatibility</td>
-                            </tr>
-                            <tr>
-                                <td>Pages Visited</td>
-                                <td>/rooms-gallery.php, /restaurant.php</td>
-                                <td>Understand popular content and user journeys</td>
-                            </tr>
-                            <tr>
-                                <td>Visit Time</td>
-                                <td>2026-02-09 14:30:00</td>
-                                <td>Identify peak traffic times</td>
-                            </tr>
-                            <tr>
-                                <td>Referring Website</td>
-                                <td>google.com, facebook.com</td>
-                                <td>Understand how visitors find us</td>
-                            </tr>
-                            <tr>
-                                <td>IP Address</td>
-                                <td>Partially anonymised</td>
-                                <td>Geographic region identification, security</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Data Point</th>
+                            <th>Example</th>
+                            <th>Purpose</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Device Type</td>
+                            <td>Desktop, Mobile, Tablet</td>
+                            <td>Optimise website layout for different devices</td>
+                        </tr>
+                        <tr>
+                            <td>Browser</td>
+                            <td>Chrome, Safari, Firefox</td>
+                            <td>Ensure compatibility across browsers</td>
+                        </tr>
+                        <tr>
+                            <td>Operating System</td>
+                            <td>Windows, macOS, Android, iOS</td>
+                            <td>Technical support and compatibility</td>
+                        </tr>
+                        <tr>
+                            <td>Pages Visited</td>
+                            <td>/rooms-gallery.php, /restaurant.php</td>
+                            <td>Understand popular content and user journeys</td>
+                        </tr>
+                        <tr>
+                            <td>Visit Time</td>
+                            <td>2026-02-09 14:30:00</td>
+                            <td>Identify peak traffic times</td>
+                        </tr>
+                        <tr>
+                            <td>Referring Website</td>
+                            <td>google.com, facebook.com</td>
+                            <td>Understand how visitors find us</td>
+                        </tr>
+                        <tr>
+                            <td>IP Address</td>
+                            <td>Partially anonymised</td>
+                            <td>Geographic region identification, security</td>
+                        </tr>
+                    </tbody>
+                </table>
 
                 <p>Session logs are stored in our secure database and in server log files. This data is used exclusively for internal analytics and is never shared with third parties.</p>
             </section>
@@ -343,7 +266,7 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
                         <p>Withdraw cookie consent at any time by clearing your browser cookies</p>
                     </div>
                 </div>
-                <p style="margin-top: 16px;">To exercise any of these rights, please contact us using the details below.</p>
+                <p class="mt-30">To exercise any of these rights, please contact us using the details below.</p>
             </section>
 
             <!-- Section 8: Contact -->
@@ -353,7 +276,7 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
                 <div class="contact-card">
                     <p><i class="fas fa-building"></i> <strong><?php echo htmlspecialchars($site_name); ?></strong></p>
                     <?php if (!empty($site_address)): ?>
-                    <p><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($site_address); ?></p>
+                        <p><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($site_address); ?></p>
                     <?php endif; ?>
                     <p><i class="fas fa-envelope"></i> <a href="mailto:<?php echo htmlspecialchars($site_email); ?>"><?php echo htmlspecialchars($site_email); ?></a></p>
                     <p><i class="fas fa-phone"></i> <a href="tel:<?php echo htmlspecialchars(preg_replace('/[^0-9+]/', '', getSetting('phone_main', ''))); ?>"><?php echo htmlspecialchars(getSetting('phone_main', '')); ?></a></p>
@@ -363,9 +286,9 @@ $seo_description = "Learn how $site_name collects, uses, and protects your perso
         </div>
     </main>
 
-    <?php require_once 'includes/footer.php'; ?>
-    <?php require_once 'includes/scroll-to-top.php'; ?>
-    <script src="js/modal.js"></script>
     <script src="js/main.js" defer></script>
+
+    <?php require_once 'includes/footer.php'; ?>
 </body>
+
 </html>

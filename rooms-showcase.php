@@ -1,476 +1,440 @@
 <?php
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
 require_once 'config/database.php';
+require_once 'config/base-url.php';
 require_once 'includes/page-guard.php';
 require_once 'includes/reviews-display.php';
 require_once 'includes/section-headers.php';
+require_once 'includes/booking-functions.php';
 
-// Core settings
-$site_name = getSetting('site_name');
-$site_logo = getSetting('site_logo');
-$site_tagline = getSetting('site_tagline');
-$currency_symbol = getSetting('currency_symbol');
-$email_reservations = getSetting('email_reservations')
-    ?: getEmailSetting('booking_admin_email')
-    ?: getSetting('email_main');
-$phone_main = getSetting('phone_main');
+$site_name = (string) getSetting('site_name', 'Liwonde Sun Hotel');
+$currency_symbol = (string) getSetting('currency_symbol', 'MWK');
+$phone_main = (string) getSetting('phone_main', '');
+$email_reservations = (string) getSetting('email_reservations', '');
 
-
-// Policies for modals
-$policies = [];
-try {
-    $policyStmt = $pdo->query("SELECT slug, title, summary, content FROM policies WHERE is_active = 1 ORDER BY display_order ASC, id ASC");
-    $policies = $policyStmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
-    $policies = [];
-}
-
-// Rooms collection
 $rooms = [];
 try {
-    $roomStmt = $pdo->query("SELECT * FROM rooms WHERE is_active = 1 ORDER BY is_featured DESC, display_order ASC, id ASC");
-    $rooms = $roomStmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = $pdo->query(
+        "SELECT id, slug, name, short_description, description, image_url, price_per_night,
+                max_guests, size_sqm, bed_type, amenities, badge, is_featured
+         FROM rooms
+         WHERE is_active = 1
+         ORDER BY is_featured DESC, display_order ASC, id ASC"
+    );
+    $rooms = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($rooms) && function_exists('applyManagedMediaOverrides')) {
+        foreach ($rooms as &$roomRow) {
+            $roomRow = applyManagedMediaOverrides($roomRow, 'rooms', $roomRow['id'] ?? '', ['image_url']);
+        }
+        unset($roomRow);
+    }
 } catch (PDOException $e) {
     $rooms = [];
 }
 
-foreach ($rooms as &$room_row) {
-    $pricing = getRoomEffectivePricing($room_row, 'double');
-    $room_row['display_price_per_night'] = (float)($pricing['final_price'] ?? $room_row['price_per_night']);
-    $room_row['original_price_per_night'] = (float)($pricing['base_price'] ?? $room_row['price_per_night']);
-    $room_row['has_active_promo'] = !empty($pricing['has_promo']) ? 1 : 0;
-    $room_row['promo_title'] = $pricing['promotion']['title'] ?? null;
-}
-unset($room_row);
+$requested_room_slug = trim((string)($_GET['room'] ?? ''));
+$spotlight_room = !empty($rooms) ? $rooms[0] : null;
 
-$hero_room = $rooms[0] ?? [
-    'name' => 'Signature Suites',
-    'short_description' => 'Elevated riverfront stays crafted for discerning guests',
-    'description' => 'Discover contemporary suites with panoramic views, elevated amenities, and seamless technology for effortless stays.',
-    'price_per_night' => 320,
-    'image_url' => 'images/hero/slide1.jpg',
-    'badge' => 'Featured',
-    'size_sqm' => 60,
-    'max_guests' => 3,
-    'bed_type' => 'King Bed',
-];
-
-$active_slug = isset($_GET['room']) ? $_GET['room'] : ($rooms[0]['slug'] ?? null);
-if ($active_slug) {
-    foreach ($rooms as $room) {
-        if ($room['slug'] === $active_slug) {
-            $hero_room = $room;
+if ($requested_room_slug !== '' && !empty($rooms)) {
+    foreach ($rooms as $candidate) {
+        if ((string)($candidate['slug'] ?? '') === $requested_room_slug) {
+            $spotlight_room = $candidate;
             break;
         }
     }
 }
 
-// Contact settings
-$contact_settings = getSettingsByGroup('contact');
-$contact = [];
-foreach ($contact_settings as $setting) {
-    $contact[$setting['setting_key']] = $setting['setting_value'];
-}
+$spotlight_gallery = [];
+if (!empty($spotlight_room['id'])) {
+    try {
+        $galleryStmt = $pdo->prepare(
+            "SELECT id, title, image_url
+             FROM gallery
+             WHERE room_id = ?
+               AND is_active = 1
+               AND image_url IS NOT NULL
+               AND image_url != ''
+             ORDER BY display_order ASC, id ASC
+             LIMIT 4"
+        );
+        $galleryStmt->execute([(int)$spotlight_room['id']]);
+        $spotlight_gallery = $galleryStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Social settings
-$social_settings = getSettingsByGroup('social');
-$social = [];
-foreach ($social_settings as $setting) {
-    $social[$setting['setting_key']] = $setting['setting_value'];
-}
-
-// Footer links
-$footer_links_raw = [];
-try {
-    $footerStmt = $pdo->query("SELECT column_name, link_text, link_url FROM footer_links WHERE is_active = 1 ORDER BY column_name, display_order");
-    $footer_links_raw = $footerStmt->fetchAll();
-} catch (PDOException $e) {
-    $footer_links_raw = [];
-}
-
-$footer_links = [];
-foreach ($footer_links_raw as $link) {
-    $footer_links[$link['column_name']][] = $link;
-}
-
-// Extract unique badges for filters
-$badges = ['All Rooms'];
-$badge_counts = [];
-foreach ($rooms as $room) {
-    if (!empty($room['badge'])) {
-        if (!in_array($room['badge'], $badges)) {
-            $badges[] = $room['badge'];
+        if (!empty($spotlight_gallery) && function_exists('applyManagedMediaOverrides')) {
+            foreach ($spotlight_gallery as &$galleryRow) {
+                $galleryRow = applyManagedMediaOverrides($galleryRow, 'gallery', $galleryRow['id'] ?? '', ['image_url']);
+            }
+            unset($galleryRow);
         }
-        $badge_counts[$room['badge']] = isset($badge_counts[$room['badge']]) ? $badge_counts[$room['badge']] + 1 : 1;
+    } catch (PDOException $e) {
+        $spotlight_gallery = [];
+    }
+
+    if (empty($spotlight_gallery) && !empty($spotlight_room['image_url'])) {
+        $spotlight_gallery[] = [
+            'id' => 0,
+            'title' => $spotlight_room['name'],
+            'image_url' => $spotlight_room['image_url'],
+        ];
     }
 }
+
+$badge_map = ['all-rooms' => 'All Rooms'];
+foreach ($rooms as $room) {
+    $badge_label = trim((string)($room['badge'] ?? ''));
+    if ($badge_label === '') {
+        continue;
+    }
+    $badge_key = preg_replace('/[^a-z0-9]+/', '-', strtolower($badge_label));
+    $badge_key = trim((string)$badge_key, '-');
+    if ($badge_key === '') {
+        continue;
+    }
+    $badge_map[$badge_key] = $badge_label;
+}
+
+$seo_data = [
+    'title' => $site_name . ' | Rooms Showcase',
+    'description' => "Explore all available rooms at {$site_name}, view details, and book instantly.",
+    'type' => 'website',
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
-    <meta name="theme-color" content="#0A1929">
+    <?php require_once 'includes/seo-meta.php'; ?>
+
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="format-detection" content="telephone=yes">
-    <title><?php echo htmlspecialchars($site_name); ?> | Rooms & Suites</title>
-    <meta name="description" content="Explore contemporary rooms and suites at <?php echo htmlspecialchars($site_name); ?> with seamless booking integration.">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="css/theme-dynamic.php">
-    <link rel="stylesheet" href="css/header.css">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/footer.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+
+    <link rel="stylesheet" href="css/base/critical.css">
+    <link rel="stylesheet" href="css/main.css">
 </head>
-<body class="rooms-page">
+
+<body class="rooms-page rooms-showcase-page">
     <?php include 'includes/loader.php'; ?>
-    
     <?php include 'includes/header.php'; ?>
 
-    <main>
-    <!-- Mobile Menu Overlay -->
-    <div class="mobile-menu-overlay" role="presentation"></div>
+    <main id="main-content">
+        <?php include 'includes/hero.php'; ?>
 
-    <!-- Hero Section -->
-    <?php include 'includes/hero.php'; ?>
-
-    <!-- Room Images Grid Section -->
-    <section class="section" style="padding-top: 40px; padding-bottom: 40px;">
-        <div class="container">
-            <!-- Desktop: Grid Layout - Mobile: Stack Layout -->
-            <?php
-            // Fetch gallery images for hero room
-            $hero_gallery = [];
-            try {
-                $stmt = $pdo->prepare("SELECT title, image_url FROM gallery WHERE room_id = ? AND is_active = 1 AND image_url IS NOT NULL AND image_url != '' ORDER BY display_order ASC, id ASC LIMIT 4");
-                $stmt->execute([$hero_room['id']]);
-                $hero_gallery = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
-                // Fallback to featured image if no gallery images
-                if (empty($hero_gallery) && !empty($hero_room['image_url'])) {
-                    $hero_gallery = [['image_url' => $hero_room['image_url'], 'title' => $hero_room['name']]];
-                }
-            } catch (PDOException $e) {
-                $hero_gallery = [['image_url' => $hero_room['image_url'], 'title' => $hero_room['name']]];
-            }
-            ?>
-            <?php if (!empty($hero_gallery)): ?>
-            <div class="room-gallery-grid" style="margin-bottom: 40px;">
-                <?php foreach ($hero_gallery as $img): ?>
-                <div class="gallery-item">
-                    <img src="<?php echo htmlspecialchars($img['image_url']); ?>" alt="<?php echo htmlspecialchars($img['title'] ?? $hero_room['name']); ?>">
-                    <div class="gallery-item-label"><?php echo htmlspecialchars($img['title'] ?? $hero_room['name']); ?></div>
-                </div>
-                <?php endforeach; ?>
-            </div>
-            <?php endif; ?>
-
-            <div class="room-detail-info">
-                <h2 class="room-detail-title"><?php echo htmlspecialchars($hero_room['name']); ?></h2>
-                <p class="room-detail-description"><?php echo htmlspecialchars($hero_room['description'] ?? $hero_room['short_description']); ?></p>
-                
-                <div class="room-detail-specs">
-                    <div class="spec-item">
-                        <i class="fas fa-users"></i>
-                        <div class="spec-label">Guests</div>
-                        <div class="spec-value">Up to <?php echo htmlspecialchars($hero_room['max_guests'] ?? 2); ?></div>
-                    </div>
-                    <div class="spec-item">
-                        <i class="fas fa-ruler-combined"></i>
-                        <div class="spec-label">Floor Space</div>
-                        <div class="spec-value"><?php echo htmlspecialchars($hero_room['size_sqm'] ?? 40); ?> sqm</div>
-                    </div>
-                    <div class="spec-item">
-                        <i class="fas fa-bed"></i>
-                        <div class="spec-label">Bed Type</div>
-                        <div class="spec-value"><?php echo htmlspecialchars($hero_room['bed_type']); ?></div>
-                    </div>
-                    <div class="spec-item">
-                        <i class="fas fa-tag"></i>
-                        <div class="spec-label">Nightly Rate</div>
-                        <div class="spec-value"><?php if (!empty($hero_room['has_active_promo']) && (float)$hero_room['original_price_per_night'] > (float)$hero_room['display_price_per_night']): ?><span style="display:block;font-size:12px;color:#888;text-decoration:line-through;"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['original_price_per_night'], 0); ?></span><?php endif; ?><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['display_price_per_night'], 0); ?></div>
-                    </div>
-                </div>
-
-                <div class="amenities-list">
-                    <h3 style="font-size: 18px; color: var(--navy); margin-bottom: 14px; font-weight: 700;">Room Amenities</h3>
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        <?php 
-                        $amenities = explode(',', $hero_room['amenities'] ?? '');
-                        foreach ($amenities as $amenity): 
-                        ?>
-                        <span style="background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(212, 175, 55, 0.08) 100%); color: var(--navy); padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; border: 1px solid rgba(212, 175, 55, 0.25);">
-                            <i class="fas fa-check" style="color: var(--gold); margin-right: 6px;"></i><?php echo htmlspecialchars(trim($amenity)); ?>
-                        </span>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Modern Image Gallery Grid -->
-            <div class="room-gallery-grid">
-                <?php
-                // Fetch gallery images for this room from database
-                try {
-                    $stmt = $pdo->prepare("
-                        SELECT title, description, image_url 
-                        FROM gallery 
-                        WHERE room_id = ? AND category = 'rooms' AND is_active = 1
-                        ORDER BY display_order ASC, created_at ASC
-                        LIMIT 4
-                    ");
-                    $stmt->execute([$hero_room['id']]);
-                    $gallery_images = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                    
-                    // If we have gallery images, show them
-                    if (!empty($gallery_images)) {
-                        foreach ($gallery_images as $gallery_img) {
-                            ?>
-                            <div class="gallery-item">
-                                <img src="<?php echo htmlspecialchars($gallery_img['image_url']); ?>" alt="<?php echo htmlspecialchars($gallery_img['title']); ?>">
-                                <div class="gallery-item-label"><?php echo htmlspecialchars($gallery_img['title']); ?></div>
-                            </div>
-                            <?php
-                        }
-                    } else {
-                        // Fallback to hero image if no gallery images
-                        ?>
-                        <div class="gallery-item">
-                            <img src="<?php echo htmlspecialchars($hero_room['image_url']); ?>" alt="<?php echo htmlspecialchars($hero_room['name']); ?> - Main View">
-                            <div class="gallery-item-label">Main View</div>
+        <section class="rooms-showcase-spotlight editorial-section landing-section" data-lazy-reveal>
+            <div class="container">
+                <?php if ($spotlight_room): ?>
+                    <div class="rooms-showcase-spotlight__layout">
+                        <div class="rooms-showcase-spotlight__gallery">
+                            <?php foreach ($spotlight_gallery as $index => $img): ?>
+                                <figure class="rooms-showcase-spotlight__figure">
+                                    <img
+                                        src="<?php echo htmlspecialchars((string)$img['image_url'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        alt="<?php echo htmlspecialchars((string)($img['title'] ?? $spotlight_room['name']), ENT_QUOTES, 'UTF-8'); ?>"
+                                        loading="<?php echo $index === 0 ? 'eager' : 'lazy'; ?>"
+                                        class="rooms-showcase-spotlight__image">
+                                    <figcaption class="rooms-showcase-spotlight__caption">
+                                        <?php echo htmlspecialchars((string)($img['title'] ?? $spotlight_room['name']), ENT_QUOTES, 'UTF-8'); ?>
+                                    </figcaption>
+                                </figure>
+                            <?php endforeach; ?>
                         </div>
-                        <?php
-                    }
-                } catch (PDOException $e) {
-                    // Fallback on error
-                    ?>
-                    <div class="gallery-item">
-                        <img src="<?php echo htmlspecialchars($hero_room['image_url']); ?>" alt="<?php echo htmlspecialchars($hero_room['name']); ?> - Main View">
-                        <div class="gallery-item-label">Main View</div>
-                    </div>
-                    <?php
-                }
-                ?>
-            </div>
-        </div>
-    </section>
 
-    <main>
-        <section class="section" id="collection">
+                        <div class="rooms-showcase-spotlight__summary">
+                            <span class="rooms-showcase-spotlight__label">Featured Room</span>
+                            <h1 class="rooms-showcase-spotlight__title"><?php echo htmlspecialchars((string)$spotlight_room['name'], ENT_QUOTES, 'UTF-8'); ?></h1>
+                            <p class="rooms-showcase-spotlight__description"><?php echo htmlspecialchars((string)($spotlight_room['description'] ?: $spotlight_room['short_description']), ENT_QUOTES, 'UTF-8'); ?></p>
+
+                            <div class="rooms-showcase-spotlight__meta">
+                                <span><i class="fas fa-users" aria-hidden="true"></i> Up to <?php echo (int)($spotlight_room['max_guests'] ?? 2); ?> guests</span>
+                                <span><i class="fas fa-ruler-combined" aria-hidden="true"></i> <?php echo htmlspecialchars((string)($spotlight_room['size_sqm'] ?? 40), ENT_QUOTES, 'UTF-8'); ?> sqm</span>
+                                <span><i class="fas fa-bed" aria-hidden="true"></i> <?php echo htmlspecialchars((string)($spotlight_room['bed_type'] ?? 'Standard Bed'), ENT_QUOTES, 'UTF-8'); ?></span>
+                                <span><i class="fas fa-tag" aria-hidden="true"></i> <?php echo htmlspecialchars($currency_symbol, ENT_QUOTES, 'UTF-8'); ?> <?php echo number_format((float)($spotlight_room['price_per_night'] ?? 0), 0); ?> / night</span>
+                            </div>
+
+                            <?php
+                            $spotlight_amenities = array_values(array_filter(array_map('trim', explode(',', (string)($spotlight_room['amenities'] ?? '')))));
+                            ?>
+                            <?php if (!empty($spotlight_amenities)): ?>
+                                <div class="rooms-showcase-spotlight__amenities" aria-label="Room amenities">
+                                    <?php foreach (array_slice($spotlight_amenities, 0, 8) as $amenity): ?>
+                                        <span class="rooms-showcase-spotlight__amenity"><i class="fas fa-check" aria-hidden="true"></i> <?php echo htmlspecialchars($amenity, ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="rooms-showcase-spotlight__actions">
+                                <a class="btn btn-outline" href="room.php?room=<?php echo urlencode((string)$spotlight_room['slug']); ?>">Book Details</a>
+                                <?php if (isBookingEnabled()): ?>
+                                    <a class="btn btn-primary" href="booking.php?room_id=<?php echo (int)$spotlight_room['id']; ?>">Book Now</a>
+                                <?php else: ?>
+                                    <button class="btn btn-primary" type="button" disabled aria-disabled="true">Booking Disabled</button>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <div class="editorial-no-events mt-50">
+                        <i class="fas fa-bed"></i>
+                        <h3>Rooms are not available yet</h3>
+                        <p>Please check again shortly or contact reservations for assistance.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </section>
+
+        <section class="rooms-showcase-collection editorial-section landing-section" id="collection" data-lazy-reveal>
             <div class="container">
                 <?php renderSectionHeader('rooms_collection', 'rooms-showcase', [
                     'label' => 'Stay Collection',
-                    'title' => 'Pick Your Perfect Space',
-                    'description' => 'Suites and rooms crafted for business, romance, and family stays with direct booking flows'
+                    'title' => 'Choose Your Perfect Room',
+                    'description' => 'Browse each room, open detailed specs, and book instantly with the correct reservation flow.'
                 ]); ?>
 
-                <div class="rooms-filter">
-                    <?php foreach ($badges as $badge): ?>
-                    <span class="chip <?php echo $badge === 'All Rooms' ? 'active' : ''; ?>" data-filter="<?php echo htmlspecialchars(strtolower(str_replace(' ', '-', $badge))); ?>">
-                        <?php echo htmlspecialchars($badge); ?>
-                    </span>
-                    <?php endforeach; ?>
-                </div>
+                <?php if (!empty($rooms)): ?>
+                    <div class="rooms-showcase-filter" role="toolbar" aria-label="Filter rooms by category">
+                        <?php foreach ($badge_map as $badge_key => $badge_label): ?>
+                            <button
+                                type="button"
+                                class="chip rooms-showcase-filter__chip<?php echo $badge_key === 'all-rooms' ? ' active' : ''; ?>"
+                                data-filter="<?php echo htmlspecialchars($badge_key, ENT_QUOTES, 'UTF-8'); ?>"
+                                aria-pressed="<?php echo $badge_key === 'all-rooms' ? 'true' : 'false'; ?>">
+                                <?php echo htmlspecialchars($badge_label, ENT_QUOTES, 'UTF-8'); ?>
+                            </button>
+                        <?php endforeach; ?>
+                    </div>
 
-                <div class="rooms-grid modern-grid fancy-3d-grid">
-                    <?php foreach ($rooms as $room): 
-                        $amenities = array_slice(explode(',', $room['amenities']), 0, 4);
-                    ?>
-                    <article class="room-tile fancy-3d-card" tabindex="0" data-room-id="<?php echo (int)$room['id']; ?>" data-room-slug="<?php echo htmlspecialchars($room['slug']); ?>" data-badge="<?php echo htmlspecialchars(strtolower(str_replace(' ', '-', $room['badge'] ?? 'all-rooms'))); ?>" data-filter="all-rooms <?php echo htmlspecialchars(strtolower(str_replace(' ', '-', $room['badge'] ?? ''))); ?>">
-                        <div class="room-tile__3d-bg"></div>
-                        <a class="room-tile__image" href="rooms-showcase.php?room=<?php echo urlencode($room['slug']); ?>#book" aria-label="Open booking for <?php echo htmlspecialchars($room['name']); ?>">
-                            <img src="<?php echo htmlspecialchars($room['image_url']); ?>" alt="<?php echo htmlspecialchars($room['name']); ?>" style="height: 180px; object-fit: cover;">
-                            <?php if (!empty($room['badge'])): ?>
-                            <span class="room-tile__badge"><?php echo htmlspecialchars($room['badge']); ?></span>
-                            <?php endif; ?>
-                        </a>
-                        <div class="room-tile__body">
-                            <div class="room-tile__header">
-                                <div>
-                                    <h3><?php echo htmlspecialchars($room['name']); ?></h3>
-                                    <p><?php echo htmlspecialchars($room['short_description']); ?></p>
-                                </div>
-                                <div class="room-tile__price">
-                                    <?php if (!empty($room['has_active_promo']) && (float)$room['original_price_per_night'] > (float)$room['display_price_per_night']): ?>
-                                        <span style="display:block;font-size:11px;color:#888;text-decoration:line-through;"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room['original_price_per_night'], 0); ?></span>
+                    <div class="card-grid rooms-showcase-grid" data-room-count="<?php echo (int)count($rooms); ?>">
+                        <?php foreach ($rooms as $room): ?>
+                            <?php
+                            $room_badge_label = trim((string)($room['badge'] ?? ''));
+                            $room_badge_key = $room_badge_label !== ''
+                                ? trim((string)preg_replace('/[^a-z0-9]+/', '-', strtolower($room_badge_label)), '-')
+                                : '';
+                            $room_filter_tags = 'all-rooms' . ($room_badge_key !== '' ? ' ' . $room_badge_key : '');
+                            $room_amenities = array_values(array_filter(array_map('trim', explode(',', (string)($room['amenities'] ?? '')))));
+                            $room_amenities = array_slice($room_amenities, 0, 4);
+                            ?>
+                            <article
+                                class="card room-card rooms-showcase-card<?php echo !empty($room['is_featured']) ? ' featured-card' : ''; ?>"
+                                data-filter-tags="<?php echo htmlspecialchars($room_filter_tags, ENT_QUOTES, 'UTF-8'); ?>">
+                                <a class="room-card-image" href="room.php?room=<?php echo urlencode((string)$room['slug']); ?>" aria-label="Open details for <?php echo htmlspecialchars((string)$room['name'], ENT_QUOTES, 'UTF-8'); ?>">
+                                    <img
+                                        src="<?php echo htmlspecialchars((string)$room['image_url'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        alt="<?php echo htmlspecialchars((string)$room['name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        class="room-card-image-img"
+                                        loading="lazy">
+                                    <?php if ($room_badge_label !== ''): ?>
+                                        <span class="room-card-badge"><?php echo htmlspecialchars($room_badge_label, ENT_QUOTES, 'UTF-8'); ?></span>
                                     <?php endif; ?>
-                                    <span class="amount"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($room['display_price_per_night'], 0); ?></span>
-                                    <small>per night</small>
-                                </div>
-                            </div>
-                            <?php if (!empty($room['has_active_promo'])): ?>
-                                <div style="margin:6px 0 8px; color:#1f7a4f; font-weight:600; font-size:12px;"><i class="fas fa-tag"></i> <?php echo htmlspecialchars($room['promo_title'] ?: 'Special Offer'); ?></div>
-                            <?php endif; ?>
-                            <!-- Compact Rating Display -->
-                            <div class="room-tile__rating" data-room-id="<?php echo (int)$room['id']; ?>">
-                                <div class="compact-rating compact-rating--loading">
-                                    <i class="fas fa-spinner fa-spin"></i>
-                                </div>
-                            </div>
-                            <div class="room-tile__meta">
-                                <span><i class="fas fa-user-friends"></i> <?php echo htmlspecialchars($room['max_guests']); ?> guests</span>
-                                <span><i class="fas fa-ruler-combined"></i> <?php echo htmlspecialchars($room['size_sqm']); ?> sqm</span>
-                                <span><i class="fas fa-bed"></i> <?php echo htmlspecialchars($room['bed_type']); ?></span>
-                            </div>
-                            <div class="room-tile__amenities">
-                                <?php foreach ($amenities as $amenity): ?>
-                                <span class="pill-small"><?php echo htmlspecialchars(trim($amenity)); ?></span>
-                                <?php endforeach; ?>
-                            </div>
-                            <div class="room-tile__actions">
-                                <a class="btn btn-outline" href="rooms-showcase.php?room=<?php echo urlencode($room['slug']); ?>">View Details</a>
-                                <a class="btn btn-primary" href="index.php?room=<?php echo urlencode($room['slug']); ?>#book" data-room-book="<?php echo htmlspecialchars($room['slug']); ?>">Book Now</a>
-                            </div>
-                        </div>
-                    </article>
-                    <?php endforeach; ?>
-                </div>
-                <script>
-                // 3D card tilt effect for room tiles
-                document.querySelectorAll('.fancy-3d-card').forEach(card => {
-                  card.addEventListener('mousemove', function(e) {
-                    const rect = card.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    const centerX = rect.width / 2;
-                    const centerY = rect.height / 2;
-                    const rotateX = ((y - centerY) / centerY) * 10;
-                    const rotateY = ((x - centerX) / centerX) * 10;
-                    card.style.transform = `perspective(900px) rotateX(${-rotateX}deg) rotateY(${rotateY}deg) scale(1.04)`;
-                  });
-                  card.addEventListener('mouseleave', function() {
-                    card.style.transform = '';
-                  });
-                  card.addEventListener('focus', function() {
-                    card.style.boxShadow = '0 0 0 4px var(--gold)';
-                  });
-                  card.addEventListener('blur', function() {
-                    card.style.boxShadow = '';
-                  });
-                });
-                </script>
+                                    <span class="room-card-price">
+                                        <span class="room-card-price-amount"><?php echo htmlspecialchars($currency_symbol, ENT_QUOTES, 'UTF-8'); ?> <?php echo number_format((float)($room['price_per_night'] ?? 0), 0); ?></span>
+                                        <small class="room-card-price-label">per night</small>
+                                    </span>
+                                </a>
 
-                <!-- Fetch and display room ratings -->
-                <script>
-                (function() {
-                    const ratingContainers = document.querySelectorAll('.room-tile__rating');
-                    
-                    ratingContainers.forEach(container => {
-                        const roomId = container.dataset.roomId;
-                        
-                        fetch(`admin/api/reviews.php?room_id=${roomId}&status=approved`)
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.success && data.averages) {
-                                    const avgRating = data.averages.avg_rating || 0;
-                                    const totalCount = data.total_count || 0;
-                                    
-                                    if (totalCount > 0) {
-                                        let starsHtml = '';
-                                        const fullStars = Math.floor(avgRating);
-                                        const hasHalfStar = (avgRating - fullStars) >= 0.5;
-                                        const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+                                <div class="room-card-content">
+                                    <h3 class="room-card-title"><?php echo htmlspecialchars((string)$room['name'], ENT_QUOTES, 'UTF-8'); ?></h3>
+                                    <p class="room-card-description"><?php echo htmlspecialchars((string)($room['short_description'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></p>
 
-                                        for (let i = 0; i < fullStars; i++) {
-                                            starsHtml += '<i class="fas fa-star"></i>';
-                                        }
-                                        if (hasHalfStar) {
-                                            starsHtml += '<i class="fas fa-star-half-alt"></i>';
-                                        }
-                                        for (let i = 0; i < emptyStars; i++) {
-                                            starsHtml += '<i class="far fa-star"></i>';
-                                        }
-
-                                        container.innerHTML = `
-                                            <div class="compact-rating">
-                                                <div class="compact-rating__stars">${starsHtml}</div>
-                                                <div class="compact-rating__info">
-                                                    <span class="compact-rating__score">${avgRating.toFixed(1)}</span>
-                                                    <span class="compact-rating__count">(${totalCount})</span>
-                                                </div>
-                                            </div>
-                                        `;
-                                    } else {
-                                        container.innerHTML = `
-                                            <div class="compact-rating compact-rating--no-reviews">
-                                                <i class="far fa-star"></i>
-                                                <span>No reviews</span>
-                                            </div>
-                                        `;
-                                    }
-                                } else {
-                                    container.innerHTML = `
-                                        <div class="compact-rating compact-rating--no-reviews">
-                                            <i class="far fa-star"></i>
-                                            <span>No reviews</span>
+                                    <div class="rooms-showcase-card__rating room-tile__rating" data-room-id="<?php echo (int)$room['id']; ?>">
+                                        <div class="compact-rating compact-rating--loading">
+                                            <i class="fas fa-spinner fa-spin"></i>
                                         </div>
-                                    `;
-                                }
-                            })
-                            .catch(error => {
-                                console.error('Error fetching room rating:', error);
-                                container.innerHTML = `
-                                    <div class="compact-rating compact-rating--no-reviews">
-                                        <i class="far fa-star"></i>
-                                        <span>No reviews</span>
                                     </div>
-                                `;
-                            });
-                    });
-                })();
-                </script>
+
+                                    <div class="room-card-meta">
+                                        <span><i class="fas fa-user-friends"></i> <?php echo htmlspecialchars((string)($room['max_guests'] ?? 2), ENT_QUOTES, 'UTF-8'); ?> guests</span>
+                                        <span><i class="fas fa-ruler-combined"></i> <?php echo htmlspecialchars((string)($room['size_sqm'] ?? 40), ENT_QUOTES, 'UTF-8'); ?> sqm</span>
+                                        <span><i class="fas fa-bed"></i> <?php echo htmlspecialchars((string)($room['bed_type'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></span>
+                                    </div>
+
+                                    <?php if (!empty($room_amenities)): ?>
+                                        <div class="room-card-amenities">
+                                            <?php foreach ($room_amenities as $amenity): ?>
+                                                <span class="room-card-amenity"><i class="fas fa-check"></i> <?php echo htmlspecialchars($amenity, ENT_QUOTES, 'UTF-8'); ?></span>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <div class="rooms-showcase-card__actions">
+                                        <a class="btn btn-outline rooms-showcase-card__btn" href="room.php?room=<?php echo urlencode((string)$room['slug']); ?>">Book Details</a>
+                                        <?php if (isBookingEnabled()): ?>
+                                            <a class="btn btn-primary rooms-showcase-card__btn" href="booking.php?room_id=<?php echo (int)$room['id']; ?>">Book Now</a>
+                                        <?php else: ?>
+                                            <button class="btn btn-primary rooms-showcase-card__btn" type="button" disabled aria-disabled="true">Booking Disabled</button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="editorial-no-events mt-50">
+                        <i class="fas fa-door-closed"></i>
+                        <h3>No rooms are currently listed</h3>
+                        <p>Our room collection is being updated. Please contact reservations for immediate support.</p>
+                    </div>
+                <?php endif; ?>
             </div>
         </section>
 
-        <section class="booking-cta" id="book">
-            <div class="container booking-cta__grid">
-                <div class="booking-cta__content">
-                    <div class="pill">Direct Booking</div>
-                    <h2>Ready to reserve your stay?</h2>
-                    <p>Pick your preferred suite and we will secure it instantly. Share your dates and guest count and our team will confirm right away.</p>
-                    <div class="booking-cta__actions">
-                        <?php if (!empty($phone_main)): ?>
-                        <a class="btn btn-primary" href="tel:<?php echo htmlspecialchars(preg_replace('/[^0-9+]/', '', $phone_main)); ?>"><i class="fas fa-phone"></i> Call Reservations</a>
-                        <?php endif; ?>
-                        <?php if (!empty($email_reservations)): ?>
-                        <a class="btn btn-outline" href="mailto:<?php echo htmlspecialchars($email_reservations); ?>?subject=Room%20Reservation"><i class="fas fa-envelope"></i> Email Booking</a>
+        <?php if ($spotlight_room): ?>
+            <section class="booking-cta rooms-showcase-booking" id="book" data-lazy-reveal>
+                <div class="container booking-cta__grid" id="booking-cta-grid">
+                    <div class="booking-cta__content">
+                        <div class="pill">Direct Booking</div>
+                        <h2>Ready to reserve your stay?</h2>
+                        <p>Choose your preferred room and complete your reservation directly on our secure booking page.</p>
+                        <div class="booking-cta__actions">
+                            <?php if ($phone_main !== ''): ?>
+                                <a class="btn btn-primary" href="tel:<?php echo htmlspecialchars((string)preg_replace('/[^0-9+]/', '', $phone_main), ENT_QUOTES, 'UTF-8'); ?>"><i class="fas fa-phone"></i> Call Reservations</a>
+                            <?php endif; ?>
+                            <?php if ($email_reservations !== ''): ?>
+                                <a class="btn btn-outline" href="mailto:<?php echo htmlspecialchars($email_reservations, ENT_QUOTES, 'UTF-8'); ?>?subject=Room%20Reservation"><i class="fas fa-envelope"></i> Email Booking</a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="booking-cta__card">
+                        <div class="booking-cta__row">
+                            <span>Selected Room</span>
+                            <strong><?php echo htmlspecialchars((string)$spotlight_room['name'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                        </div>
+                        <div class="booking-cta__row">
+                            <span>Nightly Rate</span>
+                            <strong><?php echo htmlspecialchars($currency_symbol, ENT_QUOTES, 'UTF-8'); ?> <?php echo number_format((float)($spotlight_room['price_per_night'] ?? 0), 0); ?></strong>
+                        </div>
+                        <div class="booking-cta__row">
+                            <span>Capacity</span>
+                            <strong><?php echo (int)($spotlight_room['max_guests'] ?? 2); ?> guests</strong>
+                        </div>
+                        <div class="booking-cta__row">
+                            <span>Floor Space</span>
+                            <strong><?php echo htmlspecialchars((string)($spotlight_room['size_sqm'] ?? 40), ENT_QUOTES, 'UTF-8'); ?> sqm</strong>
+                        </div>
+                        <?php if (isBookingEnabled()): ?>
+                            <a class="btn btn-primary" href="booking.php?room_id=<?php echo (int)$spotlight_room['id']; ?>">Proceed to Booking</a>
+                        <?php else: ?>
+                            <button class="btn btn-primary" type="button" disabled aria-disabled="true">Booking Disabled</button>
                         <?php endif; ?>
                     </div>
                 </div>
-                <div class="booking-cta__card">
-                    <div class="booking-cta__row">
-                        <span>Featured Room</span>
-                        <strong><?php echo htmlspecialchars($hero_room['name']); ?></strong>
-                    </div>
-                    <div class="booking-cta__row">
-                        <span>Nightly Rate</span>
-                        <strong><?php if (!empty($hero_room['has_active_promo']) && (float)$hero_room['original_price_per_night'] > (float)$hero_room['display_price_per_night']): ?><span style="display:block;font-size:12px;color:#888;text-decoration:line-through;"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['original_price_per_night'], 0); ?></span><?php endif; ?><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format($hero_room['display_price_per_night'], 0); ?></strong>
-                    </div>
-                    <div class="booking-cta__row">
-                        <span>Capacity</span>
-                        <strong><?php echo htmlspecialchars($hero_room['max_guests'] ?? 2); ?> guests</strong>
-                    </div>
-                    <div class="booking-cta__row">
-                        <span>Floor Space</span>
-                        <strong><?php echo htmlspecialchars($hero_room['size_sqm'] ?? 40); ?> sqm</strong>
-                    </div>
-                    <a class="btn btn-primary" href="booking.php?room_id=<?php echo (int)($hero_room['id'] ?? 0); ?>">Proceed to Booking</a>
-                </div>
-            </div>
-        </section>
+            </section>
+        <?php endif; ?>
     </main>
 
-    </main>
-    
-    <!-- Footer -->
     <?php include 'includes/footer.php'; ?>
+    <?php include 'includes/modal.php'; ?>
 
-    <script src="js/modal.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/main.js" defer></script>
+    <script src="js/scroll-reveal.js" defer></script>
+    <script src="js/parallax-cards.js" defer></script>
+    <script src="js/cursor-follower.js" defer></script>
 
-    <?php include 'includes/scroll-to-top.php'; ?>
+    <script>
+        (function() {
+            var chips = document.querySelectorAll('.rooms-showcase-filter__chip');
+            var cards = document.querySelectorAll('.rooms-showcase-card');
+
+            if (!chips.length || !cards.length) {
+                return;
+            }
+
+            function applyFilter(filterTag) {
+                cards.forEach(function(card) {
+                    var tags = String(card.getAttribute('data-filter-tags') || '').split(/\s+/).filter(Boolean);
+                    var matches = filterTag === 'all-rooms' || tags.indexOf(filterTag) !== -1;
+                    card.hidden = !matches;
+                });
+
+                chips.forEach(function(chip) {
+                    var isActive = chip.getAttribute('data-filter') === filterTag;
+                    chip.classList.toggle('active', isActive);
+                    chip.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                });
+            }
+
+            chips.forEach(function(chip) {
+                chip.addEventListener('click', function() {
+                    applyFilter(chip.getAttribute('data-filter') || 'all-rooms');
+                });
+            });
+        }());
+
+        (function() {
+            var ratingContainers = document.querySelectorAll('.room-tile__rating');
+            if (!ratingContainers.length) {
+                return;
+            }
+
+            fetch('admin/api/all-room-ratings.php')
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(result) {
+                    if (!result || !result.success || !result.data) {
+                        throw new Error('Ratings unavailable');
+                    }
+
+                    var ratings = result.data;
+                    ratingContainers.forEach(function(container) {
+                        var roomId = parseInt(container.getAttribute('data-room-id') || '0', 10);
+                        var ratingData = ratings[roomId];
+
+                        if (!ratingData || ratingData.review_count <= 0) {
+                            container.innerHTML =
+                                '<div class="compact-rating compact-rating--no-reviews">' +
+                                '<i class="far fa-star"></i><span>No reviews</span>' +
+                                '</div>';
+                            return;
+                        }
+
+                        var avgRating = Number(ratingData.avg_rating || 0);
+                        var totalCount = Number(ratingData.review_count || 0);
+                        var fullStars = Math.floor(avgRating);
+                        var hasHalfStar = (avgRating - fullStars) >= 0.5;
+                        var emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+                        var starsHtml = '';
+
+                        for (var i = 0; i < fullStars; i++) {
+                            starsHtml += '<i class="fas fa-star"></i>';
+                        }
+                        if (hasHalfStar) {
+                            starsHtml += '<i class="fas fa-star-half-alt"></i>';
+                        }
+                        for (var j = 0; j < emptyStars; j++) {
+                            starsHtml += '<i class="far fa-star"></i>';
+                        }
+
+                        container.innerHTML =
+                            '<div class="compact-rating">' +
+                            '<div class="compact-rating__stars">' + starsHtml + '</div>' +
+                            '<div class="compact-rating__info">' +
+                            '<span class="compact-rating__score">' + avgRating.toFixed(1) + '</span>' +
+                            '<span class="compact-rating__count">(' + totalCount + ')</span>' +
+                            '</div>' +
+                            '</div>';
+                    });
+                })
+                .catch(function() {
+                    ratingContainers.forEach(function(container) {
+                        container.innerHTML =
+                            '<div class="compact-rating compact-rating--no-reviews">' +
+                            '<i class="far fa-star"></i><span>No reviews</span>' +
+                            '</div>';
+                    });
+                });
+        }());
+    </script>
 </body>
+
 </html>

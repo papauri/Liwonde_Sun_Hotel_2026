@@ -1,8 +1,9 @@
 <?php
+
 /**
  * Review Submission Form with Enhanced Security
  * Hotel Website - Guest Review Submission
-*
+ *
  * Features:
  * - CSRF protection
  * - Secure session management
@@ -12,11 +13,18 @@
 // Start session first
 session_start();
 
-// Load security configuration first
-require_once 'config/security.php';
+// Include base URL configuration for proper redirects
+require_once 'config/base-url.php';
 
 // Include database configuration
 require_once 'config/database.php';
+
+// Reviews belong to the Website & CMS module — presets without it don't
+// collect guest reviews.
+if (function_exists('moduleEnabled') && !moduleEnabled('website_cms')) {
+    header('Location: ' . (defined('BASE_URL') ? BASE_URL : '/'));
+    exit;
+}
 
 // Include alert system
 require_once 'includes/alert.php';
@@ -24,19 +32,26 @@ require_once 'includes/alert.php';
 // Include validation library
 require_once 'includes/validation.php';
 
-// Send security headers
-sendSecurityHeaders();
+// Include public CSRF protection
+require_once 'includes/public-csrf.php';
+
+// Generate per-session CSRF token for this form
+$csrf_token = pub_csrf_generate('review');
 
 // Initialize variables
 $rooms = [];
 $selected_room_id = isset($_GET['room_id']) ? (int)$_GET['room_id'] : 0;
 $room_name = '';
 
+// Brand assets
+$site_name = getSetting('site_name');
+$site_logo = getSetting('site_logo');
+
 // Fetch available rooms for dropdown
 try {
     $stmt = $pdo->query("SELECT id, name FROM rooms WHERE is_active = 1 ORDER BY name ASC");
     $rooms = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
+
     // Get room name if room_id is provided
     if ($selected_room_id > 0) {
         $room_stmt = $pdo->prepare("SELECT name FROM rooms WHERE id = ?");
@@ -51,15 +66,84 @@ try {
     error_log("Error fetching rooms: " . $e->getMessage());
 }
 
+// ── Reviews Overview (public, approved only) ───────────────────────────────
+$reviews_summary = [
+    'total' => 0,
+    'approved' => 0,
+    'responses' => 0,
+    'avg_rating' => null,
+];
+$latest_reviews = [];
+
+try {
+    // Total reviews (all statuses)
+    $stmt = $pdo->query("SELECT COUNT(*) AS c FROM reviews");
+    $reviews_summary['total'] = (int)($stmt->fetch(PDO::FETCH_ASSOC)['c'] ?? 0);
+
+    // Approved reviews count
+    $stmt = $pdo->query("SELECT COUNT(*) AS c FROM reviews WHERE status = 'approved'");
+    $reviews_summary['approved'] = (int)($stmt->fetch(PDO::FETCH_ASSOC)['c'] ?? 0);
+
+    // Responses count
+    $stmt = $pdo->query("SELECT COUNT(*) AS c FROM review_responses");
+    $reviews_summary['responses'] = (int)($stmt->fetch(PDO::FETCH_ASSOC)['c'] ?? 0);
+
+    // Average rating on approved
+    $stmt = $pdo->query("SELECT AVG(rating) AS avg_rating FROM reviews WHERE status='approved' AND rating IS NOT NULL");
+    $avg = $stmt->fetch(PDO::FETCH_ASSOC)['avg_rating'] ?? null;
+    $reviews_summary['avg_rating'] = $avg !== null ? round((float)$avg, 2) : null;
+
+    // Latest approved reviews with latest response (if any)
+    $sql = "
+        SELECT r.id, r.guest_name, r.title, r.comment, r.rating, r.created_at,
+               (
+                 SELECT rr.response FROM review_responses rr
+                 WHERE rr.review_id = r.id
+                 ORDER BY rr.created_at DESC
+                 LIMIT 1
+               ) AS latest_response,
+               (
+                 SELECT rr.created_at FROM review_responses rr
+                 WHERE rr.review_id = r.id
+                 ORDER BY rr.created_at DESC
+                 LIMIT 1
+               ) AS latest_response_date
+        FROM reviews r
+        WHERE r.status = 'approved'
+        ORDER BY r.created_at DESC
+        LIMIT 5";
+    $stmt = $pdo->query($sql);
+    $latest_reviews = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (PDOException $e) {
+    error_log('submit-review overview error: ' . $e->getMessage());
+}
+
 // Handle form submission via POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validate CSRF token
-    requireCsrfValidation();
-    
+    // CSRF validation — must pass before any processing
+    if (!pub_csrf_validate($_POST['_csrf_review'] ?? '', 'review')) {
+        $_SESSION['alert'] = [
+            'type' => 'error',
+            'message' => 'Invalid security token. Please refresh the page and try again.'
+        ];
+        header('Location: ' . $_SERVER['REQUEST_URI']);
+        exit;
+    }
+
+    // Rate limiting: 5 review submissions per 10 minutes per session
+    if (!pub_rate_limit('review_form', 5, 600)) {
+        $_SESSION['alert'] = [
+            'type' => 'error',
+            'message' => 'Too many submissions. Please wait a few minutes before trying again.'
+        ];
+        header('Location: ' . $_SERVER['REQUEST_URI']);
+        exit;
+    }
+
     // Initialize validation errors array
     $validation_errors = [];
     $sanitized_data = [];
-    
+
     // Validate guest_name
     $name_validation = validateName($_POST['guest_name'] ?? '', 2, true);
     if (!$name_validation['valid']) {
@@ -67,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $sanitized_data['guest_name'] = sanitizeString($name_validation['value'], 100);
     }
-    
+
     // Validate guest_email
     $guest_email_input = trim($_POST['guest_email'] ?? '');
     $email_validation = validateEmail($guest_email_input);
@@ -76,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $sanitized_data['guest_email'] = sanitizeString($guest_email_input, 254);
     }
-    
+
     // Validate overall_rating
     $rating_validation = validateRating($_POST['overall_rating'] ?? '', true);
     if (!$rating_validation['valid']) {
@@ -84,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $sanitized_data['overall_rating'] = $rating_validation['value'];
     }
-    
+
     // Validate review_title
     $title_validation = validateText($_POST['review_title'] ?? '', 5, 200, true);
     if (!$title_validation['valid']) {
@@ -92,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $sanitized_data['review_title'] = sanitizeString($title_validation['value'], 200);
     }
-    
+
     // Validate review_comment
     $comment_validation = validateText($_POST['review_comment'] ?? '', 20, 2000, true);
     if (!$comment_validation['valid']) {
@@ -100,7 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $sanitized_data['review_comment'] = sanitizeString($comment_validation['value'], 2000);
     }
-    
+
     // Validate review_type (optional)
     $allowed_review_types = ['', 'room', 'restaurant', 'spa', 'conference', 'gym', 'service'];
     $type_validation = validateSelectOption($_POST['review_type'] ?? '', $allowed_review_types, false);
@@ -109,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $sanitized_data['review_type'] = $type_validation['value'] ?: 'general';
     }
-    
+
     // Validate room_id (optional, only if review_type is 'room')
     $room_id = null;
     if ($sanitized_data['review_type'] === 'room' && !empty($_POST['room_id'])) {
@@ -120,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $room_id = $room_validation['room']['id'];
         }
     }
-    
+
     // Validate optional ratings
     $sanitized_data['service_rating'] = null;
     if (!empty($_POST['service_rating'])) {
@@ -131,7 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sanitized_data['service_rating'] = $service_validation['value'];
         }
     }
-    
+
     $sanitized_data['cleanliness_rating'] = null;
     if (!empty($_POST['cleanliness_rating'])) {
         $cleanliness_validation = validateRating($_POST['cleanliness_rating'], false);
@@ -141,7 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sanitized_data['cleanliness_rating'] = $cleanliness_validation['value'];
         }
     }
-    
+
     $sanitized_data['location_rating'] = null;
     if (!empty($_POST['location_rating'])) {
         $location_validation = validateRating($_POST['location_rating'], false);
@@ -151,7 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sanitized_data['location_rating'] = $location_validation['value'];
         }
     }
-    
+
     $sanitized_data['value_rating'] = null;
     if (!empty($_POST['value_rating'])) {
         $value_validation = validateRating($_POST['value_rating'], false);
@@ -161,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sanitized_data['value_rating'] = $value_validation['value'];
         }
     }
-    
+
     // Check for validation errors
     if (!empty($validation_errors)) {
         $errors = [];
@@ -171,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $errors = [];
     }
-    
+
     if (empty($errors)) {
         // Insert review directly into database
         try {
@@ -194,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW()
                 )
             ");
-            
+
             $stmt->execute([
                 $sanitized_data['guest_name'],
                 $sanitized_data['guest_email'],
@@ -208,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sanitized_data['location_rating'],
                 $sanitized_data['value_rating']
             ]);
-            
+
             // Store review details for confirmation page
             $_SESSION['review_details'] = [
                 'guest_name' => $sanitized_data['guest_name'],
@@ -216,11 +300,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'overall_rating' => $sanitized_data['overall_rating'],
                 'room_id' => $room_id
             ];
-            
+
+            // Send acknowledgement email — failure must NOT block the redirect
+            try {
+                require_once __DIR__ . '/config/email.php';
+                sendReviewAcknowledgementEmail(
+                    $sanitized_data['guest_name'],
+                    $sanitized_data['guest_email'],
+                    $sanitized_data['review_title'],
+                    (int)$sanitized_data['overall_rating']
+                );
+            } catch (Throwable $reviewEmailEx) {
+                error_log('Review acknowledgement email failed: ' . $reviewEmailEx->getMessage());
+            }
+
             // Redirect to confirmation page
-            header('Location: review-confirmation.php');
+            header('Location: ' . BASE_URL . 'review-confirmation.php');
             exit;
-            
         } catch (PDOException $e) {
             error_log("Error inserting review: " . $e->getMessage());
             $_SESSION['alert'] = [
@@ -239,431 +335,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Submit a Review | <?php echo htmlspecialchars(getSetting('site_name', 'Hotel Website')); ?></title>
-    <meta name="description" content="Share your experience at <?php echo htmlspecialchars(getSetting('site_name', 'Hotel Website')); ?>. Submit your review and help us improve our services.">
-    
+    <title>Submit a Review | <?php echo htmlspecialchars(getSetting('site_name')); ?></title>
+    <meta name="description" content="Share your experience at <?php echo htmlspecialchars(getSetting('site_name')); ?>. Submit your review and help us improve our services.">
+
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+
     <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
-    
-    <!-- Main CSS -->
-    <link rel="stylesheet" href="css/theme-dynamic.php">
-    <link rel="stylesheet" href="css/header.css">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/footer.css">
-    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+
+    <!-- Main CSS - Loads all stylesheets in correct order -->
+    <link rel="stylesheet" href="css/main.css">
+
     <!-- Custom CSS for Review Form -->
-    <style>
-        /* Review Form Page Styles */
-        .review-page {
-            background: linear-gradient(135deg, var(--cream) 0%, #F5F1E8 100%);
-            min-height: 100vh;
-            padding-top: 100px;
-            padding-bottom: 60px;
-        }
-        
-        .review-hero {
-            text-align: center;
-            padding: 40px 20px;
-            background: linear-gradient(135deg, var(--navy) 0%, var(--deep-navy) 100%);
-            color: var(--white);
-            margin-bottom: 40px;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .review-hero::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--gold) 0%, #FFD700 50%, var(--dark-gold) 100%);
-        }
-        
-        .review-hero h1 {
-            font-family: var(--font-serif);
-            font-size: 36px;
-            margin-bottom: 16px;
-            color: var(--gold);
-        }
-        
-        .review-hero p {
-            font-size: 16px;
-            opacity: 0.9;
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        
-        .review-form-container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-        
-        .review-form-card {
-            background: var(--white);
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(212, 175, 55, 0.15);
-            position: relative;
-        }
-        
-        .review-form-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--gold) 0%, #FFD700 50%, var(--dark-gold) 100%);
-            border-radius: 20px 20px 0 0;
-        }
-        
-        .form-section-title {
-            font-family: var(--font-serif);
-            font-size: 22px;
-            color: var(--navy);
-            margin-bottom: 24px;
-            padding-bottom: 12px;
-            border-bottom: 2px solid rgba(212, 175, 55, 0.2);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .form-section-title i {
-            color: var(--gold);
-            font-size: 20px;
-        }
-        
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        @media (min-width: 768px) {
-            .form-row.two-columns {
-                grid-template-columns: 1fr 1fr;
-            }
-        }
-        
-        .form-group {
-            margin-bottom: 24px;
-        }
-        
-        .form-group label {
-            display: block;
-            font-weight: 600;
-            color: var(--navy);
-            margin-bottom: 8px;
-            font-size: 14px;
-            letter-spacing: 0.5px;
-        }
-        
-        .form-group label .required {
-            color: #dc3545;
-            margin-left: 4px;
-        }
-        
-        .form-group label .optional {
-            color: #999;
-            font-weight: 400;
-            font-size: 12px;
-            margin-left: 4px;
-        }
-        
-        .form-group input[type="text"],
-        .form-group input[type="email"],
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 14px 16px;
-            border: 2px solid #e0e5eb;
-            border-radius: 12px;
-            font-size: 15px;
-            font-family: var(--font-sans);
-            background: #f9fbff;
-            transition: all 0.3s ease;
-        }
-        
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: var(--gold);
-            background: #fff;
-            box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.1);
-        }
-        
-        .form-group textarea {
-            resize: vertical;
-            min-height: 120px;
-        }
-        
-        .form-hint {
-            font-size: 12px;
-            color: #888;
-            margin-top: 6px;
-        }
-        
-        /* Star Rating Selector */
-        .star-rating {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .star-rating .star {
-            font-size: 32px;
-            color: #ddd;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            position: relative;
-        }
-        
-        .star-rating .star:hover {
-            transform: scale(1.15);
-        }
-        
-        .star-rating .star.active,
-        .star-rating .star.hover {
-            color: var(--gold);
-        }
-        
-        .star-rating .star i {
-            display: block;
-        }
-        
-        .star-rating .star.filled i::before {
-            content: '\f005';
-        }
-        
-        .star-rating .star.empty i::before {
-            content: '\f005';
-        }
-        
-        .star-rating-label {
-            margin-left: 12px;
-            font-size: 14px;
-            color: #666;
-            font-weight: 500;
-        }
-        
-        .rating-group {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        
-        .rating-group .star-rating {
-            flex-shrink: 0;
-        }
-        
-        /* Optional Ratings Section */
-        .optional-ratings {
-            background: linear-gradient(135deg, rgba(212, 175, 55, 0.05) 0%, rgba(212, 175, 55, 0.02) 100%);
-            border-radius: 16px;
-            padding: 24px;
-            margin-top: 30px;
-            border: 1px solid rgba(212, 175, 55, 0.15);
-        }
-        
-        .optional-ratings-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--navy);
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .optional-ratings-title i {
-            color: var(--gold);
-        }
-        
-        .optional-rating-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 0;
-            border-bottom: 1px solid rgba(212, 175, 55, 0.1);
-        }
-        
-        .optional-rating-item:last-child {
-            border-bottom: none;
-            padding-bottom: 0;
-        }
-        
-        .optional-rating-item:first-child {
-            padding-top: 0;
-        }
-        
-        .optional-rating-label {
-            font-size: 14px;
-            color: var(--navy);
-            font-weight: 500;
-            flex: 1;
-        }
-        
-        /* Submit Button */
-        .submit-btn {
-            width: 100%;
-            padding: 16px 32px;
-            background: linear-gradient(135deg, var(--gold) 0%, #E5D047 50%, var(--dark-gold) 100%);
-            color: var(--navy);
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 8px 24px rgba(212, 175, 55, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .submit-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 32px rgba(212, 175, 55, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-        }
-        
-        .submit-btn:active {
-            transform: translateY(-1px);
-        }
-        
-        .submit-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .submit-btn .btn-text {
-            position: relative;
-            z-index: 1;
-        }
-        
-        .submit-btn .loading-spinner {
-            display: none;
-            width: 20px;
-            height: 20px;
-            border: 2px solid rgba(10, 25, 41, 0.3);
-            border-top-color: var(--navy);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin-right: 10px;
-        }
-        
-        .submit-btn.loading .loading-spinner {
-            display: inline-block;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Room Selection Badge */
-        .room-selection-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            background: rgba(212, 175, 55, 0.15);
-            border: 1px solid rgba(212, 175, 55, 0.3);
-            border-radius: 20px;
-            color: var(--navy);
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 20px;
-        }
-        
-        .room-selection-badge i {
-            color: var(--gold);
-        }
-        
-        /* Form Validation Styles */
-        .form-group.error input,
-        .form-group.error select,
-        .form-group.error textarea {
-            border-color: #dc3545;
-            background: #fff5f5;
-        }
-        
-        .form-group.error .form-hint {
-            color: #dc3545;
-        }
-        
-        .form-group.success input,
-        .form-group.success select,
-        .form-group.success textarea {
-            border-color: #28a745;
-            background: #f0fff4;
-        }
-        
-        /* Responsive Styles */
-        @media (max-width: 768px) {
-            .review-page {
-                padding-top: 80px;
-                padding-bottom: 40px;
-            }
-            
-            .review-hero h1 {
-                font-size: 28px;
-            }
-            
-            .review-hero p {
-                font-size: 14px;
-            }
-            
-            .review-form-card {
-                padding: 24px;
-            }
-            
-            .form-section-title {
-                font-size: 18px;
-            }
-            
-            .star-rating .star {
-                font-size: 28px;
-            }
-            
-            .optional-rating-item {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 12px;
-            }
-        }
-        
-        /* Accessibility */
-        .star-rating .star:focus {
-            outline: 2px solid var(--gold);
-            outline-offset: 2px;
-        }
-        
-        .star-rating .star[aria-pressed="true"] {
-            color: var(--gold);
-        }
-    </style>
+    <link rel="stylesheet" href="css/review-form.css">
+
 </head>
+
 <body>
+    <?php include 'includes/loader.php'; ?>
     <?php include 'includes/header.php'; ?>
-    
-    <main class="review-page">
+
+    <main class="review-page" id="main-content">
+        <!-- Inline Brand (ensures brand visible even if header variant hides it) -->
+        <div class="inline-brand container">
+            <a class="header__brand" href="<?php echo htmlspecialchars(BASE_URL); ?>">
+                <?php if (!empty($site_logo)): ?>
+                    <img src="<?php echo htmlspecialchars($site_logo); ?>" alt="<?php echo htmlspecialchars($site_name); ?>">
+                <?php endif; ?>
+                <span><?php echo htmlspecialchars($site_name); ?></span>
+            </a>
+        </div>
+
         <!-- Hero Section -->
         <section class="review-hero">
             <div class="container">
@@ -671,62 +380,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p>Your feedback helps us improve and provide exceptional service to all our guests.</p>
             </div>
         </section>
-        
+
         <!-- Review Form -->
         <section class="review-form-container">
             <div class="review-form-card">
                 <?php if (isset($_SESSION['alert'])): ?>
                     <?php showSessionAlert(); ?>
                 <?php endif; ?>
-                
+
                 <?php if ($room_name): ?>
                     <div class="room-selection-badge">
                         <i class="fas fa-bed"></i>
                         <span>Reviewing: <?php echo htmlspecialchars($room_name); ?></span>
                     </div>
                 <?php endif; ?>
-                
+
                 <form id="reviewForm" method="POST" action="submit-review.php<?php echo $selected_room_id > 0 ? '?room_id=' . $selected_room_id : ''; ?>" novalidate>
-                    <?php echo getCsrfField(); ?>
-<!-- Personal Information -->
+                    <input type="hidden" name="_csrf_review" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <!-- Personal Information -->
                     <div class="form-section-title">
                         <i class="fas fa-user"></i>
                         <span>Your Information</span>
                     </div>
-                    
+
                     <div class="form-row two-columns">
                         <div class="form-group">
                             <label for="guest_name">
                                 Guest Name <span class="required">*</span>
                             </label>
-                            <input 
-                                type="text" 
-                                id="guest_name" 
-                                name="guest_name" 
+                            <input
+                                type="text"
+                                id="guest_name"
+                                name="guest_name"
                                 placeholder="Enter your full name"
                                 required
                                 aria-required="true"
-                                minlength="2"
-                            >
+                                minlength="2">
                             <p class="form-hint">Your name will be displayed with your review</p>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="guest_email">
                                 Email Address <span class="required">*</span>
                             </label>
-                            <input 
-                                type="email" 
-                                id="guest_email" 
-                                name="guest_email" 
+                            <input
+                                type="email"
+                                id="guest_email"
+                                name="guest_email"
                                 placeholder="your@email.com"
                                 required
-                                aria-required="true"
-                            >
+                                aria-required="true">
                             <p class="form-hint">We'll never share your email with anyone</p>
                         </div>
                     </div>
-                    
+
                     <!-- What are you reviewing? -->
                     <div class="form-group">
                         <label for="review_type">
@@ -743,7 +450,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </select>
                         <p class="form-hint">Select the specific area you're reviewing, or leave blank for a general hotel review</p>
                     </div>
-                    
+
                     <!-- Room Selection (shown only when "Specific Room" is selected) -->
                     <div class="form-group" id="roomSelectionGroup" style="display: <?php echo $selected_room_id > 0 ? 'block' : 'none'; ?>;">
                         <label for="room_id">
@@ -759,13 +466,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </select>
                         <p class="form-hint">Help us understand which room you stayed in</p>
                     </div>
-                    
+
                     <!-- Overall Rating -->
-                    <div class="form-section-title" style="margin-top: 30px;">
+                    <div class="form-section-title mt-30">
                         <i class="fas fa-star"></i>
                         <span>Overall Rating <span class="required">*</span></span>
                     </div>
-                    
+
                     <div class="form-group">
                         <div class="rating-group">
                             <div class="star-rating" id="overallRating" data-rating="0">
@@ -780,51 +487,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input type="hidden" id="overall_rating" name="overall_rating" value="0" required>
                         <p class="form-hint">How would you rate your overall experience?</p>
                     </div>
-                    
+
                     <!-- Review Content -->
-                    <div class="form-section-title" style="margin-top: 30px;">
+                    <div class="form-section-title mt-30">
                         <i class="fas fa-comment-alt"></i>
                         <span>Your Review</span>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="review_title">
                             Review Title <span class="required">*</span>
                         </label>
-                        <input 
-                            type="text" 
-                            id="review_title" 
-                            name="review_title" 
+                        <input
+                            type="text"
+                            id="review_title"
+                            name="review_title"
                             placeholder="Summarize your experience in a few words"
                             required
                             aria-required="true"
-                            minlength="5"
-                        >
+                            minlength="5">
                         <p class="form-hint">A catchy title for your review (min. 5 characters)</p>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="review_comment">
                             Review Comment <span class="required">*</span>
                         </label>
-                        <textarea 
-                            id="review_comment" 
-                            name="review_comment" 
+                        <textarea
+                            id="review_comment"
+                            name="review_comment"
                             placeholder="Tell us about your stay, what you loved, and how we can improve..."
                             required
                             aria-required="true"
-                            minlength="20"
-                        ></textarea>
+                            minlength="20"></textarea>
                         <p class="form-hint">Share your detailed experience (min. 20 characters)</p>
                     </div>
-                    
+
                     <!-- Optional Detailed Ratings -->
                     <div class="optional-ratings">
                         <div class="optional-ratings-title">
                             <i class="fas fa-chart-bar"></i>
                             <span>Detailed Ratings <span class="optional">(Optional)</span></span>
                         </div>
-                        
+
                         <div class="optional-rating-item">
                             <span class="optional-rating-label">Service</span>
                             <div class="star-rating" id="serviceRating" data-rating="0">
@@ -836,7 +541,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <input type="hidden" id="service_rating" name="service_rating" value="">
                         </div>
-                        
+
                         <div class="optional-rating-item">
                             <span class="optional-rating-label">Cleanliness</span>
                             <div class="star-rating" id="cleanlinessRating" data-rating="0">
@@ -848,7 +553,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <input type="hidden" id="cleanliness_rating" name="cleanliness_rating" value="">
                         </div>
-                        
+
                         <div class="optional-rating-item">
                             <span class="optional-rating-label">Location</span>
                             <div class="star-rating" id="locationRating" data-rating="0">
@@ -860,7 +565,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <input type="hidden" id="location_rating" name="location_rating" value="">
                         </div>
-                        
+
                         <div class="optional-rating-item">
                             <span class="optional-rating-label">Value for Money</span>
                             <div class="star-rating" id="valueRating" data-rating="0">
@@ -873,29 +578,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <input type="hidden" id="value_rating" name="value_rating" value="">
                         </div>
                     </div>
-                    
+
                     <!-- Submit Button -->
-                    <div style="margin-top: 30px;">
+                    <div class="mt-30">
                         <button type="submit" class="submit-btn" id="submitBtn">
                             <span class="loading-spinner"></span>
                             <span class="btn-text">Submit Review</span>
                         </button>
                     </div>
-                    
+
                     <!-- Privacy Note -->
-                    <p style="text-align: center; margin-top: 20px; font-size: 13px; color: #888;">
+                    <p class="text-center mt-30 text-base text-gray-light">
                         <i class="fas fa-shield-alt"></i>
                         Your review will be published after moderation. We reserve the right to edit or remove inappropriate content.
                     </p>
                 </form>
             </div>
         </section>
+
+        <!-- Community Feedback -->
+        <section class="community-feedback-section rh-reveal is-revealed" aria-labelledby="community-feedback-title">
+            <div class="container">
+                <div class="community-feedback__header">
+                    <span class="community-feedback__label">Community Feedback</span>
+                    <h2 class="community-feedback__title" id="community-feedback-title">What Guests Are Saying</h2>
+                    <p class="community-feedback__description">A quick snapshot of guest sentiment and our latest responses.</p>
+                </div>
+
+                <div class="community-feedback__stats" role="list" aria-label="Review statistics">
+                    <article class="community-feedback__stat-card" role="listitem">
+                        <span class="community-feedback__stat-label">Approved Reviews</span>
+                        <strong class="community-feedback__stat-value"><?php echo (int)$reviews_summary['approved']; ?></strong>
+                    </article>
+                    <article class="community-feedback__stat-card" role="listitem">
+                        <span class="community-feedback__stat-label">All Reviews</span>
+                        <strong class="community-feedback__stat-value"><?php echo (int)$reviews_summary['total']; ?></strong>
+                    </article>
+                    <article class="community-feedback__stat-card" role="listitem">
+                        <span class="community-feedback__stat-label">Admin Responses</span>
+                        <strong class="community-feedback__stat-value"><?php echo (int)$reviews_summary['responses']; ?></strong>
+                    </article>
+                    <article class="community-feedback__stat-card" role="listitem">
+                        <span class="community-feedback__stat-label">Average Rating</span>
+                        <strong class="community-feedback__stat-value"><?php echo $reviews_summary['avg_rating'] !== null ? number_format($reviews_summary['avg_rating'], 2) . ' / 5' : '—'; ?></strong>
+                    </article>
+                </div>
+
+                <?php if (!empty($latest_reviews)): ?>
+                    <div class="community-feedback__list" aria-label="Recent guest reviews">
+                        <?php foreach ($latest_reviews as $r): ?>
+                            <article class="community-feedback__review-card">
+                                <header class="community-feedback__review-header">
+                                    <div class="community-feedback__review-author">
+                                        <i class="fas fa-user-circle" aria-hidden="true"></i>
+                                        <span><?php echo htmlspecialchars($r['guest_name'] ?: 'Guest'); ?></span>
+                                    </div>
+                                    <div class="community-feedback__review-meta">
+                                        <span class="community-feedback__rating-badge"><?php echo (int)$r['rating']; ?>/5</span>
+                                        <time class="community-feedback__review-date" datetime="<?php echo htmlspecialchars((string)$r['created_at']); ?>"><?php echo date('M d, Y', strtotime((string)$r['created_at'])); ?></time>
+                                    </div>
+                                </header>
+
+                                <h3 class="community-feedback__review-title"><?php echo htmlspecialchars($r['title']); ?></h3>
+                                <p class="community-feedback__review-comment"><?php echo nl2br(htmlspecialchars(mb_strimwidth($r['comment'] ?? '', 0, 320, '…'))); ?></p>
+
+                                <?php if (!empty($r['latest_response'])): ?>
+                                    <div class="community-feedback__response">
+                                        <p class="community-feedback__response-title"><i class="fas fa-reply" aria-hidden="true"></i> Our reply</p>
+                                        <p class="community-feedback__response-text"><?php echo nl2br(htmlspecialchars($r['latest_response'])); ?></p>
+                                        <?php if (!empty($r['latest_response_date'])): ?>
+                                            <time class="community-feedback__response-date" datetime="<?php echo htmlspecialchars((string)$r['latest_response_date']); ?>"><?php echo date('M d, Y g:i A', strtotime((string)$r['latest_response_date'])); ?></time>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="community-feedback__empty">
+                        <i class="fas fa-comment-dots" aria-hidden="true"></i>
+                        <p>No public reviews yet. Be the first to share your experience.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </section>
     </main>
-    
-    <?php include 'includes/footer.php'; ?>
-    <script src="js/modal.js"></script>
+
     <script src="js/main.js"></script>
-    
+
     <!-- JavaScript for Star Rating and Form Validation -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -907,22 +677,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 4: 'Very Good',
                 5: 'Excellent'
             };
-            
+
             function initStarRating(containerId, inputId, isRequired = false) {
                 const container = document.getElementById(containerId);
                 const input = document.getElementById(inputId);
                 const stars = container.querySelectorAll('.star');
                 const labelElement = document.getElementById(containerId + 'Label');
-                
+
                 if (!container || !input) return;
-                
+
                 // Handle star click
                 stars.forEach(star => {
                     star.addEventListener('click', function() {
                         const value = parseInt(this.dataset.value);
                         setRating(value);
                     });
-                    
+
                     // Handle star hover
                     star.addEventListener('mouseenter', function() {
                         const value = parseInt(this.dataset.value);
@@ -931,7 +701,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             labelElement.textContent = ratingLabels[value];
                         }
                     });
-                    
+
                     // Handle keyboard navigation
                     star.addEventListener('keydown', function(e) {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -941,7 +711,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     });
                 });
-                
+
                 // Reset on mouse leave
                 container.addEventListener('mouseleave', function() {
                     const currentRating = parseInt(container.dataset.rating);
@@ -954,26 +724,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                 });
-                
+
                 function setRating(value) {
                     container.dataset.rating = value;
                     input.value = value;
                     highlightStars(value);
-                    
+
                     // Update ARIA attributes
                     stars.forEach(star => {
                         const starValue = parseInt(star.dataset.value);
                         star.setAttribute('aria-pressed', starValue <= value ? 'true' : 'false');
                     });
-                    
+
                     if (labelElement) {
                         labelElement.textContent = ratingLabels[value];
                     }
-                    
+
                     // Trigger validation
                     validateField(input);
                 }
-                
+
                 function highlightStars(value) {
                     stars.forEach(star => {
                         const starValue = parseInt(star.dataset.value);
@@ -989,18 +759,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     });
                 }
             }
-            
+
             // Initialize all star ratings
             initStarRating('overallRating', 'overall_rating', true);
             initStarRating('serviceRating', 'service_rating', false);
             initStarRating('cleanlinessRating', 'cleanliness_rating', false);
             initStarRating('locationRating', 'location_rating', false);
             initStarRating('valueRating', 'value_rating', false);
-            
+
             // Handle review type selection
             const reviewTypeSelect = document.getElementById('review_type');
             const roomSelectionGroup = document.getElementById('roomSelectionGroup');
-            
+
             if (reviewTypeSelect && roomSelectionGroup) {
                 reviewTypeSelect.addEventListener('change', function() {
                     if (this.value === 'room') {
@@ -1011,35 +781,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 });
             }
-            
+
             // Form Validation
             const form = document.getElementById('reviewForm');
             const submitBtn = document.getElementById('submitBtn');
-            
+
             function validateField(field) {
                 const formGroup = field.closest('.form-group');
                 let isValid = true;
-                
+
                 if (field.hasAttribute('required') && !field.value.trim()) {
                     isValid = false;
                 }
-                
+
                 if (field.type === 'email' && field.value.trim()) {
                     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                     if (!emailRegex.test(field.value.trim())) {
                         isValid = false;
                     }
                 }
-                
+
                 if (field.getAttribute('minlength') && field.value.trim().length < parseInt(field.getAttribute('minlength'))) {
                     isValid = false;
                 }
-                
+
                 // Special validation for overall rating
                 if (field.id === 'overall_rating' && parseInt(field.value) < 1) {
                     isValid = false;
                 }
-                
+
                 if (formGroup) {
                     if (isValid) {
                         formGroup.classList.remove('error');
@@ -1049,28 +819,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         formGroup.classList.add('error');
                     }
                 }
-                
+
                 return isValid;
             }
-            
+
             // Real-time validation
             const requiredFields = form.querySelectorAll('input[required], textarea[required], select[required]');
             requiredFields.forEach(field => {
                 field.addEventListener('blur', function() {
                     validateField(this);
                 });
-                
+
                 field.addEventListener('input', function() {
                     if (this.closest('.form-group').classList.contains('error')) {
                         validateField(this);
                     }
                 });
             });
-            
+
             // Form submission
             form.addEventListener('submit', function(e) {
                 e.preventDefault();
-                
+
                 // Validate all fields
                 let isFormValid = true;
                 requiredFields.forEach(field => {
@@ -1078,97 +848,103 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         isFormValid = false;
                     }
                 });
-                
+
                 // Validate overall rating
                 const overallRating = document.getElementById('overall_rating');
                 if (parseInt(overallRating.value) < 1) {
                     isFormValid = false;
                     overallRating.closest('.form-group').classList.add('error');
                 }
-                
+
                 if (!isFormValid) {
                     // Scroll to first error
                     const firstError = form.querySelector('.form-group.error');
                     if (firstError) {
-                        firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        firstError.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
                     }
                     return;
                 }
-                
+
                 // Show loading state
                 submitBtn.classList.add('loading');
                 submitBtn.disabled = true;
-                
+
                 // Prepare form data
                 const formData = new FormData(form);
-                
+
                 // Submit via AJAX
                 fetch(form.action, {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => {
-                    if (response.redirected) {
-                        window.location.href = response.url;
-                        return;
-                    }
-                    return response.text();
-                })
-                .then(html => {
-                    // Check if response contains success message
-                    if (html.includes('alert-success') || html.includes('Thank you for your review')) {
-                        // Parse the response to find redirect URL
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        
-                        // Show success message
-                        const alertDiv = document.createElement('div');
-                        alertDiv.className = 'alert alert-success';
-                        alertDiv.style.cssText = 'background: #1f8f5f; color: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; text-align: center;';
-                        alertDiv.innerHTML = '<i class="fas fa-check-circle"></i> Thank you for your review! Your feedback has been submitted successfully.';
-                        
-                        form.insertBefore(alertDiv, form.firstChild);
-                        
-                        // Redirect after 2 seconds
-                        setTimeout(() => {
-                            const roomId = document.getElementById('room_id').value;
-                            if (roomId) {
-                                window.location.href = 'room.php?id=' + roomId;
-                            } else {
-                                window.location.href = 'index.php';
-                            }
-                        }, 2000);
-                    } else {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        if (response.redirected) {
+                            window.location.href = response.url;
+                            return;
+                        }
+                        return response.text();
+                    })
+                    .then(html => {
+                        // Check if response contains success message
+                        if (html.includes('alert-success') || html.includes('Thank you for your review')) {
+                            // Parse the response to find redirect URL
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+
+                            // Show success message
+                            const alertDiv = document.createElement('div');
+                            alertDiv.className = 'alert alert-success';
+                            alertDiv.style.cssText = 'background: #1f8f5f; color: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; text-align: center;';
+                            alertDiv.innerHTML = '<i class="fas fa-check-circle"></i> Thank you for your review! Your feedback has been submitted successfully.';
+
+                            form.insertBefore(alertDiv, form.firstChild);
+
+                            // Redirect after 2 seconds
+                            setTimeout(() => {
+                                const roomId = document.getElementById('room_id').value;
+                                if (roomId) {
+                                    window.location.href = 'room.php?id=' + roomId;
+                                } else {
+                                    window.location.href = 'index.php';
+                                }
+                            }, 2000);
+                        } else {
+                            // Show error message
+                            const alertDiv = document.createElement('div');
+                            alertDiv.className = 'alert alert-error';
+                            alertDiv.style.cssText = 'background: #c0392b; color: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; text-align: center;';
+                            alertDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> An error occurred while submitting your review. Please try again.';
+
+                            form.insertBefore(alertDiv, form.firstChild);
+
+                            // Reset button
+                            submitBtn.classList.remove('loading');
+                            submitBtn.disabled = false;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+
                         // Show error message
                         const alertDiv = document.createElement('div');
                         alertDiv.className = 'alert alert-error';
                         alertDiv.style.cssText = 'background: #c0392b; color: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; text-align: center;';
                         alertDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> An error occurred while submitting your review. Please try again.';
-                        
+
                         form.insertBefore(alertDiv, form.firstChild);
-                        
+
                         // Reset button
                         submitBtn.classList.remove('loading');
                         submitBtn.disabled = false;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    
-                    // Show error message
-                    const alertDiv = document.createElement('div');
-                    alertDiv.className = 'alert alert-error';
-                    alertDiv.style.cssText = 'background: #c0392b; color: white; padding: 16px; border-radius: 8px; margin-bottom: 20px; text-align: center;';
-                    alertDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> An error occurred while submitting your review. Please try again.';
-                    
-                    form.insertBefore(alertDiv, form.firstChild);
-                    
-                    // Reset button
-                    submitBtn.classList.remove('loading');
-                    submitBtn.disabled = false;
-                });
+                    });
             });
         });
     </script>
+
+    <?php include 'includes/footer.php'; ?>
 </body>
+
 </html>

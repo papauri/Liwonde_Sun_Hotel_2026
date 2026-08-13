@@ -14,6 +14,8 @@
 // Only track if we have a DB connection and sessions
 if (!isset($pdo) || session_status() !== PHP_SESSION_ACTIVE) return;
 
+require_once __DIR__ . '/system-logger.php';
+
 // Don't track admin pages, API endpoints, or AJAX requests
 $_vt_script = $_SERVER['SCRIPT_FILENAME'] ?? '';
 $_vt_file = basename($_SERVER['PHP_SELF']);
@@ -23,10 +25,52 @@ if (strpos($_vt_script, DIRECTORY_SEPARATOR . 'admin' . DIRECTORY_SEPARATOR) !==
     return;
 }
 
-// Check cookie consent — skip analytics tracking if user declined
+// ── Early local/private IP detection (before consent check) ──
+// This lets localhost / LAN dev testing bypass cookie-consent so
+// analytics always work when developing locally.
+$_vt_ip_early = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+if (strpos($_vt_ip_early, ',') !== false) {
+    $_vt_ip_early = trim(explode(',', $_vt_ip_early)[0]);
+}
+$_vt_is_local = in_array($_vt_ip_early, ['127.0.0.1', '::1', '::ffff:127.0.0.1', '0.0.0.0'], true)
+    || preg_match('/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/', $_vt_ip_early);
+
+// Check cookie consent — skip analytics tracking if user declined.
+// Local/private IPs (localhost, LAN) always bypass this so dev testing is always tracked.
 $_vt_consent = $_COOKIE['cookie_consent'] ?? null;
-if ($_vt_consent === 'declined') {
-    return; // User explicitly declined tracking
+if ($_vt_consent === 'declined' && !$_vt_is_local) {
+    return; // User explicitly declined tracking (remote visitors only)
+}
+
+if (!function_exists('rh_vt_column_exists')) {
+    function rh_vt_column_exists(PDO $pdo, string $table, string $column): bool {
+        try {
+            $stmt = $pdo->prepare("\n                SELECT COUNT(*)\n                FROM information_schema.COLUMNS\n                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?\n            ");
+            $stmt->execute([$table, $column]);
+            return (int)$stmt->fetchColumn() > 0;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+}
+
+if (!function_exists('rh_vt_ensure_column')) {
+    function rh_vt_ensure_column(PDO $pdo, string $table, string $column, string $definition): void {
+        if (rh_vt_column_exists($pdo, $table, $column)) {
+            return;
+        }
+        try {
+            $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN {$definition}");
+        } catch (Throwable $e) {
+            if (function_exists('rh_log_event')) {
+                rh_log_event('visitor_analytics', 'warning', 'Could not add analytics column', [
+                    'table' => $table,
+                    'column' => $column,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
 }
 
 // Rate limit: max 1 log per page per 2 seconds per session
@@ -36,8 +80,8 @@ if (isset($_SESSION[$_vt_key]) && (time() - $_SESSION[$_vt_key]) < 2) {
 }
 
 try {
-    // Check if table exists (cached in session for performance)
-    if (!isset($_SESSION['_vt_table_ok'])) {
+    // Check if table exists and ensure older schemas have the columns used below.
+    if (!isset($_SESSION['_vt_table_ok_v2'])) {
         $check = $pdo->query("SHOW TABLES LIKE 'site_visitors'");
         if ($check->rowCount() === 0) {
             // Auto-create table
@@ -62,11 +106,17 @@ try {
                     INDEX `idx_ip` (`ip_address`),
                     INDEX `idx_created` (`created_at`),
                     INDEX `idx_page` (`page_url`(191)),
-                    INDEX `idx_device` (`device_type`)
+                    INDEX `idx_device` (`device_type`),
+                    INDEX `idx_country` (`country`(50))
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
         }
-        $_SESSION['_vt_table_ok'] = true;
+        rh_vt_ensure_column($pdo, 'site_visitors', 'page_title', "`page_title` VARCHAR(255) DEFAULT NULL AFTER `page_url`");
+        rh_vt_ensure_column($pdo, 'site_visitors', 'visit_duration', "`visit_duration` INT DEFAULT NULL COMMENT 'Seconds on page' AFTER `is_first_visit`");
+        rh_vt_ensure_column($pdo, 'site_visitors', 'consent_level', "`consent_level` VARCHAR(20) DEFAULT NULL AFTER `visit_duration`");
+        rh_vt_ensure_column($pdo, 'site_visitors', 'referrer_domain', "`referrer_domain` VARCHAR(255) DEFAULT NULL AFTER `referrer`");
+        rh_vt_ensure_column($pdo, 'site_visitors', 'country', "`country` VARCHAR(100) DEFAULT NULL AFTER `referrer_domain`");
+        $_SESSION['_vt_table_ok_v2'] = true;
     }
 
     // Gather visitor data
@@ -113,6 +163,10 @@ try {
     }
 
     $page_url = $_SERVER['REQUEST_URI'] ?? '/' . $_vt_file;
+    $page_title = $GLOBALS['page_title'] ?? $GLOBALS['pageTitle'] ?? $GLOBALS['title'] ?? '';
+    if (!is_string($page_title) || trim($page_title) === '') {
+        $page_title = function_exists('getSetting') ? (string)getSetting('site_name', '') : '';
+    }
     $session_id = session_id();
 
     // Detect device type
@@ -154,20 +208,22 @@ try {
         $_SESSION['_vt_first_logged'] = true;
     }
 
+    $consent_level = $_COOKIE['cookie_consent'] ?? 'pending';
+
     // Insert visitor record into site_visitors table
     $stmt = $pdo->prepare("
         INSERT INTO site_visitors
-        (session_id, ip_address, user_agent, device_type, browser, os, referrer, referrer_domain, country, page_url, is_first_visit, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        (session_id, ip_address, user_agent, device_type, browser, os, referrer, referrer_domain, country, page_url, page_title, is_first_visit, consent_level, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ");
     $stmt->execute([
         $session_id, $ip, substr($ua, 0, 1000), $device_type, $browser, $os,
         substr($referrer, 0, 1000), $referrer_domain, $country ? substr($country, 0, 100) : null,
-        substr($page_url, 0, 500), $is_first
+        substr($page_url, 0, 500), substr($page_title, 0, 255), $is_first, $consent_level
     ]);
 
     // ── Also insert into session_logs table (dedicated session tracking) ──
-    if (!isset($_SESSION['_vt_slog_ok'])) {
+    if (!isset($_SESSION['_vt_slog_ok_v2'])) {
         $slog_check = $pdo->query("SHOW TABLES LIKE 'session_logs'");
         if ($slog_check->rowCount() === 0) {
             $pdo->exec("
@@ -192,11 +248,12 @@ try {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
         }
-        $_SESSION['_vt_slog_ok'] = true;
+        rh_vt_ensure_column($pdo, 'session_logs', 'consent_level', "`consent_level` VARCHAR(20) DEFAULT NULL AFTER `page_count`");
+        rh_vt_ensure_column($pdo, 'session_logs', 'country', "`country` VARCHAR(100) DEFAULT NULL AFTER `referrer_domain`");
+        $_SESSION['_vt_slog_ok_v2'] = true;
     }
 
     // Upsert session_logs: update page_count & last_activity if session exists, else insert
-    $consent_level = $_COOKIE['cookie_consent'] ?? 'pending';
     $slog_stmt = $pdo->prepare("
         INSERT INTO session_logs (session_id, ip_address, device_type, browser, os, page_url, referrer_domain, country, consent_level, session_start, last_activity, page_count)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)
@@ -220,9 +277,9 @@ try {
     }
     $_vt_log_file = $_vt_log_dir . '/visitor-sessions.log';
 
-    // Format: [TIMESTAMP] SESSION_ID | IP | COUNTRY | DEVICE | BROWSER | OS | PAGE | REFERRER | FIRST_VISIT
+    // Format: [TIMESTAMP] SESSION_ID | IP | COUNTRY | DEVICE | BROWSER | OS | PAGE | TITLE | REFERRER | FIRST_VISIT | CONSENT
     $_vt_log_line = sprintf(
-        "[%s] %s | IP: %s | Country: %s | Device: %s | Browser: %s | OS: %s | Page: %s | Ref: %s | First: %s\n",
+        "[%s] %s | IP: %s | Country: %s | Device: %s | Browser: %s | OS: %s | Page: %s | Title: %s | Ref: %s | First: %s | Consent: %s\n",
         date('Y-m-d H:i:s'),
         $session_id,
         $ip,
@@ -231,8 +288,10 @@ try {
         $browser,
         $os,
         substr($page_url, 0, 200),
+        substr($page_title, 0, 120),
         $referrer_domain ?: 'direct',
-        $is_first ? 'YES' : 'NO'
+        $is_first ? 'YES' : 'NO',
+        $consent_level
     );
     @file_put_contents($_vt_log_file, $_vt_log_line, FILE_APPEND | LOCK_EX);
 
@@ -246,4 +305,7 @@ try {
 } catch (Exception $e) {
     // Silently fail — visitor tracking should never break the page
     error_log('Visitor tracker error: ' . $e->getMessage());
+    if (function_exists('rh_log_event')) {
+        rh_log_event('visitor_analytics', 'error', 'Visitor tracker failed', ['error' => $e->getMessage()]);
+    }
 }

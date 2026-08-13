@@ -1,31 +1,36 @@
 <?php
-// Load security configuration first (before session_start)
-require_once 'config/security.php';
 
+/**
+ * Booking Confirmation Page
+ * Displays booking details after successful submission
+ */
+
+// Start session
 session_start();
+require_once 'config/base-url.php';
 require_once 'config/database.php';
-
-// Send security headers
-sendSecurityHeaders();
 
 // Get booking reference from URL
 $booking_reference = $_GET['ref'] ?? null;
 
 if (!$booking_reference) {
-    header('Location: booking.php');
+    header('Location: ' . BASE_URL . 'booking.php');
     exit;
 }
 
 // Fetch booking details
+$split_bookings = [];
 try {
     $stmt = $pdo->prepare("
         SELECT b.*, r.name as room_name, r.image_url as room_image
         FROM bookings b
         JOIN rooms r ON b.room_id = r.id
-        WHERE b.booking_reference = ?
+        WHERE b.booking_reference = ? OR b.booking_reference LIKE ?
+        ORDER BY b.booking_reference ASC
     ");
-    $stmt->execute([$booking_reference]);
-    $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->execute([$booking_reference, $booking_reference . '-%']);
+    $split_bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $booking = $split_bookings[0] ?? null;
 
     if (!$booking) {
         $error = "Booking not found.";
@@ -34,495 +39,327 @@ try {
     $error = "Unable to retrieve booking details.";
 }
 
+// Fetch extras / packages for this booking group
+$booking_packages = [];
+if (!isset($error) && !empty($split_bookings)) {
+    try {
+        $bookingIds = array_column($split_bookings, 'id');
+        $placeholders = implode(',', array_fill(0, count($bookingIds), '?'));
+        $pkgStmt = $pdo->prepare(
+            "SELECT package_name, price_type, price_amount, quantity, total_cost
+             FROM booking_packages WHERE booking_id IN ($placeholders)
+             ORDER BY id ASC"
+        );
+        $pkgStmt->execute($bookingIds);
+        $booking_packages = $pkgStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Confirmation page: packages query error: " . $e->getMessage());
+    }
+}
+
 $site_name = getSetting('site_name');
 $currency_symbol = getSetting('currency_symbol');
 $phone_main = getSetting('phone_main');
 $email_reservations = getSetting('email_reservations');
 $whatsapp_number = getSetting('whatsapp_number');
 $payment_policy = getSetting('payment_policy');
+
+// Fetch policies for footer modals
+$policies = [];
+try {
+    $policyStmt = $pdo->query("SELECT slug, title, summary, content FROM policies WHERE is_active = 1 ORDER BY display_order ASC, id ASC");
+    $policies = $policyStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log("Error fetching policies: " . $e->getMessage());
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
-    <meta name="theme-color" content="#0A1929">
-    <title>Booking Confirmed | <?php echo htmlspecialchars($site_name); ?></title>
-    
+    <?php
+    $seo_data = [
+        'title' => 'Booking Confirmed | ' . $site_name,
+        'description' => "Your booking at {$site_name} has been confirmed.",
+        'noindex' => true,
+        'type' => 'website'
+    ];
+    require_once 'includes/seo-meta.php';
+    ?>
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=yes">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="css/theme-dynamic.php">
-    <link rel="stylesheet" href="css/header.css">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/footer.css">
-    <style>
-        .confirmation-page {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            min-height: 100vh;
-            padding: 80px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .confirmation-container {
-            max-width: 700px;
-            width: 100%;
-        }
-        .success-icon {
-            text-align: center;
-            margin-bottom: 30px;
-            animation: scaleIn 0.6s ease-out;
-        }
-        .success-icon i {
-            font-size: 80px;
-            color: #28a745;
-            background: white;
-            width: 140px;
-            height: 140px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            box-shadow: 0 10px 40px rgba(40, 167, 69, 0.3);
-        }
-        .success-icon.tentative i {
-            color: var(--gold);
-            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.3);
-        }
-        @keyframes scaleIn {
-            from {
-                transform: scale(0);
-                opacity: 0;
-            }
-            to {
-                transform: scale(1);
-                opacity: 1;
-            }
-        }
-        .confirmation-card {
-            background: white;
-            border-radius: 20px;
-            padding: 50px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
-            animation: slideUp 0.6s ease-out;
-        }
-        @keyframes slideUp {
-            from {
-                transform: translateY(30px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        .confirmation-card h1 {
-            font-family: var(--font-serif);
-            font-size: 32px;
-            color: var(--navy);
-            text-align: center;
-            margin-bottom: 10px;
-        }
-        .confirmation-card .subtitle {
-            text-align: center;
-            color: #666;
-            font-size: 16px;
-            margin-bottom: 40px;
-        }
-        .booking-reference-box {
-            background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 100%);
-            padding: 24px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 40px;
-        }
-        .booking-reference-box label {
-            display: block;
-            color: var(--gold);
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 8px;
-        }
-        .booking-reference-box .reference-number {
-            font-family: 'Courier New', monospace;
-            font-size: 28px;
-            font-weight: 700;
-            color: white;
-            letter-spacing: 3px;
-        }
-        .booking-details-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 24px;
-            margin-bottom: 32px;
-        }
-        .detail-item {
-            padding: 16px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border-left: 4px solid var(--gold);
-        }
-        .detail-item label {
-            display: block;
-            font-size: 12px;
-            color: #666;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 6px;
-        }
-        .detail-item .value {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--navy);
-        }
-        .detail-item.full-width {
-            grid-column: 1 / -1;
-        }
-        .payment-info {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 32px;
-        }
-        .payment-info h3 {
-            margin: 0 0 12px 0;
-            color: #856404;
-            font-size: 16px;
-            font-weight: 600;
-        }
-        .payment-info p {
-            margin: 0;
-            color: #856404;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-        .action-buttons {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            margin-top: 32px;
-        }
-        .btn {
-            padding: 14px 24px;
-            border-radius: 10px;
-            font-weight: 600;
-            text-decoration: none;
-            text-align: center;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%);
-            color: var(--deep-navy);
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
-        }
-        .btn-secondary {
-            background: white;
-            color: var(--navy);
-            border: 2px solid var(--navy);
-        }
-        .btn-secondary:hover {
-            background: var(--navy);
-            color: white;
-        }
-        .btn-whatsapp {
-            background: #25d366;
-            color: white;
-        }
-        .btn-whatsapp:hover {
-            background: #20ba5a;
-        }
-        .next-steps {
-            margin-top: 40px;
-            padding-top: 40px;
-            border-top: 2px solid #e0e0e0;
-        }
-        .next-steps h3 {
-            font-family: var(--font-serif);
-            color: var(--navy);
-            margin-bottom: 20px;
-            font-size: 20px;
-        }
-        .next-steps ol {
-            padding-left: 24px;
-            color: #666;
-            line-height: 1.8;
-        }
-        .next-steps ol li {
-            margin-bottom: 10px;
-        }
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 
-        @media print {
-            body { background: white !important; padding: 0 !important; }
-            .confirmation-container { max-width: 100%; }
-            .confirmation-card { box-shadow: none; border: 1px solid #ddd; }
-            .success-icon { margin-bottom: 15px; }
-            .success-icon i { font-size: 40px; width: 70px; height: 70px; box-shadow: none; }
-            .action-buttons, .next-steps, .scroll-to-top { display: none !important; }
-            .booking-reference-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .detail-item { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-
-        /* Tentative Booking Styles */
-        .tentative-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%);
-            color: var(--deep-navy);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: 600;
-            font-size: 14px;
-            margin-bottom: 20px;
-        }
-        .tentative-info-box {
-            background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
-            border-left: 4px solid var(--gold);
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-        }
-        .tentative-info-box h3 {
-            margin: 0 0 12px 0;
-            color: var(--navy);
-            font-size: 16px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .tentative-info-box p {
-            margin: 0;
-            color: #666;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-        .tentative-info-box .expires-at {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(212, 175, 55, 0.3);
-            font-weight: 600;
-            color: var(--navy);
-        }
-        .tentative-info-box .expires-at i {
-            color: #dc3545;
-            margin-right: 6px;
-        }
-        .booking-type-indicator {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-left: 10px;
-        }
-        .booking-type-indicator.standard {
-            background: #d4edda;
-            color: #155724;
-        }
-        .booking-type-indicator.tentative {
-            background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
-            color: var(--navy);
-        }
-
-        @media (max-width: 768px) {
-            .confirmation-card {
-                padding: 30px 24px;
-            }
-            .booking-details-grid {
-                grid-template-columns: 1fr;
-            }
-            .action-buttons {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+    <!-- Main CSS - Loads all stylesheets in correct order -->
+    <link rel="stylesheet" href="css/base/critical.css">
+    <link rel="stylesheet" href="css/main.css">
 </head>
+
 <body class="confirmation-page">
-    <?php if (isset($error)): ?>
-    <div class="confirmation-container">
-        <div class="confirmation-card">
-            <div style="text-align: center;">
-                <i class="fas fa-exclamation-circle" style="font-size: 60px; color: #dc3545; margin-bottom: 20px;"></i>
-                <h1>Error</h1>
-                <p><?php echo htmlspecialchars($error); ?></p>
-                <a href="booking.php" class="btn btn-primary" style="display: inline-block; margin-top: 20px;">
-                    Back to Booking
-                </a>
-            </div>
-        </div>
-    </div>
-    <?php else: ?>
-    <?php
-        $is_tentative = ($booking['status'] === 'tentative' || $booking['is_tentative'] == 1);
-        $icon_class = $is_tentative ? 'fa-clock' : 'fa-check-circle';
-        $icon_class_wrapper = $is_tentative ? 'tentative' : '';
-        $heading = $is_tentative ? 'Tentative Booking Received!' : 'Booking Confirmed!';
-        $subtitle = $is_tentative
-            ? 'Your room has been placed on temporary hold. We\'ll send you a reminder before expiration.'
-            : 'Thank you for choosing ' . htmlspecialchars($site_name) . '. Your reservation has been received.';
-    ?>
-    <div class="confirmation-container">
-        <div class="success-icon <?php echo $icon_class_wrapper; ?>">
-            <i class="fas <?php echo $icon_class; ?>"></i>
-        </div>
+    <?php include 'includes/loader.php'; ?>
+    <?php include 'includes/header.php'; ?>
+    <?php include 'includes/alert.php'; ?>
 
-        <div class="confirmation-card">
-            <h1>
-                <?php echo $heading; ?>
-                <span class="booking-type-indicator <?php echo $is_tentative ? 'tentative' : 'standard'; ?>">
-                    <?php echo $is_tentative ? 'Tentative' : 'Standard'; ?>
+    <main id="main-content">
+        <div class="conf-wrap">
+        <?php if (isset($error)): ?>
+            <div class="conf-card">
+                <div class="conf-card-body conf-error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <h1>Booking Not Found</h1>
+                    <p><?php echo htmlspecialchars($error); ?></p>
+                    <a href="booking.php" class="conf-btn conf-btn--primary">Back to Booking</a>
+                </div>
+            </div>
+        <?php else: ?>
+            <?php
+            $is_tentative = ($booking['status'] === 'tentative' || $booking['is_tentative'] == 1);
+            $icon_class   = $is_tentative ? 'fa-clock' : 'fa-check-circle';
+            $heading      = $is_tentative ? 'Tentative Booking Received' : 'Booking Confirmed';
+            $subtitle     = $is_tentative
+                ? 'Your room has been placed on a temporary hold. We\'ll send you a reminder before it expires.'
+                : 'Thank you for choosing ' . htmlspecialchars($site_name) . '. Your reservation has been received and is being reviewed.';
+            $split_count  = count($split_bookings);
+            $group_total_amount           = 0.0;
+            $group_guest_count            = 0;
+            $group_adult_count            = 0;
+            $group_child_count            = 0;
+            $group_child_supplement_total = 0.0;
+            $group_references             = [];
+            foreach ($split_bookings as $split_booking) {
+                $group_total_amount           += (float)($split_booking['total_amount'] ?? 0);
+                $group_guest_count            += (int)($split_booking['number_of_guests'] ?? 0);
+                $group_adult_count            += (int)($split_booking['adult_guests'] ?? 0);
+                $group_child_count            += (int)($split_booking['child_guests'] ?? 0);
+                $group_child_supplement_total += (float)($split_booking['child_supplement_total'] ?? 0);
+                $group_references[]            = $split_booking['booking_reference'];
+            }
+            $child_guests   = $group_child_count;
+            $adult_guests   = $group_adult_count > 0 ? $group_adult_count : max(1, $group_guest_count - $child_guests);
+            $nights         = (int)$booking['number_of_nights'];
+            $check_in_fmt   = date('D, M j, Y', strtotime($booking['check_in_date']));
+            $check_out_fmt  = date('D, M j, Y', strtotime($booking['check_out_date']));
+            $check_in_time  = htmlspecialchars(getSetting('check_in_time', '2:00 PM'));
+            $check_out_time = htmlspecialchars(getSetting('check_out_time', '11:00 AM'));
+            ?>
+
+            <!-- ── Hero ── -->
+            <div class="conf-hero">
+                <div class="conf-icon-ring <?php echo $is_tentative ? 'tentative' : ''; ?>">
+                    <i class="fas <?php echo $icon_class; ?>"></i>
+                </div>
+                <h1 class="conf-heading"><?php echo $heading; ?></h1>
+                <p class="conf-subtitle"><?php echo $subtitle; ?></p>
+                <span class="conf-type-pill <?php echo $is_tentative ? 'tentative' : 'standard'; ?>">
+                    <i class="fas <?php echo $is_tentative ? 'fa-clock' : 'fa-check-circle'; ?>"></i>
+                    <?php echo $is_tentative ? 'Tentative Hold' : 'Standard Booking'; ?>
                 </span>
-            </h1>
-            <p class="subtitle"><?php echo $subtitle; ?></p>
+            </div>
 
-            <?php if ($is_tentative && $booking['tentative_expires_at']): ?>
-            <div class="tentative-badge">
+            <!-- ── Expiry banner (tentative only) ── -->
+            <?php if ($is_tentative && !empty($booking['tentative_expires_at'])): ?>
+            <div class="conf-expiry-banner">
                 <i class="fas fa-hourglass-half"></i>
-                Room on Hold
+                <div>
+                    <strong>Room on Hold</strong>
+                    Expires <?php echo date('M j, Y \a\t g:i A', strtotime($booking['tentative_expires_at'])); ?>
+                    &nbsp;·&nbsp; Contact us before expiration to confirm.
+                </div>
             </div>
             <?php endif; ?>
 
-            <div class="booking-reference-box">
-                <label>Booking Reference</label>
-                <div class="reference-number"><?php echo htmlspecialchars($booking['booking_reference']); ?></div>
-            </div>
+            <!-- ── 2-col body grid: main (stay + steps) | aside (ref + guest) ── -->
+            <div class="conf-body-grid">
 
-            <div class="booking-details-grid">
-                <div class="detail-item full-width">
-                    <label>Room</label>
-                    <div class="value"><?php echo htmlspecialchars($booking['room_name']); ?></div>
-                </div>
-                <div class="detail-item">
-                    <label>Guest Name</label>
-                    <div class="value"><?php echo htmlspecialchars($booking['guest_name']); ?></div>
-                </div>
-                <div class="detail-item">
-                    <label>Email</label>
-                    <div class="value"><?php echo htmlspecialchars($booking['guest_email']); ?></div>
-                </div>
-                <div class="detail-item">
-                    <label>Check-in</label>
-                    <div class="value"><?php echo date('M j, Y', strtotime($booking['check_in_date'])); ?></div>
-                </div>
-                <div class="detail-item">
-                    <label>Check-out</label>
-                    <div class="value"><?php echo date('M j, Y', strtotime($booking['check_out_date'])); ?></div>
-                </div>
-                <div class="detail-item">
-                    <label>Number of Nights</label>
-                    <div class="value"><?php echo $booking['number_of_nights']; ?> <?php echo $booking['number_of_nights'] == 1 ? 'night' : 'nights'; ?></div>
-                </div>
-                <div class="detail-item">
-                    <label>Number of Guests</label>
-                    <div class="value"><?php echo $booking['number_of_guests']; ?> <?php echo $booking['number_of_guests'] == 1 ? 'guest' : 'guests'; ?></div>
-                </div>
-                <div class="detail-item full-width">
-                    <label>Total Amount</label>
-                    <div class="value" style="font-size: 24px; color: var(--gold);">
-                        <?php echo $currency_symbol; ?><?php echo number_format($booking['total_amount'], 0); ?>
+                <!-- LEFT / MAIN column -->
+                <div class="conf-col-main">
+
+                    <!-- Stay details -->
+                    <div class="conf-card">
+                        <div class="conf-card-body">
+                            <div class="conf-card-title"><i class="fas fa-bed"></i> Your Stay</div>
+                            <div class="conf-room-name">
+                                <?php echo htmlspecialchars($booking['room_name']); ?>
+                                <?php if ($split_count > 1): ?><span style="font-size:0.85rem;color:#736149;"> (<?php echo $split_count; ?> rooms)</span><?php endif; ?>
+                            </div>
+                            <div class="conf-dates-row">
+                                <div class="conf-date-block">
+                                    <div class="conf-date-label"><i class="fas fa-sign-in-alt"></i> Check-in</div>
+                                    <div class="conf-date-val"><?php echo $check_in_fmt; ?></div>
+                                    <div class="conf-date-time">from <?php echo $check_in_time; ?></div>
+                                </div>
+                                <div class="conf-nights-pill">
+                                    <span class="conf-nights-num"><?php echo $nights; ?></span>
+                                    <span class="conf-nights-lbl"><?php echo $nights === 1 ? 'night' : 'nights'; ?></span>
+                                </div>
+                                <div class="conf-date-block conf-date-block--right">
+                                    <div class="conf-date-label"><i class="fas fa-sign-out-alt"></i> Check-out</div>
+                                    <div class="conf-date-val"><?php echo $check_out_fmt; ?></div>
+                                    <div class="conf-date-time">by <?php echo $check_out_time; ?></div>
+                                </div>
+                            </div>
+                            <div class="conf-stay-meta">
+                                <div class="conf-guests-line">
+                                    <i class="fas fa-users"></i>
+                                    <?php echo $adult_guests; ?> adult<?php echo $adult_guests === 1 ? '' : 's'; ?>
+                                    <?php if ($child_guests > 0): ?> + <?php echo $child_guests; ?> child<?php echo $child_guests === 1 ? '' : 'ren'; ?><?php endif; ?>
+                                </div>
+                                <div class="conf-total-block">
+                                    <div class="conf-total-label">Total</div>
+                                    <div class="conf-total-amount"><?php echo $currency_symbol; ?><?php echo number_format($group_total_amount, 0); ?></div>
+                                </div>
+                            </div>
+
+                            <?php
+                            // Occupancy type + rate plan meta row
+                            $occupancy_type  = trim((string)($booking['occupancy_type'] ?? ''));
+                            $rate_plan_label = trim((string)($booking['rate_plan_label'] ?? ''));
+                            if ($occupancy_type !== '' || $rate_plan_label !== ''):
+                            ?>
+                            <div class="conf-stay-tags">
+                                <?php if ($occupancy_type !== ''): ?>
+                                    <span class="conf-stay-tag"><i class="fas fa-bed"></i> <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $occupancy_type))); ?></span>
+                                <?php endif; ?>
+                                <?php if ($rate_plan_label !== ''): ?>
+                                    <span class="conf-stay-tag"><i class="fas fa-tag"></i> <?php echo htmlspecialchars($rate_plan_label); ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
+
+                            <?php if (!empty($booking_packages)): ?>
+                            <div class="conf-extras">
+                                <div class="conf-extras-title"><i class="fas fa-plus-circle"></i> Extras &amp; Packages</div>
+                                <?php foreach ($booking_packages as $pkg):
+                                    $suffix = $pkg['price_type'] === 'per_night' ? '/night' : '';
+                                    $qty    = (int)$pkg['quantity'];
+                                ?>
+                                <div class="conf-extras-row">
+                                    <span class="conf-extras-name">
+                                        <?php echo htmlspecialchars($pkg['package_name']); ?>
+                                        <?php if ($qty > 1 || $suffix): ?>
+                                            <em><?php echo ($qty > 1 ? "×{$qty}" : '') . ($suffix ? " {$suffix}" : ''); ?></em>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="conf-extras-cost"><?php echo $currency_symbol . number_format((float)$pkg['total_cost'], 0); ?></span>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
+
+                        </div>
                     </div>
-                </div>
-                <div class="detail-item">
-                    <label>Check-in Time</label>
-                    <div class="value"><?php echo htmlspecialchars(getSetting('check_in_time', '2:00 PM')); ?></div>
-                </div>
-                <div class="detail-item">
-                    <label>Check-out Time</label>
-                    <div class="value"><?php echo htmlspecialchars(getSetting('check_out_time', '11:00 AM')); ?></div>
-                </div>
-            </div>
 
-            <?php if ($is_tentative && $booking['tentative_expires_at']): ?>
-            <div class="tentative-info-box">
-                <h3><i class="fas fa-clock"></i> Tentative Booking Details</h3>
-                <p>
-                    Your room has been placed on temporary hold. You'll receive a reminder email before expiration.
-                    To confirm this booking, please contact us before the expiration time.
-                </p>
-                <div class="expires-at">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    Expires: <?php echo date('M j, Y \a\t g:i A', strtotime($booking['tentative_expires_at'])); ?>
-                </div>
-            </div>
-            <?php endif; ?>
+                    <!-- Payment & Next steps -->
+                    <div class="conf-card">
+                        <div class="conf-card-body">
+                            <div class="conf-card-title"><i class="fas fa-list-check"></i> <?php echo $is_tentative ? 'What Happens Next' : 'Payment &amp; Next Steps'; ?></div>
+                            <ol class="conf-steps">
+                                <?php if ($is_tentative): ?>
+                                    <li><strong>Tentative booking email sent</strong> to <?php echo htmlspecialchars($booking['guest_email']); ?> — please check your inbox.</li>
+                                    <li><strong>Room is on hold</strong> until <?php echo date('M j, Y \a\t g:i A', strtotime($booking['tentative_expires_at'])); ?>.</li>
+                                    <li>You'll receive a <strong>reminder email</strong> <?php echo (int)getSetting('tentative_reminder_hours', 24); ?> hours before expiration.</li>
+                                    <li><strong>Contact us</strong> before expiration to convert this to a confirmed reservation.</li>
+                                    <li>Once confirmed, payment of <strong><?php echo $currency_symbol . number_format($group_total_amount, 0); ?></strong> is collected at check-in.</li>
+                                <?php else: ?>
+                                    <li><strong>Confirmation email sent</strong> to <?php echo htmlspecialchars($booking['guest_email']); ?> — please check your inbox.</li>
+                                    <li>Our team will review your booking and may contact you to confirm details.</li>
+                                    <li>Save your reference number: <strong><?php echo htmlspecialchars($booking['booking_reference']); ?></strong>.</li>
+                                    <li>Arrive on your check-in date and present your reference at reception.</li>
+                                    <li>Payment of <strong><?php echo $currency_symbol . number_format($group_total_amount, 0); ?></strong> is collected at check-in.</li>
+                                <?php endif; ?>
+                            </ol>
+                            <?php if (!$is_tentative && $payment_policy): ?>
+                            <p class="conf-payment-text" style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(139,115,85,0.08);">
+                                <?php echo $payment_policy; ?>
+                            </p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
 
-            <div class="payment-info">
-                <h3><i class="fas fa-info-circle"></i> <?php echo $is_tentative ? 'Next Steps' : 'Payment Information'; ?></h3>
-                <p>
-                    <?php if ($is_tentative): ?>
-                        <strong>1. Confirm your booking:</strong> Contact us before expiration to convert this to a confirmed reservation.<br>
-                        <strong>2. Payment:</strong> Once confirmed, payment of <?php echo $currency_symbol . number_format($booking['total_amount'], 0); ?> will be collected at check-in.<br>
-                        <strong>3. Reminder:</strong> You'll receive a reminder email <?php echo (int)getSetting('tentative_reminder_hours', 24); ?> hours before expiration.<br>
-                        <strong>4. Questions?</strong> Contact us anytime at <?php echo htmlspecialchars($phone_main); ?>.
-                    <?php else: ?>
-                        <?php echo getSetting('payment_policy', 'Payment will be made at the hotel upon arrival.<br>We accept cash payments only. Please bring the total amount of <strong>' . $currency_symbol . number_format($booking['total_amount'], 0) . '</strong> with you.'); ?>
-                    <?php endif; ?>
-                </p>
-            </div>
+                </div><!-- /.conf-col-main -->
 
-            <div class="action-buttons">
-                <a href="tel:<?php echo str_replace(' ', '', $phone_main); ?>" class="btn btn-secondary">
+                <!-- RIGHT / ASIDE column -->
+                <div class="conf-col-aside">
+
+                    <!-- Booking reference -->
+                    <div class="conf-card conf-ref-card">
+                        <div class="conf-ref-body">
+                            <div class="conf-ref-label"><?php echo $split_count > 1 ? 'Primary Booking Reference' : 'Booking Reference'; ?></div>
+                            <div class="conf-ref-number"><?php echo htmlspecialchars($booking['booking_reference']); ?></div>
+                            <?php if ($split_count > 1): ?>
+                                <div class="conf-ref-group">Group references: <?php echo htmlspecialchars(implode(' · ', $group_references)); ?></div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Guest details -->
+                    <div class="conf-card">
+                        <div class="conf-card-body">
+                            <div class="conf-card-title"><i class="fas fa-user"></i> Guest Details</div>
+                            <div class="conf-detail-list">
+                                <div class="conf-detail-row">
+                                    <span>Name</span>
+                                    <span><?php echo htmlspecialchars($booking['guest_name']); ?></span>
+                                </div>
+                                <div class="conf-detail-row">
+                                    <span>Email</span>
+                                    <span><?php echo htmlspecialchars($booking['guest_email']); ?></span>
+                                </div>
+                                <?php if ($child_guests > 0): ?>
+                                <div class="conf-detail-row">
+                                    <span>Child Supplement</span>
+                                    <span><?php echo $currency_symbol . number_format($group_child_supplement_total, 0); ?></span>
+                                </div>
+                                <?php endif; ?>
+                                <div class="conf-detail-row conf-detail-row--total">
+                                    <span>Total Amount</span>
+                                    <span><?php echo $currency_symbol . number_format($group_total_amount, 0); ?></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div><!-- /.conf-col-aside -->
+
+            </div><!-- /.conf-body-grid -->
+
+            <!-- ── Action buttons ── -->
+            <div class="conf-actions">
+                <a href="tel:<?php echo str_replace(' ', '', $phone_main); ?>" class="conf-btn conf-btn--ghost">
                     <i class="fas fa-phone"></i> Call Hotel
                 </a>
-                <a href="https://wa.me/<?php echo $whatsapp_number; ?>?text=Hi, I have a booking (<?php echo $booking['booking_reference']; ?>)" class="btn btn-whatsapp" target="_blank">
+                <a href="https://wa.me/<?php echo rawurlencode(preg_replace('/[^0-9+]/', '', (string)$whatsapp_number)); ?>?text=<?php echo rawurlencode('Hi, I have a booking (' . $booking['booking_reference'] . ')'); ?>" class="conf-btn conf-btn--whatsapp" target="_blank" rel="noopener">
                     <i class="fab fa-whatsapp"></i> WhatsApp
                 </a>
-                <a href="mailto:<?php echo $email_reservations; ?>?subject=Booking <?php echo $booking['booking_reference']; ?>" class="btn btn-secondary">
+                <a href="mailto:<?php echo $email_reservations; ?>?subject=Booking+<?php echo $booking['booking_reference']; ?>" class="conf-btn conf-btn--ghost">
                     <i class="fas fa-envelope"></i> Email
                 </a>
-                <button onclick="window.print()" class="btn btn-secondary">
+                <button onclick="window.print()" class="conf-btn conf-btn--ghost">
                     <i class="fas fa-print"></i> Print
                 </button>
-                <a href="index.php" class="btn btn-primary">
+                <a href="index.php" class="conf-btn conf-btn--home">
                     <i class="fas fa-home"></i> Back to Home
                 </a>
             </div>
 
-            
-            <div class="next-steps">
-                <h3>What Happens Next?</h3>
-                <ol>
-                    <?php if ($is_tentative): ?>
-                        <li><strong>Tentative booking email sent</strong> to <?php echo htmlspecialchars($booking['guest_email']); ?> - please check your inbox</li>
-                        <li><strong>Room is on hold</strong> until <?php echo date('M j, Y \a\t g:i A', strtotime($booking['tentative_expires_at'])); ?></li>
-                        <li>You'll receive a <strong>reminder email</strong> <?php echo (int)getSetting('tentative_reminder_hours', 24); ?> hours before expiration</li>
-                        <li><strong>Contact us</strong> before expiration to confirm your booking and secure your reservation</li>
-                        <li>Once confirmed, payment of <strong><?php echo $currency_symbol; ?><?php echo number_format($booking['total_amount'], 0); ?></strong> will be collected at check-in</li>
-                    <?php else: ?>
-                        <li><strong>Confirmation email sent</strong> to <?php echo htmlspecialchars($booking['guest_email']); ?> - please check your inbox</li>
-                        <li>Our reception team will review your booking and may contact you to confirm details</li>
-                        <li>Please save your booking reference: <strong><?php echo $booking['booking_reference']; ?></strong></li>
-                        <li>Arrive on your check-in date and present your booking reference at reception</li>
-                        <li>Payment of <strong><?php echo $currency_symbol; ?><?php echo number_format($booking['total_amount'], 0); ?></strong> will be collected at check-in</li>
-                    <?php endif; ?>
-                </ol>
-            </div>
-
-            <p style="text-align: center; margin-top: 32px; color: #999; font-size: 13px;">
-                <i class="fas fa-question-circle"></i> Questions? Contact us at <?php echo htmlspecialchars($phone_main); ?>
+            <p class="conf-contact-note">
+                <i class="fas fa-question-circle"></i>
+                Questions? Call us at <a href="tel:<?php echo str_replace(' ', '', $phone_main); ?>"><?php echo htmlspecialchars($phone_main); ?></a>
             </p>
-        </div>
-    </div>
-    <?php endif; ?>
 
-    <script>
-        // Optional: Auto-print confirmation
-        // window.print();
-    </script>
+        <?php endif; ?>
+        </div><!-- /.conf-wrap -->
+    </main>
 
-    <?php include 'includes/scroll-to-top.php'; ?>
+    <script src="js/main.js"></script>
+
+    <?php include 'includes/footer.php'; ?>
 </body>
+
 </html>
