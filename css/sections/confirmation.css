@@ -1,6 +1,6 @@
 /* ============================================================
    BOOKING CONFIRMATION PAGE
-   Modern, airy hotel confirmation — Rosalyn's Hotel 2026
+   Modern, airy hotel confirmation — Liwonde Sun Hotel 2026
    ============================================================ */
 
 /* ── Page shell ──────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@
     color: #7A6A58;
     line-height: 1.6;
     margin: 0 0 16px;
-    max-width: 42ch;
+    max-width: var(--measure-tight);
     margin-inline: auto;
 }
 

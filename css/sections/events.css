@@ -1,6 +1,6 @@
 /**
  * Events + Conference Section Styles
- * Rosalyn's Hotel 2026
+ * Liwonde Sun Hotel 2026
  * Premium cinematic redesign — editorial hospitality aesthetic
  */
 
@@ -20,7 +20,7 @@
 
 .events-page .hero__description,
 .conference-page .hero__description {
-    max-width: 58ch;
+    max-width: var(--measure);
     margin-inline: auto;
 }
 
@@ -489,7 +489,7 @@
 
 .editorial-expired-section-subtitle {
     margin: 0.55rem auto 1.75rem;
-    max-width: 46ch;
+    max-width: var(--measure-tight);
     text-align: center;
     color: var(--color-text-secondary, #5E554D);
     font-size: 0.96rem;

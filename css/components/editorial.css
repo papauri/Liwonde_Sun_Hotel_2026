@@ -1,6 +1,6 @@
 /**
  * Editorial Components
- * Rosalyn's Hotel 2026
+ * Liwonde Sun Hotel 2026
  * Editorial-style components with BEM methodology
  */
 
@@ -429,7 +429,7 @@
     color: var(--color-text-secondary, #5E554D);
     font-size: var(--text-sm, 0.875rem);
     line-height: 1.62;
-    max-width: 36ch;
+    max-width: var(--measure-xs);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -725,7 +725,7 @@
 .editorial-facility-description,
 .editorial-testimonial-text {
     margin: 0;
-    max-width: 42ch;
+    max-width: var(--measure-tight);
     line-height: 1.72;
 }
 
@@ -1900,7 +1900,7 @@
 }
 
 .editorial-about-content > div {
-    max-width: 60ch;
+    max-width: var(--measure);
 }
 
 /* Eyebrow/Label */

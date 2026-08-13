@@ -482,7 +482,7 @@
 }
 
 .community-feedback__header {
-    max-width: 66ch;
+    max-width: var(--measure);
     margin: 0 auto;
     text-align: center;
 }
@@ -510,7 +510,7 @@
 
 .community-feedback__description {
     margin: var(--space-3) auto 0;
-    max-width: 56ch;
+    max-width: var(--measure);
     color: var(--color-text-secondary);
     font-family: var(--font-sans);
     font-size: var(--text-base);

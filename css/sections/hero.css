@@ -1,6 +1,6 @@
 /**
  * Hero Section
- * Rosalyn's Hotel 2026
+ * Liwonde Sun Hotel 2026
  * Passalacqua-inspired elegant hero styling
  */
 
@@ -327,7 +327,7 @@
 }
 
 .hero--home-lux.hero--image .hero__description {
-    max-width: 56ch;
+    max-width: var(--measure);
     margin-bottom: clamp(1.2rem, 2vw, 2rem) !important;
 }
 
@@ -854,7 +854,7 @@
     .hero--home-lux.hero--image .hero__description {
         font-size: clamp(0.88rem, 1.18vw, 1.02rem) !important;
         line-height: 1.54 !important;
-        max-width: 60ch;
+        max-width: var(--measure);
     }
 
     .hero--home-lux.hero--image .hero__actions {
