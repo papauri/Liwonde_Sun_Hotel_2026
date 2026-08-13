@@ -40,17 +40,23 @@ if (function_exists('getPageLoader')) {
         $loaderSubtextMap[$slug] = $subtext !== false ? $subtext : '';
     }
 }
+
+// Ballena-style split tagline for the loader (presentation only)
+$loaderTagline = function_exists('getSetting') ? (string)(getSetting('site_tagline') ?? '') : '';
+if (trim($loaderTagline) === '') {
+    $loaderTagline = 'Where Comfort Meets Value';
+}
+$loaderWords = explode(' ', trim($loaderTagline));
+$loaderHalf  = intdiv(count($loaderWords), 2) ?: 1;
+$loaderLineTop    = implode(' ', array_slice($loaderWords, 0, $loaderHalf));
+$loaderLineBottom = implode(' ', array_slice($loaderWords, $loaderHalf));
 ?>
-<!-- Elegant Page Loader -->
+<!-- Ballena-inspired Page Loader -->
 <div id="page-loader" class="loader loader--active">
     <div class="loader__content">
-        <div class="loader__spinner">
-            <div class="spinner-ring"></div>
-            <div class="spinner-ring"></div>
-            <div class="spinner-ring"></div>
-            <div class="spinner-center"></div>
-        </div>
+        <div class="loader__line loader__line--top"><span><?php echo htmlspecialchars($loaderLineTop); ?></span></div>
         <div class="loader__title"><?php echo htmlspecialchars($siteName); ?></div>
+        <div class="loader__line loader__line--bottom"><span><?php echo htmlspecialchars($loaderLineBottom); ?></span></div>
         <div class="loader__subtitle" data-default-subtext="<?php echo htmlspecialchars($loaderSubtext); ?>"><?php echo htmlspecialchars($loaderSubtext); ?></div>
         <div class="loader__progress">
             <div class="loader__progress-bar"></div>

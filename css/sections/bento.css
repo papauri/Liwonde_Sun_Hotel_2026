@@ -1,0 +1,480 @@
+/**
+ * Bento-grid accents for landing sections — UI only.
+ * Compact, modern Markopolo-style tiles. No markup/logic changes.
+ */
+
+/* ============================================
+   SHARED BENTO TILE SURFACE (compact)
+   ============================================ */
+
+.editorial-facility-card,
+.editorial-room-card,
+.editorial-testimonial-card,
+.editorial-event-card,
+.gallery-carousel-item {
+    border-radius: 18px;
+    border: 1px solid rgba(177, 130, 71, 0.16);
+    background: linear-gradient(165deg, #ffffff 0%, #faf5ec 100%);
+    box-shadow: 0 8px 22px rgba(24, 21, 18, 0.05);
+    overflow: hidden;
+    transition:
+        transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 260ms ease;
+}
+
+.editorial-facility-card:hover,
+.editorial-room-card:hover,
+.editorial-testimonial-card:hover,
+.editorial-event-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 32px rgba(24, 21, 18, 0.09);
+    border-color: rgba(232, 145, 58, 0.3);
+}
+
+/* ============================================
+   FACILITIES — 4-COL BENTO, COMPACT TILES
+   ============================================ */
+
+@media (min-width: 1024px) {
+    .editorial-facilities-grid.landing-grid--three {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        grid-auto-rows: minmax(140px, auto);
+        grid-auto-flow: dense;
+        gap: 14px;
+    }
+
+    .editorial-facility-card {
+        padding: 1.35rem;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+
+    /* Featured tile — dark, spans 2x2 but stays tight */
+    .editorial-facility-card:nth-child(1) {
+        grid-column: span 2;
+        grid-row: span 2;
+        background: linear-gradient(150deg, #221a13 0%, #33241a 100%);
+        border-color: rgba(244, 168, 83, 0.25);
+        color: #f7f1e8;
+        padding: 1.7rem;
+    }
+
+    .editorial-facility-card:nth-child(1) .editorial-facility-name,
+    .editorial-facility-card:nth-child(1) h3 {
+        color: #ffffff !important;
+        font-size: 1.45rem;
+    }
+
+    .editorial-facility-card:nth-child(1) .editorial-facility-description,
+    .editorial-facility-card:nth-child(1) p {
+        color: rgba(247, 241, 232, 0.78) !important;
+        font-size: 0.95rem;
+    }
+
+    .editorial-facility-card:nth-child(1) .editorial-facility-divider {
+        background: rgba(244, 168, 83, 0.45) !important;
+    }
+
+    .editorial-facility-card:nth-child(1) .editorial-facility-icon {
+        background: rgba(244, 168, 83, 0.16);
+        color: #F4A853;
+        width: 54px;
+        height: 54px;
+        font-size: 1.35rem;
+    }
+
+    /* Wide amber-tinted tile */
+    .editorial-facility-card:nth-child(4) {
+        grid-column: span 2;
+        background: linear-gradient(150deg, rgba(232, 145, 58, 0.16), rgba(244, 168, 83, 0.07));
+        border-color: rgba(232, 145, 58, 0.35);
+    }
+
+    /* Balance the grid: bottom row becomes two wide tiles */
+    .editorial-facility-card:nth-child(5) {
+        grid-column: span 2;
+    }
+
+    .editorial-facility-card:last-child:nth-child(7) {
+        grid-column: span 4;
+    }
+
+    /* Thin amber top accent on plain tiles for character */
+    .editorial-facility-card:not(:nth-child(1)):not(:nth-child(4))::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 1.35rem;
+        right: 1.35rem;
+        height: 2px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, rgba(232, 145, 58, 0.5), rgba(232, 145, 58, 0));
+    }
+
+    /* Icon chip — small */
+    .editorial-facility-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(232, 145, 58, 0.1);
+        color: #C4701F;
+        font-size: 1.05rem;
+        margin-bottom: 0.7rem;
+        flex-shrink: 0;
+    }
+
+    .editorial-facility-name {
+        font-size: 1.05rem;
+    }
+
+    .editorial-facility-description {
+        font-size: 0.85rem;
+        line-height: 1.5;
+    }
+
+    .editorial-facility-link {
+        margin-top: auto;
+        align-self: flex-end;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(232, 145, 58, 0.12);
+        color: #C4701F;
+        font-size: 0.8rem;
+        transition: background 180ms ease, color 180ms ease;
+    }
+
+    .editorial-facility-link:hover {
+        background: #E8913A;
+        color: #fff;
+    }
+}
+
+/* ============================================
+   ROOMS — COMPACT 3-COL CARDS (modern bento)
+   ============================================ */
+
+@media (min-width: 1024px) {
+    .editorial-rooms-row.landing-grid--three {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+    }
+
+    .editorial-room-card {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .editorial-room-card__media,
+    .editorial-room-card__media picture,
+    .editorial-room-card__media-link {
+        display: block;
+        position: relative;
+        height: auto;
+        min-height: 0;
+        aspect-ratio: 4 / 3;
+        overflow: hidden;
+        background: #e9e2d8;
+    }
+
+    .editorial-room-card__media img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        aspect-ratio: auto;
+        object-fit: cover;
+    }
+
+    .editorial-room-card__body {
+        padding: 1.1rem 1.15rem 1.25rem;
+    }
+
+    .editorial-room-card__title {
+        font-size: 1.2rem;
+    }
+
+    .editorial-room-card__summary {
+        font-size: 0.86rem;
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .editorial-room-card__meta {
+        font-size: 0.78rem;
+    }
+
+    .editorial-room-card__amenities {
+        font-size: 0.75rem;
+    }
+
+    .editorial-room-card__badge {
+        font-size: 0.75rem;
+        padding: 0.35rem 0.7rem;
+    }
+}
+
+/* ============================================
+   TESTIMONIALS — COMPACT TILES, SUBTLE OFFSET
+   ============================================ */
+
+@media (min-width: 1024px) {
+    .editorial-testimonials-grid.landing-grid--three {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        align-items: stretch;
+    }
+
+    .editorial-testimonial-card {
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .editorial-testimonial-quote {
+        font-size: 2.2rem;
+        line-height: 1;
+    }
+
+    .editorial-testimonial-text {
+        font-size: 0.92rem;
+        line-height: 1.6;
+    }
+
+    .editorial-testimonial-author-name {
+        font-size: 0.9rem;
+    }
+
+    /* Dark center tile with a gentle offset */
+    .editorial-testimonial-card:nth-child(2) {
+        background: linear-gradient(150deg, #221a13 0%, #33241a 100%);
+        border-color: rgba(244, 168, 83, 0.25);
+        color: #f7f1e8;
+        transform: translateY(10px);
+    }
+
+    .editorial-testimonial-card:nth-child(2):hover {
+        transform: translateY(7px);
+    }
+
+    .editorial-testimonial-card:nth-child(2) .editorial-testimonial-text {
+        color: rgba(247, 241, 232, 0.85);
+    }
+
+    .editorial-testimonial-card:nth-child(2) .editorial-testimonial-author-name {
+        color: #ffffff;
+    }
+
+    .editorial-testimonial-card:nth-child(2) .editorial-testimonial-author-location {
+        color: rgba(247, 241, 232, 0.6);
+    }
+
+    .editorial-testimonial-card:nth-child(2) .editorial-testimonial-quote {
+        color: #F4A853;
+    }
+}
+
+/* ============================================
+   MOBILE — compact rounded tiles
+   ============================================ */
+
+@media (max-width: 1023px) {
+    .editorial-facility-card,
+    .editorial-room-card,
+    .editorial-testimonial-card {
+        border-radius: 16px;
+    }
+
+    .editorial-facility-card {
+        padding: 1.2rem;
+    }
+
+    .editorial-facility-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(232, 145, 58, 0.1);
+        color: #C4701F;
+        font-size: 1rem;
+        margin-bottom: 0.7rem;
+    }
+
+    /* Dark featured tile on mobile too */
+    .editorial-facility-card:nth-child(1) {
+        background: linear-gradient(150deg, #221a13 0%, #33241a 100%);
+        border-color: rgba(244, 168, 83, 0.25);
+        color: #f7f1e8;
+    }
+
+    .editorial-facility-card:nth-child(1) .editorial-facility-name {
+        color: #ffffff;
+    }
+
+    .editorial-facility-card:nth-child(1) .editorial-facility-description {
+        color: rgba(247, 241, 232, 0.72);
+    }
+
+    .editorial-facility-card:nth-child(1) .editorial-facility-icon {
+        background: rgba(244, 168, 83, 0.16);
+        color: #F4A853;
+    }
+
+    .editorial-room-card__media,
+    .editorial-room-card__media picture,
+    .editorial-room-card__media-link {
+        position: relative;
+        aspect-ratio: 4 / 3;
+        overflow: hidden;
+    }
+
+    .editorial-room-card__media img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        aspect-ratio: auto;
+        object-fit: cover;
+    }
+
+    .editorial-room-card__body {
+        padding: 1rem 1rem 1.15rem;
+    }
+
+    .editorial-testimonial-card {
+        padding: 1.25rem;
+    }
+}
+
+/* ============================================
+   ULTRA-WIDE (1920px+) — contain display type so
+   the site doesn't feel zoomed-in on 2900px+ screens
+   ============================================ */
+
+@media (min-width: 1920px) {
+    .editorial-about-title {
+        font-size: clamp(2.2rem, 2.8vw, 3.4rem);
+    }
+
+    .section-header__title,
+    .editorial-header .section-header__title {
+        font-size: clamp(2rem, 2.6vw, 3.1rem);
+    }
+
+    .section-header__description,
+    .editorial-about-description {
+        font-size: 1.02rem;
+        max-width: 62ch;
+    }
+
+    .editorial-about-grid {
+        max-width: 1440px;
+        margin-inline: auto;
+    }
+
+    .editorial-room-card__title {
+        font-size: 1.15rem;
+    }
+}
+
+/* ============================================
+   SUB-PAGE SECTION POLISH — same tile language
+   on restaurant / gym / events / conference /
+   rooms-gallery (UI only)
+   ============================================ */
+
+.menu-item,
+.class-card,
+.package-card,
+.editorial-event-card,
+.editorial-experience-item,
+.qr-menu-panel,
+.editorial-gallery-item,
+.card.room-card {
+    border-radius: 18px;
+    border: 1px solid rgba(177, 130, 71, 0.16);
+    background: linear-gradient(165deg, #ffffff 0%, #faf5ec 100%);
+    box-shadow: 0 8px 22px rgba(24, 21, 18, 0.05);
+    overflow: hidden;
+    transition:
+        transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 260ms ease;
+}
+
+.menu-item:hover,
+.class-card:hover,
+.package-card:hover,
+.editorial-event-card:hover,
+.editorial-experience-item:hover,
+.editorial-gallery-item:hover,
+.card.room-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 32px rgba(24, 21, 18, 0.09);
+    border-color: rgba(232, 145, 58, 0.3);
+}
+
+/* Featured / popular cards get the amber treatment */
+.package-card.featured,
+.menu-item.featured,
+.editorial-event-card.featured,
+.card.room-card.featured-card {
+    background: linear-gradient(150deg, #221a13 0%, #33241a 100%);
+    border-color: rgba(244, 168, 83, 0.3);
+}
+
+.package-card.featured h3,
+.package-card.featured .package-name,
+.menu-item.featured .menu-item-name,
+.card.room-card.featured-card .room-card-title {
+    color: #ffffff !important;
+}
+
+.package-card.featured p,
+.package-card.featured li,
+.package-card.featured .package-duration,
+.menu-item.featured .menu-item-description,
+.card.room-card.featured-card .room-card-description {
+    color: rgba(247, 241, 232, 0.78) !important;
+}
+
+/* Event / conference card images fill their frame */
+.editorial-event-image-container,
+.editorial-event-image {
+    border-radius: 0;
+}
+
+/* Menu item price chip */
+.menu-item-price {
+    color: #C4701F !important;
+    font-weight: 700;
+}
+
+/* Reduced motion: no lift on hover */
+@media (prefers-reduced-motion: reduce) {
+    .editorial-facility-card,
+    .editorial-room-card,
+    .editorial-testimonial-card,
+    .editorial-event-card,
+    .editorial-testimonial-card:nth-child(2) {
+        transition: none !important;
+        transform: none !important;
+    }
+}

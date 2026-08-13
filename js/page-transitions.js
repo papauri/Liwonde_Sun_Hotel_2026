@@ -577,6 +577,20 @@
         },
         
         closeMobileMenu() {
+            // New LSH mobile menu
+            const lshMobile = document.querySelector('.lsh-mobile');
+            if (lshMobile && lshMobile.classList.contains('lsh-mobile--active')) {
+                lshMobile.classList.remove('lsh-mobile--active');
+                lshMobile.setAttribute('aria-hidden', 'true');
+                const toggleBtn = document.querySelector('[data-mobile-toggle]');
+                if (toggleBtn) {
+                    toggleBtn.setAttribute('aria-expanded', 'false');
+                    toggleBtn.setAttribute('aria-label', 'Toggle navigation menu');
+                }
+                document.body.style.overflow = '';
+            }
+
+            // Legacy mobile menu
             const mobileMenu = document.querySelector('.header__mobile');
             if (mobileMenu && mobileMenu.classList.contains('header__mobile--active')) {
                 mobileMenu.classList.remove('header__mobile--active');
@@ -657,8 +671,13 @@
     const HeaderScroll = {
         header: null,
         
+        _findHeader() {
+            // New LSH header first, then legacy header
+            return document.querySelector('.lsh-header') || document.querySelector('.header');
+        },
+
         init() {
-            this.header = document.querySelector('.header');
+            this.header = this._findHeader();
             if (!this.header) return;
             
             // Initial update
@@ -675,7 +694,7 @@
         update(scrollY) {
             // Guard against DOM swaps (e.g., SPA updates moving/replacing header)
             if (!this.header || !document.body.contains(this.header)) {
-                this.header = document.querySelector('.header');
+                this.header = this._findHeader();
                 if (!this.header) {
                     if (!this._warnedMissingHeader) {
                         this._warnedMissingHeader = true;
@@ -686,16 +705,15 @@
                 this._warnedMissingHeader = false;
             }
 
-            if (scrollY > CONFIG.headerScrollThreshold) {
-                this.header.classList.add('header--scrolled');
-            } else {
-                this.header.classList.remove('header--scrolled');
-            }
+            const isScrolled = scrollY > CONFIG.headerScrollThreshold;
+            // Toggle both new LSH and legacy scrolled classes
+            this.header.classList.toggle('lsh-header--scrolled', isScrolled);
+            this.header.classList.toggle('header--scrolled', isScrolled);
         },
         
         refresh() {
             // Re-initialize if header element might have changed
-            this.header = document.querySelector('.header');
+            this.header = this._findHeader();
             if (this.header) {
                 this.update(window.pageYOffset);
             }

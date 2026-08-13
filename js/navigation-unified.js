@@ -104,12 +104,12 @@
             // Already exists (e.g. double-include)
             const existing = document.getElementById('spa-content');
             if (existing) {
-                const header = document.querySelector('header.header');
+                const header = document.querySelector('header.lsh-header') || document.querySelector('header.header');
                 const footer = document.querySelector('footer.footer');
 
                 // Ensure mobile menu overlay/panel are not inside SPA-swapped content.
                 const mobileOverlay = existing.querySelector('[data-mobile-overlay]');
-                const mobilePanel = existing.querySelector('#mobile-menu');
+                const mobilePanel = existing.querySelector('#lsh-mobile-menu') || existing.querySelector('#mobile-menu');
                 if (header && mobileOverlay) {
                     header.after(mobileOverlay);
                 }
@@ -118,9 +118,15 @@
                     anchor.after(mobilePanel);
                 }
 
-                // Keep wrapper after header + mobile menu elements
+                // Keep wrapper after header + mobile menu elements.
+                // Note: in the new LSH markup the mobile menu lives INSIDE the
+                // header, so only use it as anchor when it is a sibling (legacy).
                 if (header) {
-                    const wrapperAnchor = document.getElementById('mobile-menu') || document.querySelector('[data-mobile-overlay]') || header;
+                    let wrapperAnchor = header;
+                    const mobileEl = document.getElementById('lsh-mobile-menu') || document.getElementById('mobile-menu') || document.querySelector('[data-mobile-overlay]');
+                    if (mobileEl && !header.contains(mobileEl)) {
+                        wrapperAnchor = mobileEl;
+                    }
                     wrapperAnchor.after(existing);
                 }
 
@@ -133,7 +139,7 @@
                 return true;
             }
 
-            const header = document.querySelector('header.header');
+            const header = document.querySelector('header.lsh-header') || document.querySelector('header.header');
             const footer = document.querySelector('footer.footer');
             if (!header || !footer) {
                 return false;
@@ -148,7 +154,7 @@
                 // Keep mobile menu shell outside SPA-swapped content so it persists.
                 if (node.nodeType === Node.ELEMENT_NODE) {
                     const element = node;
-                    if (element.matches('[data-mobile-overlay]') || element.id === 'mobile-menu') {
+                    if (element.matches('[data-mobile-overlay]') || element.id === 'lsh-mobile-menu' || element.id === 'mobile-menu' || element.classList.contains('lsh-mobile')) {
                         node = next;
                         continue;
                     }
@@ -158,10 +164,16 @@
                 node = next;
             }
 
-            // Create wrapper after header/mobile menu shell, then move content nodes into it
+            // Create wrapper after header/mobile menu shell, then move content nodes into it.
+            // Note: in the new LSH markup the mobile menu lives INSIDE the header,
+            // so only use it as anchor when it is a sibling of the header (legacy).
             const wrapper = document.createElement('div');
             wrapper.id = 'spa-content';
-            const wrapperAnchor = document.getElementById('mobile-menu') || document.querySelector('[data-mobile-overlay]') || header;
+            let wrapperAnchor = header;
+            const mobileEl = document.getElementById('lsh-mobile-menu') || document.getElementById('mobile-menu') || document.querySelector('[data-mobile-overlay]');
+            if (mobileEl && !header.contains(mobileEl)) {
+                wrapperAnchor = mobileEl;
+            }
             wrapperAnchor.after(wrapper);
             nodes.forEach(n => wrapper.appendChild(n));
 
@@ -266,22 +278,34 @@
         }
 
         _openMobileMenu() {
-            const panel = document.getElementById('mobile-menu');
+            // Support both new lsh-mobile and legacy mobile-menu
+            const panel = document.getElementById('lsh-mobile-menu') || document.getElementById('mobile-menu');
             const overlay = document.querySelector('[data-mobile-overlay]');
             const toggleBtn = document.querySelector('[data-mobile-toggle]');
 
-            if (panel) panel.classList.add('header__mobile--active');
+            if (panel) {
+                panel.classList.add('lsh-mobile--active');
+                panel.classList.add('header__mobile--active'); // legacy compat
+                // The panel ships aria-hidden="true" so it is ignored while closed.
+                // It must be exposed once open, otherwise its links stay hidden
+                // from assistive tech while being focusable.
+                panel.setAttribute('aria-hidden', 'false');
+            }
             if (overlay) overlay.classList.add('header__overlay--active');
             if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
             document.body.style.overflow = 'hidden';
         }
 
         _closeMobileMenu() {
-            const panel = document.getElementById('mobile-menu');
+            const panel = document.getElementById('lsh-mobile-menu') || document.getElementById('mobile-menu');
             const overlay = document.querySelector('[data-mobile-overlay]');
             const toggleBtn = document.querySelector('[data-mobile-toggle]');
 
-            if (panel) panel.classList.remove('header__mobile--active');
+            if (panel) {
+                panel.classList.remove('lsh-mobile--active');
+                panel.classList.remove('header__mobile--active'); // legacy compat
+                panel.setAttribute('aria-hidden', 'true');
+            }
             if (overlay) overlay.classList.remove('header__overlay--active');
             if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
             document.body.style.overflow = '';
@@ -563,14 +587,28 @@
         _updateActiveNav(url) {
             const pageName = this._pageName(url);
 
-            // Desktop links
+            // Desktop links — new lsh classes
+            document.querySelectorAll('.lsh-header__link').forEach(link => {
+                const lp = this._pageName(link.getAttribute('href') || '');
+                const active = lp === pageName || (pageName === 'room' && lp === 'rooms-gallery');
+                link.classList.toggle('lsh-header__link--active', active);
+            });
+
+            // Desktop links — legacy compat
             document.querySelectorAll('.header__menu-link').forEach(link => {
                 const lp = this._pageName(link.getAttribute('href') || '');
                 const active = lp === pageName || (pageName === 'room' && lp === 'rooms-gallery');
                 link.classList.toggle('header__menu-link--active', active);
             });
 
-            // Mobile links (correct class: header__mobile-link, not header__mobile-menu-link)
+            // Mobile links — new lsh classes
+            document.querySelectorAll('.lsh-mobile__link').forEach(link => {
+                const lp = this._pageName(link.getAttribute('href') || '');
+                const active = lp === pageName || (pageName === 'room' && lp === 'rooms-gallery');
+                link.classList.toggle('lsh-mobile__link--active', active);
+            });
+
+            // Mobile links — legacy compat
             document.querySelectorAll('.header__mobile-link:not(.header__mobile-link--cta)').forEach(link => {
                 const lp = this._pageName(link.getAttribute('href') || '');
                 const active = lp === pageName || (pageName === 'room' && lp === 'rooms-gallery');

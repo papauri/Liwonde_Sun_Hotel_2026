@@ -138,6 +138,11 @@ function extractMainContent($html) {
     $heroContent = '';
     $mainContent = '';
 
+    // Strip the guest-facing mobile menu shell that sits between </header>
+    // and the hero so it never gets duplicated into SPA-swapped content.
+    // The block is delimited by the lsh-mobile:end marker emitted by header.php.
+    $html = preg_replace('/<div[^>]*id="lsh-mobile-menu"[\s\S]*?<!--\s*lsh-mobile:end\s*-->/', '', $html, 1);
+
     // ── 1. Capture anything that sits between </header> and <main> ─────────
     // Matches our reusable hero.php output which uses class="hero hero--passalacqua …"
     // (previous code only matched the old "editorial-hero" class — now matches any .hero)
