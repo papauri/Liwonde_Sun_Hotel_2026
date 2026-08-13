@@ -398,6 +398,18 @@
     letter-spacing: 0.02em;
 }
 
+/* Used when a room has no photo: the media block is omitted, so the price
+   badge sits in the card body as normal flow instead of over an image. */
+.editorial-room-card__badge--inline {
+    position: static;
+    align-self: flex-start;
+    margin-bottom: 0.75rem;
+    background: color-mix(in srgb, var(--ballena-sage, #779580) 12%, transparent);
+    border-color: color-mix(in srgb, var(--ballena-sage, #779580) 35%, transparent);
+    color: var(--ballena-ink, #03090D);
+    backdrop-filter: none;
+}
+
 .editorial-room-card__badge span {
     font-size: 0.72rem;
     font-weight: var(--font-normal, 400);

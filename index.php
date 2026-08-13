@@ -292,7 +292,9 @@ foreach ($footer_links_raw as $link) {
                                 // Delay calculation: 0, 0.3s, 0.6s
                                 $delay = $roomIndex * 0.3;
                             ?>
+                                <?php $priceBadge = htmlspecialchars($currency_symbol) . ' ' . number_format($roomPrice, 0) . ' <span>/ night</span>'; ?>
                                 <div class="editorial-room-card" data-animation="a1" data-animation-delay="<?php echo $delay; ?>s">
+                                    <?php if ($imageUrl !== ''): ?>
                                     <div class="editorial-room-card__media">
                                         <a href="<?php echo $roomUrl; ?>" target="_self" class="editorial-room-card__media-link">
                                             <picture>
@@ -303,10 +305,17 @@ foreach ($footer_links_raw as $link) {
                                                     decoding="async">
                                             </picture>
                                         </a>
-                                        <div class="editorial-room-card__badge"><?php echo htmlspecialchars($currency_symbol); ?> <?php echo number_format($roomPrice, 0); ?> <span>/ night</span></div>
+                                        <div class="editorial-room-card__badge"><?php echo $priceBadge; ?></div>
                                     </div>
+                                    <?php endif; ?>
 
                                     <div class="editorial-room-card__body">
+                                        <?php if ($imageUrl === ''): ?>
+                                        <!-- No photo for this room: skip the media block entirely rather than
+                                             render an empty <img src="">, and keep the price inline so the
+                                             card loses nothing but the picture. -->
+                                        <div class="editorial-room-card__badge editorial-room-card__badge--inline"><?php echo $priceBadge; ?></div>
+                                        <?php endif; ?>
                                         <h3 class="link editorial-room-card__title">
                                             <a href="<?php echo $roomUrl; ?>" data-anchor="#<?php echo htmlspecialchars($room['slug']); ?>"><?php echo $roomName; ?></a>
                                         </h3>
