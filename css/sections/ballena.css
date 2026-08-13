@@ -1081,3 +1081,165 @@ body {
         min-height: clamp(260px, 44vh, 420px);
     }
 }
+
+/* ============================================================
+   16. COMPLETING THE EDITORIAL SET — rooms, facilities and
+       testimonials brought up to the About block's treatment
+   ------------------------------------------------------------
+   The About block already carries the reference's signature move:
+   a full-bleed split with a solid colour panel. The other three
+   sections had only been *flattened* (section layer above), never
+   *composed*. This layer gives each one its own editorial gesture,
+   matched to the reference's rhythm of neutral spreads alternating
+   with solid colour bands:
+
+     · Rooms        a numbered "collection" on the sand ground
+     · Facilities   a full-bleed SAGE panel with ink copy — the
+                    sibling of the clay About band. sand-on-sage is
+                    only ~3:1 (fails AA), so the copy is INK here,
+                    which measures ~6.1:1 on the sampled sage.
+     · Testimonials oversized serif pull-quotes on sand
+
+   SCOPING — every selector below is pinned to `.landing-section`
+   PLUS the section class. `.editorial-testimonials-section` is
+   reused on room.php (id="reviews", class `.rh-reveal`) and the
+   facility / testimonial CARD classes recur on gym.php and
+   room.php, so an unscoped rule would bleed onto those pages.
+   `.landing-section` is present only on the homepage instances
+   (index.php), so it fences these rules to the home page. No PHP,
+   JS, markup or data keys are touched.
+   ============================================================ */
+
+/* ── 16a. Rooms — a numbered collection ─────────────────────
+   The portrait cards already read as an editorial grid; a running
+   index (01 / 02 / 03) set as a sage micro-cap states them as a
+   "collection", and a small settle on hover gives them life. Pure
+   CSS counter — the markup is untouched. */
+
+.landing-section.editorial-rooms-section .editorial-rooms-row {
+    counter-reset: ballena-room;
+}
+
+.landing-section.editorial-rooms-section .editorial-room-card {
+    counter-increment: ballena-room;
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.landing-section.editorial-rooms-section .editorial-room-card:hover {
+    transform: translateY(-5px);
+}
+
+/* The index sits above the title, just inside the body's hairline
+   rule. The title is an <h3> that carries an <a>; ::before prepends
+   a block ahead of the link without entering it. */
+.landing-section.editorial-rooms-section .editorial-room-card__title::before {
+    content: counter(ballena-room, decimal-leading-zero);
+    display: block;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-weight: 500;
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    color: var(--ballena-sage);
+    margin-bottom: 0.55rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .landing-section.editorial-rooms-section .editorial-room-card {
+        transition: none;
+    }
+
+    .landing-section.editorial-rooms-section .editorial-room-card:hover {
+        transform: none;
+    }
+}
+
+/* ── 16b. Facilities — full-bleed sage panel ────────────────
+   The section breaks out to 100vw exactly as the About container
+   does: body is overflow-x:hidden and the scroll-container is
+   overflow-x:clip at ~100vw, so a centred 100vw fill reaches both
+   edges without introducing a scrollbar. The inner .container
+   re-contains the copy. */
+
+.landing-section.editorial-facilities-section {
+    position: relative;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding: clamp(4rem, 8vw, 7rem) 0;
+    background: var(--ballena-sage);
+    overflow: visible;
+}
+
+.landing-section.editorial-facilities-section > .container {
+    max-width: 1180px;
+    margin-inline: auto;
+    padding-inline: clamp(1.25rem, 5vw, 3rem);
+}
+
+/* Header copy flips to ink on the panel (the label is already ink
+   from the micro-caps rule and reads at ~6:1 on sage). */
+.landing-section.editorial-facilities-section .section-header__title,
+.landing-section.editorial-facilities-section .section-header__label {
+    color: var(--ballena-ink) !important;
+}
+
+.landing-section.editorial-facilities-section .section-header__description,
+.landing-section.editorial-facilities-section .section-header__subtitle {
+    color: rgba(3, 9, 13, 0.82) !important;
+}
+
+/* The tiles keep the flat treatment section 11 already gave them.
+   Only the marks that were SAGE — and would vanish against a sage
+   ground — move to ink. 0-4-0 + !important, appended last, clears
+   section 11's and bento's same-weight rules by load order. */
+.landing-section.editorial-facilities-section .editorial-facility-card .editorial-facility-icon {
+    color: var(--ballena-ink) !important;
+    background: transparent !important;
+}
+
+.landing-section.editorial-facilities-section .editorial-facility-card .editorial-facility-divider {
+    background: linear-gradient(90deg, rgba(3, 9, 13, 0.42), transparent) !important;
+}
+
+/* Descriptions lift from 0.66 to 0.82 ink so body copy holds AA on
+   sage (0.66 lands ~4.0:1). The featured tile is re-stated at 0-5-0
+   to clear section 11's nth-child rule. */
+.landing-section.editorial-facilities-section .editorial-facility-description,
+.landing-section.editorial-facilities-section .editorial-facility-card p {
+    color: rgba(3, 9, 13, 0.82) !important;
+}
+
+.landing-section.editorial-facilities-section .editorial-facility-card:nth-child(1) .editorial-facility-description,
+.landing-section.editorial-facilities-section .editorial-facility-card:nth-child(1) p {
+    color: rgba(3, 9, 13, 0.82) !important;
+}
+
+/* ── 16c. Testimonials — oversized serif pull-quotes ────────
+   On the sand ground, right after the sage band. The decorative
+   mark grows into a real pull-quote glyph and the quote body lifts
+   toward display size; the author lines are already handled in
+   section 6. The 0-4-0 chains also re-colour bento's dark centre
+   tile, which section 12 has already flattened to the sand ground,
+   and !important guards against bento's tile-level colour. */
+
+.landing-section.editorial-testimonials-section .editorial-testimonial-card {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.landing-section.editorial-testimonials-section .editorial-testimonial-card .editorial-testimonial-quote {
+    display: block;
+    font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+    font-size: clamp(3rem, 5vw, 4.2rem);
+    line-height: 0.8;
+    color: var(--ballena-sage) !important;
+    opacity: 0.5;
+    margin-bottom: 0.2rem;
+}
+
+.landing-section.editorial-testimonials-section .editorial-testimonial-card .editorial-testimonial-text {
+    font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+    font-size: clamp(1.3rem, 1.9vw, 1.8rem);
+    line-height: 1.4;
+    color: var(--ballena-ink) !important;
+}
