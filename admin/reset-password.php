@@ -4,6 +4,15 @@
  * Allows users to set a new password using a valid reset token
  */
 
+// Include base URL override (if configured) before auto-detection
+$override_file = __DIR__ . '/../config/base-url-override.php';
+if (file_exists($override_file)) {
+    require_once $override_file;
+}
+
+// Include base URL configuration for proper redirects
+require_once __DIR__ . '/../config/base-url.php';
+
 session_start();
 
 // If already logged in, redirect to dashboard
@@ -13,7 +22,7 @@ if (isset($_SESSION['admin_user_id'])) {
 }
 
 require_once '../config/database.php';
-require_once '../includes/activity-logger.php';
+require_once __DIR__ . '/../config/security.php';
 
 $error_message = '';
 $token = $_GET['token'] ?? $_POST['token'] ?? '';
@@ -73,8 +82,10 @@ if (!empty($token)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
-    
-    if (empty($password)) {
+
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        $error_message = 'Your session expired. Please try again.';
+    } elseif (empty($password)) {
         $error_message = 'Please enter a new password.';
     } elseif (strlen($password) < 8) {
         $error_message = 'Password must be at least 8 characters long.';
@@ -103,13 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
             $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
             $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
             try {
-                ensureActivityLogInfrastructure($pdo);
-                logAdminActivity($pdo, (int)$user_data['user_id'], $user_data['username'], 'password_reset', 'Password reset via email token', $ip, $ua);
-
-                $empRef = resolveEmployeeForAdminUser($pdo, (int)$user_data['user_id']);
-                if (!empty($empRef['employee_id'])) {
-                    logEmployeeActivity($pdo, (int)$empRef['employee_id'], (int)$user_data['user_id'], (int)$user_data['user_id'], 'password_reset', 'Employee-linked account password reset via token', 'admin_reset_password', $ip, $ua);
-                }
+                $log_stmt = $pdo->prepare("INSERT INTO admin_activity_log (user_id, username, action, details, ip_address, user_agent) VALUES (?, ?, 'password_reset', 'Password reset via email token', ?, ?)");
+                $log_stmt->execute([$user_data['user_id'], $user_data['username'], $ip, $ua]);
             } catch (PDOException $le) {
                 // Don't block reset if logging fails
             }
@@ -134,97 +140,9 @@ $site_name = getSetting('site_name');
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <style>
-        :root { --gold: #D4AF37; --navy: #0A1929; --deep-navy: #050D14; }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, var(--deep-navy) 0%, var(--navy) 50%, #1a2f45 100%);
-            min-height: 100vh; display: flex; align-items: center; justify-content: center;
-            padding: 20px; position: relative; overflow: hidden;
-        }
-        body::before {
-            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
-            background: radial-gradient(ellipse at 30% 20%, rgba(212, 175, 55, 0.06) 0%, transparent 50%),
-                        radial-gradient(ellipse at 70% 80%, rgba(212, 175, 55, 0.04) 0%, transparent 50%);
-            animation: bgFloat 15s ease-in-out infinite;
-        }
-        @keyframes bgFloat { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-2%, -1%); } }
-        .login-container { width: 100%; max-width: 440px; position: relative; z-index: 1; }
-        .login-card {
-            background: white; border-radius: 24px; padding: 48px 40px;
-            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(212, 175, 55, 0.1);
-        }
-        .login-header { text-align: center; margin-bottom: 36px; }
-        .login-header .logo {
-            width: 80px; height: 80px;
-            background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%);
-            border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            margin: 0 auto 20px; box-shadow: 0 8px 30px rgba(212, 175, 55, 0.35);
-        }
-        .login-header .logo i { font-size: 36px; color: var(--deep-navy); }
-        .login-header h1 { font-family: 'Playfair Display', serif; font-size: 24px; color: var(--navy); margin-bottom: 8px; }
-        .login-header p { color: #888; font-size: 13px; line-height: 1.5; }
-        .alert-danger {
-            background: #fff0f0; border-left: 4px solid #dc3545; color: #721c24;
-            padding: 12px 16px; border-radius: 10px; margin-bottom: 24px; font-size: 13px;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .alert-danger::before { content: '\f071'; font-family: 'Font Awesome 6 Free'; font-weight: 900; color: #dc3545; }
-        .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; font-weight: 600; color: var(--navy); margin-bottom: 8px; font-size: 13px; letter-spacing: 0.3px; }
-        .input-wrapper { position: relative; width: 100%; }
-        .input-wrapper i.field-icon {
-            position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-            color: #aaa; font-size: 15px; z-index: 2; pointer-events: none; transition: color 0.3s;
-        }
-        .input-wrapper:focus-within i.field-icon { color: var(--gold); }
-        .form-control {
-            width: 100%; height: 50px; padding: 12px 14px 12px 42px;
-            border: 2px solid #e8e8e8; border-radius: 12px; font-size: 14px;
-            line-height: 1.2; transition: all 0.3s; font-family: 'Poppins', sans-serif; background: #fafafa; color: var(--navy);
-        }
-        .input-wrapper.password-field .form-control { padding-right: 48px; }
-        .form-control::placeholder { color: #bbb; font-weight: 300; }
-        .form-control:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.1); background: #fff; }
-        .form-control:hover { border-color: #ccc; }
-        .password-toggle {
-            position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
-            width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
-            background: none; border: none; border-radius: 8px; cursor: pointer; color: #aaa; font-size: 15px; padding: 0; z-index: 3; transition: color 0.3s;
-        }
-        .password-toggle:hover { color: var(--gold); background: rgba(212, 175, 55, 0.08); }
-        .password-toggle:focus-visible { outline: 2px solid rgba(212, 175, 55, 0.4); outline-offset: 1px; }
-        .password-strength { height: 4px; border-radius: 2px; margin-top: 8px; background: #eee; overflow: hidden; }
-        .password-strength-bar { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; width: 0; }
-        .password-hint { font-size: 11px; color: #999; margin-top: 6px; }
-        .btn-login {
-            width: 100%; padding: 15px;
-            background: linear-gradient(135deg, var(--gold) 0%, #c49b2e 100%);
-            color: var(--deep-navy); border: none; border-radius: 12px; font-size: 15px; font-weight: 700;
-            cursor: pointer; transition: all 0.3s; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 8px;
-        }
-        .btn-login:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(212, 175, 55, 0.4); }
-        .login-footer { margin-top: 28px; text-align: center; padding-top: 20px; border-top: 1px solid #f0f0f0; }
-        .login-footer a { color: #888; text-decoration: none; font-size: 13px; font-weight: 500; transition: color 0.3s; }
-        .login-footer a:hover { color: var(--gold); }
-        .login-footer a i { margin-right: 4px; }
-        .user-badge {
-            display: inline-flex; align-items: center; gap: 6px; background: #f0f4ff; padding: 6px 14px;
-            border-radius: 20px; font-size: 13px; color: var(--navy); font-weight: 500; margin-top: 10px;
-        }
-        .user-badge i { color: var(--gold); }
-        @media (max-width: 480px) {
-            .login-card { padding: 36px 24px; border-radius: 20px; }
-            .form-control { height: 48px; padding-left: 40px; }
-            .input-wrapper.password-field .form-control { padding-right: 46px; }
-            .input-wrapper i.field-icon { left: 13px; font-size: 14px; }
-            .password-toggle { right: 8px; width: 30px; height: 30px; }
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <link rel="stylesheet" href="css/admin-auth.css?v=<?php echo @filemtime(__DIR__ . '/css/admin-auth.css'); ?>">
 </head>
 <body>
     <div class="login-container">
@@ -257,12 +175,12 @@ $site_name = getSetting('site_name');
                     
                     <div class="form-group">
                         <label for="password">New Password</label>
-                        <div class="input-wrapper password-field">
+                        <div class="input-wrapper">
                             <i class="fas fa-lock field-icon"></i>
                             <input type="password" id="password" name="password" class="form-control" 
                                    placeholder="Enter new password" required minlength="8"
                                    oninput="checkStrength(this.value)">
-                            <button type="button" class="password-toggle" onclick="togglePassword('password', 'toggleIcon1')" aria-label="Show or hide new password">
+                            <button type="button" class="password-toggle" onclick="togglePassword('password', 'toggleIcon1')">
                                 <i class="fas fa-eye" id="toggleIcon1"></i>
                             </button>
                         </div>
@@ -272,11 +190,11 @@ $site_name = getSetting('site_name');
 
                     <div class="form-group">
                         <label for="confirm_password">Confirm Password</label>
-                        <div class="input-wrapper password-field">
+                        <div class="input-wrapper">
                             <i class="fas fa-lock field-icon"></i>
                             <input type="password" id="confirm_password" name="confirm_password" class="form-control" 
                                    placeholder="Confirm new password" required minlength="8">
-                            <button type="button" class="password-toggle" onclick="togglePassword('confirm_password', 'toggleIcon2')" aria-label="Show or hide confirm password">
+                            <button type="button" class="password-toggle" onclick="togglePassword('confirm_password', 'toggleIcon2')">
                                 <i class="fas fa-eye" id="toggleIcon2"></i>
                             </button>
                         </div>
@@ -336,3 +254,4 @@ $site_name = getSetting('site_name');
     </script>
 </body>
 </html>
+

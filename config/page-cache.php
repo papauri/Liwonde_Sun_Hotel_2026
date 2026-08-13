@@ -12,10 +12,17 @@ define('PAGE_CACHE_ENABLED', true);
 define('PAGE_CACHE_DEFAULT_TTL', 300); // 5 minutes default TTL
 
 /**
+ * Check page-cache toggle from the cache management settings.
+ */
+function isPageCacheEnabled() {
+    return PAGE_CACHE_ENABLED && (!function_exists('isCacheEnabled') || isCacheEnabled('pages'));
+}
+
+/**
  * Start page output buffering for caching
  */
-function startPageCache($key, $ttl = PAGE_CACHE_DEFAULT_TTL) {
-    if (!PAGE_CACHE_ENABLED) {
+function startPageCache(string $key, int $ttl = PAGE_CACHE_DEFAULT_TTL) {
+    if (!isPageCacheEnabled()) {
         return false;
     }
     
@@ -35,8 +42,8 @@ function startPageCache($key, $ttl = PAGE_CACHE_DEFAULT_TTL) {
 /**
  * End page output buffering and save to cache
  */
-function endPageCache($key, $ttl = PAGE_CACHE_DEFAULT_TTL) {
-    if (!PAGE_CACHE_ENABLED) {
+function endPageCache(string $key, int $ttl = PAGE_CACHE_DEFAULT_TTL) {
+    if (!isPageCacheEnabled()) {
         ob_end_flush();
         return false;
     }
@@ -55,7 +62,11 @@ function endPageCache($key, $ttl = PAGE_CACHE_DEFAULT_TTL) {
 /**
  * Get cached page content
  */
-function getPageCache($key, $default = null) {
+function getPageCache(string $key, $default = null) {
+    if (!isPageCacheEnabled()) {
+        return $default;
+    }
+
     $cacheFile = PAGE_CACHE_DIR . '/' . md5($key) . '.html';
     
     if (!file_exists($cacheFile)) {
@@ -84,7 +95,11 @@ function getPageCache($key, $default = null) {
 /**
  * Set cached page content
  */
-function setPageCache($key, $content, $ttl = PAGE_CACHE_DEFAULT_TTL) {
+function setPageCache(string $key, string $content, int $ttl = PAGE_CACHE_DEFAULT_TTL) {
+    if (!isPageCacheEnabled()) {
+        return false;
+    }
+
     // Create cache directory if it doesn't exist
     if (!file_exists(PAGE_CACHE_DIR)) {
         @mkdir(PAGE_CACHE_DIR, 0755, true);
@@ -104,7 +119,7 @@ function setPageCache($key, $content, $ttl = PAGE_CACHE_DEFAULT_TTL) {
 /**
  * Delete cached page
  */
-function deletePageCache($key) {
+function deletePageCache(string $key) {
     $cacheFile = PAGE_CACHE_DIR . '/' . md5($key) . '.html';
     if (file_exists($cacheFile)) {
         return @unlink($cacheFile);
@@ -116,13 +131,20 @@ function deletePageCache($key) {
  * Clear all page cache
  */
 function clearPageCache() {
+    if (!is_dir(PAGE_CACHE_DIR)) {
+        return 0;
+    }
+
     $files = glob(PAGE_CACHE_DIR . '/*.html');
+    $cleared = 0;
     if ($files) {
         foreach ($files as $file) {
-            @unlink($file);
+            if (@unlink($file)) {
+                $cleared++;
+            }
         }
     }
-    return true;
+    return $cleared;
 }
 
 /**

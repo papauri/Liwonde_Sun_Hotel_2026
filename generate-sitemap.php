@@ -28,6 +28,8 @@ $static_pages = [
     ['url' => '/conference.php', 'priority' => '0.8', 'changefreq' => 'weekly'],
     ['url' => '/events.php', 'priority' => '0.8', 'changefreq' => 'weekly'],
     ['url' => '/check-availability.php', 'priority' => '0.7', 'changefreq' => 'daily'],
+    ['url' => '/contact-us.php', 'priority' => '0.8', 'changefreq' => 'monthly'],
+    ['url' => '/guest-services.php', 'priority' => '0.7', 'changefreq' => 'monthly'],
 ];
 
 foreach ($static_pages as $page) {

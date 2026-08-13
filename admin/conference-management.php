@@ -1,18 +1,59 @@
 <?php
-// Include admin initialization (PHP-only, no HTML output)
+
+/**
+ * Conference Rooms Management - Admin Panel
+ * Card-based layout with modal editing, matching room-management.php style
+ */
 require_once 'admin-init.php';
+// Bootstrap fallback guards (admin-init.php sets these; guards satisfy static analysis)
+$user       = $user       ?? ['id' => 0, 'username' => '', 'role' => 'guest', 'full_name' => ''];
+$csrf_token = $csrf_token ?? generateCsrfToken();
+$site_name  = $site_name  ?? getSetting('site_name', 'Hotel');
 
 require_once '../config/email.php';
 require_once '../config/invoice.php';
 require_once '../includes/alert.php';
+require_once '../includes/finance-sequences.php';
 
-// Note: $user and $current_page are already set in admin-init.php
+finance_ensure_sequence_tables($pdo);
+
+function syncConferenceRoomManagedMedia(array $room): void
+{
+    if (!function_exists('upsertManagedMediaForSource')) {
+        return;
+    }
+
+    $roomId = $room['id'] ?? null;
+    if (!$roomId) {
+        return;
+    }
+
+    upsertManagedMediaForSource('conference_rooms', $roomId, 'image_path', $room['image_path'] ?? null, [
+        'title' => ($room['name'] ?? 'Conference Room') . ' (Image)',
+        'description' => $room['description'] ?? null,
+        'caption' => $room['description'] ?? null,
+        'alt_text' => $room['name'] ?? 'Conference room image',
+        'placement_key' => 'conference_rooms.image_path',
+        'page_slug' => 'conference',
+        'section_key' => 'conference_rooms',
+        'entity_type' => 'conference_room',
+        'entity_id' => (int)$roomId,
+        'display_order' => (int)($room['display_order'] ?? 0),
+        'use_case' => 'card_image',
+        'media_type' => 'image',
+    ]);
+}
+
 $message = '';
 $error = '';
 
 function uploadConferenceImage(array $fileInput): ?string
 {
     if (empty($fileInput) || ($fileInput['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    if (($fileInput['size'] ?? 0) > 8 * 1024 * 1024) {
+        error_log('Conference upload rejected: file > 8MB');
         return null;
     }
 
@@ -27,6 +68,16 @@ function uploadConferenceImage(array $fileInput): ?string
         return null;
     }
 
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($fileInput['tmp_name']) ?: '';
+    $allowedMime = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!in_array($mime, $allowedMime, true)) {
+        return null;
+    }
+    if (!@getimagesize($fileInput['tmp_name'])) {
+        return null;
+    }
+
     $filename = 'conference_' . time() . '_' . random_int(1000, 9999) . '.' . $extension;
     $destination = $uploadDir . $filename;
 
@@ -37,9 +88,28 @@ function uploadConferenceImage(array $fileInput): ?string
     return null;
 }
 
+function syncConferenceEnquiryPaymentSnapshot(PDO $pdo, int $enquiryId): ?array
+{
+    // Delegated to the single source of truth (gross/locked model shared with
+    // rooms/gym/events). The previous local copy computed amount_due against the
+    // NET total, understating balances when VAT is exclusive.
+    require_once __DIR__ . '/includes/finance-account-sync.php';
+    return syncConferenceInquiryPaymentSnapshot($pdo, $enquiryId);
+}
+
+$is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            throw new Exception('Security token invalid — refresh the page.');
+        }
         $action = $_POST['action'] ?? '';
+
+        if (in_array($action, ['add', 'update', 'delete', 'toggle_active'], true) && !hasPermission((int)($user['id'] ?? 0), 'conference_rooms')) {
+            throw new Exception('You do not have permission to manage conference room facilities.');
+        }
+
         $imagePath = uploadConferenceImage($_FILES['image'] ?? []);
 
         if ($action === 'add') {
@@ -60,7 +130,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 isset($_POST['is_active']) ? 1 : 0,
                 $_POST['display_order'] ?? 0
             ]);
+
+            $newConferenceRoomId = (int)$pdo->lastInsertId();
+            if ($newConferenceRoomId > 0) {
+                syncConferenceRoomManagedMedia([
+                    'id' => $newConferenceRoomId,
+                    'name' => $_POST['name'] ?? null,
+                    'description' => $_POST['description'] ?? null,
+                    'display_order' => $_POST['display_order'] ?? 0,
+                    'image_path' => $imagePath,
+                ]);
+            }
+
             $message = 'Conference room added successfully!';
+            if ($is_ajax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => $message, 'saved_id' => $newConferenceRoomId]);
+                exit;
+            }
         }
 
         if ($action === 'update') {
@@ -102,22 +189,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_POST['id']
                 ]);
             }
+
+            $roomId = (int)($_POST['id'] ?? 0);
+            if ($roomId > 0) {
+                $mediaStmt = $pdo->prepare("SELECT id, name, description, display_order, image_path FROM conference_rooms WHERE id = ? LIMIT 1");
+                $mediaStmt->execute([$roomId]);
+                $roomForMedia = $mediaStmt->fetch(PDO::FETCH_ASSOC);
+                if ($roomForMedia) {
+                    syncConferenceRoomManagedMedia($roomForMedia);
+                }
+            }
+
             $message = 'Conference room updated successfully!';
+            if ($is_ajax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => $message, 'saved_id' => $roomId]);
+                exit;
+            }
         }
 
         if ($action === 'delete') {
             $stmt = $pdo->prepare("DELETE FROM conference_rooms WHERE id = ?");
             $stmt->execute([$_POST['id']]);
             $message = 'Conference room deleted successfully!';
+            if ($is_ajax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true]);
+                exit;
+            }
+        }
+
+        if ($action === 'toggle_active') {
+            $stmt = $pdo->prepare("UPDATE conference_rooms SET is_active = NOT is_active WHERE id = ?");
+            $stmt->execute([$_POST['id']]);
+            $message = 'Status updated!';
+            if ($is_ajax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true]);
+                exit;
+            }
         }
     } catch (PDOException $e) {
         $error = 'Error: ' . $e->getMessage();
+        if ($is_ajax) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => $error]);
+            exit;
+        }
     }
 }
 
+// Fetch conference rooms
 try {
     $stmt = $pdo->query("SELECT * FROM conference_rooms ORDER BY display_order ASC, name ASC");
     $conference_rooms = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($conference_rooms) && function_exists('applyManagedMediaOverrides')) {
+        foreach ($conference_rooms as &$conferenceRoomRow) {
+            $conferenceRoomRow = applyManagedMediaOverrides($conferenceRoomRow, 'conference_rooms', $conferenceRoomRow['id'] ?? '', ['image_path']);
+        }
+        unset($conferenceRoomRow);
+    }
 } catch (PDOException $e) {
     $conference_rooms = [];
     $error = 'Error fetching conference rooms: ' . $e->getMessage();
@@ -126,137 +258,308 @@ try {
 // Handle enquiry status updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['enquiry_action'])) {
     try {
-        $enquiry_id = $_POST['enquiry_id'] ?? 0;
-        $action = $_POST['enquiry_action'];
-        
-        // Fetch enquiry data for email functions
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            throw new Exception('Security token invalid — refresh the page.');
+        }
+        $enquiry_id = isset($_POST['enquiry_id']) ? (int)$_POST['enquiry_id'] : 0;
+        $action = (string)($_POST['enquiry_action'] ?? '');
+
+        if ($enquiry_id <= 0) {
+            throw new Exception('Invalid enquiry selected.');
+        }
+
         $stmt = $pdo->prepare("SELECT * FROM conference_inquiries WHERE id = ?");
         $stmt->execute([$enquiry_id]);
         $enquiry = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($action === 'confirm') {
-            // Guard: cannot confirm an expired conference enquiry
-            if ($enquiry && !empty($enquiry['event_date'])
-                && strtotime($enquiry['event_date']) < strtotime('today')) {
-                throw new Exception('Cannot confirm an expired conference enquiry \u2014 the event date has already passed.');
+
+        if (!$enquiry) {
+            throw new Exception('Enquiry not found!');
+        }
+
+        if (in_array($action, ['send_invoice', 'send_quotation', 'update_amount'], true) && !hasPermission((int)($user['id'] ?? 0), 'conference_financials')) {
+            throw new Exception('You do not have permission to handle conference invoicing or pricing.');
+        }
+
+        $paymentSnapshot = syncConferenceEnquiryPaymentSnapshot($pdo, $enquiry_id);
+        if ($paymentSnapshot !== null) {
+            $enquiry['amount_paid'] = $paymentSnapshot['amount_paid'];
+            $enquiry['amount_due'] = $paymentSnapshot['amount_due'];
+            $enquiry['deposit_paid'] = $paymentSnapshot['deposit_paid'];
+        }
+
+        if (in_array($action, ['confirm', 'complete'], true)) {
+            $depositRequired = (float)($paymentSnapshot['deposit_required'] ?? $enquiry['deposit_required'] ?? 0);
+            $depositPaid = (float)($paymentSnapshot['deposit_paid'] ?? $enquiry['deposit_paid'] ?? 0);
+            if ($depositRequired > 0 && $depositPaid + 0.0001 < $depositRequired) {
+                throw new Exception('Required conference deposit has not been fully paid yet.');
             }
-            $stmt = $pdo->prepare("UPDATE conference_inquiries SET status = 'confirmed' WHERE id = ?");
-            $stmt->execute([$enquiry_id]);
-            
-            // Send confirmation email
-            if ($enquiry) {
-                $email_result = sendConferenceConfirmedEmail($enquiry);
-                if ($email_result['success']) {
-                    $message = 'Conference enquiry confirmed successfully! Confirmation email sent.';
+        }
+
+        if ($action === 'confirm') {
+            if (($enquiry['status'] ?? '') !== 'pending') {
+                throw new Exception('Only pending enquiries can be confirmed.');
+            }
+
+            // Double-booking guard: block confirmation if the same conference room
+            // is already confirmed for this date with an overlapping time window.
+            // (Two pending enquiries can coexist; only confirmation commits the room.)
+            $roomId    = (int)($enquiry['conference_room_id'] ?? 0);
+            $eventDate = (string)($enquiry['event_date'] ?? '');
+            $startTime = (string)($enquiry['start_time'] ?? '');
+            $endTime   = (string)($enquiry['end_time'] ?? '');
+            if ($roomId > 0 && $eventDate !== '') {
+                if ($startTime !== '' && $endTime !== '') {
+                    // Standard half-open overlap: other.start < this.end AND other.end > this.start.
+                    $clashStmt = $pdo->prepare("
+                        SELECT inquiry_reference, start_time, end_time
+                        FROM conference_inquiries
+                        WHERE conference_room_id = ? AND event_date = ? AND id <> ?
+                          AND status = 'confirmed'
+                          AND start_time < ? AND end_time > ?
+                        LIMIT 1
+                    ");
+                    $clashStmt->execute([$roomId, $eventDate, $enquiry_id, $endTime, $startTime]);
                 } else {
-                    $message = 'Conference enquiry confirmed successfully! (Email not sent: ' . $email_result['message'] . ')';
+                    // Missing times → treat any confirmed booking that day as a clash.
+                    $clashStmt = $pdo->prepare("
+                        SELECT inquiry_reference, start_time, end_time
+                        FROM conference_inquiries
+                        WHERE conference_room_id = ? AND event_date = ? AND id <> ?
+                          AND status = 'confirmed'
+                        LIMIT 1
+                    ");
+                    $clashStmt->execute([$roomId, $eventDate, $enquiry_id]);
                 }
+                if ($clash = $clashStmt->fetch(PDO::FETCH_ASSOC)) {
+                    throw new Exception(sprintf(
+                        'This room is already confirmed for %s (%s–%s) under %s. Choose a different room or time before confirming.',
+                        date('M j, Y', strtotime($eventDate)),
+                        $clash['start_time'] ? date('H:i', strtotime($clash['start_time'])) : '—',
+                        $clash['end_time'] ? date('H:i', strtotime($clash['end_time'])) : '—',
+                        $clash['inquiry_reference'] ?: 'another confirmed enquiry'
+                    ));
+                }
+            }
+
+            $stmt = $pdo->prepare("UPDATE conference_inquiries SET status = 'confirmed', updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$enquiry_id]);
+
+            $email_result = sendConferenceConfirmedEmail($enquiry);
+            if ($email_result['success']) {
+                $message = 'Conference enquiry confirmed successfully! Confirmation email sent.';
             } else {
-                $message = 'Conference enquiry confirmed successfully!';
+                $message = 'Conference enquiry confirmed successfully! (Email not sent: ' . $email_result['message'] . ')';
+            }
+
+            // Admin CC notification for conference confirmation
+            try {
+                $adminCcAddr = trim((string)getEmailSetting('email_admin_email', ''));
+                if (empty($adminCcAddr)) {
+                    $adminCcAddr = trim((string)getEmailSetting('smtp_username', ''));
+                }
+                if (!empty($adminCcAddr) && filter_var($adminCcAddr, FILTER_VALIDATE_EMAIL)) {
+                    $confSiteName  = getSetting('site_name', 'Hotel');
+                    $confAdminUrl  = rtrim((string)getSetting('site_url', ''), '/') . '/admin/conference-management.php?id=' . $enquiry_id;
+                    $confAdminBody = '<h2 style="color:#8B7355;">Conference Enquiry Confirmed</h2>'
+                        . '<p>Confirmed by: <strong>' . htmlspecialchars($user['full_name'] ?? $user['username'] ?? 'Admin') . '</strong></p>'
+                        . '<p><strong>Reference:</strong> ' . htmlspecialchars($enquiry['inquiry_reference'] ?? '') . '<br>'
+                        . '<strong>Company/Client:</strong> ' . htmlspecialchars($enquiry['company_name'] ?? $enquiry['contact_person'] ?? '') . '<br>'
+                        . '<strong>Email:</strong> ' . htmlspecialchars($enquiry['email'] ?? '') . '</p>'
+                        . '<p><a href="' . htmlspecialchars($confAdminUrl) . '" style="background:#8B7355;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;">View Enquiry</a></p>';
+                    sendEmail($adminCcAddr, $confSiteName, '[Admin] Conference Confirmed — ' . htmlspecialchars($enquiry['inquiry_reference'] ?? ''), $confAdminBody);
+                }
+            } catch (Throwable $confCcEx) {
+                error_log('Admin CC for conference confirmation failed: ' . $confCcEx->getMessage());
             }
         } elseif ($action === 'cancel') {
-            $stmt = $pdo->prepare("UPDATE conference_inquiries SET status = 'cancelled' WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE conference_inquiries SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
             $stmt->execute([$enquiry_id]);
-            
-            // Send cancellation email
-            if ($enquiry) {
-                $email_result = sendConferenceCancelledEmail($enquiry);
-                
-                // Log cancellation to database
-                $email_sent = $email_result['success'];
-                $email_status = $email_result['message'];
-                logCancellationToDatabase(
-                    $enquiry['id'],
-                    $enquiry['inquiry_reference'],
-                    'conference',
-                    $enquiry['email'],
-                    $user['id'],
-                    'Cancelled by admin',
-                    $email_sent,
-                    $email_status
-                );
-                
-                // Log cancellation to file
-                logCancellationToFile(
-                    $enquiry['inquiry_reference'],
-                    'conference',
-                    $enquiry['email'],
-                    $user['full_name'] ?? $user['username'],
-                    'Cancelled by admin',
-                    $email_sent,
-                    $email_status
-                );
-                
-                if ($email_sent) {
-                    $message = 'Conference enquiry cancelled successfully! Cancellation email sent.';
-                } else {
-                    $message = 'Conference enquiry cancelled successfully! (Email not sent: ' . $email_status . ')';
+
+            // Refund accounting: record a refund row if any completed payment exists.
+            $confCanPay = $pdo->prepare("
+                SELECT SUM(total_amount) as total_paid
+                FROM payments
+                WHERE booking_type = 'conference' AND booking_id = ?
+                  AND payment_status IN ('completed','paid') AND COALESCE(payment_type, '') != 'refund'
+                  AND deleted_at IS NULL
+            ");
+            $confCanPay->execute([$enquiry_id]);
+            $confPaidTotal = (float)(($confCanPay->fetch(PDO::FETCH_ASSOC))['total_paid'] ?? 0);
+            if ($confPaidTotal > 0) {
+                do {
+                    $confRefRef = 'RFD-CONF-' . strtoupper(substr(uniqid(), -8));
+                    $confRefChk = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE payment_reference = ?");
+                    $confRefChk->execute([$confRefRef]);
+                } while ((int)$confRefChk->fetchColumn() > 0);
+                $confVatEnabled = getSetting('vat_enabled') === '1';
+                $confVatRate    = $confVatEnabled ? (float)getSetting('vat_rate') : 0;
+                $confVatAmt     = $confVatRate > 0 ? round($confPaidTotal * ($confVatRate / (100 + $confVatRate)), 2) : 0;
+                $confNetAmt     = round($confPaidTotal - $confVatAmt, 2);
+                $pdo->prepare("
+                    INSERT INTO payments (
+                        payment_reference, booking_type, booking_id, booking_reference,
+                        payment_date, payment_amount, vat_rate, vat_amount, total_amount,
+                        payment_method, payment_type, payment_status,
+                        refund_reason, refund_status, refund_amount,
+                        recorded_by, created_at
+                    ) VALUES (?, 'conference', ?, ?, CURDATE(), ?, ?, ?, ?, 'cash', 'refund', 'completed',
+                              'cancellation', 'completed', ?, ?, NOW())
+                ")->execute([
+                    $confRefRef,
+                    $enquiry_id,
+                    $enquiry['inquiry_reference'] ?? '',
+                    $confNetAmt,
+                    $confVatRate,
+                    $confVatAmt,
+                    $confPaidTotal,
+                    $confPaidTotal,
+                    (int)($user['id'] ?? 0),
+                ]);
+                if (function_exists('updateConferenceEnquiryPayments')) {
+                    updateConferenceEnquiryPayments($pdo, $enquiry_id);
                 }
+                $pdo->prepare("UPDATE conference_inquiries SET payment_status = 'refunded', updated_at = NOW() WHERE id = ?")
+                    ->execute([$enquiry_id]);
+            }
+
+            $email_result = sendConferenceCancelledEmail($enquiry);
+
+            $email_sent = $email_result['success'];
+            $email_status = $email_result['message'];
+            logCancellationToDatabase(
+                $enquiry['id'],
+                $enquiry['inquiry_reference'],
+                'conference',
+                $enquiry['email'],
+                $user['id'],
+                'Cancelled by admin',
+                $email_sent,
+                $email_status
+            );
+
+            logCancellationToFile(
+                $enquiry['inquiry_reference'],
+                'conference',
+                $enquiry['email'],
+                $user['full_name'] ?? $user['username'],
+                'Cancelled by admin',
+                $email_sent,
+                $email_status
+            );
+
+            if ($email_sent) {
+                $message = 'Conference enquiry cancelled successfully! Cancellation email sent.';
             } else {
-                $message = 'Conference enquiry cancelled successfully!';
+                $message = 'Conference enquiry cancelled successfully! (Email not sent: ' . $email_status . ')';
             }
         } elseif ($action === 'complete') {
-            $stmt = $pdo->prepare("UPDATE conference_inquiries SET status = 'completed' WHERE id = ?");
+            if (($enquiry['status'] ?? '') !== 'confirmed') {
+                throw new Exception('Only confirmed enquiries can be marked completed.');
+            }
+
+            $stmt = $pdo->prepare("UPDATE conference_inquiries SET status = 'completed', updated_at = NOW() WHERE id = ?");
             $stmt->execute([$enquiry_id]);
             $message = 'Conference marked as completed!';
         } elseif ($action === 'send_invoice') {
-            // Mark conference as paid and send invoice
-            if ($enquiry) {
-                try {
-                    // Get VAT settings
-                    $vatEnabled = getSetting('vat_enabled') === '1';
-                    $vatRate = $vatEnabled ? (float)getSetting('vat_rate') : 0;
-                    
-                    // Calculate amounts
-                    $totalAmount = (float)$enquiry['total_amount'];
-                    $vatAmount = $vatEnabled ? ($totalAmount * ($vatRate / 100)) : 0;
-                    $totalWithVat = $totalAmount + $vatAmount;
-                    
-                    // Generate payment reference
-                    $payment_reference = 'PAY-' . date('Y') . '-' . str_pad($enquiry_id, 6, '0', STR_PAD_LEFT);
-                    
-                    // Insert into payments table
+            try {
+                $totalAmount = (float)$enquiry['total_amount'];
+                // VAT per installation mode (exclusive on top / inclusive extracted / off).
+                $vatParts = vat_components($totalAmount);
+                $vatRate = $vatParts['rate'];
+                $vatAmount = $vatParts['vat'];
+                $totalWithVat = $vatParts['total'];
+
+                // Idempotency guard — if already fully paid just resend the invoice
+                $alreadyPaid = (float)($paymentSnapshot['amount_paid'] ?? 0);
+                if ($alreadyPaid >= $totalWithVat - 0.01) {
+                    $invoice_result = sendConferenceInvoiceEmail($enquiry_id);
+                    $message = 'Payment already recorded. Invoice resent to ' . htmlspecialchars($enquiry['email'] ?? '');
+                    $message .= $invoice_result['success'] ? '' : ' (Invoice email failed: ' . $invoice_result['message'] . ')';
+                } else {
+                    do {
+                        $payment_reference = 'PAY' . date('Ym') . strtoupper(substr(uniqid(), -6));
+                        $refChk = $pdo->prepare('SELECT COUNT(*) FROM payments WHERE payment_reference = ? LIMIT 1');
+                        $refChk->execute([$payment_reference]);
+                    } while ((int)$refChk->fetchColumn() > 0);
+
+                    $pdo->beginTransaction();
+                    $receipt_number = finance_next_receipt_number($pdo, date('Y-m-d'));
+
                     $insert_payment = $pdo->prepare("
-                        INSERT INTO payments (
-                            payment_reference, booking_type, booking_id, booking_reference,
-                            payment_date, payment_amount, vat_rate, vat_amount, total_amount,
-                            payment_method, payment_type, payment_status, invoice_generated,
-                            status, recorded_by
-                        ) VALUES (?, 'conference', ?, ?, CURDATE(), ?, ?, ?, ?, 'cash', 'full_payment', 'completed', 1, 'completed', ?)
-                    ");
+                            INSERT INTO payments (
+                                payment_reference, booking_type, booking_id, booking_reference,
+                                payment_date, payment_amount, vat_rate, vat_amount, total_amount,
+                                payment_method, payment_type, payment_status, invoice_generated,
+                                receipt_number, status, recorded_by
+                            ) VALUES (?, 'conference', ?, ?, CURDATE(), ?, ?, ?, ?, 'cash', 'full_payment', 'completed', 1, ?, 'completed', ?)
+                        ");
                     $insert_payment->execute([
                         $payment_reference,
                         $enquiry_id,
                         $enquiry['inquiry_reference'],
-                        $totalAmount,
+                        $vatParts['net'], // payment_amount is always the ex-VAT figure
                         $vatRate,
                         $vatAmount,
                         $totalWithVat,
+                        $receipt_number,
                         $user['id']
                     ]);
-                    
-                    // Update conference enquiry payment tracking columns
+                    $conf_payment_id = (int)$pdo->lastInsertId();
+
                     $update_amounts = $pdo->prepare("
-                        UPDATE conference_inquiries
-                        SET amount_paid = ?, amount_due = 0, vat_rate = ?, vat_amount = ?,
-                            total_with_vat = ?, last_payment_date = CURDATE(), payment_status = 'full_paid'
-                        WHERE id = ?
-                    ");
+                            UPDATE conference_inquiries
+                            SET amount_paid = ?, amount_due = 0, vat_rate = ?, vat_amount = ?,
+                                total_with_vat = ?, last_payment_date = CURDATE(), payment_status = 'full_paid'
+                            WHERE id = ?
+                        ");
                     $update_amounts->execute([$totalWithVat, $vatRate, $vatAmount, $totalWithVat, $enquiry_id]);
-                    
-                    // Send invoice email
+                    $pdo->commit();
+
+                    // Send receipt email with PDF
+                    if ($conf_payment_id > 0) {
+                        try {
+                            require_once '../config/receipts.php';
+                            receipt_auto_send($pdo, $conf_payment_id, $user);
+                        } catch (Throwable $rcptEx) {
+                            error_log('Receipt email failed for conference payment ' . $conf_payment_id . ': ' . $rcptEx->getMessage());
+                        }
+                    }
+
                     $invoice_result = sendConferenceInvoiceEmail($enquiry_id);
                     if ($invoice_result['success']) {
                         $message = 'Payment recorded successfully! Invoice sent to ' . htmlspecialchars($enquiry['email']);
                     } else {
                         $message = 'Payment recorded successfully! (Invoice email failed: ' . $invoice_result['message'] . ')';
                     }
-                } catch (PDOException $e) {
-                    $error = 'Failed to record payment: ' . $e->getMessage();
-                    error_log("Conference payment error: " . $e->getMessage());
+                }
+            } catch (PDOException $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $error = 'Failed to record payment: ' . $e->getMessage();
+                error_log("Conference payment error: " . $e->getMessage());
+            }
+        } elseif ($action === 'send_quotation') {
+            $quoteValidDays = max(1, (int)($_POST['quotation_valid_days'] ?? 7));
+            $quoteNotes = trim((string)($_POST['quotation_notes'] ?? ''));
+            $sendWhatsapp = isset($_POST['send_whatsapp']);
+
+            $quoteResult = sendConferenceQuotationEmail($enquiry, [
+                'valid_days' => $quoteValidDays,
+                'quotation_notes' => $quoteNotes,
+                'attach_pdf' => true,
+                'send_whatsapp' => $sendWhatsapp,
+            ]);
+
+            if (!empty($quoteResult['success'])) {
+                $message = 'Conference quotation sent to ' . htmlspecialchars((string)($enquiry['email'] ?? '')) . '.';
+                if (!empty($quoteResult['whatsapp']['success'])) {
+                    $message .= ' WhatsApp delivered.';
+                } elseif (!empty($quoteResult['whatsapp']['message']) && !in_array($quoteResult['whatsapp']['message'], ['No contact phone', 'WhatsApp disabled'], true)) {
+                    $message .= ' WhatsApp issue: ' . $quoteResult['whatsapp']['message'];
                 }
             } else {
-                $error = 'Enquiry not found!';
+                $error = 'Failed to send quotation: ' . ($quoteResult['message'] ?? 'Unknown error');
             }
         } elseif ($action === 'update_amount') {
             $amount = $_POST['total_amount'] ?? 0;
@@ -268,32 +571,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['enquiry_action'])) {
             $stmt = $pdo->prepare("UPDATE conference_inquiries SET notes = ? WHERE id = ?");
             $stmt->execute([$notes, $enquiry_id]);
             $message = 'Notes updated successfully!';
-        } elseif ($action === 'delete_enquiry') {
-            // Only super admin can delete expired conference enquiries
-            if ($user['role'] !== 'admin') {
-                throw new Exception('Only the super admin can delete conference enquiries.');
-            }
-            $del_stmt = $pdo->prepare("SELECT event_date, inquiry_reference FROM conference_inquiries WHERE id = ?");
-            $del_stmt->execute([$enquiry_id]);
-            $del_row = $del_stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$del_row) {
-                throw new Exception('Enquiry not found.');
-            }
-            if (empty($del_row['event_date']) || strtotime($del_row['event_date']) >= strtotime('today')) {
-                throw new Exception('Only expired conference enquiries (past event date) can be deleted.');
-            }
-            $backup_ok = backupRecordBeforeDelete('conference_inquiries', $enquiry_id, 'id', [
-                'reason' => 'expired_conference_enquiry_cleanup',
-                'inquiry_reference' => $del_row['inquiry_reference'] ?? null,
-                'deleted_by' => $user['id'] ?? null,
-                'deleted_from' => 'admin/conference-management.php'
-            ]);
-            if (!$backup_ok) {
-                throw new Exception('Unable to back up conference enquiry record. Deletion cancelled.');
-            }
-            $stmt = $pdo->prepare("DELETE FROM conference_inquiries WHERE id = ?");
-            $stmt->execute([$enquiry_id]);
-            $message = 'Expired conference enquiry ' . htmlspecialchars($del_row['inquiry_reference']) . ' deleted successfully.';
         }
     } catch (PDOException $e) {
         $error = 'Error updating enquiry: ' . $e->getMessage();
@@ -313,506 +590,55 @@ try {
     $conference_enquiries = $enquiries_stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $conference_enquiries = [];
-    $error = 'Error fetching conference enquiries: ' . $e->getMessage();
 }
-$totalConferenceRooms = count($conference_rooms);
-$totalConferenceEnquiries = count($conference_enquiries);
-$pendingConferenceEnquiries = count(array_filter($conference_enquiries, function ($row) {
-    return ($row['status'] ?? '') === 'pending';
-}));
-$confirmedConferenceEnquiries = count(array_filter($conference_enquiries, function ($row) {
-    return ($row['status'] ?? '') === 'confirmed';
-}));
+
+$currency = htmlspecialchars(getSetting('currency_symbol'));
+
+// Facebook sharing
+require_once '../includes/facebook-functions.php';
+$fb_conference_posting_on = isFacebookPostingEnabled()
+    && getSetting('facebook_conference_enabled', '1') === '1';
+
+$conference_css_version = (string)@filemtime(__DIR__ . '/css/conference-management.css');
+if ($conference_css_version === '' || $conference_css_version === '0') {
+    $conference_css_version = (string)time();
+}
+
+$facebook_settings_css_version = (string)@filemtime(__DIR__ . '/css/facebook-settings.css');
+if ($facebook_settings_css_version === '' || $facebook_settings_css_version === '0') {
+    $facebook_settings_css_version = (string)time();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Conference Rooms - Admin Panel</title>
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="../css/style.css">
-    <link rel="stylesheet" href="../css/theme-dynamic.php">
-    <link rel="stylesheet" href="css/admin-styles.css">
-    <link rel="stylesheet" href="css/admin-components.css">
-    
-    <style>
-        /* Conference management specific styles */
-        .card h2 {
-            margin: 0 0 16px;
-            color: var(--navy);
-        }
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 16px;
-        }
-        .checkbox-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 12px;
-        }
-        .btn-info {
-            background: #17a2b8;
-            color: white;
-        }
-        .btn-info:hover {
-            background: #138496;
-        }
-        .room-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-            gap: 24px;
-        }
-        .room-item {
-            background: white;
-            border: 1px solid #e8e8e8;
-            border-radius: 16px;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-            transition: all 0.3s ease;
-            overflow: hidden;
-        }
-        .room-item:hover {
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-            transform: translateY(-2px);
-            border-color: var(--gold);
-        }
-        .room-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px 20px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            border-bottom: 1px solid #e8e8e8;
-        }
-        .room-header h3 {
-            margin: 0;
-            color: var(--navy);
-            font-size: 18px;
-            font-weight: 700;
-        }
-        .badge-active {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
-            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
-        }
-        .badge-inactive {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
-            box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
-        }
-        .room-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-            font-size: 13px;
-            color: #666;
-            padding: 12px 20px;
-            background: #fafbfc;
-            border-bottom: 1px solid #e8e8e8;
-        }
-        .room-meta span {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .room-meta i {
-            color: var(--gold);
-            font-size: 14px;
-        }
-        .room-image-container {
-            width: 100%;
-            height: 180px;
-            overflow: hidden;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e8e8e8;
-            position: relative;
-        }
-
-        .room-image-preview {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.3s ease;
-        }
-
-        .room-item:hover .room-image-preview {
-            transform: scale(1.05);
-        }
-
-        .room-image-placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #bbb;
-            font-size: 48px;
-            background: linear-gradient(135deg, #f0f2f5 0%, #e4e6e9 100%);
-        }
-
-        .room-form-section {
-            padding: 20px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .room-form-section .form-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }
-        .room-form-section label {
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #888;
-        }
-        .room-form-section input,
-        .room-form-section textarea {
-            padding: 8px 12px;
-            font-size: 13px;
-            border: 1px solid #e0e0e0;
-            background: #fafbfc;
-            transition: all 0.2s ease;
-        }
-        .room-form-section input:focus,
-        .room-form-section textarea:focus {
-            border-color: var(--gold);
-            background: white;
-            box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
-        }
-        .room-form-section textarea {
-            min-height: 80px;
-        }
-        .room-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            padding: 16px 20px;
-            background: #fafbfc;
-            border-top: 1px solid #e8e8e8;
-        }
-        .room-actions .btn {
-            flex: 1;
-            min-width: 120px;
-            padding: 10px 16px;
-            font-size: 13px;
-            transition: all 0.2s ease;
-        }
-        .room-actions .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
-        }
-        .room-actions .btn-secondary:hover {
-            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
-        }
-        .room-form-section .checkbox-row {
-            margin-top: 0;
-            padding: 8px 0;
-        }
-        .room-form-section .checkbox-row input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            accent-color: var(--gold);
-            cursor: pointer;
-        }
-        .room-form-section .checkbox-row label {
-            font-size: 13px;
-            text-transform: none;
-            letter-spacing: normal;
-            color: var(--navy);
-            cursor: pointer;
-        }
-
-        .table-container {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .table-container .table {
-            min-width: 980px;
-        }
-
-        .quick-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .quick-actions .btn,
-        .quick-actions button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        @media (max-width: 768px) {
-            .room-list {
-                grid-template-columns: 1fr;
-            }
-            .room-form-section .form-grid {
-                grid-template-columns: 1fr;
-            }
-            .room-actions {
-                flex-direction: column;
-            }
-            .room-actions .btn {
-                width: 100%;
-            }
-
-            .table-container .table {
-                min-width: 900px;
-            }
-
-            .quick-actions .btn,
-            .quick-actions button {
-                width: 100%;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .table-container .table {
-                min-width: 820px;
-            }
-
-            .table-container .table th,
-            .table-container .table td {
-                white-space: nowrap;
-                padding: 6px 8px;
-            }
-
-            .table-container .table td:last-child,
-            .table-container .table th:last-child {
-                position: sticky;
-                right: 0;
-                background: #fff;
-                z-index: 2;
-                box-shadow: -8px 0 10px -8px rgba(15, 23, 42, 0.35);
-            }
-
-            .table-container .table thead th:last-child {
-                background: #f8f9fa;
-                z-index: 3;
-            }
-        }
-
-        @media (max-width: 360px) {
-            .table-container .table {
-                min-width: 760px;
-            }
-        }
-    </style>
-
-    <style>
-        .content.conference-shell {
-            display: grid;
-            gap: 22px;
-        }
-
-        .conference-hero {
-            background: linear-gradient(135deg, #071325 0%, #0f2743 52%, #1a436f 100%);
-            border-radius: 18px;
-            padding: 24px;
-            color: #f8fbff;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 18px 34px rgba(7, 19, 37, 0.35);
-        }
-
-        .conference-hero h1 {
-            margin: 0 0 8px;
-            font-family: 'Playfair Display', serif;
-            font-size: clamp(24px, 3vw, 34px);
-            color: #ffe8a4;
-        }
-
-        .conference-hero p {
-            margin: 0;
-            color: rgba(248, 251, 255, 0.9);
-            font-size: 14px;
-        }
-
-        .hero-stats {
-            margin-top: 18px;
-            display: grid;
-            grid-template-columns: repeat(4, minmax(120px, 1fr));
-            gap: 12px;
-        }
-
-        .hero-stat {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 12px;
-            padding: 12px 14px;
-        }
-
-        .hero-stat .label {
-            margin: 0;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-            color: rgba(255, 255, 255, 0.72);
-        }
-
-        .hero-stat .value {
-            margin: 4px 0 0;
-            font-size: 24px;
-            font-weight: 700;
-            color: #ffffff;
-            line-height: 1;
-        }
-
-        .conference-shell .card {
-            border: 1px solid #dce5ef;
-            border-radius: 16px;
-            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-            border-left: 0;
-            margin-bottom: 0;
-            overflow: hidden;
-        }
-
-        .section-header {
-            padding: 18px 20px;
-            border-bottom: 1px solid #e7eef6;
-            background: linear-gradient(180deg, #fdfefe 0%, #f6f9fc 100%);
-        }
-
-        .section-header h2 {
-            margin: 0;
-            color: #0f2743;
-            font-size: 20px;
-            font-weight: 700;
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .section-header p {
-            margin: 6px 0 0;
-            color: #5a6b7c;
-            font-size: 13px;
-        }
-
-        .section-body {
-            padding: 18px 20px 20px;
-        }
-
-        .conference-table {
-            min-width: 980px;
-        }
-
-        .conference-table thead th {
-            background: #102a45;
-            color: #f8fbff;
-            border: none;
-            font-size: 12px;
-            letter-spacing: 0.04em;
-        }
-
-        .conference-table tbody tr:nth-child(even) {
-            background: #fbfdff;
-        }
-
-        .conference-table tbody tr:hover {
-            background: #f1f7ff;
-        }
-
-        .conference-table tr.is-expired {
-            opacity: 0.68;
-            background: #f3f4f6 !important;
-        }
-
-        .expired-pill {
-            margin-top: 4px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 11px;
-            border-radius: 999px;
-            padding: 2px 9px;
-            background: #64748b;
-            color: #fff;
-        }
-
-        .quick-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            gap: 8px;
-            min-width: 280px;
-        }
-
-        .quick-actions .btn,
-        .quick-actions button {
-            width: 100%;
-            font-size: 12px;
-            min-height: 34px;
-        }
-
-        .room-meta span {
-            border: 1px solid #d8e2ec;
-            border-radius: 999px;
-            padding: 4px 9px;
-            background: #fff;
-        }
-
-        .room-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-        }
-
-        .room-actions .btn {
-            width: 100%;
-        }
-
-        @media (max-width: 1024px) {
-            .hero-stats {
-                grid-template-columns: repeat(2, minmax(120px, 1fr));
-            }
-        }
-
-        @media (max-width: 768px) {
-            .content.conference-shell {
-                gap: 16px;
-            }
-
-            .conference-hero {
-                padding: 18px;
-            }
-        }
-
-        @media (max-width: 520px) {
-            .hero-stats {
-                grid-template-columns: 1fr;
-            }
-
-            .quick-actions {
-                grid-template-columns: 1fr;
-                min-width: 180px;
-            }
-
-            .conference-table {
-                min-width: 820px;
-            }
-
-            .room-actions {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/admin-styles.css?v=<?php echo @filemtime(__DIR__ . '/css/admin-styles.css'); ?>">
+    <link rel="stylesheet" href="css/admin-components.css?v=<?php echo @filemtime(__DIR__ . '/css/admin-components.css'); ?>">
+    <link rel="stylesheet" href="css/conference-management.css?v=<?php echo urlencode($conference_css_version); ?>">
+    <link rel="stylesheet" href="css/facebook-settings.css?v=<?php echo urlencode($facebook_settings_css_version); ?>">
 </head>
-<body>
 
+<body>
     <?php require_once 'includes/admin-header.php'; ?>
-    
-    <div class="content conference-shell">
+
+    <div class="content">
+        <div class="page-header-row">
+            <h2 class="page-title"><i class="fas fa-users"></i> Conference Rooms Management</h2>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <button class="btn-action" type="button" style="background:var(--gold,#8B7355); color:var(--deep-navy,#111111); padding:12px 24px; font-size:14px; border-radius:8px;" onclick="openAddModal()">
+                    <i class="fas fa-plus"></i> Add New Room
+                </button>
+            </div>
+        </div>
+
         <?php if ($message): ?>
             <?php showAlert($message, 'success'); ?>
         <?php endif; ?>
@@ -820,89 +646,115 @@ $confirmedConferenceEnquiries = count(array_filter($conference_enquiries, functi
             <?php showAlert($error, 'error'); ?>
         <?php endif; ?>
 
-        <section class="conference-hero">
-            <h1><i class="fas fa-chalkboard-teacher"></i> Conference Operations</h1>
-            <p>Manage conference rooms, process event enquiries, and keep event logistics in one clear workflow.</p>
-            <div class="hero-stats">
-                <div class="hero-stat">
-                    <p class="label">Rooms</p>
-                    <p class="value"><?php echo (int)$totalConferenceRooms; ?></p>
-                </div>
-                <div class="hero-stat">
-                    <p class="label">Enquiries</p>
-                    <p class="value"><?php echo (int)$totalConferenceEnquiries; ?></p>
-                </div>
-                <div class="hero-stat">
-                    <p class="label">Pending</p>
-                    <p class="value"><?php echo (int)$pendingConferenceEnquiries; ?></p>
-                </div>
-                <div class="hero-stat">
-                    <p class="label">Confirmed</p>
-                    <p class="value"><?php echo (int)$confirmedConferenceEnquiries; ?></p>
-                </div>
-            </div>
-        </section>
+        <div id="conferencePageFeedback" class="admin-modal-feedback" hidden></div>
 
-        <div class="card">
-            <div class="section-header">
-                <h2><i class="fas fa-plus-circle"></i> Add New Conference Room</h2>
-                <p>Create a room profile with pricing, capacity, and amenities.</p>
+        <!-- Conference Rooms Cards -->
+        <?php if ($fb_conference_posting_on && !empty($conference_rooms)): ?>
+            <div class="fb-conf-all-banner">
+                <div class="fb-conf-all-banner__icon">
+                    <i class="fab fa-facebook-f"></i>
+                </div>
+                <div class="fb-conf-all-banner__text">
+                    <div class="fb-conf-all-banner__title">Share All Conference Rooms on Facebook</div>
+                    <div class="fb-conf-all-banner__sub">Pick rooms, edit the caption, and preview before you post — all in one place.</div>
+                </div>
+                <button class="fb-conf-all-btn" type="button" onclick="openFbAllConferenceModal()">
+                    <i class="fab fa-facebook-f"></i> Compose &amp; Preview Post
+                </button>
             </div>
-            <div class="section-body">
-            <form method="POST" enctype="multipart/form-data">
-                <?php echo getCsrfField(); ?>
-                <input type="hidden" name="action" value="add">
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Name *</label>
-                        <input type="text" name="name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Capacity *</label>
-                        <input type="number" name="capacity" min="1" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Size (sqm)</label>
-                        <input type="number" step="0.01" name="size_sqm">
-                    </div>
-                    <div class="form-group">
-                        <label>Full Day Rate *</label>
-                        <input type="number" step="0.01" name="daily_rate" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Display Order</label>
-                        <input type="number" name="display_order" value="0">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Description *</label>
-                    <textarea name="description" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Amenities (comma separated)</label>
-                    <textarea name="amenities"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Featured Image</label>
-                    <input type="file" name="image" accept="image/*">
-                </div>
-                <div class="checkbox-row">
-                    <input type="checkbox" name="is_active" id="is_active_add" checked>
-                    <label for="is_active_add">Active</label>
-                </div>
-                <button type="submit" class="btn">Add Conference Room</button>
-            </form>
-            </div>
-        </div>
+        <?php endif; ?>
 
-        <div class="card">
-            <div class="section-header">
-                <h2><i class="fas fa-calendar-check"></i> Conference Enquiries Management</h2>
-                <p>Review, confirm, invoice, complete, and close enquiries faster.</p>
+        <?php if (!empty($conference_rooms)): ?>
+            <div class="conference-cards-grid" id="conferenceGrid">
+                <?php foreach ($conference_rooms as $room): ?>
+                    <div class="conference-card" data-id="<?php echo $room['id']; ?>">
+                        <?php if ($room['display_order'] > 0): ?>
+                            <span class="order-badge">#<?php echo $room['display_order']; ?></span>
+                        <?php endif; ?>
+
+                        <?php if (!empty($room['image_path'])): ?>
+                            <?php $imgSrc = preg_match('#^https?://#i', $room['image_path']) ? $room['image_path'] : '../' . $room['image_path']; ?>
+                            <img src="<?php echo htmlspecialchars($imgSrc); ?>"
+                                alt="<?php echo htmlspecialchars($room['name']); ?>"
+                                class="conference-card-image"
+                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="no-image-placeholder" style="display:none;"><i class="fas fa-users"></i><span>No Image</span></div>
+                        <?php else: ?>
+                            <div class="no-image-placeholder"><i class="fas fa-users"></i><span>No Image</span></div>
+                        <?php endif; ?>
+
+                        <div class="conference-card-body">
+                            <div class="conference-card-title">
+                                <?php echo htmlspecialchars($room['name']); ?>
+                            </div>
+                            <div class="conference-card-desc"><?php echo htmlspecialchars($room['description'] ?? ''); ?></div>
+
+                            <div class="conference-card-details">
+                                <div class="detail-item detail-item-price"><i class="fas fa-tag"></i> <?php echo $currency; ?> <?php echo number_format($room['daily_rate'], 2); ?>/day</div>
+                                <div class="detail-item"><i class="fas fa-users"></i> <?php echo $room['capacity']; ?> guests</div>
+                                <div class="detail-item"><i class="fas fa-expand-arrows-alt"></i> <?php echo number_format($room['size_sqm'] ?? 0, 0); ?> sqm</div>
+                            </div>
+
+                            <?php if (!empty($room['amenities'])): ?>
+                                <div class="conference-card-amenities">
+                                    <i class="fas fa-concierge-bell"></i> <?php echo htmlspecialchars(substr($room['amenities'], 0, 60)); ?><?php echo strlen($room['amenities']) > 60 ? '...' : ''; ?>
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="conference-card-meta">
+                                <?php if ($room['is_active']): ?>
+                                    <span class="conference-badge active"><i class="fas fa-check"></i> Active</span>
+                                <?php else: ?>
+                                    <span class="conference-badge inactive"><i class="fas fa-times"></i> Inactive</span>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="conference-card-actions">
+                                <div class="cmc-toolbar">
+                                    <button class="cmc-icon-btn <?php echo $room['is_active'] ? 'cmc-icon-btn--active-on' : 'cmc-icon-btn--active-off'; ?>"
+                                        type="button"
+                                        onclick="toggleActive(<?php echo (int)$room['id']; ?>)"
+                                        title="<?php echo $room['is_active'] ? 'Deactivate room' : 'Activate room'; ?>">
+                                        <i class="fas fa-power-off"></i>
+                                    </button>
+                                    <?php if ($fb_conference_posting_on): ?>
+                                        <span class="cmc-toolbar-sep"></span>
+                                        <button class="cmc-icon-btn cmc-icon-btn--facebook"
+                                            type="button"
+                                            onclick='openFbConferenceModal(<?php echo (int)$room["id"]; ?>, <?php echo htmlspecialchars(json_encode($room["name"]), ENT_QUOTES, "UTF-8"); ?>, <?php echo htmlspecialchars(json_encode($room["image_path"] ?? ""), ENT_QUOTES, "UTF-8"); ?>, <?php echo htmlspecialchars(json_encode(number_format((float)($room["daily_rate"] ?? 0))), ENT_QUOTES, "UTF-8"); ?>, <?php echo htmlspecialchars(json_encode((int)($room["capacity"] ?? 0)), ENT_QUOTES, "UTF-8"); ?>)'
+                                            title="Post to Facebook Page">
+                                            <i class="fab fa-facebook-f"></i>
+                                        </button>
+                                    <?php endif; ?>
+                                    <span class="cmc-spacer"></span>
+                                    <button class="cmc-icon-btn cmc-icon-btn--danger"
+                                        type="button"
+                                        onclick="confirmDeleteRoom(<?php echo (int)$room['id']; ?>, <?php echo htmlspecialchars(json_encode($room['name'] ?? 'Conference room'), ENT_QUOTES, 'UTF-8'); ?>)"
+                                        title="Delete room">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                                <button class="cmc-edit-btn" type="button"
+                                    onclick='openEditModal(<?php echo htmlspecialchars(json_encode($room), ENT_QUOTES, "UTF-8"); ?>)'>
+                                    <i class="fas fa-edit"></i> Edit Room
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
             </div>
-            <div class="section-body">
+        <?php else: ?>
+            <div class="empty-state">
+                <i class="fas fa-users"></i>
+                <p>No conference rooms found. Click "Add New Room" to get started.</p>
+            </div>
+        <?php endif; ?>
+
+        <!-- Conference Enquiries Section -->
+        <div class="card conference-enquiries-card">
+            <h2 class="conference-enquiries-title"><i class="fas fa-calendar-check"></i> Conference Enquiries</h2>
             <div class="table-container">
-                <table class="table conference-table">
+                <table class="table">
                     <thead>
                         <tr>
                             <th>Reference</th>
@@ -919,399 +771,1220 @@ $confirmedConferenceEnquiries = count(array_filter($conference_enquiries, functi
                     </thead>
                     <tbody>
                         <?php if (empty($conference_enquiries)): ?>
-                        <tr>
-                            <td colspan="10" class="empty-state">
-                                <i class="fas fa-inbox"></i>
-                                <p>No conference enquiries found</p>
-                            </td>
-                        </tr>
+                            <tr>
+                                <td colspan="10" class="conference-enquiries-empty">
+                                    <i class="fas fa-inbox conference-enquiries-empty__icon"></i>
+                                    No conference enquiries found
+                                </td>
+                            </tr>
                         <?php else: ?>
-                        <?php foreach ($conference_enquiries as $enquiry): ?>
-                        <?php $is_conf_expired = !empty($enquiry['event_date']) && strtotime($enquiry['event_date']) < strtotime('today'); ?>
-                        <tr class="<?php echo $is_conf_expired ? 'is-expired' : ''; ?>">
-                            <td><strong><?php echo htmlspecialchars($enquiry['inquiry_reference']); ?></strong></td>
-                            <td><?php echo htmlspecialchars($enquiry['company_name']); ?></td>
-                            <td>
-                                <?php echo htmlspecialchars($enquiry['contact_person']); ?><br>
-                                <small><?php echo htmlspecialchars($enquiry['email']); ?></small><br>
-                                <small><?php echo htmlspecialchars($enquiry['phone']); ?></small>
-                            </td>
-                            <td>
-                                <?php echo date('M j, Y', strtotime($enquiry['event_date'])); ?>
-                                <?php if ($is_conf_expired): ?>
-                                    <br><span class="expired-pill"><i class="fas fa-clock"></i> Expired</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php echo date('H:i', strtotime($enquiry['start_time'])); ?> -
-                                <?php echo date('H:i', strtotime($enquiry['end_time'])); ?>
-                            </td>
-                            <td><?php echo htmlspecialchars($enquiry['room_name'] ?? 'N/A'); ?></td>
-                            <td><?php echo (int) $enquiry['number_of_attendees']; ?></td>
-                            <td>
-                                <span class="badge badge-<?php echo $enquiry['status']; ?>">
-                                    <?php echo ucfirst($enquiry['status']); ?>
-                                </span>
-                            </td>
-                            <td>
-                                <?php if ($enquiry['total_amount']): ?>
-                                    K <?php echo number_format($enquiry['total_amount'], 0); ?>
-                                <?php else: ?>
-                                    <em>Pending</em>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <div class="quick-actions">
-                                    <?php if ($enquiry['status'] === 'pending' && !$is_conf_expired): ?>
-                                        <form method="POST" style="display:inline;">
-                                            <?php echo getCsrfField(); ?>
-                                            <input type="hidden" name="enquiry_action" value="confirm">
-                                            <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
-                                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Confirm this conference enquiry?');">
-                                                <i class="fas fa-check"></i> Confirm
+                            <?php foreach ($conference_enquiries as $enquiry): ?>
+                                <tr id="enquiry-<?php echo (int)$enquiry['id']; ?>">
+                                    <td><strong><?php echo htmlspecialchars($enquiry['inquiry_reference']); ?></strong></td>
+                                    <td><?php echo htmlspecialchars($enquiry['company_name']); ?></td>
+                                    <td>
+                                        <?php echo htmlspecialchars($enquiry['contact_person']); ?><br>
+                                        <small><?php echo htmlspecialchars($enquiry['email']); ?></small><br>
+                                        <small><?php echo htmlspecialchars($enquiry['phone']); ?></small>
+                                    </td>
+                                    <td><?php echo date('M j, Y', strtotime($enquiry['event_date'])); ?></td>
+                                    <td>
+                                        <?php echo date('H:i', strtotime($enquiry['start_time'])); ?> -
+                                        <?php echo date('H:i', strtotime($enquiry['end_time'])); ?>
+                                    </td>
+                                    <td><?php echo htmlspecialchars($enquiry['room_name'] ?? 'N/A'); ?></td>
+                                    <td><?php echo (int) $enquiry['number_of_attendees']; ?></td>
+                                    <td>
+                                        <span class="badge badge-<?php echo $enquiry['status']; ?>">
+                                            <?php echo ucfirst($enquiry['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php if ($enquiry['total_amount']): ?>
+                                            <?php echo $currency; ?> <?php echo number_format($enquiry['total_amount'], 2); ?>
+                                        <?php else: ?>
+                                            <em>Pending</em>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <div class="quick-actions">
+                                            <?php if ($enquiry['status'] === 'pending'): ?>
+                                                <form method="POST" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <input type="hidden" name="enquiry_action" value="confirm">
+                                                    <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
+                                                    <button type="submit" class="btn btn-success btn-sm"
+                                                        data-admin-confirm="Confirm this conference enquiry?"
+                                                        data-admin-confirm-title="Confirm enquiry"
+                                                        data-admin-confirm-ok="Confirm"
+                                                        data-admin-confirm-cancel="Cancel"
+                                                        data-admin-confirm-tone="success"
+                                                        data-admin-confirm-icon="fa-check">
+                                                        <i class="fas fa-check"></i> Confirm
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <?php if ($enquiry['status'] === 'confirmed'): ?>
+                                                <form method="POST" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <input type="hidden" name="enquiry_action" value="complete">
+                                                    <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
+                                                    <button type="submit" class="btn btn-primary btn-sm"
+                                                        data-admin-confirm="Mark this conference as completed?"
+                                                        data-admin-confirm-title="Complete conference"
+                                                        data-admin-confirm-ok="Complete"
+                                                        data-admin-confirm-cancel="Cancel"
+                                                        data-admin-confirm-tone="warning"
+                                                        data-admin-confirm-icon="fa-check-circle">
+                                                        <i class="fas fa-check-circle"></i> Complete
+                                                    </button>
+                                                </form>
+                                                <form method="POST" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <input type="hidden" name="enquiry_action" value="send_invoice">
+                                                    <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
+                                                    <button type="submit" class="btn btn-info btn-sm"
+                                                        data-admin-confirm="Generate and send invoice for this conference?"
+                                                        data-admin-confirm-title="Send invoice"
+                                                        data-admin-confirm-ok="Send invoice"
+                                                        data-admin-confirm-cancel="Cancel"
+                                                        data-admin-confirm-tone="warning"
+                                                        data-admin-confirm-icon="fa-file-invoice-dollar">
+                                                        <i class="fas fa-file-invoice-dollar"></i> Paid
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <?php if (in_array($enquiry['status'], ['pending', 'confirmed'])): ?>
+                                                <form method="POST" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <input type="hidden" name="enquiry_action" value="send_quotation">
+                                                    <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
+                                                    <input type="hidden" name="quotation_valid_days" value="7">
+                                                    <input type="hidden" name="send_whatsapp" value="1">
+                                                    <button type="submit" class="btn btn-quote btn-sm"
+                                                        data-admin-confirm="Send conference quotation now? This sends email and WhatsApp (if enabled)."
+                                                        data-admin-confirm-title="Send quotation"
+                                                        data-admin-confirm-ok="Send quotation"
+                                                        data-admin-confirm-cancel="Cancel"
+                                                        data-admin-confirm-tone="warning"
+                                                        data-admin-confirm-icon="fa-file-signature">
+                                                        <i class="fas fa-file-signature"></i> Quote
+                                                    </button>
+                                                </form>
+                                                <form method="POST" style="display:inline;">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                                                    <input type="hidden" name="enquiry_action" value="cancel">
+                                                    <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
+                                                    <button type="submit" class="btn btn-secondary btn-sm"
+                                                        data-admin-confirm="Cancel this conference enquiry?"
+                                                        data-admin-confirm-title="Cancel enquiry"
+                                                        data-admin-confirm-ok="Cancel enquiry"
+                                                        data-admin-confirm-cancel="Keep enquiry"
+                                                        data-admin-confirm-tone="danger"
+                                                        data-admin-confirm-icon="fa-times">
+                                                        <i class="fas fa-times"></i> Cancel
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <button type="button" class="btn btn-primary btn-sm" onclick="showEnquiryDetails(<?php echo htmlspecialchars(json_encode($enquiry)); ?>)">
+                                                <i class="fas fa-eye"></i> Details
                                             </button>
-                                        </form>
-                                    <?php endif; ?>
-                                    <?php if ($enquiry['status'] === 'confirmed'): ?>
-                                        <form method="POST" style="display:inline;">
-                                            <?php echo getCsrfField(); ?>
-                                            <input type="hidden" name="enquiry_action" value="complete">
-                                            <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
-                                            <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Mark this conference as completed?');">
-                                                <i class="fas fa-check-circle"></i> Complete
-                                            </button>
-                                        </form>
-                                        <form method="POST" style="display:inline;">
-                                            <?php echo getCsrfField(); ?>
-                                            <input type="hidden" name="enquiry_action" value="send_invoice">
-                                            <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
-                                            <button type="submit" class="btn btn-info btn-sm" onclick="return confirm('Generate and send invoice for this conference?');">
-                                                <i class="fas fa-file-invoice-dollar"></i> Paid
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
-                                    <?php if (in_array($enquiry['status'], ['pending', 'confirmed'])): ?>
-                                        <form method="POST" style="display:inline;">
-                                            <?php echo getCsrfField(); ?>
-                                            <input type="hidden" name="enquiry_action" value="cancel">
-                                            <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
-                                            <button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm('Cancel this conference enquiry?');">
-                                                <i class="fas fa-times"></i> Cancel
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
-                                    <button type="button" class="btn btn-primary btn-sm" onclick="showEnquiryDetails(<?php echo htmlspecialchars(json_encode($enquiry)); ?>)">
-                                        <i class="fas fa-eye"></i> Details
-                                    </button>
-                                    <?php if ($is_conf_expired && $user['role'] === 'admin'): ?>
-                                        <form method="POST" style="display:inline;">
-                                            <?php echo getCsrfField(); ?>
-                                            <input type="hidden" name="enquiry_action" value="delete_enquiry">
-                                            <input type="hidden" name="enquiry_id" value="<?php echo $enquiry['id']; ?>">
-                                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('PERMANENTLY delete this expired conference enquiry? This cannot be undone.');">
-                                                <i class="fas fa-trash"></i> Delete
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
-                                </div>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
                         <?php endif; ?>
                     </tbody>
                 </table>
             </div>
-            </div>
         </div>
+    </div>
 
-        <div class="card">
-            <div class="section-header">
-                <h2><i class="fas fa-door-open"></i> Manage Conference Rooms</h2>
-                <p>Update room content, rates, and active availability from each room card.</p>
+    <!-- Add Conference Room Modal -->
+    <div class="modal-overlay" id="addModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus-circle"></i> Add New Conference Room</h3>
+                <button class="modal-close" type="button" onclick="closeAddModal()">&times;</button>
             </div>
-            <div class="section-body">
-            <div class="room-list">
-                <?php foreach ($conference_rooms as $room): ?>
-                    <div class="room-item">
-                        <div class="room-header">
-                            <h3><?php echo htmlspecialchars($room['name']); ?></h3>
-                            <span class="badge <?php echo $room['is_active'] ? 'badge-active' : 'badge-inactive'; ?>">
-                                <?php echo $room['is_active'] ? '<i class="fas fa-check-circle"></i> Active' : '<i class="fas fa-times-circle"></i> Inactive'; ?>
-                            </span>
-                        </div>
-                        
-                        <!-- Image Display -->
-                        <div class="room-image-container">
-                            <?php if (!empty($room['image_path'])): ?>
-                                <img src="../<?php echo htmlspecialchars($room['image_path']); ?>"
-                                     alt="<?php echo htmlspecialchars($room['name']); ?>"
-                                     class="room-image-preview">
-                            <?php else: ?>
-                                <div class="room-image-placeholder">
-                                    <i class="fas fa-image"></i>
-                                </div>
-                            <?php endif; ?>
-                        </div>
+            <form method="POST" enctype="multipart/form-data" id="addForm">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <input type="hidden" name="action" value="add">
 
-                        <div class="room-meta">
-                            <span><i class="fas fa-users"></i> <?php echo (int) $room['capacity']; ?> Guests</span>
-                            <span><i class="fas fa-expand-arrows-alt"></i> <?php echo number_format($room['size_sqm'] ?? 0, 0); ?> sqm</span>
-                            <span><i class="fas fa-calendar-day"></i> K <?php echo number_format($room['daily_rate'], 0); ?>/day</span>
+                <div class="modal-body">
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="fas fa-info-circle"></i> Room Information</div>
+                        <div class="form-group">
+                            <label>Name *</label>
+                            <input type="text" name="name" required>
                         </div>
-
-                        <form method="POST" enctype="multipart/form-data">
-                            <?php echo getCsrfField(); ?>
-                            <input type="hidden" name="action" value="update">
-                            <input type="hidden" name="id" value="<?php echo (int) $room['id']; ?>">
-                            <div class="room-form-section">
-                                <div class="form-grid">
-                                    <div class="form-group">
-                                        <label>Name *</label>
-                                        <input type="text" name="name" value="<?php echo htmlspecialchars($room['name']); ?>" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Capacity *</label>
-                                        <input type="number" name="capacity" min="1" value="<?php echo htmlspecialchars($room['capacity']); ?>" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Size (sqm)</label>
-                                        <input type="number" step="0.01" name="size_sqm" value="<?php echo htmlspecialchars($room['size_sqm']); ?>">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Full Day Rate *</label>
-                                        <input type="number" step="0.01" name="daily_rate" value="<?php echo htmlspecialchars($room['daily_rate']); ?>" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Display Order</label>
-                                        <input type="number" name="display_order" value="<?php echo htmlspecialchars($room['display_order']); ?>">
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <label>Description *</label>
-                                    <textarea name="description" required><?php echo htmlspecialchars($room['description']); ?></textarea>
-                                </div>
-                                <div class="form-group">
-                                    <label>Amenities (comma separated)</label>
-                                    <textarea name="amenities"><?php echo htmlspecialchars($room['amenities']); ?></textarea>
-                                </div>
-                                <div class="form-group">
-                                    <label>Replace Image</label>
-                                    <input type="file" name="image" accept="image/*">
-                                </div>
-                                <div class="checkbox-row">
-                                    <input type="checkbox" name="is_active" id="is_active_<?php echo (int) $room['id']; ?>" <?php echo $room['is_active'] ? 'checked' : ''; ?>>
-                                    <label for="is_active_<?php echo (int) $room['id']; ?>">Active</label>
-                                </div>
-                            </div>
-                            <div class="room-actions">
-                                <button type="submit" class="btn"><i class="fas fa-save"></i> Save Changes</button>
-                                <button type="submit" name="action" value="delete" class="btn btn-secondary" onclick="return confirm('Delete this conference room?');">
-                                    <i class="fas fa-trash"></i> Delete
-                                </button>
-                            </div>
-                        </form>
+                        <div class="form-group">
+                            <label>Description *</label>
+                            <textarea name="description" rows="3" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Featured Image</label>
+                            <input type="file" name="image" accept="image/*">
+                        </div>
                     </div>
-                <?php endforeach; ?>
+
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="fas fa-cog"></i> Room Details</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Capacity *</label>
+                                <input type="number" name="capacity" min="1" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Size (sqm)</label>
+                                <input type="number" step="0.01" name="size_sqm">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Full Day Rate *</label>
+                                <input type="number" step="0.01" name="daily_rate" required data-currency="<?php echo htmlspecialchars($currency, ENT_QUOTES); ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Display Order</label>
+                                <input type="number" name="display_order" value="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Amenities (comma separated)</label>
+                            <textarea name="amenities" rows="2" placeholder="Projector, Whiteboard, WiFi, Catering"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-section" style="border-bottom:none;">
+                        <div class="form-section-title"><i class="fas fa-toggle-on"></i> Status</div>
+                        <div class="checkbox-row">
+                            <label>
+                                <input type="checkbox" name="is_active" value="1" checked> Active
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions" style="flex-direction:column; align-items:stretch; gap:0;">
+                    <div id="addModalFeedback" class="admin-modal-feedback"></div>
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button type="button" onclick="closeAddModal()" style="padding:10px 24px; border:1px solid #ddd; border-radius:6px; background:white; cursor:pointer;">Close</button>
+                        <button type="submit" id="addFormSaveBtn" style="padding:10px 24px; border:none; border-radius:6px; background:var(--gold,#8B7355); color:var(--deep-navy,#111111); font-weight:600; cursor:pointer;">
+                            <i class="fas fa-plus"></i> Add Room
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Conference Room Modal -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="editModalTitle"><i class="fas fa-edit"></i> Edit Conference Room</h3>
+                <button class="modal-close" type="button" onclick="closeEditModal()">&times;</button>
             </div>
-            </div>
+            <form method="POST" enctype="multipart/form-data" id="editForm">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" name="id" id="editId">
+
+                <div class="modal-body">
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="fas fa-info-circle"></i> Room Information</div>
+                        <div class="form-group">
+                            <label>Name *</label>
+                            <input type="text" name="name" id="editName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Description *</label>
+                            <textarea name="description" id="editDescription" rows="3" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Replace Image</label>
+                            <input type="file" name="image" accept="image/*">
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="fas fa-cog"></i> Room Details</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Capacity *</label>
+                                <input type="number" name="capacity" id="editCapacity" min="1" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Size (sqm)</label>
+                                <input type="number" step="0.01" name="size_sqm" id="editSize">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Full Day Rate *</label>
+                                <input type="number" step="0.01" name="daily_rate" id="editRate" required data-currency="<?php echo htmlspecialchars($currency, ENT_QUOTES); ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Display Order</label>
+                                <input type="number" name="display_order" id="editOrder" value="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Amenities (comma separated)</label>
+                            <textarea name="amenities" id="editAmenities" rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-section" style="border-bottom:none;">
+                        <div class="form-section-title"><i class="fas fa-toggle-on"></i> Status</div>
+                        <div class="checkbox-row">
+                            <label>
+                                <input type="checkbox" name="is_active" id="editIsActive" value="1"> Active
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions" style="flex-direction:column; align-items:stretch; gap:0;">
+                    <div id="editModalFeedback" class="admin-modal-feedback"></div>
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button type="button" onclick="closeEditModal()" style="padding:10px 24px; border:1px solid #ddd; border-radius:6px; background:white; cursor:pointer;">Close</button>
+                        <button type="submit" id="editFormSaveBtn" style="padding:10px 24px; border:none; border-radius:6px; background:var(--gold,#8B7355); color:var(--deep-navy,#111111); font-weight:600; cursor:pointer;">
+                            <i class="fas fa-save"></i> Save Changes
+                        </button>
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 
     <!-- Enquiry Details Modal -->
-    <div id="enquiryModal" class="modal" style="display:none;">
+    <div id="enquiryModal" class="modal-overlay" style="display:none;">
         <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
-                <h3>Conference Enquiry Details</h3>
-                <span class="close" onclick="closeEnquiryModal()">&times;</span>
+                <h3><i class="fas fa-calendar-alt"></i> Conference Enquiry Details</h3>
+                <button class="modal-close" type="button" onclick="closeEnquiryModal()">&times;</button>
             </div>
             <div class="modal-body" id="enquiryModalBody">
-                <!-- Content will be loaded dynamically -->
             </div>
         </div>
     </div>
 
+    <div id="admin-page-loader" class="admin-page-loader" role="status" aria-label="Loading">
+        <div class="admin-page-loader-card">
+            <div class="admin-page-loader-spinner"><span></span><span></span><span></span></div>
+            <p class="admin-page-loader-title">Loading...</p>
+        </div>
+    </div>
+
     <script>
+        const CONFERENCE_CSRF_TOKEN = <?php echo json_encode($csrf_token); ?>;
+
+        function setConferenceLoader(visible, label) {
+            const loader = document.getElementById('admin-page-loader');
+            if (!loader) {
+                return;
+            }
+
+            const title = loader.querySelector('.admin-page-loader-title');
+            if (title && label) {
+                title.textContent = label;
+            }
+
+            loader.classList.toggle('is-visible', !!visible);
+        }
+
+        function showConferenceMessage(isError, message) {
+            const safeMessage = String(message)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
+            if (window.Modal && typeof window.Modal.showMessage === 'function') {
+                window.Modal.showMessage({
+                    title: isError ? 'Action Failed' : 'Success',
+                    message: '<p>' + safeMessage + '</p>',
+                    size: 'sm'
+                });
+                return;
+            }
+
+            const feedback = document.getElementById('conferencePageFeedback');
+            if (!feedback) {
+                return;
+            }
+
+            feedback.hidden = false;
+            feedback.className = 'admin-modal-feedback ' + (isError ? 'admin-modal-feedback--error' : 'admin-modal-feedback--success') + ' visible';
+            feedback.innerHTML = '<i class="fas ' + (isError ? 'fa-exclamation-circle' : 'fa-check-circle') + '"></i> ' + safeMessage;
+        }
+
+        function requestConferenceConfirmation(options) {
+            if (window.AdminConfirm && typeof window.AdminConfirm.request === 'function') {
+                return window.AdminConfirm.request(options);
+            }
+
+            return Promise.resolve(true);
+        }
+
+        function postConferenceAction(action, id, loadingText) {
+            var fd = new FormData();
+            fd.append('action', action);
+            fd.append('id', String(id));
+            fd.append('csrf_token', CONFERENCE_CSRF_TOKEN || '');
+
+            setConferenceLoader(true, loadingText);
+
+            return fetch(window.location.href, {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(function(r) {
+                    if (!r.ok) {
+                        throw new Error('Request failed');
+                    }
+                    window.location.reload();
+                })
+                .catch(function() {
+                    setConferenceLoader(false, 'Loading...');
+                    showConferenceMessage(true, 'Unable to complete this action. Please try again.');
+                });
+        }
+
+        // ===== ADD MODAL =====
+        function openAddModal() {
+            document.getElementById('addModal').style.display = 'flex';
+        }
+
+        function closeAddModal() {
+            document.getElementById('addModal').style.display = 'none';
+            const fb = document.getElementById('addModalFeedback');
+            if (fb) {
+                fb.className = 'admin-modal-feedback';
+                fb.innerHTML = '';
+            }
+        }
+
+        // ===== EDIT MODAL =====
+        function openEditModal(room) {
+            document.getElementById('editModalTitle').innerHTML = '<i class="fas fa-edit"></i> Edit: ' + escapeHtml(room.name);
+            document.getElementById('editId').value = room.id;
+            document.getElementById('editName').value = room.name || '';
+            document.getElementById('editDescription').value = room.description || '';
+            document.getElementById('editCapacity').value = room.capacity || '';
+            document.getElementById('editSize').value = room.size_sqm || '';
+            document.getElementById('editRate').value = room.daily_rate || '';
+            document.getElementById('editOrder').value = room.display_order || 0;
+            document.getElementById('editAmenities').value = room.amenities || '';
+            document.getElementById('editIsActive').checked = room.is_active == 1;
+            document.getElementById('editModal').style.display = 'flex';
+            const fb = document.getElementById('editModalFeedback');
+            if (fb) {
+                fb.className = 'admin-modal-feedback';
+                fb.innerHTML = '';
+            }
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+            const fb = document.getElementById('editModalFeedback');
+            if (fb) {
+                fb.className = 'admin-modal-feedback';
+                fb.innerHTML = '';
+            }
+        }
+
+        // ── AJAX save for add form ───────────────────────────────────
+        function handleConferenceFormSubmit(formId, saveBtnId, feedbackId) {
+            const form = document.getElementById(formId);
+            const saveBtn = document.getElementById(saveBtnId);
+            const fb = document.getElementById(feedbackId);
+            const origHtml = saveBtn.innerHTML;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            fb.className = 'admin-modal-feedback';
+            fb.innerHTML = '';
+            setConferenceLoader(true, 'Saving conference room...');
+            fetch(window.location.pathname, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: new FormData(form)
+                })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function(res) {
+                    setConferenceLoader(false, 'Loading...');
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = origHtml;
+                    fb.className = 'admin-modal-feedback ' + (res.success ? 'admin-modal-feedback--success' : 'admin-modal-feedback--error') + ' visible';
+                    fb.innerHTML = '<i class="fas fa-' + (res.success ? 'check-circle' : 'exclamation-circle') + '"></i> ' + res.message;
+                    if (res.success) refreshConferenceGrid();
+                })
+                .catch(function() {
+                    setConferenceLoader(false, 'Loading...');
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = origHtml;
+                    fb.className = 'admin-modal-feedback admin-modal-feedback--error visible';
+                    fb.innerHTML = '<i class="fas fa-exclamation-circle"></i> Network error — please try again.';
+                });
+        }
+        document.getElementById('addForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleConferenceFormSubmit('addForm', 'addFormSaveBtn', 'addModalFeedback');
+        });
+        document.getElementById('editForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleConferenceFormSubmit('editForm', 'editFormSaveBtn', 'editModalFeedback');
+        });
+
+        function refreshConferenceGrid() {
+            fetch(window.location.href)
+                .then(function(r) {
+                    return r.text();
+                })
+                .then(function(html) {
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+                    const next = doc.getElementById('conferenceGrid');
+                    const cur = document.getElementById('conferenceGrid');
+                    if (next && cur) cur.innerHTML = next.innerHTML;
+                }).catch(function() {});
+        }
+
+        // ===== TOGGLE & DELETE =====
+        function toggleActive(id) {
+            return postConferenceAction('toggle_active', id, 'Updating conference room...');
+        }
+
+        function deleteRoom(id) {
+            return postConferenceAction('delete', id, 'Deleting conference room...');
+        }
+
+        function confirmDeleteRoom(id, roomName) {
+            requestConferenceConfirmation({
+                title: 'Delete conference room?',
+                message: 'This permanently removes the room from conference management.',
+                details: [roomName || 'Conference room'],
+                confirmText: 'Delete room',
+                cancelText: 'Cancel',
+                tone: 'danger',
+                icon: 'fa-trash-alt'
+            }).then(function(confirmed) {
+                if (confirmed) {
+                    deleteRoom(id);
+                }
+            });
+        }
+
+        // ===== ENQUIRY MODAL =====
         function showEnquiryDetails(enquiry) {
             const modal = document.getElementById('enquiryModal');
             const body = document.getElementById('enquiryModalBody');
-            
+
             body.innerHTML = `
-                <div class="enquiry-details">
-                    <div class="detail-row">
-                        <strong>Reference:</strong>
-                        <span>${enquiry.inquiry_reference}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Company:</strong>
-                        <span>${enquiry.company_name}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Contact Person:</strong>
-                        <span>${enquiry.contact_person}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Email:</strong>
-                        <span>${enquiry.email}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Phone:</strong>
-                        <span>${enquiry.phone}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Event Date:</strong>
-                        <span>${new Date(enquiry.event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Time:</strong>
-                        <span>${new Date('1970-01-01T' + enquiry.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} -
-                              ${new Date('1970-01-01T' + enquiry.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Conference Room:</strong>
-                        <span>${enquiry.room_name || 'N/A'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Number of Attendees:</strong>
-                        <span>${enquiry.number_of_attendees}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Event Type:</strong>
-                        <span>${enquiry.event_type || 'N/A'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Status:</strong>
-                        <span class="badge badge-${enquiry.status}">${enquiry.status.charAt(0).toUpperCase() + enquiry.status.slice(1)}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Catering Required:</strong>
-                        <span>${enquiry.catering_required ? 'Yes' : 'No'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>AV Equipment:</strong>
-                        <span>${enquiry.av_equipment || 'None'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Special Requirements:</strong>
-                        <span>${enquiry.special_requirements || 'None'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Total Amount:</strong>
-                        <span>${enquiry.total_amount ? 'K ' + Number(enquiry.total_amount).toLocaleString() : 'Pending'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <strong>Notes:</strong>
-                        <span>${enquiry.notes || 'None'}</span>
-                    </div>
-                    
-                    <div class="modal-actions">
-                        <form method="POST" style="display:inline;">
-                            <?php echo getCsrfField(); ?>
-                            <input type="hidden" name="enquiry_action" value="update_amount">
-                            <input type="hidden" name="enquiry_id" value="${enquiry.id}">
-                            <div class="form-group" style="margin-bottom: 10px;">
-                                <label>Update Total Amount (<?php echo getSetting('currency_symbol', 'MWK'); ?>):</label>
-                                <input type="number" name="total_amount" step="0.01" value="${enquiry.total_amount || ''}" style="width: 150px;">
-                            </div>
-                            <button type="submit" class="btn">Update Amount</button>
-                        </form>
-                        <form method="POST" style="display:inline;">
-                            <?php echo getCsrfField(); ?>
-                            <input type="hidden" name="enquiry_action" value="update_notes">
-                            <input type="hidden" name="enquiry_id" value="${enquiry.id}">
-                            <div class="form-group" style="margin-bottom: 10px;">
-                                <label>Update Notes:</label>
-                                <textarea name="notes" rows="3" style="width: 100%; max-width: 400px;">${enquiry.notes || ''}</textarea>
-                            </div>
-                            <button type="submit" class="btn">Update Notes</button>
-                        </form>
-                    </div>
+            <div class="enquiry-details">
+                <div class="detail-row">
+                    <strong>Reference:</strong>
+                    <span>${escapeHtml(enquiry.inquiry_reference)}</span>
                 </div>
-            `;
-            
-            modal.style.display = 'block';
+                <div class="detail-row">
+                    <strong>Company:</strong>
+                    <span>${escapeHtml(enquiry.company_name)}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Contact Person:</strong>
+                    <span>${escapeHtml(enquiry.contact_person)}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Email:</strong>
+                    <span>${escapeHtml(enquiry.email)}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Phone:</strong>
+                    <span>${escapeHtml(enquiry.phone)}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Event Date:</strong>
+                    <span>${new Date(enquiry.event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Time:</strong>
+                    <span>${enquiry.start_time} - ${enquiry.end_time}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Conference Room:</strong>
+                    <span>${escapeHtml(enquiry.room_name || 'N/A')}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Number of Attendees:</strong>
+                    <span>${enquiry.number_of_attendees}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Event Type:</strong>
+                    <span>${escapeHtml(enquiry.event_type || 'N/A')}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Status:</strong>
+                    <span class="badge badge-${enquiry.status}">${enquiry.status.charAt(0).toUpperCase() + enquiry.status.slice(1)}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Catering Required:</strong>
+                    <span>${enquiry.catering_required ? 'Yes' : 'No'}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>AV Equipment:</strong>
+                    <span>${escapeHtml(enquiry.av_equipment || 'None')}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Special Requirements:</strong>
+                    <span>${escapeHtml(enquiry.special_requirements || 'None')}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Total Amount:</strong>
+                    <span>${enquiry.total_amount ? '<?php echo $currency; ?> ' + Number(enquiry.total_amount).toLocaleString() : 'Pending'}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Notes:</strong>
+                    <span>${escapeHtml(enquiry.notes || 'None')}</span>
+                </div>
+
+                <div class="modal-actions">
+                    <form method="POST" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="${escapeHtml(CONFERENCE_CSRF_TOKEN || '')}">
+                        <input type="hidden" name="enquiry_action" value="update_amount">
+                        <input type="hidden" name="enquiry_id" value="${enquiry.id}">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>Update Total Amount:</label>
+                            <input type="number" name="total_amount" step="0.01" value="${enquiry.total_amount || ''}" data-currency="<?php echo htmlspecialchars($currency, ENT_QUOTES); ?>">
+                        </div>
+                        <button type="submit" class="btn">Update Amount</button>
+                    </form>
+                    <form method="POST" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="${escapeHtml(CONFERENCE_CSRF_TOKEN || '')}">
+                        <input type="hidden" name="enquiry_action" value="update_notes">
+                        <input type="hidden" name="enquiry_id" value="${enquiry.id}">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>Update Notes:</label>
+                            <textarea name="notes" rows="3" style="width: 100%; max-width: 400px;">${escapeHtml(enquiry.notes || '')}</textarea>
+                        </div>
+                        <button type="submit" class="btn">Update Notes</button>
+                    </form>
+                </div>
+            </div>
+        `;
+
+            modal.style.display = 'flex';
         }
 
         function closeEnquiryModal() {
             document.getElementById('enquiryModal').style.display = 'none';
         }
 
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('enquiryModal');
-            if (event.target == modal) {
-                closeEnquiryModal();
-            }
+        // ===== CLOSE MODALS ON OUTSIDE CLICK =====
+        document.querySelectorAll('.modal-overlay').forEach(function(modal) {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.style.display = 'none';
+                }
+            });
+        });
+
+        // Helper
+        function escapeHtml(str) {
+            if (!str) return '';
+            var div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
+
+        <?php if ($fb_conference_posting_on): ?>
+            // ── Facebook Conference Share Modal ───────────────────────────────────────
+            var _fbConfId = 0;
+            var _fbConfImg = false;
+            var _fbConfImgUrl = '';
+
+            window._fbConfDefaults = {
+                baseUrl: <?php echo json_encode(defined('BASE_URL') ? rtrim(BASE_URL, '/') : ''); ?>,
+                currency: <?php echo json_encode(getSetting('currency_symbol', 'MWK')); ?>,
+                hashtags: <?php echo json_encode(getSetting('facebook_default_hashtags', '#hotel #conference')); ?>,
+                pageName: <?php echo json_encode(getSetting('facebook_page_name', '')); ?>
+            };
+
+            window._fbAllConferenceRooms = <?php echo json_encode(array_map(function ($r) {
+                                                $imgSrc = $r['image_path'] ?? '';
+                                                return [
+                                                    'id'       => (int)$r['id'],
+                                                    'name'     => $r['name'] ?? '',
+                                                    'rate'     => number_format((float)($r['daily_rate'] ?? 0), 2),
+                                                    'capacity' => (int)($r['capacity'] ?? 0),
+                                                    'size_sqm' => (string)($r['size_sqm'] ?? ''),
+                                                    'image_url' => $imgSrc,
+                                                ];
+                                            }, $conference_rooms), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+
+            function openFbConferenceModal(roomId, roomName, imagePath, rate, capacity) {
+                _fbConfId = roomId;
+                _fbConfImg = (typeof imagePath === 'string' && imagePath !== '');
+                _fbConfImgUrl = '';
+                var modal = document.getElementById('fbConferenceModal');
+                if (!modal) return;
+                document.getElementById('fbConfTitle').textContent = 'Post "' + roomName + '" to Facebook';
+
+                var d = window._fbConfDefaults || {};
+                // Build absolute image URL
+                if (_fbConfImg) {
+                    _fbConfImgUrl = /^https?:\/\//i.test(imagePath) ?
+                        imagePath :
+                        (d.baseUrl || '').replace(/\/+$/, '') + '/' + imagePath.replace(/^\/+/, '');
+                }
+
+                var lines = ['🏢 ' + roomName];
+                var details = [];
+                if (capacity) details.push('Capacity: ' + capacity + ' guests');
+                if (rate && rate !== '0') details.push('Rate: ' + d.currency + ' ' + rate + '/day');
+                if (details.length) lines.push(details.join(' · '));
+                lines.push('');
+                lines.push('Book your next event: ' + d.baseUrl + '/conference.php');
+                lines.push('');
+                lines.push(d.hashtags || '');
+                document.getElementById('fbConfCaption').value = lines.join('\n').trim();
+
+                var imgRow = document.getElementById('fbConfImageRow');
+                if (imgRow) imgRow.style.display = _fbConfImg ? 'flex' : 'none';
+                document.getElementById('fbConfIncludeImage').checked = _fbConfImg;
+
+                // Set page name preview
+                var pn = document.getElementById('fbConfPreviewPageName');
+                if (pn) pn.textContent = (d.pageName && d.pageName !== '') ? d.pageName : 'Your Facebook Page';
+
+                var fb = document.getElementById('fbConfFeedback');
+                fb.className = 'admin-modal-feedback';
+                fb.innerHTML = '';
+                _fbConfUpdatePreview();
+                modal.style.display = 'flex';
+            }
+
+            function _fbConfUpdatePreview() {
+                var caption = (document.getElementById('fbConfCaption') || {}).value || '';
+                var showImg = document.getElementById('fbConfIncludeImage') && document.getElementById('fbConfIncludeImage').checked;
+
+                var previewText = document.getElementById('fbConfPreviewText');
+                if (previewText) {
+                    var safe = caption
+                        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                        .replace(/\n/g, '<br>');
+                    previewText.innerHTML = safe ||
+                        '<em style="color:#65676b;font-style:italic;">Caption will appear here\u2026</em>';
+                }
+                var previewImg = document.getElementById('fbConfPreviewImg');
+                if (previewImg) {
+                    if (showImg && _fbConfImgUrl) {
+                        previewImg.src = _fbConfImgUrl;
+                        previewImg.style.display = 'block';
+                    } else {
+                        previewImg.style.display = 'none';
+                    }
+                }
+                var counter = document.getElementById('fbConfCharCount');
+                if (counter) {
+                    var len = caption.length;
+                    counter.textContent = len + ' chars';
+                    counter.style.color = len > 600 ? '#d32f2f' : '#65676b';
+                }
+            }
+
+            function closeFbConferenceModal() {
+                var m = document.getElementById('fbConferenceModal');
+                if (m) m.style.display = 'none';
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                // Single room FB modal — live preview wiring
+                var confCaption = document.getElementById('fbConfCaption');
+                var confImgCb = document.getElementById('fbConfIncludeImage');
+                if (confCaption) confCaption.addEventListener('input', _fbConfUpdatePreview);
+                if (confImgCb) confImgCb.addEventListener('change', _fbConfUpdatePreview);
+
+                var submitBtn = document.getElementById('fbConfSubmitBtn');
+                if (!submitBtn) return;
+                submitBtn.addEventListener('click', function() {
+                    var caption = (document.getElementById('fbConfCaption').value || '').trim();
+                    var fb = document.getElementById('fbConfFeedback');
+                    if (!caption) {
+                        fb.className = 'admin-modal-feedback admin-modal-feedback--error visible';
+                        fb.innerHTML = '<i class="fas fa-exclamation-circle"></i> Please enter a caption.';
+                        return;
+                    }
+                    submitBtn.disabled = true;
+                    var origHtml = submitBtn.innerHTML;
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting\u2026';
+                    fb.className = 'admin-modal-feedback';
+                    fb.innerHTML = '';
+
+                    var fd = new FormData();
+                    fd.append('type', 'conference');
+                    fd.append('id', String(_fbConfId));
+                    fd.append('message', caption);
+                    fd.append('include_image', document.getElementById('fbConfIncludeImage').checked ? '1' : '0');
+
+                    fetch('api/facebook-post.php', {
+                            method: 'POST',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: fd
+                        })
+                        .then(function(r) {
+                            return r.json();
+                        })
+                        .then(function(data) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = origHtml;
+                            if (data.success) {
+                                fb.className = 'admin-modal-feedback admin-modal-feedback--success visible';
+                                var link = data.post_url ? ' <a href="' + data.post_url + '" target="_blank" rel="noopener">View post</a>' : '';
+                                fb.innerHTML = '<i class="fas fa-check-circle"></i> Posted to Facebook!' + link;
+                            } else {
+                                fb.className = 'admin-modal-feedback admin-modal-feedback--error visible';
+                                fb.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Unknown error.');
+                            }
+                        })
+                        .catch(function() {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = origHtml;
+                            fb.className = 'admin-modal-feedback admin-modal-feedback--error visible';
+                            fb.innerHTML = '<i class="fas fa-exclamation-circle"></i> Network error \u2014 please try again.';
+                        });
+                });
+            });
+
+            // ── Share All Conference Rooms ──────────────────────────────────────────
+            var _fbAllConfFeaturedImgUrl = '';
+
+            function _fbConfEsc(s) {
+                return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            function openFbAllConferenceModal() {
+                var modal = document.getElementById('fbAllConferenceModal');
+                if (!modal) return;
+                var d = window._fbConfDefaults || {};
+                var rooms = window._fbAllConferenceRooms || [];
+
+                var listEl = document.getElementById('fbAllConfRoomList');
+                listEl.innerHTML = '';
+                rooms.forEach(function(room) {
+                    var imgSrc = room.image_url || '';
+                    if (imgSrc && !/^https?:\/\//i.test(imgSrc)) {
+                        imgSrc = (d.baseUrl || '').replace(/\/+$/, '') + '/' + imgSrc.replace(/^\/+/, '');
+                    }
+                    var item = document.createElement('label');
+                    item.className = 'fb-conf-select-item checked';
+                    item.setAttribute('for', 'fbAllConf_' + room.id);
+                    item.innerHTML =
+                        '<input type="checkbox" id="fbAllConf_' + room.id + '" checked value="' + room.id + '"' +
+                        ' data-img="' + _fbConfEsc(imgSrc) + '"' +
+                        ' data-name="' + _fbConfEsc(room.name) + '"' +
+                        ' data-rate="' + _fbConfEsc(room.rate) + '"' +
+                        ' data-capacity="' + _fbConfEsc(String(room.capacity || '')) + '"' +
+                        ' data-size="' + _fbConfEsc(String(room.size_sqm || '')) + '">' +
+                        (imgSrc ?
+                            '<img class="fb-conf-select-thumb" src="' + _fbConfEsc(imgSrc) + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' :
+                            '<div class="fb-conf-select-thumb"></div>') +
+                        '<div class="fb-conf-select-info">' +
+                        '<div class="fb-conf-select-name">' + _fbConfEsc(room.name) + '</div>' +
+                        '<div class="fb-conf-select-price">' + _fbConfEsc(d.currency || 'MWK') + ' ' + _fbConfEsc(room.rate) + '/day</div>' +
+                        '</div>';
+                    var cb = item.querySelector('input');
+                    cb.addEventListener('change', function() {
+                        item.classList.toggle('checked', this.checked);
+                        fcAllRebuildCaption();
+                    });
+                    listEl.appendChild(item);
+                });
+
+                var pn = document.getElementById('fbAllConfPreviewPageName');
+                if (pn) pn.textContent = (d.pageName && d.pageName !== '') ? d.pageName : 'Your Facebook Page';
+
+                document.getElementById('fbAllConfFeedback').className = 'admin-modal-feedback';
+                document.getElementById('fbAllConfFeedback').innerHTML = '';
+                fcAllRebuildCaption();
+                modal.style.display = 'flex';
+            }
+
+            function closeFbAllConferenceModal() {
+                var m = document.getElementById('fbAllConferenceModal');
+                if (m) m.style.display = 'none';
+            }
+
+            function fcAllSelectAll(state) {
+                document.querySelectorAll('#fbAllConfRoomList input[type="checkbox"]').forEach(function(cb) {
+                    cb.checked = state;
+                    cb.closest('.fb-conf-select-item').classList.toggle('checked', state);
+                });
+                fcAllRebuildCaption();
+            }
+
+            function fcAllRebuildCaption() {
+                var d = window._fbConfDefaults || {};
+                var currency = d.currency || 'MWK';
+                var baseUrl = d.baseUrl || '';
+                var hashtags = d.hashtags || '';
+
+                var selected = [];
+                document.querySelectorAll('#fbAllConfRoomList input[type="checkbox"]:checked').forEach(function(cb) {
+                    selected.push({
+                        name: cb.dataset.name,
+                        rate: cb.dataset.rate,
+                        capacity: cb.dataset.capacity,
+                        size: cb.dataset.size,
+                        img: cb.dataset.img,
+                    });
+                });
+
+                var countEl = document.getElementById('fbAllConfRoomCount');
+                if (countEl) countEl.textContent = selected.length + ' room' + (selected.length !== 1 ? 's' : '') + ' selected';
+
+                var hotelName = (d.pageName && d.pageName !== '') ? d.pageName : "Liwonde Sun Hotel";
+                var lines = ['\uD83C\uDFE2 ' + hotelName + ' \u2014 Conference Facilities', ''];
+                selected.forEach(function(r) {
+                    lines.push('\uD83D\uDC65 ' + r.name);
+                    var parts = [];
+                    if (r.rate && r.rate !== '0') parts.push(currency + ' ' + r.rate + '/day');
+                    if (r.capacity) parts.push('Up to ' + r.capacity + ' guests');
+                    if (r.size) parts.push(r.size + ' sqm');
+                    if (parts.length) lines.push('   ' + parts.join(' \u00B7 '));
+                    lines.push('');
+                });
+                if (selected.length > 0) {
+                    lines.push('\uD83D\uDCCB Enquire now: ' + baseUrl + '/conference.php');
+                    lines.push('');
+                    lines.push(hashtags);
+                }
+
+                var captionArea = document.getElementById('fbAllConfCaption');
+                if (captionArea) captionArea.value = lines.join('\n').trim();
+
+                _fbAllConfFeaturedImgUrl = '';
+                for (var i = 0; i < selected.length; i++) {
+                    if (selected[i].img) {
+                        _fbAllConfFeaturedImgUrl = selected[i].img;
+                        break;
+                    }
+                }
+
+                fcAllUpdatePreview();
+            }
+
+            function fcAllUpdatePreview() {
+                var caption = (document.getElementById('fbAllConfCaption') || {}).value || '';
+                var showImg = document.getElementById('fbAllConfIncludeImage') && document.getElementById('fbAllConfIncludeImage').checked;
+
+                var previewText = document.getElementById('fbAllConfPreviewText');
+                if (previewText) {
+                    var safe = caption
+                        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                        .replace(/\n/g, '<br>');
+                    previewText.innerHTML = safe ||
+                        '<em style="color:#65676b;font-style:italic;">Select rooms above to build the preview\u2026</em>';
+                }
+                var previewImg = document.getElementById('fbAllConfPreviewImg');
+                if (previewImg) {
+                    if (showImg && _fbAllConfFeaturedImgUrl) {
+                        previewImg.src = _fbAllConfFeaturedImgUrl;
+                        previewImg.style.display = 'block';
+                    } else {
+                        previewImg.style.display = 'none';
+                    }
+                }
+                var counter = document.getElementById('fbAllConfCharCount');
+                if (counter) {
+                    var len = caption.length;
+                    counter.textContent = len + ' chars';
+                    counter.style.color = len > 600 ? '#d32f2f' : '#65676b';
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                var captionArea = document.getElementById('fbAllConfCaption');
+                var imgCheckbox = document.getElementById('fbAllConfIncludeImage');
+                if (captionArea) captionArea.addEventListener('input', fcAllUpdatePreview);
+                if (imgCheckbox) imgCheckbox.addEventListener('change', fcAllUpdatePreview);
+
+                var submitBtn = document.getElementById('fbAllConfSubmitBtn');
+                if (!submitBtn) return;
+                submitBtn.addEventListener('click', function() {
+                    var caption = (document.getElementById('fbAllConfCaption').value || '').trim();
+                    var fb = document.getElementById('fbAllConfFeedback');
+                    if (!caption) {
+                        fb.className = 'admin-modal-feedback admin-modal-feedback--error visible';
+                        fb.innerHTML = '<i class="fas fa-exclamation-circle"></i> Caption cannot be empty.';
+                        return;
+                    }
+                    var checkedIds = [];
+                    document.querySelectorAll('#fbAllConfRoomList input[type="checkbox"]:checked').forEach(function(cb) {
+                        checkedIds.push(cb.value);
+                    });
+                    if (checkedIds.length === 0) {
+                        fb.className = 'admin-modal-feedback admin-modal-feedback--error visible';
+                        fb.innerHTML = '<i class="fas fa-exclamation-circle"></i> Please select at least one room.';
+                        return;
+                    }
+                    submitBtn.disabled = true;
+                    var origHtml = submitBtn.innerHTML;
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting\u2026';
+                    fb.className = 'admin-modal-feedback';
+                    fb.innerHTML = '';
+
+                    var formData = new FormData();
+                    formData.append('type', 'conferences_all');
+                    formData.append('room_ids', JSON.stringify(checkedIds));
+                    formData.append('message', caption);
+                    formData.append('include_image', document.getElementById('fbAllConfIncludeImage').checked ? '1' : '0');
+
+                    fetch('api/facebook-post.php', {
+                            method: 'POST',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: formData
+                        })
+                        .then(function(r) {
+                            return r.json();
+                        })
+                        .then(function(data) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = origHtml;
+                            if (data.success) {
+                                fb.className = 'admin-modal-feedback admin-modal-feedback--success visible';
+                                var linkHtml = data.post_url ?
+                                    ' <a href="' + data.post_url + '" target="_blank" rel="noopener">View post</a>' :
+                                    '';
+                                fb.innerHTML = '<i class="fas fa-check-circle"></i> All conference rooms posted to Facebook!' + linkHtml;
+                            } else {
+                                fb.className = 'admin-modal-feedback admin-modal-feedback--error visible';
+                                fb.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Unknown error.');
+                            }
+                        })
+                        .catch(function() {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = origHtml;
+                            fb.className = 'admin-modal-feedback admin-modal-feedback--error visible';
+                            fb.innerHTML = '<i class="fas fa-exclamation-circle"></i> Network error \u2014 please try again.';
+                        });
+                });
+            });
+        <?php endif; ?>
     </script>
 
-    <style>
-        .enquiry-details {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .detail-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 14px;
-            padding: 10px 0;
-            border-bottom: 1px solid #e8edf3;
-        }
-        
-        .detail-row strong {
-            min-width: 180px;
-            color: var(--navy);
-            font-size: 12px;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-        }
-        
-        .detail-row span {
-            flex: 1;
-            text-align: right;
-            color: #334155;
-        }
-        
-        .modal-actions {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 2px solid #eee;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        
-        .modal-actions .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        
-        .modal-actions label {
-            font-weight: 600;
-            color: var(--navy);
-        }
-        
-        .badge-completed {
-            background: #cce5ff;
-            color: #004085;
-        }
-
-        @media (max-width: 640px) {
-            .detail-row {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 4px;
-            }
-
-            .detail-row strong,
-            .detail-row span {
-                min-width: 0;
-                text-align: left;
-            }
-        }
-    </style>
-    <script src="js/admin-components.js"></script>
-
     <?php require_once 'includes/admin-footer.php'; ?>
+
+    <?php if ($fb_conference_posting_on): ?>
+        <!-- Facebook Conference Share Modal (two-column with live preview) -->
+        <div class="modal-overlay" id="fbConferenceModal" style="display:none;" onclick="if(event.target===this)closeFbConferenceModal()">
+            <div class="modal-content" style="max-width:860px;width:96vw;">
+                <div class="modal-header" style="border-top:4px solid #1877F2;">
+                    <h3 id="fbConfTitle" style="color:#1877F2;"><i class="fab fa-facebook-f"></i> Post to Facebook</h3>
+                    <button class="modal-close" type="button" onclick="closeFbConferenceModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="padding:20px 24px;">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:24px;align-items:start;">
+
+                        <!-- LEFT: Compose -->
+                        <div>
+                            <div style="font-weight:600;font-size:0.875rem;margin-bottom:8px;color:#1c1e21;">
+                                <i class="fas fa-pencil-alt" style="color:#1877F2;margin-right:6px;font-size:0.8rem;"></i>
+                                Compose post
+                            </div>
+                            <div class="form-group" style="margin-bottom:6px;">
+                                <textarea id="fbConfCaption" class="fb-caption-preview" rows="9"
+                                    style="width:100%;resize:vertical;font-family:inherit;font-size:0.875rem;line-height:1.6;box-sizing:border-box;"
+                                    placeholder="Write your post caption here&hellip;"></textarea>
+                                <div style="text-align:right;font-size:0.75rem;margin-top:3px;" id="fbConfCharCount">0 chars</div>
+                            </div>
+                            <div class="fb-include-image-row" id="fbConfImageRow"
+                                style="display:none;align-items:center;gap:10px;padding:10px 12px;background:#f0f2f5;border-radius:8px;margin-bottom:10px;">
+                                <input type="checkbox" id="fbConfIncludeImage" value="1" checked style="width:16px;height:16px;cursor:pointer;flex-shrink:0;">
+                                <label for="fbConfIncludeImage" style="cursor:pointer;font-size:0.875rem;margin:0;">
+                                    <i class="fas fa-image" style="color:#1877F2;margin-right:4px;"></i>
+                                    Include room image in post
+                                </label>
+                            </div>
+                            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px 12px;font-size:0.8rem;color:#856404;">
+                                <i class="fas fa-lightbulb"></i>
+                                <strong>Tip:</strong> Posts with images get significantly more reach on Facebook.
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: Live Facebook preview -->
+                        <div>
+                            <div style="font-weight:600;font-size:0.875rem;margin-bottom:8px;color:#1c1e21;">
+                                <i class="fab fa-facebook-f" style="color:#1877F2;margin-right:6px;"></i>
+                                Post preview
+                            </div>
+                            <div style="border:1px solid #e4e6eb;border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1);font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+                                <div style="display:flex;align-items:center;gap:10px;padding:12px 16px 8px;">
+                                    <div style="width:40px;height:40px;border-radius:50%;background:#1877F2;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1rem;flex-shrink:0;">
+                                        <i class="fab fa-facebook-f"></i>
+                                    </div>
+                                    <div style="min-width:0;">
+                                        <div id="fbConfPreviewPageName" style="font-weight:700;font-size:0.88rem;color:#1c1e21;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                            Your Page
+                                        </div>
+                                        <div style="font-size:0.72rem;color:#65676b;">
+                                            Just now &middot; <i class="fas fa-globe-africa" style="font-size:0.65rem;"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="fbConfPreviewText"
+                                    style="padding:0 16px 10px;font-size:0.875rem;line-height:1.55;color:#1c1e21;word-break:break-word;white-space:pre-wrap;">
+                                    <em style="color:#65676b;font-style:italic;">Caption will appear here&hellip;</em>
+                                </div>
+                                <img id="fbConfPreviewImg" src="" alt="Conference room image"
+                                    style="width:100%;display:none;object-fit:cover;max-height:280px;border-top:1px solid #e4e6eb;">
+                                <div style="border-top:1px solid #e4e6eb;display:flex;">
+                                    <div style="flex:1;padding:8px 4px;text-align:center;font-size:0.82rem;color:#65676b;font-weight:600;user-select:none;">
+                                        <i class="far fa-thumbs-up"></i> Like
+                                    </div>
+                                    <div style="flex:1;padding:8px 4px;text-align:center;font-size:0.82rem;color:#65676b;font-weight:600;user-select:none;">
+                                        <i class="far fa-comment"></i> Comment
+                                    </div>
+                                    <div style="flex:1;padding:8px 4px;text-align:center;font-size:0.82rem;color:#65676b;font-weight:600;user-select:none;">
+                                        <i class="fas fa-share"></i> Share
+                                    </div>
+                                </div>
+                            </div>
+                            <p style="font-size:0.72rem;color:#aaa;margin-top:6px;text-align:center;font-style:italic;">
+                                Approximate preview &mdash; actual appearance may vary
+                            </p>
+                        </div>
+                    </div>
+                    <div id="fbConfFeedback" class="admin-modal-feedback" style="margin-top:14px;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="fbConfSubmitBtn" class="btn fb-btn">
+                        <i class="fab fa-facebook-f"></i> Post to Facebook Page
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="closeFbConferenceModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Facebook Share All Conference Rooms Modal -->
+        <div class="modal-overlay" id="fbAllConferenceModal" style="display:none;" onclick="if(event.target===this)closeFbAllConferenceModal()">
+            <div class="modal-content" style="max-width:920px;width:96vw;">
+                <div class="modal-header" style="border-top:4px solid #1877F2;">
+                    <h3 style="color:#1877F2;display:flex;align-items:center;gap:8px;">
+                        <i class="fab fa-facebook-f"></i> Share All Conference Rooms on Facebook
+                    </h3>
+                    <button class="modal-close" type="button" onclick="closeFbAllConferenceModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="padding:20px 24px;">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:24px;align-items:start;">
+
+                        <!-- LEFT: Room picker + caption editor -->
+                        <div>
+                            <div style="font-weight:600;font-size:0.875rem;margin-bottom:10px;color:#1c1e21;">
+                                <i class="fas fa-check-square" style="color:#1877F2;margin-right:6px;"></i>
+                                Choose conference rooms to include
+                            </div>
+                            <div class="fb-conf-select-list" id="fbAllConfRoomList"></div>
+                            <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
+                                <button type="button" onclick="fcAllSelectAll(true)"
+                                    style="background:none;border:1px solid #d1d5db;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:0.8rem;font-family:inherit;">
+                                    Select all
+                                </button>
+                                <button type="button" onclick="fcAllSelectAll(false)"
+                                    style="background:none;border:1px solid #d1d5db;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:0.8rem;font-family:inherit;">
+                                    Clear all
+                                </button>
+                                <span id="fbAllConfRoomCount" style="color:#6b7280;font-size:0.82rem;margin-left:auto;">0 rooms</span>
+                            </div>
+
+                            <div style="margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb;">
+                                <div style="font-weight:600;font-size:0.875rem;margin-bottom:8px;color:#1c1e21;">
+                                    <i class="fas fa-pencil-alt" style="color:#1877F2;margin-right:6px;font-size:0.8rem;"></i>
+                                    Caption <small style="font-weight:400;color:#6b7280;">(edit freely before posting)</small>
+                                </div>
+                                <textarea id="fbAllConfCaption" rows="9"
+                                    style="width:100%;resize:vertical;font-size:0.875rem;line-height:1.6;box-sizing:border-box;padding:10px 12px;border:1px solid #d0d7de;border-radius:6px;font-family:inherit;"
+                                    placeholder="Your post caption will be generated here from the selected rooms&hellip;"></textarea>
+                                <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:0.875rem;flex:1;">
+                                        <input type="checkbox" id="fbAllConfIncludeImage" checked style="width:16px;height:16px;cursor:pointer;accent-color:#1877F2;">
+                                        <i class="fas fa-image" style="color:#1877F2;font-size:0.85rem;"></i>
+                                        Include featured room image
+                                    </label>
+                                    <span id="fbAllConfCharCount" style="font-size:0.75rem;color:#65676b;white-space:nowrap;">0 chars</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: Live Facebook preview -->
+                        <div>
+                            <div style="font-weight:600;font-size:0.875rem;margin-bottom:8px;color:#1c1e21;">
+                                <i class="fab fa-facebook-f" style="color:#1877F2;margin-right:6px;"></i>
+                                Live post preview
+                            </div>
+                            <div style="border:1px solid #e4e6eb;border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1);font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+                                <div style="display:flex;align-items:center;gap:10px;padding:12px 16px 8px;">
+                                    <div style="width:40px;height:40px;border-radius:50%;background:#1877F2;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1rem;flex-shrink:0;">
+                                        <i class="fab fa-facebook-f"></i>
+                                    </div>
+                                    <div style="min-width:0;">
+                                        <div id="fbAllConfPreviewPageName" style="font-weight:700;font-size:0.88rem;color:#1c1e21;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                            Your Page
+                                        </div>
+                                        <div style="font-size:0.72rem;color:#65676b;">
+                                            Just now &middot; <i class="fas fa-globe-africa" style="font-size:0.65rem;"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="fbAllConfPreviewText"
+                                    style="padding:0 16px 10px;font-size:0.875rem;line-height:1.55;color:#1c1e21;word-break:break-word;white-space:pre-wrap;max-height:340px;overflow-y:auto;">
+                                    <em style="color:#65676b;font-style:italic;">Select rooms above to build the preview&hellip;</em>
+                                </div>
+                                <img id="fbAllConfPreviewImg" src="" alt="Conference room image"
+                                    style="width:100%;display:none;object-fit:cover;max-height:240px;border-top:1px solid #e4e6eb;">
+                                <div style="border-top:1px solid #e4e6eb;display:flex;">
+                                    <div style="flex:1;padding:8px 4px;text-align:center;font-size:0.82rem;color:#65676b;font-weight:600;user-select:none;">
+                                        <i class="far fa-thumbs-up"></i> Like
+                                    </div>
+                                    <div style="flex:1;padding:8px 4px;text-align:center;font-size:0.82rem;color:#65676b;font-weight:600;user-select:none;">
+                                        <i class="far fa-comment"></i> Comment
+                                    </div>
+                                    <div style="flex:1;padding:8px 4px;text-align:center;font-size:0.82rem;color:#65676b;font-weight:600;user-select:none;">
+                                        <i class="fas fa-share"></i> Share
+                                    </div>
+                                </div>
+                            </div>
+                            <p style="font-size:0.72rem;color:#aaa;margin-top:6px;text-align:center;font-style:italic;">
+                                Approximate preview &mdash; actual appearance may vary on Facebook
+                            </p>
+                        </div>
+                    </div>
+                    <div id="fbAllConfFeedback" class="admin-modal-feedback" style="margin-top:14px;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn fb-btn" id="fbAllConfSubmitBtn">
+                        <i class="fab fa-facebook-f"></i> Post to Facebook Page
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="closeFbAllConferenceModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+</body>
+
+</html>
+

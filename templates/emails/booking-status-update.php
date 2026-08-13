@@ -13,6 +13,9 @@
             margin: 0;
             padding: 20px;
         }
+            .email-container {
+                font-family: 'Cormorant Garamond', Georgia, serif;
+            }
         .email-container {
             max-width: 600px;
             margin: 0 auto;
@@ -22,22 +25,22 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         .header {
-            background: linear-gradient(135deg, #0A1929 0%, #1a3a52 100%);
+            background: linear-gradient(135deg, #1A1A1A 0%, #2A2A2A 100%);
             padding: 40px 40px;
             text-align: center;
         }
         .logo {
             font-size: 28px;
             font-weight: bold;
-            color: #D4AF37;
+            color: #8B7355;
             margin: 0;
-            font-family: 'Playfair Display', Georgia, serif;
+            font-family: 'Cormorant Garamond', Georgia, serif;
         }
         .content {
             padding: 40px;
         }
         h1 {
-            color: #0A1929;
+            color: #1A1A1A;
             margin: 0 0 10px 0;
             font-size: 26px;
         }
@@ -67,7 +70,7 @@
         }
         .status-pending {
             background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
-            color: #0A1929;
+            color: #1A1A1A;
         }
         .details {
             background-color: #f8f9fa;
@@ -89,7 +92,7 @@
             font-weight: 600;
         }
         .detail-value {
-            color: #0A1929;
+            color: #1A1A1A;
             font-weight: 600;
         }
         .info-box {
@@ -107,17 +110,17 @@
         }
         .contact-box h3 {
             margin: 0 0 15px 0;
-            color: #0A1929;
+            color: #1A1A1A;
         }
         .contact-item {
             margin: 10px 0;
             color: #666;
         }
         .contact-item strong {
-            color: #0A1929;
+            color: #1A1A1A;
         }
         .footer {
-            background-color: #0A1929;
+            background-color: #1A1A1A;
             color: #fff;
             padding: 20px;
             text-align: center;
@@ -188,10 +191,10 @@
             <div class="contact-box">
                 <h3>📞 Have Questions?</h3>
                 <div class="contact-item">
-                    <strong>Phone:</strong> <a href="tel:<?php echo $phone_main; ?>" style="color: #0A1929; text-decoration: none;"><?php echo $phone_main; ?></a>
+                    <strong>Phone:</strong> <a href="tel:<?php echo $phone_main; ?>" style="color: #1A1A1A; text-decoration: none;"><?php echo $phone_main; ?></a>
                 </div>
                 <div class="contact-item">
-                    <strong>Email:</strong> <a href="mailto:<?php echo $email_reservations; ?>" style="color: #0A1929; text-decoration: none;"><?php echo $email_reservations; ?></a>
+                    <strong>Email:</strong> <a href="mailto:<?php echo $email_reservations; ?>" style="color: #1A1A1A; text-decoration: none;"><?php echo $email_reservations; ?></a>
                 </div>
             </div>
             

@@ -1,5 +1,9 @@
 <?php
 // Hotel Website - Rooms Gallery (Modern Cards)
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
 require_once 'config/database.php';
 require_once 'includes/page-guard.php';
 require_once 'includes/reviews-display.php';
@@ -33,21 +37,25 @@ try {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
-    <meta name="theme-color" content="#060a17">
-    <title><?php echo htmlspecialchars($site_name); ?> | Rooms Gallery</title>
-    <meta name="description" content="Explore all rooms and suites at <?php echo htmlspecialchars($site_name); ?>. Browse, compare, and open any room for full details.">
+    <?php
+    $seo_data = [
+        'title' => $site_name . ' | Rooms Gallery',
+        'description' => "Explore all rooms and suites at {$site_name}. Browse, compare, and open any room for full details.",
+        'type' => 'website'
+    ];
+    require_once 'includes/seo-meta.php';
+    ?>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
-    <link rel="stylesheet" href="css/theme-dynamic.php">
-    <link rel="stylesheet" href="css/header.css">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/footer.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+
+    <!-- Main CSS - Loads all stylesheets in correct order -->
+    <link rel="stylesheet" href="css/base/critical.css">
+    <link rel="stylesheet" href="css/main.css">
 </head>
 
 <body class="rooms-gallery-page">
@@ -57,77 +65,69 @@ try {
     <!-- Hero Section -->
     <?php include 'includes/hero.php'; ?>
 
-    <main>
-        <section class="section" id="collection">
+    <main id="main-content">
+        <!-- Passalacqua-Inspired Editorial Rooms Gallery Section -->
+        <section class="editorial-events-section editorial-rooms-gallery-section">
             <div class="container">
                 <?php if (!empty($rooms)): ?>
-                    <div class="rooms-grid modern-grid fancy-3d-grid" data-room-count="<?php echo (int)count($rooms); ?>">
-                        <?php foreach ($rooms as $room):
+                    <div class="card-grid" data-room-count="<?php echo (int)count($rooms); ?>">
+                        <?php
+                        $roomIndex = 0;
+                        foreach ($rooms as $room):
                             $amenities_raw = $room['amenities'] ?? '';
                             $amenities = array_filter(array_map('trim', explode(',', $amenities_raw)));
                             $amenities = array_slice($amenities, 0, 4);
-
                             $max_guests = $room['max_guests'] ?? 2;
                             $size_sqm = $room['size_sqm'];
                             $bed_type = $room['bed_type'];
+                            $isFeatured = !empty($room['is_featured']) || !empty($room['badge']);
+                            $spanClass = $isFeatured && $roomIndex === 0 ? 'span-2' : '';
+                            $aspectClass = 'aspect-square';
                         ?>
-                            <article class="room-tile fancy-3d-card" tabindex="0" data-room-id="<?php echo (int)$room['id']; ?>" data-room-slug="<?php echo htmlspecialchars($room['slug']); ?>">
-                                <div class="room-tile__3d-bg"></div>
-
-                                <a class="room-tile__image" href="room.php?room=<?php echo urlencode($room['slug']); ?>" aria-label="Open details for <?php echo htmlspecialchars($room['name']); ?>">
-                                    <img src="<?php echo htmlspecialchars($room['image_url']); ?>" alt="<?php echo htmlspecialchars($room['name']); ?>" loading="lazy">
+                            <div class="card room-card <?php echo $isFeatured ? 'featured-card' : ''; ?>"
+                                data-card-size="<?php echo $isFeatured ? 'large' : 'standard'; ?>">
+                                <a class="room-card-image" href="room.php?room=<?php echo urlencode($room['slug']); ?>" aria-label="Open details for <?php echo htmlspecialchars($room['name']); ?>">
+                                    <img src="<?php echo htmlspecialchars($room['image_url']); ?>" alt="<?php echo htmlspecialchars($room['name']); ?>" class="room-card-image-img" loading="lazy">
                                     <?php if (!empty($room['badge'])): ?>
-                                        <span class="room-tile__badge"><?php echo htmlspecialchars($room['badge']); ?></span>
+                                        <span class="room-card-badge"><?php echo htmlspecialchars($room['badge']); ?></span>
                                     <?php endif; ?>
-
-                                    <span class="room-tile__price-badge" aria-label="Price per night">
-                                        <span class="amount"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format((float)($room['price_per_night'] ?? 0), 0); ?></span>
-                                        <small>per night</small>
+                                    <span class="room-card-price">
+                                        <span class="room-card-price-amount"><?php echo htmlspecialchars($currency_symbol); ?><?php echo number_format((float)($room['price_per_night'] ?? 0), 0); ?></span>
+                                        <small class="room-card-price-label">per night</small>
                                     </span>
                                 </a>
-
-                                <div class="room-tile__body">
-                                    <div class="room-tile__header">
-                                        <div>
-                                            <h3><?php echo htmlspecialchars($room['name']); ?></h3>
-                                            <p><?php echo htmlspecialchars($room['short_description']); ?></p>
-                                        </div>
-                                    </div>
-
-                                    <!-- Compact Rating Display -->
-                                    <div class="room-tile__rating" data-room-id="<?php echo (int)$room['id']; ?>">
-                                        <div class="compact-rating compact-rating--loading">
-                                            <i class="fas fa-spinner fa-spin"></i>
-                                        </div>
-                                    </div>
-
-                                    <div class="room-tile__meta">
+                                <div class="room-card-content">
+                                    <h3 class="room-card-title"><?php echo htmlspecialchars($room['name']); ?></h3>
+                                    <p class="room-card-description"><?php echo htmlspecialchars($room['short_description']); ?></p>
+                                    <div class="room-card-meta">
                                         <span><i class="fas fa-user-friends"></i> <?php echo htmlspecialchars($max_guests); ?> guests</span>
                                         <span><i class="fas fa-ruler-combined"></i> <?php echo htmlspecialchars($size_sqm); ?> sqm</span>
                                         <span><i class="fas fa-bed"></i> <?php echo htmlspecialchars($bed_type); ?></span>
                                     </div>
-
                                     <?php if (!empty($amenities)): ?>
-                                        <div class="room-tile__amenities">
+                                        <div class="room-card-amenities">
                                             <?php foreach ($amenities as $amenity): ?>
-                                                <span class="pill-small"><?php echo htmlspecialchars($amenity); ?></span>
+                                                <span class="room-card-amenity"><i class="fas fa-check"></i> <?php echo htmlspecialchars($amenity); ?></span>
                                             <?php endforeach; ?>
                                         </div>
                                     <?php endif; ?>
-
-                                    <div class="room-tile__actions">
-                                        <a class="btn btn-primary" href="room.php?room=<?php echo urlencode($room['slug']); ?>#book_now">View & Book</a>
+                                    <div class="room-card-actions">
+                                        <a class="editorial-btn-primary" href="room.php?room=<?php echo urlencode($room['slug']); ?>">View & Book</a>
                                     </div>
                                 </div>
-                            </article>
-                        <?php endforeach; ?>
+                            </div>
+                        <?php
+                            $roomIndex++;
+                        endforeach;
+                        ?>
                     </div>
                 <?php else: ?>
-                    <div class="gallery-empty" style="margin-top: 50px;">
-                        <h2>Rooms are preparing for launch</h2>
+                    <div class="editorial-no-events mt-50">
+                        <i class="fas fa-bed"></i>
+                        <h3>Rooms are preparing for launch</h3>
                         <p>Our suites are being curated. Please check back soon or reach out to our reservations team for availability.</p>
-                        <div style="margin-top: 18px;">
-                            <a class="btn btn-primary" href="mailto:<?php echo htmlspecialchars($email_reservations); ?>?subject=Room%20Availability">Email Reservations</a>
+                        <div class="mt-30">
+                            <a class="editorial-btn-primary" href="mailto:<?php echo htmlspecialchars($email_reservations); ?>?subject=Room%20Availability">Email Reservations</a>
                         </div>
                     </div>
                 <?php endif; ?>
@@ -135,10 +135,13 @@ try {
         </section>
     </main>
 
-    <?php include 'includes/footer.php'; ?>
-
-    <script src="js/modal.js"></script>
+    <!-- Scripts -->
     <script src="js/main.js"></script>
+
+    <!-- Phase 3: Parallax Effects -->
+    <script src="js/parallax-cards.js" defer></script>
+    <script src="js/cursor-follower.js" defer></script>
+
     <script>
         // Optional 3D card tilt effect (desktop only + respects reduced motion)
         (function() {
@@ -169,24 +172,24 @@ try {
         // Fetch and display ALL room ratings in a single request (optimized)
         (function() {
             const ratingContainers = document.querySelectorAll('.room-tile__rating');
-            
+
             if (ratingContainers.length === 0) return;
-            
+
             // Single batch API call instead of N+1 individual requests
             fetch('admin/api/all-room-ratings.php')
                 .then(response => response.json())
                 .then(result => {
                     if (result.success && result.data) {
                         const ratings = result.data;
-                        
+
                         ratingContainers.forEach(container => {
                             const roomId = parseInt(container.dataset.roomId);
                             const ratingData = ratings[roomId];
-                            
+
                             if (ratingData && ratingData.review_count > 0) {
                                 const avgRating = ratingData.avg_rating;
                                 const totalCount = ratingData.review_count;
-                                
+
                                 let starsHtml = '';
                                 const fullStars = Math.floor(avgRating);
                                 const hasHalfStar = (avgRating - fullStars) >= 0.5;
@@ -246,6 +249,8 @@ try {
         })();
     </script>
 
-    <?php include 'includes/scroll-to-top.php'; ?>
+    <!-- Footer -->
+    <?php include 'includes/footer.php'; ?>
 </body>
+
 </html>

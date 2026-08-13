@@ -12,6 +12,12 @@ config/email.local.php
 config/email-password.php
 config/email-localhost.php
 
+# Database dumps - contain smtp_password and admin password hashes. NEVER commit!
+Database/*.sql
+Database/*.sql.gz
+Database/*.json
+Database/*.manifest.json
+
 # IDE and Editor files
 .vscode/
 .idea/

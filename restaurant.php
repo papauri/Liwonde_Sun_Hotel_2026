@@ -1,177 +1,67 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
+if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
-require_once 'config/security.php';
 require_once 'config/database.php';
 require_once 'config/base-url.php';
-require_once 'config/email.php';
 require_once 'includes/page-guard.php';
-require_once 'includes/validation.php';
+require_once 'includes/booking-functions.php';
 require_once 'includes/section-headers.php';
-require_once 'includes/countries-data.php';
 
-sendSecurityHeaders();
+requireRestaurantEnabled();
 
-$reservation_success = false;
-$reservation_error = '';
-$reservation_reference = '';
+/**
+ * Build safe menu URL from DB setting with fallback.
+ */
+function buildValidatedMenuLink(string $candidate, string $fallback): string
+{
+    $candidate = trim($candidate);
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restaurant_reservation_form'])) {
-    try {
-        requireCsrfValidation();
-
-        $validation_errors = [];
-        $sanitized_data = [];
-
-        $name_validation = validateName($_POST['full_name'] ?? '', 2, true);
-        if (!$name_validation['valid']) {
-            $validation_errors['full_name'] = $name_validation['error'];
-        } else {
-            $sanitized_data['full_name'] = sanitizeString($name_validation['value'], 100);
-        }
-
-        $email_validation = validateEmail($_POST['email'] ?? '');
-        if (!$email_validation['valid']) {
-            $validation_errors['email'] = $email_validation['error'];
-        } else {
-            $sanitized_data['email'] = trim((string)($_POST['email'] ?? ''));
-        }
-
-        $full_phone = trim($_POST['phone_code'] ?? '+265') . trim($_POST['phone_number'] ?? '');
-        $phone_validation = validatePhone($full_phone);
-        if (!$phone_validation['valid']) {
-            $validation_errors['phone'] = $phone_validation['error'];
-        } else {
-            $sanitized_data['phone'] = $phone_validation['sanitized'];
-        }
-
-        // Validate date and time with restaurant-specific rules
-        $min_advance_days = (int)getSetting('restaurant_min_advance_days', 1);
-        $booking_buffer = (int)getSetting('booking_time_buffer_minutes', 60);
-        
-        // Calculate minimum buffer minutes based on advance days requirement
-        // If min_advance_days is 1, no same-day bookings. If 2, no bookings within 2 days, etc.
-        $buffer_minutes = $booking_buffer;
-        if ($min_advance_days > 0) {
-            $buffer_minutes = max($booking_buffer, $min_advance_days * 24 * 60);
-        }
-        
-        $datetime_validation = validateDateTime(
-            $_POST['preferred_date'] ?? '',
-            $_POST['preferred_time'] ?? '',
-            false,
-            $buffer_minutes
-        );
-        if (!$datetime_validation['valid']) {
-            $validation_errors['preferred_date'] = $datetime_validation['error'];
-        } else {
-            $sanitized_data['preferred_date'] = $datetime_validation['datetime']->format('Y-m-d');
-            $sanitized_data['preferred_time'] = $datetime_validation['datetime']->format('H:i');
-            
-            // Now validate that the reservation time falls within restaurant operating hours
-            $reservation_time = $datetime_validation['datetime']->format('H:i');
-            
-            // Get restaurant operating hours from settings
-            $breakfast_start = getSetting('restaurant_breakfast_start', '06:00');
-            $breakfast_end = getSetting('restaurant_breakfast_end', '10:00');
-            $lunch_start = getSetting('restaurant_lunch_start', '12:00');
-            $lunch_end = getSetting('restaurant_lunch_end', '15:00');
-            $dinner_start = getSetting('restaurant_dinner_start', '18:00');
-            $dinner_end = getSetting('restaurant_dinner_end', '22:00');
-            
-            // Check if reservation time falls within any service period
-            $is_within_hours = (
-                ($reservation_time >= $breakfast_start && $reservation_time < $breakfast_end) ||
-                ($reservation_time >= $lunch_start && $reservation_time < $lunch_end) ||
-                ($reservation_time >= $dinner_start && $reservation_time < $dinner_end)
-            );
-            
-            if (!$is_within_hours) {
-                $validation_errors['preferred_time'] = 'Reservation time is outside restaurant operating hours. Please select a time between: Breakfast (' . $breakfast_start . '-' . $breakfast_end . '), Lunch (' . $lunch_start . '-' . $lunch_end . '), or Dinner (' . $dinner_start . '-' . $dinner_end . ')';
-            }
-        }
-
-        $guests_validation = validateNumber($_POST['guests'] ?? '', 1, 20, true);
-        if (!$guests_validation['valid']) {
-            $validation_errors['guests'] = $guests_validation['error'];
-        } else {
-            $sanitized_data['guests'] = (int)$guests_validation['value'];
-        }
-
-        $occasion_validation = validateText($_POST['occasion'] ?? '', 0, 120, false);
-        if (!$occasion_validation['valid']) {
-            $validation_errors['occasion'] = $occasion_validation['error'];
-        } else {
-            $sanitized_data['occasion'] = sanitizeString($occasion_validation['value'], 120);
-        }
-
-        $requests_validation = validateText($_POST['special_requests'] ?? '', 0, 1000, false);
-        if (!$requests_validation['valid']) {
-            $validation_errors['special_requests'] = $requests_validation['error'];
-        } else {
-            $sanitized_data['special_requests'] = sanitizeString($requests_validation['value'], 1000);
-        }
-
-        if (!empty($validation_errors)) {
-            $error_messages = [];
-            foreach ($validation_errors as $field => $message) {
-                $error_messages[] = ucfirst(str_replace('_', ' ', $field)) . ': ' . $message;
-            }
-            throw new Exception(implode('; ', $error_messages));
-        }
-
-        $reservation_reference = 'REST-' . strtoupper(substr(uniqid(), -8));
-        $reservation_data = [
-            'reference' => $reservation_reference,
-            'name' => $sanitized_data['full_name'],
-            'email' => $sanitized_data['email'],
-            'phone' => $sanitized_data['phone'],
-            'preferred_date' => $sanitized_data['preferred_date'],
-            'preferred_time' => $sanitized_data['preferred_time'],
-            'guests' => $sanitized_data['guests'],
-            'occasion' => $sanitized_data['occasion'],
-            'special_requests' => $sanitized_data['special_requests']
-        ];
-
-        $customer_result = sendRestaurantReservationEmail($reservation_data);
-        if (!$customer_result['success']) {
-            error_log('Failed to send restaurant customer email: ' . $customer_result['message']);
-        }
-
-        $admin_result = sendRestaurantAdminNotificationEmail($reservation_data);
-        if (!$admin_result['success']) {
-            error_log('Failed to send restaurant admin email: ' . $admin_result['message']);
-        }
-
-        // Insert reservation into database
-        try {
-            $stmt = $pdo->prepare("
-                INSERT INTO restaurant_inquiries 
-                (reference_number, name, email, phone, preferred_date, preferred_time, guests, occasion, special_requests, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([
-                $reservation_reference,
-                $sanitized_data['full_name'],
-                $sanitized_data['email'],
-                $sanitized_data['phone'],
-                $sanitized_data['preferred_date'],
-                $sanitized_data['preferred_time'],
-                $sanitized_data['guests'],
-                $sanitized_data['occasion'] ?? '',
-                $sanitized_data['special_requests'] ?? '',
-                'new'
-            ]);
-        } catch (PDOException $e) {
-            error_log('Failed to save restaurant reservation to database: ' . $e->getMessage());
-        }
-
-        $reservation_success = true;
-    } catch (Exception $e) {
-        $reservation_error = $e->getMessage();
+    if ($candidate === '') {
+        return $fallback;
     }
+
+    if (filter_var($candidate, FILTER_VALIDATE_URL)) {
+        $parts = parse_url($candidate);
+        $scheme = strtolower($parts['scheme'] ?? '');
+        return in_array($scheme, ['http', 'https'], true) ? $candidate : $fallback;
+    }
+
+    // Allow only safe relative links (no protocol-relative //, no javascript:)
+    if (preg_match('#^(?!//)[A-Za-z0-9_./?=&%\-]+$#', $candidate)) {
+        return siteUrl(ltrim($candidate, '/'));
+    }
+
+    return $fallback;
+}
+
+/**
+ * Reject cross-domain menu URLs when running in local/dev.
+ */
+function enforceMenuHost(string $url, string $currentHost): string
+{
+    $parts = parse_url($url);
+    if ($parts === false) {
+        return $url;
+    }
+
+    $urlHost = strtolower((string)($parts['host'] ?? ''));
+    $normalizedCurrentHost = strtolower($currentHost);
+
+    if ($urlHost !== '' && $urlHost !== $normalizedCurrentHost) {
+        return '';
+    }
+
+    return $url;
+}
+
+function menuCategorySlug(string $category): string
+{
+    $slug = strtolower(trim($category));
+    $slug = preg_replace('/[^a-z0-9]+/', '-', $slug) ?? '';
+    $slug = trim($slug, '-');
+    return $slug !== '' ? $slug : 'uncategorized';
 }
 
 // AJAX Endpoint - Handle menu data requests
@@ -182,6 +72,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
     $currency_symbol = getSetting('currency_symbol');
     $currency_code = getSetting('currency_code');
 
+    /** @var array{success: bool, menu_type: string, categories: array<string, mixed>, currency: array{symbol: string, code: string}} $response */
     $response = [
         'success' => false,
         'menu_type' => $menu_type,
@@ -194,14 +85,15 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
 
     try {
         if ($menu_type === 'food') {
-            // Simple approach: just use food_menu table
-            $stmt = $pdo->query("SELECT * FROM food_menu WHERE is_available = 1 ORDER BY category ASC, display_order ASC, id ASC");
+            $stmt = $pdo->query("SELECT id, item_name, description, price, is_featured, is_vegetarian, is_vegan, allergens, category FROM food_menu WHERE is_available = 1 ORDER BY category ASC, display_order ASC, id ASC");
             $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Group by category name (category column contains the name)
             foreach ($items as $item) {
-                $category = $item['category'];
-                $slug = strtolower(str_replace(' ', '-', $category));
+                $category = trim((string)($item['category'] ?? ''));
+                if ($category === '') {
+                    $category = 'Uncategorized';
+                }
+                $slug = menuCategorySlug($category);
 
                 if (!isset($response['categories'][$slug])) {
                     $response['categories'][$slug] = [
@@ -212,61 +104,72 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'menu') {
                 }
                 $response['categories'][$slug]['items'][] = [
                     'id' => $item['id'],
-                    'name' => $item['item_name'],
-                    'description' => $item['description'] ?? '',
+                    'name' => trim((string)($item['item_name'] ?? '')),
+                    'description' => trim((string)($item['description'] ?? '')),
                     'price' => (float)$item['price'],
                     'is_featured' => (bool)$item['is_featured'],
                     'is_vegetarian' => (bool)$item['is_vegetarian'],
                     'is_vegan' => (bool)$item['is_vegan'],
-                    'allergens' => $item['allergens'] ?? ''
+                    'allergens' => trim((string)($item['allergens'] ?? ''))
                 ];
             }
             $response['success'] = true;
-
         } elseif ($menu_type === 'coffee') {
-            $stmt = $pdo->query("SELECT * FROM drink_menu WHERE category = 'Coffee' ORDER BY display_order ASC, id ASC");
+            $stmt = $pdo->query("SELECT id, item_name, description, price, tags, category FROM drink_menu WHERE is_available = 1 AND LOWER(category) = 'coffee' ORDER BY category ASC, display_order ASC, id ASC");
             $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $response['categories']['Coffee'] = [
-                'name' => 'Coffee',
-                'slug' => 'coffee',
-                'items' => []
-            ];
-
             foreach ($items as $item) {
-                $response['categories']['Coffee']['items'][] = [
+                $category = trim((string)($item['category'] ?? 'Coffee'));
+                $slug = menuCategorySlug($category);
+                if (!isset($response['categories'][$slug])) {
+                    $response['categories'][$slug] = [
+                        'name' => $category,
+                        'slug' => $slug,
+                        'items' => []
+                    ];
+                }
+
+                $response['categories'][$slug]['items'][] = [
                     'id' => $item['id'],
-                    'name' => $item['item_name'],
-                    'description' => $item['description'] ?? '',
+                    'name' => trim((string)($item['item_name'] ?? '')),
+                    'description' => trim((string)($item['description'] ?? '')),
                     'price' => (float)$item['price'],
                     'tags' => !empty($item['tags']) ? array_map('trim', explode(',', $item['tags'])) : []
                 ];
             }
             $response['success'] = true;
-
         } elseif ($menu_type === 'bar') {
-            $stmt = $pdo->query("SELECT * FROM drink_menu WHERE category != 'Coffee' ORDER BY category, display_order ASC, id ASC");
+            $stmt = $pdo->query("SELECT id, item_name, description, price, tags, category FROM drink_menu WHERE is_available = 1 AND LOWER(category) != 'coffee' ORDER BY category ASC, display_order ASC, id ASC");
             $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // Group by category
             foreach ($items as $item) {
-                $category = $item['category'];
-                if (!isset($response['categories'][$category])) {
-                    $response['categories'][$category] = [
+                $category = trim((string)($item['category'] ?? ''));
+                if ($category === '') {
+                    $category = 'Uncategorized';
+                }
+                $slug = menuCategorySlug($category);
+
+                if (!isset($response['categories'][$slug])) {
+                    $response['categories'][$slug] = [
                         'name' => $category,
-                        'slug' => strtolower(str_replace(' ', '-', $category)),
+                        'slug' => $slug,
                         'items' => []
                     ];
                 }
-                $response['categories'][$category]['items'][] = [
+                $response['categories'][$slug]['items'][] = [
                     'id' => $item['id'],
-                    'name' => $item['item_name'],
-                    'description' => $item['description'] ?? '',
+                    'name' => trim((string)($item['item_name'] ?? '')),
+                    'description' => trim((string)($item['description'] ?? '')),
                     'price' => (float)$item['price'],
                     'tags' => !empty($item['tags']) ? array_map('trim', explode(',', $item['tags'])) : []
                 ];
             }
             $response['success'] = true;
+        }
+
+        if (empty($response['categories'])) {
+            $response['admin_hint'] = 'No active menu items found. Add items in Admin > Menu Management and mark them available.';
         }
     } catch (PDOException $e) {
         error_log("Error fetching menu: " . $e->getMessage());
@@ -282,22 +185,89 @@ $site_name = getSetting('site_name');
 $site_logo = getSetting('site_logo');
 $currency_symbol = getSetting('currency_symbol');
 $currency_code = getSetting('currency_code');
-// Dynamic menu page (pulls live data from DB)
-$site_url = rtrim((string)getSetting('site_url', ''), '/');
-if (!empty($site_url)) {
-    $menu_page_url = $site_url . '/menu-pdf.php';
+$restaurant_contact_email = getSetting('email_restaurant', getSetting('email_reservations', ''));
+$restaurant_phone = getSetting('phone_main', '');
+// Dynamic menu page (pulls live data from DB) and env detection
+$menu_host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$menu_protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$is_local_env = in_array($menu_host, ['localhost', '127.0.0.1']) || str_contains($menu_host, 'local');
+$current_origin = $menu_protocol . '://' . $menu_host;
+
+$menu_view_setting = (string)getSetting('restaurant_menu_url', '');
+$menu_pdf_setting = (string)getSetting('restaurant_menu_pdf_url', '');
+
+// Always use the correct fallback - menu-pdf.php is in root, not /api/
+$menu_page_fallback = siteUrl('menu-pdf.php');
+
+// Check if stored settings point to non-existent paths and ignore them
+$invalid_paths = ['/api/menu-pdf.php', 'api/menu-pdf.php', '/api/menu-pdf'];
+
+if (
+    $is_local_env ||
+    in_array($menu_view_setting, $invalid_paths) ||
+    in_array($menu_pdf_setting, $invalid_paths) ||
+    strpos($menu_view_setting, '/api/') !== false ||
+    strpos($menu_pdf_setting, '/api/') !== false
+) {
+    // In local/dev or if settings point to invalid paths, use correct fallback
+    $menu_view_url = $menu_page_fallback;
+    $menu_pdf_url = $menu_page_fallback;
 } else {
-    $menu_host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $menu_protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $menu_page_url = $menu_protocol . '://' . $menu_host . siteUrl('menu-pdf.php');
+    $menu_view_candidate = buildValidatedMenuLink($menu_view_setting, $menu_page_fallback);
+    $menu_view_candidate = enforceMenuHost($menu_view_candidate, $menu_host);
+    $menu_view_url = $menu_view_candidate !== '' ? $menu_view_candidate : $menu_page_fallback;
+
+    $menu_pdf_candidate = buildValidatedMenuLink($menu_pdf_setting, $menu_view_url);
+    $menu_pdf_candidate = enforceMenuHost($menu_pdf_candidate, $menu_host);
+    $menu_pdf_url = $menu_pdf_candidate !== '' ? $menu_pdf_candidate : $menu_view_url;
 }
-$menu_qr_image = 'https://api.qrserver.com/v1/create-qr-code/?size=520x520&data=' . urlencode($menu_page_url) . '&margin=0';
+
+// Final safety check - ensure URLs are valid
+if (empty($menu_view_url) || strpos($menu_view_url, '/api/menu-pdf') !== false) {
+    $menu_view_url = $menu_page_fallback;
+}
+if (empty($menu_pdf_url) || strpos($menu_pdf_url, '/api/menu-pdf') !== false) {
+    $menu_pdf_url = $menu_page_fallback;
+}
+
+// QR image – same URL for prod/uat/local (content is already correct),
+// but styling will be lighter so it's always visible.
+$menu_qr_image = 'https://api.qrserver.com/v1/create-qr-code/?size=520x520&data=' . urlencode($menu_view_url) . '&margin=0&bgcolor=ffffff&color=000000';
+
+// Use different QR background color for local vs production
+$qr_bg_color = $is_local_env ? '#f5f5f5' : '#ffffff';
+$qr_text_color = $is_local_env ? '#2d2d2d' : '#1b1b1b';
 
 // Fetch restaurant gallery
 $gallery_images = [];
 try {
-    $stmt = $pdo->query("SELECT * FROM restaurant_gallery WHERE is_active = 1 ORDER BY display_order ASC, id ASC");
-    $gallery_images = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (function_exists('getManagedMediaItems')) {
+        $managed = getManagedMediaItems('restaurant_gallery_media', ['limit' => 24]);
+        if (!empty($managed)) {
+            $gallery_images = array_map(static function ($item) {
+                $mediaUrl = $item['media_url'] ?? '';
+                $isVideo = ($item['media_type'] ?? '') === 'video';
+                return [
+                    'image_path' => $isVideo ? '' : $mediaUrl,
+                    'caption' => $item['caption'] ?? ($item['title'] ?? ''),
+                    'video_path' => $isVideo ? $mediaUrl : null,
+                    'video_type' => $isVideo ? ($item['mime_type'] ?? 'url') : null,
+                ];
+            }, $managed);
+        }
+    }
+
+    if (empty($gallery_images)) {
+        $stmt = $pdo->query("SELECT * FROM restaurant_gallery WHERE is_active = 1 ORDER BY display_order ASC, id ASC");
+        $gallery_images = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!empty($gallery_images) && function_exists('applyManagedMediaOverrides')) {
+            foreach ($gallery_images as &$restaurantGalleryItem) {
+                $restaurantGalleryItem = applyManagedMediaOverrides($restaurantGalleryItem, 'restaurant_gallery', $restaurantGalleryItem['id'] ?? '', ['image_path']);
+            }
+            unset($restaurantGalleryItem);
+        }
+    }
 } catch (PDOException $e) {
     error_log("Error fetching gallery: " . $e->getMessage());
 }
@@ -311,1374 +281,597 @@ try {
 } catch (PDOException $e) {
     error_log("Error fetching policies: " . $e->getMessage());
 }
+
+// Fetch Matuwi Kitchen welcome section
+$matuwi_welcome = [];
+try {
+    $welcomeStmt = $pdo->prepare("SELECT * FROM section_headers WHERE section_key = ? AND page = ? AND is_active = 1");
+    $welcomeStmt->execute(['matuwi_welcome', 'restaurant']);
+    $matuwi_welcome = $welcomeStmt->fetch(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log("Error fetching Matuwi welcome: " . $e->getMessage());
+}
+
+// Pre-load food menu data for immediate display
+/** @var array{success: bool, menu_type: string, categories: array<string, mixed>, currency: array{symbol: string, code: string}} $initial_menu_data */
+$initial_menu_data = [
+    'success' => false,
+    'menu_type' => 'food',
+    'categories' => [],
+    'currency' => [
+        'symbol' => $currency_symbol,
+        'code' => $currency_code
+    ]
+];
+
+try {
+    $stmt = $pdo->query("SELECT id, item_name, description, price, is_featured, is_vegetarian, is_vegan, allergens, category FROM food_menu WHERE is_available = 1 ORDER BY category ASC, display_order ASC, id ASC");
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($items as $item) {
+        $category = trim((string)($item['category'] ?? ''));
+        if ($category === '') {
+            $category = 'Uncategorized';
+        }
+        $slug = menuCategorySlug($category);
+
+        if (!isset($initial_menu_data['categories'][$slug])) {
+            $initial_menu_data['categories'][$slug] = [
+                'name' => $category,
+                'slug' => $slug,
+                'items' => []
+            ];
+        }
+        $initial_menu_data['categories'][$slug]['items'][] = [
+            'id' => $item['id'],
+            'name' => trim((string)($item['item_name'] ?? '')),
+            'description' => trim((string)($item['description'] ?? '')),
+            'price' => (float)$item['price'],
+            'is_featured' => (bool)$item['is_featured'],
+            'is_vegetarian' => (bool)$item['is_vegetarian'],
+            'is_vegan' => (bool)$item['is_vegan'],
+            'allergens' => trim((string)($item['allergens'] ?? ''))
+        ];
+    }
+    $initial_menu_data['success'] = true;
+} catch (PDOException $e) {
+    error_log("Error fetching initial menu: " . $e->getMessage());
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
-    <meta name="theme-color" content="#0A1929">
+    <?php
+    $seo_data = [
+        'title' => 'Fine Dining Restaurant - ' . $site_name . ' | Gourmet Cuisine',
+        'description' => "Experience exquisite fine dining at {$site_name}. Fresh local cuisine, international dishes, craft cocktails, and premium bar service in an elegant setting.",
+        'image' => '/images/restaurant/hero.jpg',
+        'type' => 'restaurant',
+        'structured_data' => [
+            "@context" => "https://schema.org",
+            "@type" => "Restaurant",
+            "name" => $site_name . " Restaurant",
+            "image" => "https://" . $_SERVER['HTTP_HOST'] . "/images/restaurant/hero.jpg",
+            "description" => "Fine dining restaurant offering fresh local cuisine, international dishes, and premium bar service",
+            "servesCuisine" => ["International", "African", "Continental"],
+            "priceRange" => getSetting('price_range_indicator', '$$$'),
+            "url" => "https://" . $_SERVER['HTTP_HOST'] . "/restaurant.php"
+        ]
+    ];
+    require_once 'includes/seo-meta.php';
+    ?>
+
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="format-detection" content="telephone=yes">
-    <title>Fine Dining Restaurant - <?php echo htmlspecialchars($site_name); ?> | Gourmet Cuisine</title>
-    <meta name="description" content="Experience exquisite fine dining at <?php echo htmlspecialchars($site_name); ?>. Fresh local cuisine, international dishes, craft cocktails, and premium bar service in an elegant setting.">
-    <meta name="keywords" content="<?php echo htmlspecialchars(getSetting('default_keywords', 'fine dining, gourmet restaurant, international cuisine, luxury restaurant')); ?>">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://<?php echo $_SERVER['HTTP_HOST']; ?>/restaurant.php">
-    
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="restaurant">
-    <meta property="og:url" content="https://<?php echo $_SERVER['HTTP_HOST']; ?>/restaurant.php">
-    <meta property="og:title" content="Fine Dining Restaurant - <?php echo htmlspecialchars($site_name); ?>">
-    <meta property="og:description" content="Experience exquisite fine dining with fresh local cuisine, international dishes, and premium bar service.">
-    <meta property="og:image" content="https://<?php echo $_SERVER['HTTP_HOST']; ?>/images/restaurant/hero.jpg">
-    
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="https://<?php echo $_SERVER['HTTP_HOST']; ?>/restaurant.php">
-    <meta property="twitter:title" content="Fine Dining Restaurant - <?php echo htmlspecialchars($site_name); ?>">
-    <meta property="twitter:description" content="Experience exquisite fine dining with fresh local cuisine, international dishes, and premium bar service.">
-    <meta property="twitter:image" content="https://<?php echo $_SERVER['HTTP_HOST']; ?>/images/restaurant/hero.jpg">
-    
-    <!-- Preload Critical Resources -->
-    <link rel="preload" href="css/style.css" as="style">
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" as="style">
-    
+
+    <!-- REMOVED: Preload Critical Resources - Preventing aggressive caching for page transitions -->
+    <!-- Preloading disabled to allow smooth page transition animations -->
+
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    <noscript><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet"></noscript>
-    
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'">
-    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"></noscript>
-    
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="css/theme-dynamic.php">
-    <link rel="stylesheet" href="css/header.css">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/footer.css">
-    <link rel="stylesheet" href="css/form-validation.css">
-    
-    <!-- Structured Data - Restaurant Schema -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Restaurant",
-      "name": "<?php echo htmlspecialchars($site_name); ?> Restaurant",
-      "image": "https://<?php echo $_SERVER['HTTP_HOST']; ?>/images/restaurant/hero.jpg",
-      "description": "Fine dining restaurant offering fresh local cuisine, international dishes, and premium bar service",
-      "servesCuisine": ["International", "African", "Continental"],
-      "priceRange": "$$$",
-      "url": "https://<?php echo $_SERVER['HTTP_HOST']; ?>/restaurant.php"
-    }
-    </script>
-    
-    <style>
-        /* Japandi Style Menu */
-        :root {
-            --japandi-bg: #f8f6f3;
-            --japandi-card-bg: #ffffff;
-            --japandi-text-primary: #2d2d2d;
-            --japandi-text-secondary: #6b6b6b;
-            --japandi-accent: #8b7355;
-            --japandi-border: #e8e4df;
-            --japandi-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-            --japandi-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.08);
-        }
-        
-        /* Loading Spinner */
-        .menu-loading {
-            display: none;
-            text-align: center;
-            padding: 60px 20px;
-        }
-        .menu-loading.active {
-            display: block;
-        }
-        .menu-loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid rgba(139, 115, 85, 0.1);
-            border-top-color: var(--japandi-accent);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .menu-loading-text {
-            color: var(--japandi-text-secondary);
-            font-size: 1.1rem;
-        }
-        
-        /* Menu Container */
-        .menu-container {
-            position: relative;
-        }
-        
-        /* Restaurant Hero Actions */
-        .restaurant-hero-actions {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-bottom: 40px;
-            flex-wrap: wrap;
-        }
-        .restaurant-hero-actions .btn {
-            min-width: 180px;
-        }
-        
-        /* Menu Type Tabs - Premium Segmented Control */
-        .menu-type-tabs {
-            display: inline-flex;
-            justify-content: center;
-            margin: 0 auto 44px;
-            background: rgba(139, 115, 85, 0.06);
-            border: 1px solid var(--japandi-border);
-            border-radius: 60px;
-            padding: 5px;
-            position: relative;
-            width: auto;
-        }
-        /* centre the inline-flex pill within its parent */
-        .menu-type-tabs-wrap {
-            text-align: center;
-            margin-bottom: 44px;
-        }
-        .menu-type-tabs-wrap .menu-type-tabs {
-            margin-bottom: 0;
-        }
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+    </noscript>
 
-        .menu-type-tab {
-            background: transparent;
-            border: none;
-            color: var(--japandi-text-secondary);
-            padding: 13px 30px;
-            border-radius: 50px;
-            cursor: pointer;
-            font-family: 'Poppins', sans-serif;
-            font-size: 0.88rem;
-            font-weight: 500;
-            letter-spacing: 0.3px;
-            transition: all 0.35s cubic-bezier(.4,0,.2,1);
-            display: inline-flex;
-            align-items: center;
-            gap: 9px;
-            position: relative;
-            z-index: 1;
-            white-space: nowrap;
-        }
-        .menu-type-tab i {
-            font-size: 0.92rem;
-            transition: transform 0.3s ease;
-        }
-        .menu-type-tab:hover {
-            color: var(--japandi-text-primary);
-        }
-        .menu-type-tab:hover i {
-            transform: scale(1.12);
-        }
-        .menu-type-tab.active {
-            background: var(--japandi-accent);
-            color: #ffffff;
-            box-shadow: 0 4px 14px rgba(139, 115, 85, 0.32);
-        }
-        .menu-type-tab.active i {
-            transform: scale(1.1);
-        }
+    <!-- Font Awesome --><noscript></noscript>
 
-        @media (max-width: 520px) {
-            .menu-type-tabs-wrap {
-                padding: 8px;
-                border-radius: 14px;
-            }
-            .menu-type-tab {
-                padding: 9px 12px;
-                font-size: 0.76rem;
-                gap: 6px;
-            }
-        }
-        
-        /* Category Tabs - Japandi Style */
-        .menu-tabs {
-            display: flex;
-            justify-content: center;
-            gap: 6px;
-            margin-bottom: 40px;
-            flex-wrap: wrap;
-        }
-        .menu-tab {
-            background: transparent;
-            border: none;
-            color: var(--japandi-text-secondary);
-            padding: 12px 24px;
-            cursor: pointer;
-            font-family: 'Poppins', sans-serif;
-            font-size: 0.85rem;
-            font-weight: 400;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            transition: all 0.3s ease;
-            position: relative;
-        }
-        .menu-tab:hover {
-            color: var(--japandi-text-primary);
-        }
-        .menu-tab.active {
-            color: var(--japandi-text-primary);
-            font-weight: 600;
-        }
-        .menu-tab.active::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 40px;
-            height: 2px;
-            background: var(--japandi-accent);
-        }
-        
-        /* Menu Categories */
-        .menu-categories-wrapper {
-            min-height: 400px;
-        }
+    <!-- Main CSS - Loads all stylesheets in correct order -->
+    <link rel="stylesheet" href="css/base/critical.css">
+    <link rel="stylesheet" href="css/main.css">
 
-        @keyframes chipFloatIn {
-            from {
-                opacity: 0;
-                transform: translateY(6px) scale(0.98);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
-        }
-
-        @media (max-width: 768px) {
-            .menu-type-tabs-wrap {
-                margin: 0 0 20px;
-                padding: 10px;
-                border-radius: 16px;
-                background: rgba(255, 255, 255, 0.88);
-                border: 1px solid rgba(139, 115, 85, 0.18);
-                box-shadow: 0 10px 26px rgba(10, 20, 35, 0.08);
-                backdrop-filter: blur(8px);
-                -webkit-backdrop-filter: blur(8px);
-                animation: chipFloatIn 0.28s ease-out;
-            }
-
-            .menu-type-tabs-wrap .menu-type-tabs {
-                width: 100%;
-                display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-                gap: 8px;
-                margin: 0;
-                padding: 0;
-                border: 0;
-                border-radius: 0;
-                background: transparent;
-            }
-
-            .menu-type-tab {
-                width: 100%;
-                min-width: 0;
-                padding: 10px 12px;
-                font-size: 0.8rem;
-                font-weight: 600;
-                letter-spacing: 0.2px;
-                line-height: 1.3;
-                text-align: center;
-                justify-content: center;
-                border-radius: 14px;
-                border: 1px solid rgba(139, 115, 85, 0.25);
-                background: rgba(247, 242, 234, 0.92);
-                color: #6a5b4c;
-                white-space: normal;
-                word-break: break-word;
-                position: relative;
-                overflow: hidden;
-                transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, color 0.22s ease;
-                animation: chipFloatIn 0.24s ease-out both;
-            }
-
-            .menu-type-tab::before {
-                content: '';
-                position: absolute;
-                inset: 0;
-                border-radius: inherit;
-                padding: 1px;
-                background: linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(139, 115, 85, 0.95));
-                -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-                mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-                -webkit-mask-composite: xor;
-                mask-composite: exclude;
-                opacity: 0;
-                transition: opacity 0.24s ease;
-                pointer-events: none;
-            }
-
-            .menu-type-tab:active {
-                transform: scale(0.98);
-            }
-
-            .menu-type-tab.active {
-                background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 243, 235, 0.98) 100%);
-                color: #4f3b27;
-                border-color: transparent;
-                box-shadow: 0 7px 18px rgba(117, 88, 59, 0.22);
-            }
-
-            .menu-type-tab.active::before {
-                opacity: 1;
-            }
-
-            .menu-categories-wrapper {
-                min-height: 0;
-                padding: 14px;
-                border-radius: 14px;
-                background: rgba(255, 255, 255, 0.88);
-                border: 1px solid rgba(139, 115, 85, 0.16);
-                box-shadow: 0 10px 24px rgba(10, 20, 35, 0.06);
-                backdrop-filter: blur(6px);
-                -webkit-backdrop-filter: blur(6px);
-                animation: chipFloatIn 0.3s ease-out;
-            }
-
-            .menu-tabs {
-                justify-content: center;
-                flex-wrap: wrap;
-                gap: 8px;
-                margin-bottom: 18px;
-                padding-bottom: 0;
-            }
-
-            .menu-tab {
-                flex: 0 1 calc(50% - 6px);
-                max-width: 100%;
-                min-width: 120px;
-                padding: 10px 12px;
-                border: 1px solid rgba(139, 115, 85, 0.2);
-                border-radius: 14px;
-                background: rgba(247, 242, 234, 0.92);
-                font-size: 0.79rem;
-                font-weight: 600;
-                letter-spacing: 0.2px;
-                text-transform: none;
-                white-space: normal;
-                word-break: break-word;
-                text-align: center;
-                position: relative;
-                overflow: hidden;
-                transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.22s ease, color 0.22s ease;
-                animation: chipFloatIn 0.24s ease-out both;
-            }
-
-            .menu-tab::before {
-                content: '';
-                position: absolute;
-                inset: 0;
-                border-radius: inherit;
-                padding: 1px;
-                background: linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(139, 115, 85, 0.95));
-                -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-                mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-                -webkit-mask-composite: xor;
-                mask-composite: exclude;
-                opacity: 0;
-                transition: opacity 0.24s ease;
-                pointer-events: none;
-            }
-
-            .menu-tab:active {
-                transform: scale(0.98);
-            }
-
-            .menu-tab.active {
-                color: #4f3b27;
-                background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 243, 235, 0.98) 100%);
-                border-color: transparent;
-                box-shadow: 0 6px 14px rgba(117, 88, 59, 0.2);
-            }
-
-            .menu-tab.active::before {
-                opacity: 1;
-            }
-
-            .menu-tab.active::after {
-                display: none;
-            }
-
-            .menu-type-tab:nth-child(1),
-            .menu-tab:nth-child(1) { animation-delay: 0.02s; }
-            .menu-type-tab:nth-child(2),
-            .menu-tab:nth-child(2) { animation-delay: 0.05s; }
-            .menu-type-tab:nth-child(3),
-            .menu-tab:nth-child(3) { animation-delay: 0.08s; }
-            .menu-tab:nth-child(4) { animation-delay: 0.11s; }
-            .menu-tab:nth-child(5) { animation-delay: 0.14s; }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .menu-type-tabs-wrap,
-            .menu-categories-wrapper,
-            .menu-type-tab,
-            .menu-tab {
-                animation: none !important;
-                transition: none !important;
-            }
-        }
-
-        @media (max-width: 520px) {
-            .menu-type-tabs-wrap .menu-type-tabs {
-                grid-template-columns: 1fr;
-                gap: 7px;
-            }
-
-            .menu-categories-wrapper {
-                padding: 12px;
-            }
-
-            .menu-tab {
-                flex: 1 1 100%;
-                min-width: 0;
-                padding: 9px 10px;
-                font-size: 0.75rem;
-            }
-        }
-        .menu-category {
-            display: none;
-            animation: fadeIn 0.5s ease;
-        }
-        .menu-category.active {
-            display: block;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* Menu Items Grid - Japandi Style */
-        .menu-items-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-            gap: 32px;
-        }
-        @media (max-width: 768px) {
-            .menu-items-grid {
-                grid-template-columns: 1fr;
-                gap: 24px;
-            }
-        }
-        
-        /* Menu Item - Japandi Style */
-        .menu-item {
-            background: var(--japandi-card-bg);
-            border: 1px solid var(--japandi-border);
-            border-radius: 8px;
-            padding: 32px;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-        }
-        .menu-item:hover {
-            border-color: var(--japandi-accent);
-            box-shadow: var(--japandi-shadow-hover);
-            transform: translateY(-4px);
-        }
-        .menu-item.featured {
-            border-color: var(--japandi-accent);
-            background: linear-gradient(135deg, #ffffff 0%, #faf8f5 100%);
-        }
-        
-        /* Featured Badge - Japandi Style */
-        .featured-badge {
-            position: static;
-            background: var(--japandi-accent);
-            color: #ffffff;
-            padding: 6px 12px;
-            border-radius: 2px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            white-space: nowrap;
-        }
-
-        .menu-item-title {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        /* Menu Item Header - Japandi Style */
-        .menu-item-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 16px;
-            gap: 20px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--japandi-border);
-        }
-        .menu-item-name {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.35rem;
-            font-weight: 500;
-            color: var(--japandi-text-primary);
-            margin: 0;
-            line-height: 1.3;
-        }
-        .menu-item-price {
-            font-family: 'Poppins', sans-serif;
-            font-size: 1.15rem;
-            font-weight: 600;
-            color: var(--japandi-accent);
-            white-space: nowrap;
-        }
-        
-        /* Menu Item Description - Japandi Style */
-        .menu-item-description {
-            color: var(--japandi-text-secondary);
-            font-size: 0.95rem;
-            line-height: 1.8;
-            margin: 0 0 20px 0;
-            font-weight: 300;
-        }
-        
-        /* Menu Item Tags - Japandi Style */
-        .menu-item-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .tag {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            border-radius: 2px;
-            font-size: 0.7rem;
-            font-weight: 500;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-        }
-        .tag-vegetarian {
-            background: rgba(76, 175, 80, 0.1);
-            color: #5a8f5e;
-            border: 1px solid rgba(76, 175, 80, 0.2);
-        }
-        .tag-vegan {
-            background: rgba(139, 195, 74, 0.1);
-            color: #7a9f4a;
-            border: 1px solid rgba(139, 195, 74, 0.2);
-        }
-        .tag-allergen {
-            background: rgba(244, 67, 54, 0.08);
-            color: #c62828;
-            border: 1px solid rgba(244, 67, 54, 0.15);
-        }
-        .tag-drink {
-            background: rgba(139, 115, 85, 0.1);
-            color: var(--japandi-accent);
-            border: 1px solid rgba(139, 115, 85, 0.2);
-        }
-        
-        /* Menu CTA */
-        .menu-cta {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-top: 50px;
-            flex-wrap: wrap;
-        }
-        
-        /* Empty State - Japandi Style */
-        .menu-empty-state {
-            text-align: center;
-            padding: 80px 20px;
-            color: var(--japandi-text-secondary);
-        }
-        .menu-empty-state i {
-            font-size: 3rem;
-            color: var(--japandi-accent);
-            opacity: 0.3;
-            margin-bottom: 24px;
-        }
-        .menu-empty-state h3 {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.5rem;
-            color: var(--japandi-text-primary);
-            margin-bottom: 12px;
-            font-weight: 500;
-        }
-
-        /* QR Menu Panel - deep black/minimal lines */
-        .qr-menu-panel {
-            max-width: 980px;
-            margin: 0 auto 44px;
-            background: linear-gradient(135deg, #0f0f0f 0%, #141414 50%, #0f0f0f 100%);
-            border: 1px solid #1f1f1f;
-            border-radius: 18px;
-            padding: 38px;
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) 230px;
-            gap: 30px;
-            box-shadow: 0 24px 50px rgba(0, 0, 0, 0.45);
-        }
-        .qr-menu-brand {
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-            color: #f3f3f0;
-        }
-        .qr-menu-mark {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            padding: 6px 16px;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.08);
-            color: #fefefe;
-            font-size: 0.75rem;
-            letter-spacing: 0.6px;
-            text-transform: uppercase;
-            font-weight: 600;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-        }
-        .qr-menu-title {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.85rem;
-            margin: 0;
-            color: #ffffff;
-        }
-        .qr-menu-desc {
-            margin: 0;
-            color: #c7c7c7;
-            line-height: 1.8;
-            font-size: 1.02rem;
-            max-width: 620px;
-        }
-        .qr-menu-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-top: 6px;
-        }
-        .qr-menu-actions .btn {
-            min-width: 180px;
-            justify-content: center;
-            border-radius: 10px;
-            background: #f5e6d3;
-            color: #0f0f0f;
-            border: 1px solid #f5e6d3;
-        }
-        .qr-menu-actions .btn:hover {
-            background: #e8d7c0;
-            border-color: #e8d7c0;
-        }
-        .qr-menu-actions .btn-outline {
-            background: transparent;
-            color: #f5e6d3;
-            border: 1px solid rgba(245, 230, 211, 0.7);
-        }
-        .qr-menu-actions .btn-outline:hover {
-            background: rgba(245, 230, 211, 0.1);
-            color: #ffffff;
-            border-color: #f5e6d3;
-        }
-        .qr-menu-meta {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            color: #a8a8a8;
-            font-size: 0.95rem;
-            margin-top: 2px;
-            letter-spacing: 0.2px;
-        }
-        .qr-menu-qr {
-            justify-self: end;
-            text-align: center;
-        }
-        .qr-menu-qr img {
-            width: 210px;
-            height: 210px;
-            border-radius: 14px;
-            border: 1px solid rgba(245, 230, 211, 0.25);
-            background: #0a0a0a;
-            padding: 14px;
-            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
-        }
-        .qr-menu-url {
-            margin-top: 14px;
-            font-size: 0.86rem;
-            color: #d8d8d8;
-            word-break: break-all;
-            letter-spacing: 0.3px;
-        }
-        @media (max-width: 900px) {
-            .qr-menu-panel {
-                grid-template-columns: 1fr;
-                padding: 28px;
-            }
-            .qr-menu-qr {
-                justify-self: start;
-            }
-            .qr-menu-qr img {
-                width: 190px;
-                height: 190px;
-            }
-        }
-
-        .reservation-section {
-            background: #ffffff;
-            border-top: 1px solid var(--japandi-border);
-            border-bottom: 1px solid var(--japandi-border);
-        }
-        .reservation-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            align-items: start;
-        }
-        .reservation-card {
-            background: #fff;
-            border: 1px solid var(--japandi-border);
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: var(--japandi-shadow);
-        }
-        .reservation-card h3 {
-            margin-top: 0;
-            font-family: 'Playfair Display', serif;
-            color: #0A1929;
-        }
-        .reservation-form .form-group {
-            margin-bottom: 14px;
-        }
-        .reservation-form label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: #0A1929;
-        }
-        .reservation-form .form-control {
-            width: 100%;
-            padding: 11px 12px;
-            border-radius: 8px;
-            border: 1px solid #d9d9d9;
-            font-size: 15px;
-            font-family: 'Poppins', sans-serif;
-        }
-        .reservation-alert {
-            padding: 12px 14px;
-            border-radius: 8px;
-            margin-bottom: 14px;
-            font-size: 14px;
-        }
-        .reservation-alert.success {
-            background: #e8f7ee;
-            border: 1px solid #bfe8cf;
-            color: #1f7a44;
-        }
-        .reservation-alert.error {
-            background: #fdecec;
-            border: 1px solid #f3c0c0;
-            color: #9b1c1c;
-        }
-        
-        /* Real-time validation error message styling */
-        .error-message {
-            display: none;
-            color: #d32f2f;
-            font-size: 12px;
-            margin-top: 4px;
-            padding: 4px 0;
-            font-weight: 500;
-        }
-        
-        .error-message.show {
-            display: block;
-        }
-        
-        .form-control.invalid {
-            border-color: #d32f2f;
-            background-color: #fff8f8;
-        }
-        
-        .form-control.valid {
-            border-color: #4caf50;
-        }
-        
-        .contact-list {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: grid;
-            gap: 12px;
-        }
-        .contact-list li {
-            color: #333;
-            line-height: 1.6;
-        }
-        .contact-list i {
-            color: var(--japandi-accent);
-            margin-right: 8px;
-            width: 18px;
-        }
-        @media (max-width: 900px) {
-            .reservation-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .reservation-card {
-                padding: 20px;
-            }
-        }
-
-        @media (max-width: 640px) {
-            .reservation-section .container,
-            .reservation-grid,
-            .reservation-card,
-            .reservation-form,
-            .reservation-form .form-group {
-                width: 100%;
-                max-width: 100%;
-                min-width: 0;
-                box-sizing: border-box;
-            }
-
-            .reservation-grid {
-                gap: 16px;
-            }
-
-            .reservation-card {
-                padding: 16px;
-                border-radius: 10px;
-            }
-
-            .reservation-form .form-control,
-            .reservation-form input[type="date"],
-            .reservation-form input[type="time"],
-            .reservation-form input[type="number"],
-            .reservation-form select,
-            .reservation-form textarea {
-                width: 100%;
-                max-width: 100%;
-                min-height: 40px;
-                padding: 8px 10px;
-                font-size: 14px;
-                box-sizing: border-box;
-            }
-
-            .reservation-form textarea {
-                min-height: 92px;
-            }
-
-            .reservation-form .phone-input-group {
-                display: flex;
-                gap: 8px;
-                align-items: stretch;
-                width: 100%;
-                max-width: 100%;
-            }
-
-            .reservation-form .phone-input-group .phone-code-select {
-                flex: 0 0 104px;
-                width: 104px;
-                min-width: 104px;
-                max-width: 104px;
-            }
-
-            .reservation-form .phone-input-group .phone-number-input {
-                flex: 1 1 auto;
-                min-width: 0;
-            }
-
-            .reservation-form .btn,
-            .reservation-form .btn-primary {
-                width: 100%;
-                min-height: 42px;
-                padding: 10px 12px;
-                font-size: 13px;
-                letter-spacing: 0.5px;
-            }
-
-            .restaurant-hero-actions .btn,
-            .menu-cta .btn,
-            .qr-menu-actions .btn {
-                width: 100%;
-                min-width: 0;
-            }
-
-            .qr-menu-actions {
-                width: 100%;
-            }
-        }
-
-        @media (max-width: 380px) {
-            .reservation-form .form-control,
-            .reservation-form input[type="date"],
-            .reservation-form input[type="time"],
-            .reservation-form input[type="number"],
-            .reservation-form select,
-            .reservation-form textarea {
-                min-height: 38px;
-                padding: 7px 9px;
-                font-size: 13px;
-            }
-
-            .reservation-form .btn,
-            .reservation-form .btn-primary {
-                min-height: 40px;
-                padding: 9px 10px;
-                font-size: 12.5px;
-            }
-
-            .reservation-form .phone-input-group {
-                flex-direction: column;
-            }
-
-            .reservation-form .phone-input-group .phone-code-select,
-            .reservation-form .phone-input-group .phone-number-input {
-                width: 100%;
-                min-width: 0;
-                max-width: 100%;
-                flex: 1 1 auto;
-            }
-        }
-    </style>
 </head>
+
 <body>
     <?php include 'includes/loader.php'; ?>
-    
-    <!-- Loading Animation -->
-    <div class="page-loader">
-        <div class="loader-content">
-            <div class="luxury-spinner"></div>
-            <p class="loader-text">Preparing Your Culinary Experience</p>
-        </div>
-    </div>
-    
-    <?php include 'includes/header.php'; ?>
 
-    <main>
-    <!-- Mobile Menu Overlay -->
-    <div class="mobile-menu-overlay" role="presentation"></div>
+    <?php include 'includes/header.php'; ?>
 
     <!-- Hero Section -->
     <?php include 'includes/hero.php'; ?>
 
-    <!-- Restaurant Gallery Grid -->
-    <section class="restaurant-gallery section-padding">
-        <div class="container">
-            <?php renderSectionHeader('restaurant_gallery', 'restaurant', [
-                'label' => 'Visual Journey',
-                'title' => 'Our Dining Spaces',
-                'description' => 'From elegant interiors to breathtaking views, every detail creates the perfect ambiance'
-            ], 'text-center'); ?>
+    <main id="main-content">
 
-            <div class="gallery-grid">
-                <?php if (!empty($gallery_images)): ?>
-                    <?php foreach ($gallery_images as $index => $image): ?>
-                        <div class="gallery-item" data-aos="fade-up" data-aos-delay="<?php echo $index * 100; ?>">
-                            <img src="<?php echo htmlspecialchars($image['image_path']); ?>" alt="<?php echo htmlspecialchars($image['caption']); ?>" loading="lazy">
-                            <div class="gallery-overlay">
-                                <p class="gallery-caption"><?php echo htmlspecialchars($image['caption']); ?></p>
+        <!-- Matuwi Kitchen Welcome Section -->
+        <?php if (!empty($matuwi_welcome)): ?>
+            <section class="matuwi-welcome-section section-padding" id="welcome">
+                <div class="container">
+                    <div class="matuwi-welcome-content">
+                        <?php if (!empty($matuwi_welcome['section_label'])): ?>
+                            <span class="matuwi-welcome-label">
+                                <?php echo htmlspecialchars($matuwi_welcome['section_label']); ?>
+                            </span>
+                        <?php endif; ?>
+
+                        <?php if (!empty($matuwi_welcome['section_title'])): ?>
+                            <h2 class="matuwi-welcome-title">
+                                <?php echo htmlspecialchars($matuwi_welcome['section_title']); ?>
+                            </h2>
+                        <?php endif; ?>
+
+                        <?php if (!empty($matuwi_welcome['section_description'])): ?>
+                            <div class="matuwi-welcome-text">
+                                <?php echo nl2br(htmlspecialchars($matuwi_welcome['section_description'])); ?>
                             </div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <!-- Fallback images if database is empty -->
-                    <div class="gallery-item"><img src="images/restaurant/dining-area-1.jpg" alt="Elegant Dining Area" loading="lazy"><div class="gallery-overlay"><p class="gallery-caption">Elegant Dining Area</p></div></div>
-                    <div class="gallery-item"><img src="images/restaurant/dining-area-2.jpg" alt="Intimate Indoor Seating" loading="lazy"><div class="gallery-overlay"><p class="gallery-caption">Intimate Indoor Seating</p></div></div>
-                    <div class="gallery-item"><img src="images/restaurant/bar-area.jpg" alt="Premium Bar" loading="lazy"><div class="gallery-overlay"><p class="gallery-caption">Premium Bar</p></div></div>
-                    <div class="gallery-item"><img src="images/restaurant/food-platter.jpg" alt="Fresh Seafood" loading="lazy"><div class="gallery-overlay"><p class="gallery-caption">Fresh Seafood</p></div></div>
-                    <div class="gallery-item"><img src="images/restaurant/fine-dining.jpg" alt="Fine Dining Experience" loading="lazy"><div class="gallery-overlay"><p class="gallery-caption">Fine Dining Experience</p></div></div>
-                    <div class="gallery-item"><img src="images/restaurant/outdoor-terrace.jpg" alt="Alfresco Terrace" loading="lazy"><div class="gallery-overlay"><p class="gallery-caption">Alfresco Terrace</p></div></div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </section>
-
-    <!-- Menu Section -->
-    <section class="restaurant-menu section-padding" style="background: var(--japandi-bg);">
-        <div class="container">
-            <?php renderSectionHeader('restaurant_menu', 'restaurant', [
-                'label' => 'Culinary Delights',
-                'title' => 'Our Menu',
-                'description' => 'Discover our carefully curated selection of dishes and beverages'
-            ], 'text-center'); ?>
-
-            <!-- Menu Container -->
-            <div class="menu-container">
-                <!-- Restaurant Hero Actions (moved here) -->
-                <div class="restaurant-hero-actions">
-                    <a href="#book" class="btn btn-primary"><i class="fas fa-utensils"></i> Reserve a Table</a>
-                    <a href="#contact" class="btn btn-outline"><i class="fas fa-phone"></i> Call Restaurant</a>
-                </div>
-
-                <!-- QR Menu Panel -->
-                <div class="qr-menu-panel" data-aos="fade-up">
-                    <div class="qr-menu-brand">
-                        <span class="qr-menu-mark"><i class="fas fa-qrcode"></i> Scan &amp; Dine</span>
-                        <h3 class="qr-menu-title">Digital Menu</h3>
-                        <p class="qr-menu-desc">Browse our full menu on your phone. Scan the QR code or tap below to view dishes, prices, and save a copy as PDF.</p>
-                        <div class="qr-menu-actions">
-                            <a class="btn" href="<?php echo htmlspecialchars($menu_page_url); ?>" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i> View Menu</a>
-                            <a class="btn btn-outline" href="<?php echo htmlspecialchars($menu_page_url); ?>" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Save as PDF</a>
-                        </div>
-                        <div class="qr-menu-meta">
-                            <i class="fas fa-sync-alt" style="font-size:0.8rem;"></i>
-                            <span>Always up to date</span>
-                            <span aria-hidden="true">·</span>
-                            <span>Live from our kitchen</span>
-                        </div>
-                    </div>
-                    <div class="qr-menu-qr">
-                        <img src="<?php echo $menu_qr_image; ?>" alt="QR code to view the restaurant menu" loading="lazy">
+                        <?php endif; ?>
                     </div>
                 </div>
+            </section>
+        <?php endif; ?>
 
-                <!-- Menu Type Tabs -->
-                <div class="menu-type-tabs-wrap">
-                <div class="menu-type-tabs">
-                    <button type="button" class="menu-type-tab active" data-type="food">
-                        <i class="fas fa-utensils"></i> Food Menu
-                    </button>
-                    <button type="button" class="menu-type-tab" data-type="coffee">
-                        <i class="fas fa-coffee"></i> Coffee
-                    </button>
-                    <button type="button" class="menu-type-tab" data-type="bar">
-                        <i class="fas fa-glass-martini-alt"></i> Bar & Drinks
-                    </button>
-                </div>
-                </div>
+        <!-- Menu Section -->
+        <section class="restaurant-menu section-padding" id="menu">
+            <div class="container">
+                <?php renderSectionHeader('restaurant_menu', 'restaurant', [
+                    'label' => 'Culinary Delights',
+                    'title' => 'Our Menu',
+                    'description' => 'Discover our carefully curated selection of dishes and beverages'
+                ], 'text-center'); ?>
 
-                <!-- Loading State -->
-                <div class="menu-loading" id="menuLoading">
-                    <div class="menu-loading-spinner"></div>
-                    <p class="menu-loading-text">Loading menu...</p>
-                </div>
+                <!-- Menu Container -->
+                <div class="menu-container" id="menu-container">
+                    <!-- Restaurant Hero Actions (moved here) -->
+                    <div class="restaurant-hero-actions">
+                        <a href="<?php echo !empty($restaurant_contact_email) ? 'mailto:' . rawurlencode($restaurant_contact_email) : '#contact'; ?>" class="btn btn-primary"><i class="fas fa-utensils"></i> Reserve a Table</a>
+                        <a href="<?php echo !empty($restaurant_phone) ? 'tel:' . preg_replace('/[^0-9+]/', '', $restaurant_phone) : '#contact'; ?>" class="btn btn-outline"><i class="fas fa-phone"></i> Call Restaurant</a>
+                    </div>
 
-                <!-- Menu Categories Wrapper -->
-                <div class="menu-categories-wrapper" id="menuCategoriesWrapper">
-                    <!-- Category Tabs -->
-                    <div class="menu-tabs" id="menuTabs"></div>
-                    
-                    <!-- Menu Content -->
-                    <div id="menuContent"></div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Experience Section -->
-    <section class="restaurant-experience section-padding">
-        <div class="container">
-            <div class="experience-grid">
-                <div class="experience-item" data-aos="fade-up">
-                    <div class="experience-icon"><i class="fas fa-utensils"></i></div>
-                    <h3>Fine Dining</h3>
-                    <p>Experience culinary artistry with our carefully crafted menu featuring local Malawian flavors and international cuisine</p>
-                </div>
-                <div class="experience-item" data-aos="fade-up" data-aos-delay="100">
-                    <div class="experience-icon"><i class="fas fa-cocktail"></i></div>
-                    <h3>Premium Bar</h3>
-                    <p>Enjoy handcrafted cocktails, fine wines, and premium spirits in our elegant bar lounge</p>
-                </div>
-                <div class="experience-item" data-aos="fade-up" data-aos-delay="200">
-                    <div class="experience-icon"><i class="fas fa-fish"></i></div>
-                    <h3>Fresh Local Ingredients</h3>
-                    <p>We source the freshest chambo from Lake Malawi and seasonal produce from local farms</p>
-                </div>
-                <div class="experience-item" data-aos="fade-up" data-aos-delay="300">
-                    <div class="experience-icon"><i class="fas fa-sun"></i></div>
-                    <h3>Alfresco Dining</h3>
-                    <p>Dine under the stars on our terrace with breathtaking views of the surrounding landscape</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section id="book" class="reservation-section section-padding">
-        <div class="container">
-            <div class="reservation-grid">
-                <div class="reservation-card">
-                    <h3>Reserve A Table</h3>
-
-                    <?php if ($reservation_success): ?>
-                        <div class="reservation-alert success">
-                            Reservation request sent successfully. Reference: <strong><?php echo htmlspecialchars($reservation_reference); ?></strong>. We will contact you shortly.
-                        </div>
-                    <?php endif; ?>
-
-                    <?php if (!empty($reservation_error)): ?>
-                        <div class="reservation-alert error">
-                            <?php echo htmlspecialchars($reservation_error); ?>
-                        </div>
-                    <?php endif; ?>
-
-                    <form method="POST" class="reservation-form validate-form" action="restaurant.php#book" id="restaurantReservationForm">
-                        <?php echo getCsrfField(); ?>
-<input type="hidden" name="restaurant_reservation_form" value="1">
-                        
-                        <!-- Hidden settings for client-side validation -->
-                        <input type="hidden" id="minAdvanceDays" value="<?php echo htmlspecialchars(getSetting('restaurant_min_advance_days', '1')); ?>">
-                        <input type="hidden" id="breakfastStart" value="<?php echo htmlspecialchars(getSetting('restaurant_breakfast_start', '06:00')); ?>">
-                        <input type="hidden" id="breakfastEnd" value="<?php echo htmlspecialchars(getSetting('restaurant_breakfast_end', '10:00')); ?>">
-                        <input type="hidden" id="lunchStart" value="<?php echo htmlspecialchars(getSetting('restaurant_lunch_start', '12:00')); ?>">
-                        <input type="hidden" id="lunchEnd" value="<?php echo htmlspecialchars(getSetting('restaurant_lunch_end', '15:00')); ?>">
-                        <input type="hidden" id="dinnerStart" value="<?php echo htmlspecialchars(getSetting('restaurant_dinner_start', '18:00')); ?>">
-                        <input type="hidden" id="dinnerEnd" value="<?php echo htmlspecialchars(getSetting('restaurant_dinner_end', '22:00')); ?>">
-
-                        <div class="form-group">
-                            <label for="full_name" class="required">Full Name</label>
-                            <input class="form-control" type="text" id="full_name" name="full_name" required value="<?php echo htmlspecialchars($_POST['full_name'] ?? ''); ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="email" class="required">Email</label>
-                            <input class="form-control" type="email" id="email" name="email" required value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="phone_number" class="required">Phone</label>
-                            <div class="phone-input-group">
-                                <select name="phone_code" id="phone_code" class="phone-code-select" required>
-                                    <?php foreach ($countries as $c): ?>
-                                    <option value="<?php echo htmlspecialchars($c['code']); ?>"
-                                        <?php echo ((isset($_POST['phone_code']) ? $_POST['phone_code'] : '+265') === $c['code']) ? 'selected' : ''; ?>>
-                                        <?php echo $c['flag'] . ' ' . htmlspecialchars($c['code']); ?>
-                                    </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <input class="form-control phone-number-input" type="tel" id="phone_number" name="phone_number" required
-                                    placeholder="e.g. 991234567"
-                                    value="<?php echo htmlspecialchars($_POST['phone_number'] ?? ''); ?>">
+                    <!-- Menu Control Bar: QR + Tabs -->
+                    <div class="menu-control-bar" data-aos="fade-up">
+                        <!-- Left: QR panel -->
+                        <div class="qr-menu-panel">
+                            <div class="qr-menu-brand">
+                                <span class="qr-menu-mark"><i class="fas fa-qrcode"></i> Scan &amp; Dine</span>
+                                <h3 class="qr-menu-title">Digital Menu</h3>
+                                <p class="qr-menu-desc">Browse our full menu on your phone. Scan the QR code or tap below to view dishes, prices, and save a copy as PDF.</p>
+                                <div class="qr-menu-actions">
+                                    <a class="btn" href="<?php echo htmlspecialchars($menu_view_url); ?>" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i> View Menu</a>
+                                    <a class="btn btn-outline" href="<?php echo htmlspecialchars($menu_pdf_url); ?>" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Save as PDF</a>
+                                </div>
+                                <div class="qr-menu-meta">
+                                    <i class="fas fa-sync-alt"></i>
+                                    <span>Always up to date</span>
+                                    <span aria-hidden="true">·</span>
+                                    <span>Live from our kitchen</span>
+                                </div>
+                            </div>
+                            <div class="qr-menu-qr">
+                                <div class="qr-wrap">
+                                    <div class="qr-glow"></div>
+                                    <div class="qr-pulse-ring"></div>
+                                    <div class="qr-pulse-ring-2"></div>
+                                    <div class="qr-code-container">
+                                        <img src="<?php echo $menu_qr_image; ?>" alt="QR code to view the restaurant menu" loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22%3E%3Crect fill=%22%23ffffff%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22monospace%22 font-size=%2214%22 fill=%22%23000%22%3EScan QR Code%3C/text%3E%3Crect x=%2240%22 y=%2240%22 width=%2230%22 height=%2230%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%224%22/%3E%3Crect x=%22130%22 y=%2240%22 width=%2230%22 height=%2230%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%224%22/%3E%3Crect x=%2240%22 y=%22130%22 width=%2230%22 height=%2230%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%224%22/%3E%3Crect x=%2275%22 y=%2275%22 width=%2250%22 height=%2250%22 fill=%22%23000%22/%3E%3C/svg%3E';">
+                                        <div class="scan-corners"><span></span></div>
+                                    </div>
+                                    <span class="qr-label"><i class="fas fa-qrcode"></i> Scan to View Menu</span>
+                                    <span class="qr-subtitle">Instant access on your device</span>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label for="preferred_date" class="required">Preferred Date</label>
-                            <input class="form-control" type="date" id="preferred_date" name="preferred_date" required value="<?php echo htmlspecialchars($_POST['preferred_date'] ?? ''); ?>" min="<?php 
-                                $minAdvanceDays = (int)getSetting('restaurant_min_advance_days', 1);
-                                $minDate = new DateTime();
-                                $minDate->modify("+{$minAdvanceDays} days");
-                                echo $minDate->format('Y-m-d');
-                            ?>">
-                            <div class="error-message" id="dateError"></div>
+                        <!-- Right: Segmented tabs -->
+                        <div class="menu-type-tabs-wrap">
+                            <div class="menu-type-tabs">
+                                <button type="button" class="menu-type-tab active" data-type="food">
+                                    <i class="fas fa-utensils"></i> Food Menu
+                                </button>
+                                <button type="button" class="menu-type-tab" data-type="coffee">
+                                    <i class="fas fa-coffee"></i> Coffee
+                                </button>
+                                <button type="button" class="menu-type-tab" data-type="bar">
+                                    <i class="fas fa-glass-martini-alt"></i> Bar & Drinks
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div class="menu-loading" id="menuLoading">
+                        <div class="menu-loading-spinner"></div>
+                        <p class="menu-loading-text">Loading menu...</p>
+                    </div>
+
+                    <!-- Menu Categories Wrapper -->
+                    <div class="menu-categories-wrapper" id="menuCategoriesWrapper" aria-live="polite" aria-busy="false">
+                        <!-- Category Tabs -->
+                        <div class="menu-tabs" id="menuTabs" role="tablist" aria-label="Menu categories">
+                            <?php
+                            // Server-side render initial menu tabs for immediate display
+                            if (!empty($initial_menu_data['categories'])):
+                                $catIndex = 0;
+                                foreach ($initial_menu_data['categories'] as $slug => $category):
+                            ?>
+                                    <button
+                                        type="button"
+                                        class="menu-tab <?php echo $catIndex === 0 ? 'active' : ''; ?>"
+                                        data-category="<?php echo htmlspecialchars($slug); ?>"
+                                        role="tab"
+                                        aria-selected="<?php echo $catIndex === 0 ? 'true' : 'false'; ?>"
+                                        aria-controls="menu-panel-<?php echo htmlspecialchars($slug); ?>"
+                                        id="menu-tab-<?php echo htmlspecialchars($slug); ?>">
+                                        <span class="menu-tab-name"><?php echo htmlspecialchars($category['name']); ?></span>
+                                        <span class="menu-tab-count"><?php echo count($category['items']); ?></span>
+                                    </button>
+                            <?php
+                                    $catIndex++;
+                                endforeach;
+                            endif;
+                            ?>
                         </div>
 
-                        <div class="form-group">
-                            <label for="preferred_time" class="required">Preferred Time</label>
-                            <input class="form-control" type="time" id="preferred_time" name="preferred_time" required value="<?php echo htmlspecialchars($_POST['preferred_time'] ?? ''); ?>">
-                            <div class="error-message" id="timeError"></div>
+                        <!-- Menu Content -->
+                        <div id="menuContent" class="menu-content-panels">
+                            <?php
+                            // Server-side render initial menu content for immediate display
+                            if (!empty($initial_menu_data['categories'])):
+                                $panelIndex = 0;
+                                foreach ($initial_menu_data['categories'] as $slug => $category):
+                            ?>
+                                    <div
+                                        class="menu-panel <?php echo $panelIndex === 0 ? 'active' : ''; ?>"
+                                        data-category="<?php echo htmlspecialchars($slug); ?>"
+                                        id="menu-panel-<?php echo htmlspecialchars($slug); ?>"
+                                        role="tabpanel"
+                                        aria-labelledby="menu-tab-<?php echo htmlspecialchars($slug); ?>">
+                                        <div class="menu-panel-header">
+                                            <h3 class="menu-panel-title"><?php echo htmlspecialchars($category['name']); ?></h3>
+                                            <p class="menu-panel-subtitle"><?php echo count($category['items']); ?> <?php echo count($category['items']) === 1 ? 'item' : 'items'; ?></p>
+                                        </div>
+                                        <div class="menu-items-grid">
+                                            <?php foreach ($category['items'] as $item): ?>
+                                                <div class="menu-item <?php echo !empty($item['is_featured']) ? 'featured' : ''; ?>">
+                                                    <div class="menu-item-header">
+                                                        <div class="menu-item-title">
+                                                            <h3 class="menu-item-name"><?php echo htmlspecialchars($item['name']); ?></h3>
+                                                            <?php if (!empty($item['is_featured'])): ?>
+                                                                <span class="featured-badge"><i class="fas fa-star"></i> Chef's Special</span>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                        <span class="menu-item-price"><?php echo $currency_symbol; ?><?php echo number_format($item['price'], 2); ?></span>
+                                                    </div>
+                                                    <?php if (!empty($item['description'])): ?>
+                                                        <p class="menu-item-description"><?php echo htmlspecialchars($item['description']); ?></p>
+                                                    <?php endif; ?>
+                                                    <div class="menu-item-tags">
+                                                        <?php if (!empty($item['is_vegetarian'])): ?>
+                                                            <span class="tag tag-vegetarian"><i class="fas fa-leaf"></i> Vegetarian</span>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($item['is_vegan'])): ?>
+                                                            <span class="tag tag-vegan"><i class="fas fa-seedling"></i> Vegan</span>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($item['allergens'])): ?>
+                                                            <span class="tag tag-allergen"><i class="fas fa-exclamation-triangle"></i> <?php echo htmlspecialchars($item['allergens']); ?></span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                            <?php
+                                    $panelIndex++;
+                                endforeach;
+                            endif;
+                            ?>
                         </div>
-
-                        <div class="form-group">
-                            <label for="guests" class="required">Number of Guests</label>
-                            <input class="form-control" type="number" id="guests" name="guests" min="1" max="20" required value="<?php echo htmlspecialchars($_POST['guests'] ?? '2'); ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="occasion">Occasion (Optional)</label>
-                            <input class="form-control" type="text" id="occasion" name="occasion" value="<?php echo htmlspecialchars($_POST['occasion'] ?? ''); ?>" placeholder="Birthday, Anniversary, Business dinner...">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="special_requests">Special Requests (Optional)</label>
-                            <textarea class="form-control" id="special_requests" name="special_requests" rows="4" placeholder="Dietary requirements, seating preference, accessibility needs..."><?php echo htmlspecialchars($_POST['special_requests'] ?? ''); ?></textarea>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Submit Reservation</button>
-                    </form>
-                </div>
-
-                <div class="reservation-card" id="contact">
-                    <h3>Restaurant Contact</h3>
-                    <p style="margin-top: 0; color: #555; line-height: 1.8;">
-                        For same-day reservations, private dining, or event dining, contact our team directly.
-                    </p>
-                    <ul class="contact-list">
-                        <li><i class="fas fa-envelope"></i><a href="mailto:<?php echo htmlspecialchars(getSetting('email_restaurant', getSetting('email_main', ''))); ?>"><?php echo htmlspecialchars(getSetting('email_restaurant', getSetting('email_main', ''))); ?></a></li>
-                        <li><i class="fas fa-phone"></i><a href="tel:<?php echo htmlspecialchars(preg_replace('/[^0-9+]/', '', getSetting('phone_main', ''))); ?>"><?php echo htmlspecialchars(getSetting('phone_main', '')); ?></a></li>
-                        <li><i class="fas fa-clock"></i>Breakfast: 6:30 AM - 10:00 AM</li>
-                        <li><i class="fas fa-clock"></i>Lunch: 12:00 PM - 2:30 PM</li>
-                        <li><i class="fas fa-clock"></i>Dinner: 6:30 PM - 10:00 PM</li>
-                    </ul>
+                    </div>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    </main>
-    <?php include 'includes/footer.php'; ?>
 
-    <!-- Scripts -->
-    <script src="js/modal.js"></script>
-    <script src="js/main.js"></script>
-    <script src="js/form-validation.js"></script>
-    <script>
-        // Currency settings (from PHP)
-        const currencySymbol = '<?php echo $currency_symbol; ?>';
-        const currencyCode = '<?php echo $currency_code; ?>';
-        
-        // Current menu state
-        let currentMenuType = 'food';
-        let currentCategory = null;
-        let menuData = null;
-        
-        // DOM Elements
-        const menuTypeTabs = document.querySelectorAll('.menu-type-tab');
-        const menuTabs = document.getElementById('menuTabs');
-        const menuContent = document.getElementById('menuContent');
-        const menuLoading = document.getElementById('menuLoading');
-        const menuCategoriesWrapper = document.getElementById('menuCategoriesWrapper');
-        
-        // Fetch menu data via AJAX
-        async function fetchMenuData(menuType) {
-            showLoading();
-            
-            try {
-                const response = await fetch(`?ajax=menu&menu_type=${menuType}`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    menuData = data;
-                    renderMenu(data);
-                } else {
-                    showError(data.error || 'Failed to load menu');
+        <!-- Passalacqua-Inspired Editorial Restaurant Gallery Grid (moved below menu) -->
+        <section class="editorial-gallery-section section-padding" id="gallery">
+            <div class="container">
+                <?php renderSectionHeader('restaurant_gallery', 'restaurant', [
+                    'label' => 'Visual Journey',
+                    'title' => 'Our Dining Spaces',
+                    'description' => 'From elegant interiors to breathtaking views, every detail creates the perfect ambiance'
+                ], 'text-center'); ?>
+                <div class="editorial-gallery-grid" id="editorial-gallery-grid">
+                    <?php if (!empty($gallery_images)): ?>
+                        <?php foreach ($gallery_images as $index => $image): ?>
+                            <div class="editorial-gallery-item">
+                                <?php if (!empty($image['video_path'])): ?>
+                                    <?php echo renderVideoEmbed($image['video_path'], $image['video_type'] ?? null, [
+                                        'autoplay' => false,
+                                        'muted' => true,
+                                        'controls' => true,
+                                        'loop' => false,
+                                        'lazy' => true,
+                                        'preload' => 'metadata',
+                                        'class' => 'restaurant-gallery-video',
+                                        'style' => 'width:100%;height:100%;object-fit:cover;'
+                                    ]); ?>
+                                <?php else: ?>
+                                    <img src="<?php echo htmlspecialchars($image['image_path']); ?>"
+                                        alt="<?php echo htmlspecialchars($image['caption']); ?>"
+                                        loading="lazy"
+                                        onerror="this.onerror=null;this.src='images/restaurant/bar-area.jpg';this.alt='Restaurant Image';">
+                                <?php endif; ?>
+                                <div class="editorial-gallery-caption"><?php echo htmlspecialchars($image['caption']); ?></div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="editorial-gallery-empty" style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; color: var(--text-muted, #888);">
+                            <i class="fas fa-images" style="font-size: 2.5rem; margin-bottom: 1rem; display: block; opacity: .4;"></i>
+                            <p>Gallery photos coming soon. Upload images in Admin &gt; Restaurant Gallery.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </section>
+
+
+
+        <!-- Passalacqua-Inspired Editorial Restaurant Experience Section -->
+        <section class="editorial-experience-section section-padding" id="experience">
+            <div class="container">
+                <div class="editorial-experience-grid" id="editorial-experience-grid">
+                    <div class="editorial-experience-item">
+                        <div class="editorial-experience-icon"><i class="fas fa-utensils"></i></div>
+                        <h3>Fine Dining</h3>
+                        <div class="editorial-experience-divider"></div>
+                        <p>Experience culinary artistry with our carefully crafted menu featuring local and international cuisine</p>
+                    </div>
+                    <div class="editorial-experience-item">
+                        <div class="editorial-experience-icon"><i class="fas fa-cocktail"></i></div>
+                        <h3>Premium Bar</h3>
+                        <div class="editorial-experience-divider"></div>
+                        <p>Enjoy handcrafted cocktails, fine wines, and premium spirits in our elegant bar lounge</p>
+                    </div>
+                    <div class="editorial-experience-item">
+                        <div class="editorial-experience-icon"><i class="fas fa-fish"></i></div>
+                        <h3>Fresh Local Ingredients</h3>
+                        <div class="editorial-experience-divider"></div>
+                        <p>We source the finest local and seasonal produce from nearby farms and waters</p>
+                    </div>
+                    <div class="editorial-experience-item">
+                        <div class="editorial-experience-icon"><i class="fas fa-sun"></i></div>
+                        <h3>Alfresco Dining</h3>
+                        <div class="editorial-experience-divider"></div>
+                        <p>Dine under the stars on our terrace with breathtaking views of the surrounding landscape</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Scripts -->
+        <script src="js/main.js"></script>
+        <script src="js/spatial-loading.js" defer></script>
+        <script>
+            // Currency settings (from PHP)
+            const currencySymbol = '<?php echo $currency_symbol; ?>';
+            const currencyCode = '<?php echo $currency_code; ?>';
+
+            // Pre-loaded menu data from server (for immediate display)
+            const initialMenuData = <?php echo json_encode($initial_menu_data); ?>;
+
+            // Current menu state
+            let currentMenuType = 'food';
+            let currentCategory = null;
+            let menuData = null;
+
+            // DOM Elements
+            let menuTypeTabs = null;
+            let menuTabs = null;
+            let menuContent = null;
+            let menuLoading = null;
+            let menuCategoriesWrapper = null;
+
+            // Initialize DOM elements
+            function initMenuElements() {
+                menuTypeTabs = document.querySelectorAll('.menu-type-tab');
+                menuTabs = document.getElementById('menuTabs');
+                menuContent = document.getElementById('menuContent');
+                menuLoading = document.getElementById('menuLoading');
+                menuCategoriesWrapper = document.getElementById('menuCategoriesWrapper');
+
+                if (!menuTabs || !menuContent || !menuLoading || !menuCategoriesWrapper) {
+                    return false;
                 }
-            } catch (error) {
-                console.error('Error fetching menu:', error);
-                showError('An error occurred while loading the menu');
-            } finally {
-                hideLoading();
+
+                // Debug: Check if elements are visible and have correct styles
+                const menuTypeTabsContainer = document.querySelector('.menu-type-tabs');
+                if (menuTypeTabsContainer) {
+                    const style = window.getComputedStyle(menuTypeTabsContainer);
+                }
+                if (menuTabs) {
+                    const style = window.getComputedStyle(menuTabs);
+                }
+
+                return true;
             }
-        }
-        
-        // Show loading state
-        function showLoading() {
-            menuLoading.classList.add('active');
-            menuCategoriesWrapper.style.opacity = '0.5';
-        }
-        
-        // Hide loading state
-        function hideLoading() {
-            menuLoading.classList.remove('active');
-            menuCategoriesWrapper.style.opacity = '1';
-        }
-        
-        // Show error state
-        function showError(message) {
-            menuContent.innerHTML = `
+
+            // Fetch menu data via AJAX with timeout and retry
+            async function fetchMenuData(menuType, retryCount = 0) {
+                showLoading();
+
+                try {
+                    const url = `restaurant.php?ajax=menu&menu_type=${menuType}`;
+
+                    // Create abort controller for timeout
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+                    const response = await fetch(url, {
+                        signal: controller.signal,
+                        cache: 'no-store'
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        menuData = data;
+                        renderMenu(data);
+                    } else {
+                        showError(data.error || 'Failed to load menu');
+                    }
+                } catch (error) {
+                    // Retry logic for network errors
+                    if (retryCount < 2 && (error.name === 'AbortError' || error.message.includes('Failed to fetch'))) {
+                        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+                        return fetchMenuData(menuType, retryCount + 1);
+                    }
+
+                    if (error.name === 'AbortError') {
+                        showError('Request timed out. Please check your connection and try again.');
+                    } else {
+                        showError('An error occurred while loading the menu. Please try again.');
+                    }
+                } finally {
+                    hideLoading();
+                }
+            }
+
+            // Show loading state
+            function showLoading() {
+                if (menuLoading) menuLoading.classList.add('active');
+                if (menuCategoriesWrapper) menuCategoriesWrapper.classList.add('is-loading');
+                if (menuCategoriesWrapper) menuCategoriesWrapper.setAttribute('aria-busy', 'true');
+            }
+
+            // Hide loading state
+            function hideLoading() {
+                if (menuLoading) menuLoading.classList.remove('active');
+                if (menuCategoriesWrapper) menuCategoriesWrapper.classList.remove('is-loading');
+                if (menuCategoriesWrapper) menuCategoriesWrapper.setAttribute('aria-busy', 'false');
+            }
+
+            // Show error state
+            function showError(message) {
+                if (!menuContent) return;
+                menuContent.innerHTML = `
                 <div class="menu-empty-state">
                     <i class="fas fa-exclamation-circle"></i>
                     <h3>Unable to Load Menu</h3>
                     <p>${message}</p>
-                    <button class="btn btn-primary" onclick="fetchMenuData('${currentMenuType}')" style="margin-top: 20px;">
+                    <button class="btn btn-primary mt-30" onclick="fetchMenuData('${currentMenuType}')">
                         <i class="fas fa-redo"></i> Try Again
                     </button>
                 </div>
             `;
-            menuTabs.innerHTML = '';
-        }
-        
-        // Render menu
-        function renderMenu(data) {
-            const categories = Object.values(data.categories);
-            
-            if (categories.length === 0) {
                 menuTabs.innerHTML = '';
-                menuContent.innerHTML = `
+            }
+
+            // Render menu
+            function renderMenu(data) {
+                const categories = Object.values(data.categories);
+
+                if (!menuTabs || !menuContent) {
+                    // console.error('[Menu] Menu tabs or content not found!');
+                    return;
+                }
+
+                if (categories.length === 0) {
+                    hideLoading();
+                    menuTabs.innerHTML = '';
+                    const adminHint = data.admin_hint ?
+                        `<p class="menu-empty-admin-hint">${escapeHtml(data.admin_hint)}</p>` :
+                        '';
+                    menuContent.innerHTML = `
                     <div class="menu-empty-state">
                         <i class="fas fa-utensils"></i>
                         <h3>No Items Available</h3>
                         <p>Menu items for this category are coming soon. Please contact our restaurant for current offerings.</p>
+                        ${adminHint}
                     </div>
                 `;
-                return;
-            }
-            
-            // Render category tabs
-            menuTabs.innerHTML = categories.map((cat, index) => `
-                <button type="button" class="menu-tab ${index === 0 ? 'active' : ''}" data-category="${cat.slug}">
-                    ${cat.name}
+                    return;
+                }
+
+                // Render category tabs
+                menuTabs.innerHTML = categories.map((cat, index) => `
+                <button
+                    type="button"
+                    class="menu-tab ${index === 0 ? 'active' : ''}"
+                    data-category="${cat.slug}"
+                    role="tab"
+                    aria-selected="${index === 0 ? 'true' : 'false'}"
+                    aria-controls="menu-panel-${cat.slug}"
+                    id="menu-tab-${cat.slug}"
+                >
+                    <span class="menu-tab-name">${cat.name}</span>
+                    <span class="menu-tab-count">${cat.items.length}</span>
                 </button>
             `).join('');
-            
-            // Render menu content
-            menuContent.innerHTML = categories.map((cat, index) => `
-                <div class="menu-category ${index === 0 ? 'active' : ''}" data-category="${cat.slug}">
+
+                // Render menu content
+                menuContent.innerHTML = categories.map((cat, index) => `
+                <div
+                    class="menu-panel ${index === 0 ? 'active' : ''}"
+                    data-category="${cat.slug}"
+                    id="menu-panel-${cat.slug}"
+                    role="tabpanel"
+                    aria-labelledby="menu-tab-${cat.slug}"
+                >
+                    <div class="menu-panel-header">
+                        <h3 class="menu-panel-title">${cat.name}</h3>
+                        <p class="menu-panel-subtitle">${cat.items.length} ${cat.items.length === 1 ? 'item' : 'items'}</p>
+                    </div>
                     <div class="menu-items-grid">
                         ${cat.items.map(item => renderMenuItem(item, data.menu_type)).join('')}
                     </div>
                 </div>
             `).join('');
-            
-            // Set current category to first one
-            currentCategory = categories[0].slug;
-            
-            // Add event listeners to category tabs
-            menuTabs.querySelectorAll('.menu-tab').forEach(tab => {
-                tab.addEventListener('click', function() {
-                    const category = this.getAttribute('data-category');
-                    switchCategory(category, this);
+
+                // Hide loading state to show the menu
+                hideLoading();
+
+                // Set current category to first one
+                currentCategory = categories[0].slug;
+
+                // Add event listeners to category tabs
+                menuTabs.querySelectorAll('.menu-tab').forEach(tab => {
+                    tab.addEventListener('click', function() {
+                        const category = this.getAttribute('data-category');
+                        switchCategory(category);
+                    });
                 });
-            });
-        }
-
-        // On mobile, scroll selected menu/tab area into the correct viewing position.
-        function focusTabAndItems(tabEl, contentEl = null) {
-            if (!tabEl || window.innerWidth > 900) return;
-
-            const headerEl = document.querySelector('.header');
-            const visualGap = window.innerWidth <= 480 ? 3 : 5;
-            const headerOffset = (headerEl ? headerEl.offsetHeight : 72) + visualGap;
-
-            // For category clicks, jump to first item in that category.
-            if (contentEl) {
-                const firstItem = contentEl.querySelector('.menu-item');
-                const anchorEl = firstItem || contentEl;
-                const anchorTop = anchorEl.getBoundingClientRect().top + window.pageYOffset;
-                const targetY = Math.max(0, anchorTop - headerOffset);
-
-                window.scrollTo({
-                    top: targetY,
-                    behavior: 'smooth'
-                });
-                return;
             }
 
-            const tabTop = tabEl.getBoundingClientRect().top + window.pageYOffset;
-            const targetY = Math.max(0, tabTop - headerOffset);
-
-            window.scrollTo({
-                top: targetY,
-                behavior: 'smooth'
-            });
-        }
-        
-        // Render single menu item
-        function renderMenuItem(item, menuType) {
-            if (menuType === 'food') {
-                return `
+            // Render single menu item
+            function renderMenuItem(item, menuType) {
+                if (menuType === 'food') {
+                    return `
                     <div class="menu-item ${item.is_featured ? 'featured' : ''}">
                         <div class="menu-item-header">
                             <div class="menu-item-title">
                                 <h3 class="menu-item-name">${escapeHtml(item.name)}</h3>
                                 ${item.is_featured ? '<span class="featured-badge"><i class="fas fa-star"></i> Chef\'s Special</span>' : ''}
                             </div>
-                            <span class="menu-item-price">${currencySymbol}${item.price.toFixed(2)}</span>
+                            <span class="menu-item-price">${currencySymbol}${fmtMoney(item.price)}</span>
                         </div>
                         ${item.description ? `<p class="menu-item-description">${escapeHtml(item.description)}</p>` : ''}
                         <div class="menu-item-tags">
@@ -1688,13 +881,13 @@ try {
                         </div>
                     </div>
                 `;
-            }
+                }
 
-            return `
+                return `
                 <div class="menu-item">
                     <div class="menu-item-header">
                         <h3 class="menu-item-name">${escapeHtml(item.name)}</h3>
-                        <span class="menu-item-price">${currencySymbol}${item.price.toFixed(2)}</span>
+                        <span class="menu-item-price">${currencySymbol}${fmtMoney(item.price)}</span>
                     </div>
                     ${item.description ? `<p class="menu-item-description">${escapeHtml(item.description)}</p>` : ''}
                     ${item.tags && item.tags.length > 0 ? `
@@ -1704,284 +897,203 @@ try {
                     ` : ''}
                 </div>
             `;
-        }
-        
-        // Switch category
-        function switchCategory(category, triggerTab = null) {
-            currentCategory = category;
-            
-            // Update active tab
-            menuTabs.querySelectorAll('.menu-tab').forEach(tab => {
-                tab.classList.toggle('active', tab.getAttribute('data-category') === category);
-            });
-            
-            // Update active category
-            menuContent.querySelectorAll('.menu-category').forEach(cat => {
-                cat.classList.toggle('active', cat.getAttribute('data-category') === category);
-            });
+            }
 
-            const activeTab = triggerTab || menuTabs.querySelector(`.menu-tab[data-category="${category}"]`);
-            const activeCategory = menuContent.querySelector(`.menu-category[data-category="${category}"]`);
-            focusTabAndItems(activeTab, activeCategory);
-        }
-        
-        // Switch menu type
-        function switchMenuType(menuType, triggerTab = null) {
-            if (currentMenuType === menuType) return;
-            
-            currentMenuType = menuType;
-            currentCategory = null;
-            
-            // Update active type tab
-            menuTypeTabs.forEach(tab => {
-                tab.classList.toggle('active', tab.getAttribute('data-type') === menuType);
-            });
-            
-            // Fetch new menu data
-            fetchMenuData(menuType);
+            // Switch category
+            function switchCategory(category) {
+                currentCategory = category;
 
-            const activeTypeTab = triggerTab || document.querySelector(`.menu-type-tab[data-type="${menuType}"]`);
-            focusTabAndItems(activeTypeTab);
-        }
-        
-        // Escape HTML to prevent XSS
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        // Initialize menu type tabs
-        menuTypeTabs.forEach(tab => {
-            tab.addEventListener('click', function() {
-                const menuType = this.getAttribute('data-type');
-                switchMenuType(menuType, this);
-            });
-        });
-        
-        // Load default menu on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            fetchMenuData('food');
-        });
-        
-        // Page loader
-        window.addEventListener('load', function() {
-            const pageLoader = document.querySelector('.page-loader');
-            if (pageLoader) {
-                pageLoader.classList.add('fade-out');
-                setTimeout(() => {
-                    pageLoader.style.display = 'none';
-                }, 500);
-            }
-        });
-        
-        // ====================
-        // Restaurant Reservation Form Validation
-        // ====================
-        
-        const restaurantForm = document.getElementById('restaurantReservationForm');
-        const preferredDateInput = document.getElementById('preferred_date');
-        const preferredTimeInput = document.getElementById('preferred_time');
-        const dateError = document.getElementById('dateError');
-        const timeError = document.getElementById('timeError');
-        
-        // Get restaurant settings from hidden inputs
-        const minAdvanceDays = parseInt(document.getElementById('minAdvanceDays').value) || 1;
-        const breakfastStart = document.getElementById('breakfastStart').value || '06:00';
-        const breakfastEnd = document.getElementById('breakfastEnd').value || '10:00';
-        const lunchStart = document.getElementById('lunchStart').value || '12:00';
-        const lunchEnd = document.getElementById('lunchEnd').value || '15:00';
-        const dinnerStart = document.getElementById('dinnerStart').value || '18:00';
-        const dinnerEnd = document.getElementById('dinnerEnd').value || '22:00';
-        
-        /**
-         * Validate the preferred date against minimum advance days requirement
-         */
-        function validateReservationDate(dateString) {
-            if (!dateString) {
-                return { valid: false, error: 'Please select a date' };
-            }
-            
-            const selectedDate = new Date(dateString + 'T00:00:00');
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            
-            // Calculate minimum allowed date
-            const minDate = new Date(today);
-            minDate.setDate(minDate.getDate() + minAdvanceDays);
-            
-            // Check if date is in the past
-            if (selectedDate < today) {
-                return { valid: false, error: '❌ Date cannot be in the past' };
-            }
-            
-            // Check if date meets minimum advance requirement
-            if (selectedDate < minDate) {
-                if (minAdvanceDays === 1) {
-                    return { valid: false, error: '❌ Same-day reservations are not available. Please select a date at least tomorrow.' };
-                } else {
-                    return { valid: false, error: `❌ Reservations require at least ${minAdvanceDays} days in advance. Please select a later date.` };
+                if (!menuTabs || !menuContent) {
+                    return;
                 }
+
+                // Update active tab
+                menuTabs.querySelectorAll('.menu-tab').forEach(tab => {
+                    const isActive = tab.getAttribute('data-category') === category;
+                    tab.classList.toggle('active', isActive);
+                    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                });
+
+                // Update active category
+                menuContent.querySelectorAll('.menu-panel').forEach(cat => {
+                    cat.classList.toggle('active', cat.getAttribute('data-category') === category);
+                });
             }
-            
-            return { valid: true, error: '' };
-        }
-        
-        /**
-         * Validate if the reservation time falls within operating hours
-         */
-        function validateReservationTime(timeString) {
-            if (!timeString) {
-                return { valid: false, error: 'Please select a time' };
+
+            // Switch menu type
+            function switchMenuType(menuType) {
+                if (currentMenuType === menuType) return;
+
+                currentMenuType = menuType;
+                currentCategory = null;
+
+                // Update active type tab
+                if (menuTypeTabs) {
+                    menuTypeTabs.forEach(tab => {
+                        tab.classList.toggle('active', tab.getAttribute('data-type') === menuType);
+                    });
+                }
+
+                // Fetch new menu data
+                fetchMenuData(menuType);
             }
-            
-            const isWithinHours = (
-                (timeString >= breakfastStart && timeString < breakfastEnd) ||
-                (timeString >= lunchStart && timeString < lunchEnd) ||
-                (timeString >= dinnerStart && timeString < dinnerEnd)
-            );
-            
-            if (!isWithinHours) {
-                return {
-                    valid: false,
-                    error: `❌ Time outside restaurant hours. Available: Breakfast ${breakfastStart}-${breakfastEnd}, Lunch ${lunchStart}-${lunchEnd}, Dinner ${dinnerStart}-${dinnerEnd}`
-                };
+
+            // Escape HTML to prevent XSS
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
             }
-            
-            return { valid: true, error: '' };
-        }
-        
-        /**
-         * Display error message for a field
-         */
-        function showFieldError(inputElement, errorElement, message) {
-            if (message) {
-                inputElement.classList.add('invalid');
-                inputElement.classList.remove('valid');
-                errorElement.textContent = message;
-                errorElement.classList.add('show');
-            } else {
-                inputElement.classList.remove('invalid');
-                inputElement.classList.add('valid');
-                errorElement.textContent = '';
-                errorElement.classList.remove('show');
+
+            function fmtMoney(n) {
+                return Number(n || 0).toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
             }
-        }
-        
-        /**
-         * Clear field styling
-         */
-        function clearFieldStyling(inputElement, errorElement) {
-            inputElement.classList.remove('invalid', 'valid');
-            errorElement.textContent = '';
-            errorElement.classList.remove('show');
-        }
-        
-        // Validate date on change and blur
-        if (preferredDateInput) {
-            preferredDateInput.addEventListener('change', function() {
-                const validation = validateReservationDate(this.value);
-                if (validation.valid) {
-                    showFieldError(this, dateError, '');
-                } else {
-                    showFieldError(this, dateError, validation.error);
+
+            // Expose functions globally so persistent event handler can call them
+            window.switchMenuType = switchMenuType;
+            window.switchCategory = switchCategory;
+            window.fetchMenuData = fetchMenuData;
+            window.renderMenu = renderMenu;
+
+            // Initialize menu when DOM is ready
+            function initMenu() {
+                if (!initMenuElements()) {
+                    // Retry after a short delay in case DOM is still being built
+                    setTimeout(initMenu, 100);
+                    return;
                 }
-                // Also validate time if it's already filled (in case it's now invalid with the new date)
-                if (preferredTimeInput.value) {
-                    const timeValidation = validateReservationTime(preferredTimeInput.value);
-                    if (timeValidation.valid) {
-                        showFieldError(preferredTimeInput, timeError, '');
-                    } else {
-                        showFieldError(preferredTimeInput, timeError, timeValidation.error);
-                    }
-                }
-            });
-            
-            preferredDateInput.addEventListener('blur', function() {
-                if (this.value) {
-                    const validation = validateReservationDate(this.value);
-                    if (!validation.valid) {
-                        showFieldError(this, dateError, validation.error);
-                    }
-                }
-            });
-        }
-        
-        // Validate time on change and blur
-        if (preferredTimeInput) {
-            preferredTimeInput.addEventListener('change', function() {
-                const validation = validateReservationTime(this.value);
-                if (validation.valid) {
-                    showFieldError(this, timeError, '');
-                } else {
-                    showFieldError(this, timeError, validation.error);
-                }
-            });
-            
-            preferredTimeInput.addEventListener('blur', function() {
-                if (this.value) {
-                    const validation = validateReservationTime(this.value);
-                    if (!validation.valid) {
-                        showFieldError(this, timeError, validation.error);
-                    }
-                }
-            });
-            
-            // Real-time validation as user types
-            preferredTimeInput.addEventListener('input', function() {
-                if (this.value) {
-                    const validation = validateReservationTime(this.value);
-                    if (validation.valid) {
-                        showFieldError(this, timeError, '');
-                    } else {
-                        // Don't show error while user is still typing
-                        if (this.value.indexOf(':') > -1) {
-                            showFieldError(this, timeError, validation.error);
+
+                // Check if menu content already exists (server-side rendered)
+                const existingPanels = menuContent.querySelectorAll('.menu-panel');
+
+                if (existingPanels.length > 0) {
+                    // Menu already exists, just bind event listeners
+                    menuTypeTabs.forEach(tab => {
+                        tab.addEventListener('click', function() {
+                            const menuType = this.getAttribute('data-type');
+                            switchMenuType(menuType);
+                        });
+                    });
+
+                    // Bind category tab events - add debug logging
+                    menuTabs.querySelectorAll('.menu-tab').forEach(tab => {
+                        tab.addEventListener('click', function(e) {
+                            const category = this.getAttribute('data-category');
+                            switchCategory(category);
+                        });
+                    });
+
+                    // Also bind directly to ensure clicks work
+                    menuTabs.addEventListener('click', function(e) {
+                        const tab = e.target.closest('.menu-tab');
+                        if (tab) {
+                            const category = tab.getAttribute('data-category');
+                            switchCategory(category);
                         }
-                    }
-                } else {
-                    clearFieldStyling(this, timeError);
-                }
-            });
-        }
-        
-        // Validate form before submission
-        if (restaurantForm) {
-            restaurantForm.addEventListener('submit', function(e) {
-                let hasErrors = false;
-                
-                // Validate date
-                if (preferredDateInput.value) {
-                    const dateValidation = validateReservationDate(preferredDateInput.value);
-                    if (!dateValidation.valid) {
-                        showFieldError(preferredDateInput, dateError, dateValidation.error);
-                        hasErrors = true;
-                    }
-                }
-                
-                // Validate time
-                if (preferredTimeInput.value) {
-                    const timeValidation = validateReservationTime(preferredTimeInput.value);
-                    if (!timeValidation.valid) {
-                        showFieldError(preferredTimeInput, timeError, timeValidation.error);
-                        hasErrors = true;
-                    }
-                }
-                
-                // Prevent submission if there are errors
-                if (hasErrors) {
-                    e.preventDefault();
-                    
-                    // Scroll to first error
-                    const firstError = restaurantForm.querySelector('.error-message.show');
-                    if (firstError) {
-                        firstError.closest('.form-group').scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                }
-            });
-        }
-    </script>
+                    });
 
-    <?php include 'includes/scroll-to-top.php'; ?>
+                    // Hide loading state
+                    hideLoading();
+                    return;
+                }
+
+                menuTypeTabs.forEach(tab => {
+                    tab.addEventListener('click', function() {
+                        const menuType = this.getAttribute('data-type');
+                        switchMenuType(menuType);
+                    });
+                });
+
+                // ALWAYS fetch fresh menu data on initialization
+                // This ensures menu loads even when SPA navigates to this page
+                fetchMenuData('food');
+            }
+
+            // Wait for DOM to be fully ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initMenu);
+            } else {
+                // DOM is ready, initialize immediately
+                initMenu();
+            }
+
+            // Re-initialize menu when SPA navigates to this page
+            window.addEventListener('spa:contentLoaded', function(e) {
+                // Small delay to ensure DOM is fully rendered
+                setTimeout(() => {
+                    initMenu();
+                }, 100);
+            });
+
+            // ULTIMATE FALLBACK: Global click handler for menu tabs (runs on ALL pages)
+            // This ensures clicks work even if initMenu fails or script is swapped out
+            if (!window._restaurantMenuHandlerAttached) {
+                window._restaurantMenuHandlerAttached = true;
+                document.addEventListener('click', function(e) {
+                    // Check for menu-type-tab clicks
+                    const menuTypeTab = e.target.closest('.menu-type-tab');
+                    if (menuTypeTab) {
+                        const menuType = menuTypeTab.getAttribute('data-type');
+                        if (menuType && typeof switchMenuType === 'function') {
+                            switchMenuType(menuType);
+                        }
+                        return;
+                    }
+
+                    // Check for menu-tab (category) clicks
+                    const menuTab = e.target.closest('.menu-tab');
+                    if (menuTab) {
+                        const category = menuTab.getAttribute('data-category');
+                        if (category && typeof switchCategory === 'function') {
+                            switchCategory(category);
+                        }
+                        return;
+                    }
+                }, true); // Use capture phase to ensure this runs first
+            }
+        </script>
+
+        <!-- Gallery scroll-reveal animations -->
+        <script>
+            (function() {
+                var galleryItems = document.querySelectorAll('.editorial-gallery-item');
+                if (!galleryItems.length) return;
+
+                if ('IntersectionObserver' in window) {
+                    var observer = new IntersectionObserver(function(entries) {
+                        entries.forEach(function(entry) {
+                            if (entry.isIntersecting) {
+                                var item = entry.target;
+                                var delay = Array.from(galleryItems).indexOf(item) * 80;
+                                setTimeout(function() {
+                                    item.classList.add('visible');
+                                }, delay);
+                                observer.unobserve(item);
+                            }
+                        });
+                    }, {
+                        threshold: 0.15,
+                        rootMargin: '0px 0px -50px 0px'
+                    });
+
+                    galleryItems.forEach(function(item) {
+                        observer.observe(item);
+                    });
+                } else {
+                    galleryItems.forEach(function(item, index) {
+                        setTimeout(function() {
+                            item.classList.add('visible');
+                        }, index * 100);
+                    });
+                }
+            })();
+        </script>
+
+    </main>
+    <?php include 'includes/footer.php'; ?>
 </body>
+
 </html>

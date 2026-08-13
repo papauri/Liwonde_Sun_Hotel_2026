@@ -1,0 +1,87 @@
+<?php
+
+/**
+ * admin/manifest.php — Dynamic Web App Manifest for Liwonde Sun Hotel Admin.
+ * Served as application/manifest+json, pulling site_name + logo from site_settings.
+ */
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/base-url.php';
+
+header('Content-Type: application/manifest+json; charset=utf-8');
+header('Cache-Control: public, max-age=86400');
+header('Access-Control-Allow-Origin: *');
+
+$name       = getSetting('site_name') ?: 'Hotel';
+$short_name = getSetting('site_short_name') ?: getSetting('site_name') ?: 'Hotel';
+$logo       = getSetting('site_logo') ?: '/images/logo/logo.png';
+
+// Build absolute icon URL, preferring an already-absolute URL from settings
+if (strpos($logo, 'http') === 0) {
+    $icon_url = $logo;
+} else {
+    $icon_url = rtrim(BASE_URL, '/') . '/' . ltrim($logo, '/');
+}
+
+// Verify the file exists on disk; fall back to a known-good relative path
+if (strpos($logo, 'http') !== 0) {
+    $disk_path = realpath(__DIR__ . '/../' . ltrim($logo, '/'));
+    if (!$disk_path || !file_exists($disk_path)) {
+        // Try the canonical logo path
+        $fallback_disk = realpath(__DIR__ . '/../images/logo/logo.png');
+        if ($fallback_disk && file_exists($fallback_disk)) {
+            $icon_url = rtrim(BASE_URL, '/') . '/images/logo/logo.png';
+        }
+    }
+}
+
+$adminBase = rtrim(siteUrl('admin'), '/') . '/';
+$startUrl  = siteUrl('admin/pos.php');
+
+$manifest = [
+    'name'             => $name . ' Admin',
+    'short_name'       => $short_name,
+    'description'      => $name . ' — admin, POS, KDS & operations.',
+    'id'               => $adminBase,
+    'start_url'        => $startUrl,
+    'scope'            => $adminBase,
+    'display'          => 'fullscreen',
+    'orientation'      => 'any',
+    'background_color' => '#1f1f24',
+    'theme_color'      => '#8A775F',
+    'lang'             => 'en',
+    'icons'            => [
+        ['src' => $icon_url, 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any'],
+        ['src' => $icon_url, 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
+        ['src' => $icon_url, 'sizes' => 'any',     'type' => 'image/png', 'purpose' => 'any'],
+    ],
+    'shortcuts' => [
+        [
+            'name'       => 'POS Till',
+            'short_name' => 'POS',
+            'url'        => siteUrl('admin/pos.php'),
+            'icons'      => [['src' => $icon_url, 'sizes' => 'any']],
+        ],
+        [
+            'name'       => 'Receive Stock',
+            'short_name' => 'Receive',
+            'url'        => siteUrl('admin/stock-barcode-receive.php'),
+            'icons'      => [['src' => $icon_url, 'sizes' => 'any']],
+        ],
+        [
+            'name'       => 'Kitchen Display',
+            'short_name' => 'KDS',
+            'url'        => siteUrl('admin/kds.php'),
+            'icons'      => [['src' => $icon_url, 'sizes' => 'any']],
+        ],
+        [
+            'name'       => 'Dashboard',
+            'short_name' => 'Dash',
+            'url'        => siteUrl('admin/dashboard.php'),
+            'icons'      => [['src' => $icon_url, 'sizes' => 'any']],
+        ],
+    ],
+    'categories' => ['business', 'productivity'],
+];
+
+echo json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+

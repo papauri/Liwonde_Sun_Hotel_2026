@@ -22,31 +22,31 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         .header {
-            background: linear-gradient(135deg, #D4AF37 0%, #c19b2e 100%);
+            background: linear-gradient(135deg, #8B7355 0%, #6B5740 100%);
             padding: 40px 40px;
             text-align: center;
         }
         .logo {
             font-size: 32px;
             font-weight: bold;
-            color: #0A1929;
+            color: #1A1A1A;
             margin: 0;
-            font-family: 'Playfair Display', Georgia, serif;
+            font-family: 'Cormorant Garamond', Georgia, serif;
         }
         .content {
             padding: 40px;
         }
         h1 {
-            color: #0A1929;
+            color: #1A1A1A;
             margin: 0 0 10px 0;
             font-size: 28px;
         }
         .reminder-banner {
             background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
-            color: #0A1929;
+            color: #1A1A1A;
             padding: 20px;
             border-radius: 8px;
-            text-align: center;
+                font-family: 'Cormorant Garamond', Georgia, serif;
             margin: 20px 0;
             font-size: 16px;
             font-weight: 600;
@@ -67,7 +67,7 @@
         }
         .booking-reference strong {
             font-size: 24px;
-            color: #D4AF37;
+            color: #8B7355;
             display: block;
         }
         .details-grid {
@@ -88,13 +88,13 @@
             margin-bottom: 5px;
         }
         .detail-value {
-            color: #0A1929;
+            color: #1A1A1A;
             font-weight: 600;
         }
         .total-amount {
             grid-column: 1 / -1;
-            background: linear-gradient(135deg, #D4AF37 0%, #c19b2e 100%);
-            color: #0A1929;
+            background: linear-gradient(135deg, #8B7355 0%, #6B5740 100%);
+            color: #1A1A1A;
             padding: 15px;
             border-radius: 6px;
             text-align: center;
@@ -106,7 +106,7 @@
         }
         .check-in-info {
             background-color: #e7f3ff;
-            color: #0A1929;
+            color: #1A1A1A;
             padding: 20px;
             border-radius: 8px;
             margin: 20px 0;
@@ -125,7 +125,7 @@
             line-height: 1.8;
         }
         .check-in-info li strong {
-            color: #0A1929;
+            color: #1A1A1A;
         }
         .payment-box {
             background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
@@ -146,17 +146,17 @@
         }
         .contact-box h3 {
             margin: 0 0 15px 0;
-            color: #0A1929;
+            color: #1A1A1A;
         }
         .contact-item {
             margin: 10px 0;
             color: #666;
         }
         .contact-item strong {
-            color: #0A1929;
+            color: #1A1A1A;
         }
         .footer {
-            background-color: #0A1929;
+            background-color: #1A1A1A;
             color: #fff;
             padding: 20px;
             text-align: center;
@@ -207,7 +207,7 @@
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">Total Amount Due</div>
-                        <div class="detail-value" style="color: #D4AF37; font-size: 18px;"><?php echo $total_amount; ?></div>
+                        <div class="detail-value" style="color: #8B7355; font-size: 18px;"><?php echo $total_amount; ?></div>
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">Payment Method</div>
@@ -235,7 +235,7 @@
             <div class="payment-box">
                 <h3>💳 Payment Details</h3>
                 <p style="margin: 0;"><?php echo $payment_info ?? getSetting('payment_info', 'Payment will be collected at the hotel reception upon check-in.'); ?></p>
-                <p style="margin: 10px 0 0 0;"><strong>Total amount to pay:</strong> <strong style="font-size: 20px; color: #0A1929;"><?php echo $total_amount; ?></strong></p>
+                <p style="margin: 10px 0 0 0;"><strong>Total amount to pay:</strong> <strong style="font-size: 20px; color: #1A1A1A;"><?php echo $total_amount; ?></strong></p>
                 <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;"><?php echo $payment_method_note ?? getSetting('payment_method_note', 'We accept cash payments only.'); ?></p>
             </div>
             
@@ -249,10 +249,10 @@
                     ?>
                 </div>
                 <div class="contact-item">
-                    <strong>Phone:</strong> <a href="tel:<?php echo $phone_main; ?>" style="color: #0A1929; text-decoration: none;"><?php echo $phone_main; ?></a>
+                    <strong>Phone:</strong> <a href="tel:<?php echo $phone_main; ?>" style="color: #1A1A1A; text-decoration: none;"><?php echo $phone_main; ?></a>
                 </div>
                 <div class="contact-item">
-                    <strong>Email:</strong> <a href="mailto:<?php echo $email_reservations; ?>" style="color: #0A1929; text-decoration: none;"><?php echo $email_reservations; ?></a>
+                    <strong>Email:</strong> <a href="mailto:<?php echo $email_reservations; ?>" style="color: #1A1A1A; text-decoration: none;"><?php echo $email_reservations; ?></a>
                 </div>
             </div>
             

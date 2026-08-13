@@ -41,13 +41,15 @@ function sendSecurityHeaders() {
     // This allows Font Awesome and Flatpickr to load properly and enables video embeds from popular platforms
     // Added media-src for Getty Images videos and other external media
     // Added cdn.jsdelivr.net to connect-src for Bootstrap source maps
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://cdn.jsdelivr.net; media-src 'self' https: blob:; frame-src 'self' https://www.youtube.com https://youtube.com https://player.vimeo.com https://vimeo.com https://www.dailymotion.com https://dai.ly https://media.gettyimages.com https://*.gettyimages.com;");
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https: https://api.qrserver.com; connect-src 'self' https://cdn.jsdelivr.net; media-src 'self' https: blob:; frame-src 'self' https://www.youtube.com https://youtube.com https://player.vimeo.com https://vimeo.com https://www.dailymotion.com https://dai.ly https://media.gettyimages.com https://*.gettyimages.com;");
     
     // Referrer Policy
     header('Referrer-Policy: strict-origin-when-cross-origin');
     
     // Permissions Policy (formerly Feature-Policy)
-    header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+    // camera=(self) allows camera use on same-origin pages (required for barcode scanner)
+    // Note: the canonical source for this header is .htaccess line ~80 which overrides this on Apache
+    header('Permissions-Policy: geolocation=(), microphone=(), camera=(self)');
     
     // HSTS (only on HTTPS)
     if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
@@ -138,6 +140,29 @@ function getCsrfField() {
 function requireCsrfValidation() {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token = $_POST['csrf_token'] ?? '';
+        
+        // Diagnostic logging
+        $logDir = __DIR__ . '/../logs/security';
+        if (!file_exists($logDir)) {
+            mkdir($logDir, 0755, true);
+        }
+        $logFile = $logDir . '/csrf-debug.log';
+        
+        $debugInfo = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'session_status' => session_status(),
+            'session_id' => session_id(),
+            'session_exists' => isset($_SESSION),
+            'csrf_token_in_session' => isset($_SESSION['csrf_token']) ? 'YES' : 'NO',
+            'csrf_token_value' => isset($_SESSION['csrf_token']) ? substr($_SESSION['csrf_token'], 0, 10) . '...' : 'N/A',
+            'received_token' => !empty($token) ? substr($token, 0, 10) . '...' : 'EMPTY',
+            'tokens_match' => isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token) ? 'YES' : 'NO',
+            'uri' => $_SERVER['REQUEST_URI'] ?? 'unknown',
+            'post_fields' => array_keys($_POST)
+        ];
+        
+        file_put_contents($logFile, json_encode($debugInfo) . "\n", FILE_APPEND | LOCK_EX);
+        
         if (!validateCsrfToken($token)) {
             throw new Exception('CSRF token validation failed. Please refresh the page and try again.');
         }

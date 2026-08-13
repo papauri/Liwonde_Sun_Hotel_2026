@@ -18,7 +18,7 @@ function displayStarRating($rating, $size = 16, $showEmpty = true) {
     $hasHalfStar = ($rating - $fullStars) >= 0.5;
     $emptyStars = $showEmpty ? (5 - $fullStars - ($hasHalfStar ? 1 : 0)) : 0;
     
-    $html = '<div class="star-rating" role="img" aria-label="' . $rating . ' out of 5 stars">';
+    $html = '<div class="star-rating" role="img" aria-label="' . $rating . ' out of 5 stars" data-rating="' . $rating . '">';
     
     // Full stars
     for ($i = 0; $i < $fullStars; $i++) {
@@ -50,7 +50,7 @@ function displayRatingSummary($averages, $showCount = true) {
     $avgRating = isset($averages['avg_rating']) ? (float)$averages['avg_rating'] : 0;
     $totalCount = isset($averages['total_count']) ? (int)$averages['total_count'] : 0;
     
-    $html = '<div class="rating-summary">';
+    $html = '<div class="rating-summary" data-rating-summary>';
     $html .= '<div class="rating-summary__stars">' . displayStarRating($avgRating, 20) . '</div>';
     $html .= '<div class="rating-summary__info">';
     $html .= '<span class="rating-summary__average">' . number_format($avgRating, 1) . '</span>';
@@ -77,16 +77,16 @@ function displayCategoryRatings($review) {
         'value_rating' => ['label' => 'Value', 'icon' => 'fa-tag']
     ];
     
-    $html = '<div class="category-ratings">';
+    $html = '<div class="category-ratings" data-category-ratings>';
     $hasRatings = false;
     
     foreach ($categories as $key => $category) {
         if (isset($review[$key]) && $review[$key] !== null && $review[$key] !== '') {
             $hasRatings = true;
             $rating = (int)$review[$key];
-            $html .= '<div class="category-rating">';
+            $html .= '<div class="category-rating" data-category-rating="' . htmlspecialchars($category['label']) . '">';
             $html .= '<div class="category-rating__label">';
-            $html .= '<i class="fas ' . $category['icon'] . '"></i>';
+            $html .= '<i class="fas ' . $category['icon'] . '" aria-hidden="true"></i>';
             $html .= '<span>' . htmlspecialchars($category['label']) . '</span>';
             $html .= '</div>';
             $html .= '<div class="category-rating__stars">' . displayStarRating($rating, 14) . '</div>';
@@ -132,16 +132,21 @@ function displayAdminResponse($response, $responseDate = null) {
  * @return string HTML for review card
  */
 function displayReviewCard($review, $showRoom = false) {
-    $guestName = htmlspecialchars($review['guest_name'] ?? 'Guest');
+    $guestNameRaw = trim((string)($review['guest_name'] ?? ''));
+    $email = trim((string)($review['guest_email'] ?? ''));
+    if ($guestNameRaw === '' && $email !== '' && strpos($email, '@') !== false) {
+        $guestNameRaw = explode('@', $email)[0];
+    }
+
+    $guestName = htmlspecialchars($guestNameRaw);
     $rating = (int)($review['rating'] ?? 5);
-    $title = htmlspecialchars($review['title'] ?? 'No title');
+    $title = htmlspecialchars(trim((string)($review['title'] ?? '')));
     $comment = nl2br(htmlspecialchars($review['comment'] ?? ''));
     $reviewDate = isset($review['created_at']) ? date('M j, Y', strtotime($review['created_at'])) : '';
     $adminResponse = $review['latest_response'] ?? '';
     $adminResponseDate = $review['latest_response_date'] ?? null;
     
     // Mask email for privacy
-    $email = isset($review['guest_email']) ? $review['guest_email'] : '';
     $maskedEmail = '';
     if (!empty($email)) {
         $parts = explode('@', $email);
@@ -155,7 +160,9 @@ function displayReviewCard($review, $showRoom = false) {
     $html .= '<i class="fas fa-user"></i>';
     $html .= '</div>';
     $html .= '<div class="review-card__author-info">';
-    $html .= '<span class="review-card__name">' . $guestName . '</span>';
+    if ($guestName !== '') {
+        $html .= '<span class="review-card__name">' . $guestName . '</span>';
+    }
     if (!empty($maskedEmail)) {
         $html .= '<span class="review-card__email">' . $maskedEmail . '</span>';
     }
@@ -165,7 +172,9 @@ function displayReviewCard($review, $showRoom = false) {
     $html .= '</div>';
     
     $html .= '<div class="review-card__content">';
-    $html .= '<h4 class="review-card__title">' . $title . '</h4>';
+    if ($title !== '') {
+        $html .= '<h4 class="review-card__title">' . $title . '</h4>';
+    }
     $html .= '<p class="review-card__comment">' . $comment . '</p>';
     
     // Category ratings

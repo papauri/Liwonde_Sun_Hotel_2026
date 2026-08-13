@@ -1,12 +1,20 @@
 <?php
+
 /**
  * Database-Driven Email Configuration for any hotel
  * All settings stored in database - no hardcoded files
  */
 
+// Require base URL configuration first (needed for absolute logo URLs)
+require_once __DIR__ . '/base-url.php';
+
 // Require database connection for settings
 require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/../includes/activity-logger.php';
+
+// WhatsApp notification functions
+if (file_exists(__DIR__ . '/../includes/whatsapp-functions.php')) {
+    require_once __DIR__ . '/../includes/whatsapp-functions.php';
+}
 
 // Load PHPMailer
 use PHPMailer\PHPMailer\PHPMailer;
@@ -46,7 +54,7 @@ $email_preview_enabled = (bool)getEmailSetting('email_preview_enabled', 0);
 
 // Check if we're on localhost
 $is_localhost = isset($_SERVER['HTTP_HOST']) && (
-    strpos($_SERVER['HTTP_HOST'], 'localhost') !== false || 
+    strpos($_SERVER['HTTP_HOST'], 'localhost') !== false ||
     strpos($_SERVER['HTTP_HOST'], '127.0.0.1') !== false ||
     strpos($_SERVER['HTTP_HOST'], '.local') !== false
 );
@@ -55,81 +63,8 @@ $is_localhost = isset($_SERVER['HTTP_HOST']) && (
 $development_mode = $is_localhost && $email_development_mode;
 
 /**
- * Configure SMTP transport from database settings.
- * Supports ssl, tls, or no encryption.
- */
-function configureSmtpTransport(PHPMailer $mail) {
-    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
-
-    if (empty($smtp_host) || empty($smtp_port) || empty($smtp_username) || empty($smtp_password)) {
-        throw new Exception('SMTP is not fully configured. Please set host, port, username, and password in booking settings.');
-    }
-
-    $mail->isSMTP();
-    $mail->Host = $smtp_host;
-    $mail->SMTPAuth = true;
-    $mail->Username = $smtp_username;
-    $mail->Password = $smtp_password;
-    $mail->Port = (int)$smtp_port;
-    $mail->Timeout = max(5, (int)$smtp_timeout);
-
-    $secure = strtolower(trim((string)$smtp_secure));
-    if ($secure === 'ssl') {
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-    } elseif ($secure === 'tls') {
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    } else {
-        // Explicitly disable TLS negotiation for plain SMTP servers (e.g., port 25/26).
-        $mail->SMTPSecure = '';
-        $mail->SMTPAutoTLS = false;
-    }
-
-    if ($smtp_debug > 0) {
-        $mail->SMTPDebug = (int)$smtp_debug;
-    }
-}
-
-/**
- * Apply sender/recipient headers consistently.
- */
-function configureMailRecipients(PHPMailer $mail, $to, $toName) {
-    global $email_from_name, $email_from_email, $email_admin_email, $email_bcc_admin, $smtp_username;
-
-    $fromAddress = filter_var($email_from_email, FILTER_VALIDATE_EMAIL) ? $email_from_email : $smtp_username;
-    $fromName = !empty($email_from_name) ? $email_from_name : 'Website';
-
-    $mail->setFrom($fromAddress, $fromName);
-    $mail->addAddress($to, $toName);
-    $mail->addReplyTo($fromAddress, $fromName);
-
-    if ($email_bcc_admin && !empty($email_admin_email) && filter_var($email_admin_email, FILTER_VALIDATE_EMAIL)) {
-        $mail->addBCC($email_admin_email);
-    }
-}
-
-/**
- * Resolve a department admin recipient email with backward-compatible fallbacks.
- */
-function resolveDepartmentAdminEmail($emailSettingKey, $legacySettingKey = '') {
-    global $email_admin_email;
-
-    $recipient = trim((string)getEmailSetting($emailSettingKey, ''));
-    if (!filter_var($recipient, FILTER_VALIDATE_EMAIL) && $legacySettingKey !== '') {
-        $recipient = trim((string)getSetting($legacySettingKey, ''));
-    }
-    if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
-        $recipient = trim((string)getSetting('email_main', ''));
-    }
-    if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
-        $recipient = trim((string)$email_admin_email);
-    }
-
-    return $recipient;
-}
-
-/**
  * Send email using PHPMailer
- * 
+ *
  * @param string $to Recipient email
  * @param string $toName Recipient name
  * @param string $subject Email subject
@@ -137,55 +72,308 @@ function resolveDepartmentAdminEmail($emailSettingKey, $legacySettingKey = '') {
  * @param string $textBody Plain text body (optional)
  * @return array Result array with success status and message
  */
-function sendEmail($to, $toName, $subject, $htmlBody, $textBody = '') {
-    global $development_mode, $email_log_enabled, $email_preview_enabled, $smtp_password;
-    
+function sendEmail(string $to, ?string $toName, string $subject, string $htmlBody, string $textBody = '')
+{
+    global $email_from_name, $email_from_email, $email_admin_email, $email_site_name;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
+    global $email_bcc_admin, $development_mode, $email_log_enabled, $email_preview_enabled;
+
     // If in development mode and no password or preview enabled, show preview
     if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
         return createEmailPreview($to, $toName, $subject, $htmlBody, $textBody);
     }
-    
-    try {
-        // Create PHPMailer instance
-        $mail = new PHPMailer(true);
 
-        configureSmtpTransport($mail);
-        configureMailRecipients($mail, $to, $toName);
-        
-        // Content
-        $mail->isHTML(true);
-        $mail->Subject = $subject;
-        $mail->Body = $htmlBody;
-        $mail->AltBody = $textBody ?: strip_tags($htmlBody);
-        
-        $mail->send();
-        
-        // Log email if enabled
-        if ($email_log_enabled) {
-            logEmail($to, $toName, $subject, 'sent');
+    $maxAttempts = 3; // 1 initial attempt + 2 retries for transient SMTP failures
+    $lastException = null;
+    for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+        try {
+            // Create PHPMailer instance
+            $mail = new PHPMailer(true);
+
+            $smtpSecureNormalized = strtolower(trim((string)$smtp_secure));
+            if ($smtpSecureNormalized === '' && (int)$smtp_port === 587) {
+                $smtpSecureNormalized = 'tls';
+            } elseif ($smtpSecureNormalized === '' && (int)$smtp_port === 465) {
+                $smtpSecureNormalized = 'ssl';
+            }
+            // Many SMTP relays require From to match authenticated mailbox.
+            $fromAddress = $smtp_username;
+
+            // Server settings
+            $mail->isSMTP();
+            $mail->Host = $smtp_host;
+            $mail->SMTPAuth = true;
+            $mail->Username = $smtp_username;
+            $mail->Password = $smtp_password;
+            if ($smtpSecureNormalized !== '') {
+                $mail->SMTPSecure = $smtpSecureNormalized;
+            }
+            $mail->Port = $smtp_port;
+            $mail->Timeout = $smtp_timeout;
+
+            if ($smtp_debug > 0) {
+                $mail->SMTPDebug = $smtp_debug;
+            }
+
+            // Recipients
+            $mail->setFrom($fromAddress, $email_from_name ?: $email_site_name);
+            $mail->addAddress($to, $toName ?? '');
+            if (!empty($email_from_email) && filter_var($email_from_email, FILTER_VALIDATE_EMAIL)) {
+                $mail->addReplyTo($email_from_email, $email_from_name ?: $email_site_name);
+            }
+
+            // Add BCC for admin if enabled
+            if ($email_bcc_admin && !empty($email_admin_email)) {
+                $mail->addBCC($email_admin_email);
+            }
+
+            // Content — force UTF-8 so em-dashes (—), currency, and accented chars render correctly
+            $mail->CharSet  = PHPMailer::CHARSET_UTF8;
+            $mail->Encoding = PHPMailer::ENCODING_BASE64;
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body = hotel_embed_logo_cid($mail, wrapEmailTemplate($htmlBody, $subject));
+            $mail->AltBody = $textBody ?: strip_tags($htmlBody);
+
+            $mail->send();
+
+            // Log email if enabled
+            if ($email_log_enabled) {
+                logEmail($to, $toName, $subject, 'sent');
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Email sent successfully via SMTP'
+            ];
+        } catch (Exception $e) {
+            $lastException = $e;
+            if ($attempt < $maxAttempts) {
+                // Brief pause before retry to allow transient SMTP issues to resolve
+                usleep(500000 * $attempt); // 0.5s, then 1s
+                error_log("PHPMailer transient error (attempt {$attempt}/{$maxAttempts}): " . $e->getMessage() . " — retrying…");
+                continue;
+            }
+            // All attempts exhausted
+            error_log("PHPMailer Error (all {$maxAttempts} attempts failed): " . $e->getMessage());
+
+            // Log error if enabled
+            if ($email_log_enabled) {
+                logEmail($to, $toName, $subject, 'failed', $e->getMessage());
+            }
+
+            // If development mode, show preview instead of failing
+            if ($development_mode) {
+                return createEmailPreview($to, $toName, $subject, $htmlBody, $textBody);
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Failed to send email: ' . $e->getMessage()
+            ];
         }
-        
-        return [
-            'success' => true,
-            'message' => 'Email sent successfully via SMTP'
+    }
+    // Should not reach here, but satisfy static analysis
+    return ['success' => false, 'message' => 'Unexpected error in sendEmail'];
+}
+
+/**
+ * Send email with optional attachments using the shared SMTP configuration.
+ *
+ * Each attachment may include either:
+ * - ['path' => '/abs/file.pdf', 'name' => 'file.pdf', 'mime' => 'application/pdf']
+ * - ['content' => '<binary>', 'name' => 'file.pdf', 'mime' => 'application/pdf']
+ */
+function sendEmailWithAttachments(string $to, ?string $toName, string $subject, string $htmlBody, array $attachments = [], string $textBody = ''): array
+{
+    global $email_from_name, $email_from_email, $email_admin_email, $email_site_name;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
+    global $email_bcc_admin, $development_mode, $email_log_enabled, $email_preview_enabled;
+
+    if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
+        $preview = createEmailPreview($to, $toName, $subject, $htmlBody, $textBody);
+        if (!empty($preview['success'])) {
+            $preview['attachment_names'] = array_values(array_filter(array_map(static function (array $attachment): string {
+                return trim((string)($attachment['name'] ?? ''));
+            }, $attachments)));
+        }
+        return $preview;
+    }
+
+    $maxAttempts = 3; // 1 initial attempt + 2 retries for transient SMTP failures
+    $lastExceptionAttach = null;
+    for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+        try {
+            $mail = new PHPMailer(true);
+
+            $smtpSecureNormalized = strtolower(trim((string)$smtp_secure));
+            if ($smtpSecureNormalized === '' && (int)$smtp_port === 587) {
+                $smtpSecureNormalized = 'tls';
+            } elseif ($smtpSecureNormalized === '' && (int)$smtp_port === 465) {
+                $smtpSecureNormalized = 'ssl';
+            }
+            $fromAddress = $smtp_username;
+
+            $mail->isSMTP();
+            $mail->Host = $smtp_host;
+            $mail->SMTPAuth = true;
+            $mail->Username = $smtp_username;
+            $mail->Password = $smtp_password;
+            if ($smtpSecureNormalized !== '') {
+                $mail->SMTPSecure = $smtpSecureNormalized;
+            }
+            $mail->Port = $smtp_port;
+            $mail->Timeout = $smtp_timeout;
+
+            if ($smtp_debug > 0) {
+                $mail->SMTPDebug = $smtp_debug;
+            }
+
+            $mail->setFrom($fromAddress, $email_from_name ?: $email_site_name);
+            $mail->addAddress($to, $toName ?? '');
+            if (!empty($email_from_email) && filter_var($email_from_email, FILTER_VALIDATE_EMAIL)) {
+                $mail->addReplyTo($email_from_email, $email_from_name ?: $email_site_name);
+            }
+            if ($email_bcc_admin && !empty($email_admin_email)) {
+                $mail->addBCC($email_admin_email);
+            }
+
+            foreach ($attachments as $attachment) {
+                $attachmentName = trim((string)($attachment['name'] ?? 'attachment.bin'));
+                $attachmentMime = trim((string)($attachment['mime'] ?? 'application/octet-stream'));
+                $attachmentPath = trim((string)($attachment['path'] ?? ''));
+                if ($attachmentPath !== '') {
+                    $mail->addAttachment($attachmentPath, $attachmentName, PHPMailer::ENCODING_BASE64, $attachmentMime);
+                    continue;
+                }
+
+                if (array_key_exists('content', $attachment)) {
+                    $mail->addStringAttachment((string)$attachment['content'], $attachmentName, PHPMailer::ENCODING_BASE64, $attachmentMime);
+                }
+            }
+
+            $mail->CharSet  = PHPMailer::CHARSET_UTF8;
+            $mail->Encoding = PHPMailer::ENCODING_BASE64;
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body = hotel_embed_logo_cid($mail, wrapEmailTemplate($htmlBody, $subject));
+            $mail->AltBody = $textBody !== '' ? $textBody : strip_tags($htmlBody);
+            $mail->send();
+
+            if ($email_log_enabled) {
+                logEmail($to, $toName, $subject, 'sent', '', 'attachments=' . count($attachments));
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Email sent successfully via SMTP',
+            ];
+        } catch (Exception $e) {
+            $lastExceptionAttach = $e;
+            if ($attempt < $maxAttempts) {
+                usleep(500000 * $attempt);
+                error_log("PHPMailer (attachments) transient error (attempt {$attempt}/{$maxAttempts}): " . $e->getMessage() . " — retrying…");
+                continue;
+            }
+            error_log('PHPMailer Error (attachments, all ' . $maxAttempts . ' attempts failed): ' . $e->getMessage());
+
+            if ($email_log_enabled) {
+                logEmail($to, $toName, $subject, 'failed', $e->getMessage(), 'attachments=' . count($attachments));
+            }
+
+            if ($development_mode) {
+                return createEmailPreview($to, $toName, $subject, $htmlBody, $textBody);
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Failed to send email: ' . $e->getMessage(),
+            ];
+        }
+    }
+    return ['success' => false, 'message' => 'Unexpected error in sendEmailWithAttachments'];
+}
+
+/**
+ * Send simple status update email for booking status changes.
+ * Consolidated here so all email logic uses a single runtime file.
+ */
+function sendSimpleStatusUpdateEmail(array $booking, string $status)
+{
+    global $email_site_name, $email_from_email, $email_site_url;
+
+    try {
+        global $pdo;
+        $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
+        $stmt->execute([$booking['room_id']]);
+        $room = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$room) {
+            throw new Exception("Room not found");
+        }
+
+        $statusMessages = [
+            'checked-in' => [
+                'subject' => 'Check-in Confirmed',
+                'title' => 'Welcome! You are Checked In',
+                'message' => 'You have been successfully checked in. We hope you enjoy your stay!',
+                'color' => '#28a745'
+            ],
+            'confirmed' => [
+                'subject' => 'Booking Status Updated',
+                'title' => 'Booking Status: Confirmed',
+                'message' => 'Your booking status has been updated to confirmed.',
+                'color' => '#8B7355'
+            ],
+            'cancelled' => [
+                'subject' => 'Booking Cancelled',
+                'title' => 'Booking Cancelled',
+                'message' => 'Your booking has been cancelled.',
+                'color' => '#dc3545'
+            ]
         ];
-        
+
+        if (!isset($statusMessages[$status])) {
+            throw new Exception("Unknown status: $status");
+        }
+
+        $msg = $statusMessages[$status];
+
+        $htmlBody = '
+        <h1 style="color: ' . $msg['color'] . '; text-align: center;">' . htmlspecialchars($msg['title']) . '</h1>
+        <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
+        <p>' . $msg['message'] . '</p>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Status:</td><td style="padding:10px 0 10px 6px;color: ' . $msg['color'] . '; font-weight: bold; text-transform: uppercase;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . htmlspecialchars($status) . '</td></tr></table>
+        </div>
+
+        <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a>.</p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        return sendEmail(
+            $booking['guest_email'],
+            $booking['guest_name'],
+            $msg['subject'] . ' - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
+            $htmlBody
+        );
     } catch (Exception $e) {
-        error_log("PHPMailer Error: " . $e->getMessage());
-        
-        // Log error if enabled
-        if ($email_log_enabled) {
-            logEmail($to, $toName, $subject, 'failed', $e->getMessage());
-        }
-        
-        // If development mode, show preview instead of failing
-        if ($development_mode) {
-            return createEmailPreview($to, $toName, $subject, $htmlBody, $textBody);
-        }
-        
+        error_log("Send Simple Status Update Email Error: " . $e->getMessage());
         return [
             'success' => false,
-            'message' => 'Failed to send email: ' . $e->getMessage()
+            'message' => $e->getMessage()
         ];
     }
 }
@@ -193,21 +381,22 @@ function sendEmail($to, $toName, $subject, $htmlBody, $textBody = '') {
 /**
  * Create email preview for development mode
  */
-function createEmailPreview($to, $toName, $subject, $htmlBody, $textBody = '') {
+function createEmailPreview(string $to, ?string $toName, string $subject, string $htmlBody, string $textBody = '')
+{
     global $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
     global $email_log_enabled;
-    
+
     // Log email if enabled
     if ($email_log_enabled) {
         logEmail($to, $toName, $subject, 'preview');
     }
-    
+
     // Create email preview file
     $previewDir = __DIR__ . '/../logs/email-previews';
     if (!file_exists($previewDir)) {
         mkdir($previewDir, 0755, true);
     }
-    
+
     $previewFile = $previewDir . '/' . date('Y-m-d-His') . '-' . preg_replace('/[^a-z0-9]/i', '-', strtolower($subject)) . '.html';
     $previewContent = '<!DOCTYPE html>
     <html>
@@ -241,9 +430,9 @@ function createEmailPreview($to, $toName, $subject, $htmlBody, $textBody = '') {
         </div>
     </body>
     </html>';
-    
+
     file_put_contents($previewFile, $previewContent);
-    
+
     return [
         'success' => true,
         'message' => 'Email preview created (development mode)',
@@ -254,20 +443,1574 @@ function createEmailPreview($to, $toName, $subject, $htmlBody, $textBody = '') {
 /**
  * Log email activity
  */
-function logEmail($to, $toName, $subject, $status, $error = '') {
+function logEmail(string $to, ?string $toName, string $subject, string $status, string $error = '', string $meta = '')
+{
     $logDir = __DIR__ . '/../logs';
     if (!file_exists($logDir)) {
         mkdir($logDir, 0755, true);
     }
-    
+
     $logFile = $logDir . '/email-log.txt';
     $logEntry = "[" . date('Y-m-d H:i:s') . "] [$status] $subject to $to ($toName)";
     if ($error) {
         $logEntry .= " - Error: $error";
     }
+    if ($meta) {
+        $logEntry .= " - Meta: $meta";
+    }
     $logEntry .= "\n";
     file_put_contents($logFile, $logEntry, FILE_APPEND);
 }
+
+if (!function_exists('hotel_inline_image_src')) {
+    function hotel_inline_image_src(string $filePath): string
+    {
+        if ($filePath === '' || !is_file($filePath) || !is_readable($filePath)) {
+            return '';
+        }
+
+        $bytes = @file_get_contents($filePath);
+        if ($bytes === false) {
+            return '';
+        }
+
+        $extension = strtolower((string)pathinfo($filePath, PATHINFO_EXTENSION));
+        $mime = match ($extension) {
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'svg' => 'image/svg+xml',
+            default => function_exists('mime_content_type') ? (string)mime_content_type($filePath) : 'application/octet-stream',
+        };
+
+        return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+    }
+}
+
+if (!function_exists('hotel_invoice_logo_src')) {
+    function hotel_invoice_logo_src(): string
+    {
+        $siteUrl = trim((string)getSetting('site_url', ''));
+        $remoteFallback = '';
+        $relativeFallback = '';
+        $candidates = [
+            (string)getSetting('site_logo', ''),
+            (string)getSetting('logo_url', ''),
+            (string)getSetting('hotel_logo', ''),
+            'images/logo/logo.png',
+        ];
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+
+            if (preg_match('#^https?://#i', $candidate)) {
+                if ($remoteFallback === '') {
+                    $remoteFallback = $candidate;
+                }
+                continue;
+            }
+
+            $relativePath = ltrim($candidate, '/');
+            $localPath = __DIR__ . '/../' . $relativePath;
+            if (is_file($localPath)) {
+                $inlineSrc = hotel_inline_image_src($localPath);
+                if ($inlineSrc !== '') {
+                    return $inlineSrc;
+                }
+
+                return $siteUrl !== ''
+                    ? rtrim($siteUrl, '/') . '/' . $relativePath
+                    : $relativePath;
+            }
+
+            if ($relativeFallback === '') {
+                $relativeFallback = $relativePath;
+            }
+        }
+
+        if ($remoteFallback !== '') {
+            return $remoteFallback;
+        }
+
+        if ($relativeFallback !== '') {
+            return $siteUrl !== ''
+                ? rtrim($siteUrl, '/') . '/' . $relativeFallback
+                : $relativeFallback;
+        }
+
+        return '';
+    }
+}
+
+/**
+ * Returns a public HTTPS URL for the hotel logo suitable for use in emails.
+ * Email clients (Gmail, Outlook) block data: URIs so base64 embedding does not work.
+ */
+if (!function_exists('hotel_email_logo_url')) {
+    function hotel_email_logo_url(): string
+    {
+        $siteUrl = trim((string)getSetting('site_url', ''));
+        $candidates = [
+            (string)getSetting('site_logo', ''),
+            (string)getSetting('logo_url', ''),
+            (string)getSetting('hotel_logo', ''),
+            'images/logo/logo.png',
+        ];
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+            if (preg_match('#^https?://#i', $candidate)) {
+                return $candidate;
+            }
+            $relative  = ltrim($candidate, '/');
+            $localPath = __DIR__ . '/../' . $relative;
+            if (is_file($localPath)) {
+                $base = $siteUrl !== '' ? $siteUrl : (defined('BASE_URL') ? (string)BASE_URL : '');
+                return $base !== '' ? rtrim($base, '/') . '/' . $relative : $relative;
+            }
+        }
+
+        return '';
+    }
+}
+
+/**
+ * Embed the hotel logo as a CID inline attachment in the PHPMailer instance.
+ *
+ * Replaces every occurrence of the logo HTTPS URL in $html with cid:hotel_logo_cid
+ * so the image renders in all email clients (Gmail, Outlook, Apple Mail) without
+ * requiring the recipient to "Load images". Works from localhost and production alike.
+ *
+ * @param PHPMailer $mail  The mailer instance (before send()).
+ * @param string    $html  The fully-wrapped HTML body.
+ * @return string          HTML with logo src replaced to cid: when successful.
+ */
+if (!function_exists('hotel_embed_logo_cid')) {
+    function hotel_embed_logo_cid(PHPMailer $mail, string $html): string
+    {
+        // CID embedding disabled (2026-07-08): Gmail/Outlook list CID-embedded
+        // images in the attachment strip, so the logo showed up as a downloadable
+        // "logo.png" on every email. The templates already reference the public
+        // HTTPS logo URL, which renders inline without any attachment — so this
+        // helper now returns the HTML unchanged.
+        return $html;
+
+        /* Legacy CID-embedding path (disabled — kept for reference):
+        $candidates = [
+            (string)getSetting('site_logo', ''),
+            (string)getSetting('logo_url', ''),
+            (string)getSetting('hotel_logo', ''),
+            'images/logo/logo.png',
+        ];
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '' || preg_match('#^https?://#i', $candidate)) {
+                continue;
+            }
+            $relative  = ltrim($candidate, '/');
+            $localPath = __DIR__ . '/../' . $relative;
+            if (!is_file($localPath)) {
+                continue;
+            }
+
+            $ext  = strtolower(pathinfo($localPath, PATHINFO_EXTENSION));
+            $mime = match ($ext) {
+                'jpg', 'jpeg' => 'image/jpeg',
+                'gif'         => 'image/gif',
+                'webp'        => 'image/webp',
+                default       => 'image/png',
+            };
+
+            try {
+                // Only embed when the logo URL is actually present in the HTML.
+                // Embedding without a matching cid: reference causes the image to appear
+                // as a spurious file attachment in Outlook, Gmail, and Apple Mail.
+                $pubUrl      = hotel_email_logo_url();
+                $escapedUrl  = $pubUrl !== '' ? htmlspecialchars($pubUrl, ENT_QUOTES, 'UTF-8') : '';
+                $urlInHtml   = $pubUrl !== ''
+                    && (strpos($html, $pubUrl) !== false || ($escapedUrl !== '' && strpos($html, $escapedUrl) !== false));
+
+                if (!$urlInHtml) {
+                    // Logo URL not in HTML — skip embedding to avoid spurious attachment
+                    return $html;
+                }
+
+                $mail->addEmbeddedImage($localPath, 'hotel_logo_cid', 'logo.' . $ext, 'base64', $mime);
+                // Replace public URL (both raw and HTML-escaped) with the CID reference
+                $html = str_replace(
+                    [$escapedUrl, $pubUrl],
+                    ['cid:hotel_logo_cid', 'cid:hotel_logo_cid'],
+                    $html
+                );
+            } catch (Exception $e) {
+                error_log('hotel_embed_logo_cid: ' . $e->getMessage());
+            }
+
+            return $html;
+        }
+
+        return $html;
+        */
+    }
+}
+
+if (!function_exists('hotel_japandi_key_value_rows')) {
+    function hotel_japandi_key_value_rows(array $rows, string $labelWidth = '30%', string $valueColor = '#6d6455', string $valueWeight = '500'): string
+    {
+        $html = '<table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.8;" cellpadding="0" cellspacing="0">';
+        foreach ($rows as $index => $row) {
+            $label = (string)($row['label'] ?? '');
+            $value = (string)($row['value'] ?? '');
+            $topPadding = $index === 0 ? '0' : '6px';
+            $html .= '<tr>'
+                . '<td style="width:' . $labelWidth . ';color:#9b8f7e;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;font-size:9px;padding-top:' . $topPadding . ';">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</td>'
+                . '<td style="color:' . $valueColor . ';font-weight:' . $valueWeight . ';padding-top:' . $topPadding . ';">' . $value . '</td>'
+                . '</tr>';
+        }
+        $html .= '</table>';
+
+        return $html;
+    }
+}
+
+if (!function_exists('hotel_japandi_summary_table')) {
+    function hotel_japandi_summary_table(array $rows, string $labelHeading = 'Description', string $valueHeading = 'Amount'): string
+    {
+        $html = '<table width="100%" border="1" bordercolor="#d3cbc0" style="width:100%;border-collapse:collapse;" cellpadding="0" cellspacing="0">'
+            . '<tr>'
+            . '<td width="60%" style="padding:14px 10px 14px 8px;border-bottom:2px solid #c4bbb0;border-right:1px solid #d3cbc0;color:#9b8f7e;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">' . htmlspecialchars($labelHeading, ENT_QUOTES, 'UTF-8') . '</td>'
+            . '<td width="40%" style="padding:14px 8px 14px 10px;border-bottom:2px solid #c4bbb0;color:#9b8f7e;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:600;text-align:right;">' . htmlspecialchars($valueHeading, ENT_QUOTES, 'UTF-8') . '</td>'
+            . '</tr>';
+
+        foreach ($rows as $row) {
+            $label = htmlspecialchars((string)($row['label'] ?? ''), ENT_QUOTES, 'UTF-8');
+            $value = (string)($row['value'] ?? '');
+            $tone = (string)($row['tone'] ?? '');
+
+            $rowStyle = '';
+            $labelStyle = 'width:60%;padding:10px 10px 10px 8px;border-bottom:1px solid #d3cbc0;border-right:1px solid #d3cbc0;font-size:12px;color:#6d6455;';
+            $valueStyle = 'width:40%;padding:10px 8px 10px 10px;border-bottom:1px solid #d3cbc0;font-size:12px;color:#3e3930;text-align:right;font-weight:500;white-space:nowrap;';
+
+            if ($tone === 'accent') {
+                $labelStyle = 'width:60%;padding:10px 10px 10px 8px;border-bottom:1px solid #d3cbc0;border-right:1px solid #d3cbc0;font-size:12px;color:#3e3930;font-weight:700;';
+                $valueStyle = 'width:40%;padding:10px 8px 10px 10px;border-bottom:1px solid #d3cbc0;font-size:12px;color:#3e3930;text-align:right;font-weight:700;white-space:nowrap;';
+            } elseif ($tone === 'alert') {
+                $labelStyle = 'width:60%;padding:10px 10px 10px 8px;border-bottom:1px solid #d3cbc0;border-right:1px solid #d3cbc0;font-size:12px;color:#8a5646;font-weight:700;';
+                $valueStyle = 'width:40%;padding:10px 8px 10px 10px;border-bottom:1px solid #d3cbc0;font-size:12px;color:#8a5646;text-align:right;font-weight:700;white-space:nowrap;';
+            } elseif ($tone === 'total') {
+                $rowStyle = '';
+                $labelStyle = 'width:60%;padding:10px 10px 10px 8px;border-top:2px solid #2a2420;font-size:12px;color:#f5f2eb;font-weight:700;background-color:#3e3930;';
+                $valueStyle = 'width:40%;padding:10px 8px 10px 10px;border-top:2px solid #2a2420;font-size:12px;color:#f5f2eb;text-align:right;font-weight:700;background-color:#3e3930;white-space:nowrap;';
+            }
+
+            if ($tone === 'total') {
+                $html .= '<tr>'
+                    . '<td width="60%" bgcolor="#3e3930" style="' . $labelStyle . '">' . $label . '</td>'
+                    . '<td width="40%" bgcolor="#3e3930" style="' . $valueStyle . '">' . $value . '</td>'
+                    . '</tr>';
+            } else {
+                $html .= '<tr' . ($rowStyle !== '' ? ' style="' . $rowStyle . '"' : '') . '>'
+                    . '<td width="60%" style="' . $labelStyle . '">' . $label . '</td>'
+                    . '<td width="40%" style="' . $valueStyle . '">' . $value . '</td>'
+                    . '</tr>';
+            }
+        }
+
+        $html .= '</table>';
+
+        return $html;
+    }
+}
+
+if (!function_exists('hotel_japandi_document_shell')) {
+    function hotel_japandi_document_shell(
+        string $documentLabel,
+        string $documentNumber,
+        string $dateLabel,
+        string $dateValue,
+        string $statusHtml,
+        string $leftHeading,
+        string $leftContentHtml,
+        string $rightHeading,
+        string $rightContentHtml,
+        string $contentHeading,
+        string $contentHtml,
+        array $extraSections = [],
+        string $footerNote = 'Thank you for choosing us',
+        string $headerExtraHtml = ''
+    ): string {
+        $dateLine = trim($dateLabel . ' ' . $dateValue);
+        $headerExtra = trim($headerExtraHtml) !== ''
+            ? '<div style="font-size:10px;color:#9b8f7e;letter-spacing:0.04em;margin-top:4px;">' . $headerExtraHtml . '</div>'
+            : '';
+
+        $extraHtml = '';
+        foreach ($extraSections as $sectionHtml) {
+            $section = trim((string)$sectionHtml);
+            if ($section === '') {
+                continue;
+            }
+
+            $extraHtml .= '<tr><td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:0 48px;"><div style="height:1px;background:#d3cbc0;"></div></td></tr>'
+                . '<tr><td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:0 48px;">' . $section . '</td></tr>';
+        }
+
+        return '<table style="width:100%;background-color:#d5cfc4;border-collapse:collapse;" cellpadding="0" cellspacing="0" bgcolor="#d5cfc4"><tr><td bgcolor="#d5cfc4" style="padding:40px 20px;background-color:#d5cfc4;font-family:Helvetica,Arial,sans-serif;color:#3e3930;">'
+            . '<table border="1" bordercolor="#d3cbc0" cellpadding="0" cellspacing="0" style="width:100%;max-width:720px;margin:0 auto;border-collapse:collapse;border:1px solid #d3cbc0;background-color:#f5f2eb;border-radius:1px;box-shadow:0 16px 40px rgba(70,60,50,0.15),0 4px 12px rgba(70,60,50,0.08);">'
+            . '<tr><td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:0;">'
+            . '<table style="width:100%;border-collapse:collapse;" cellpadding="0" cellspacing="0">'
+            . '<tr><td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:0;"><table style="width:100%;border-collapse:collapse;" cellpadding="0" cellspacing="0"><tr>'
+            . '<td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:48px 48px 36px;vertical-align:top;">'
+            . '<div style="max-width:110px;margin-bottom:16px;color:#9b8f7e;">{{logo_html}}</div>'
+            . '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:24px;color:#3e3930;letter-spacing:0.04em;line-height:1;font-weight:400;margin-bottom:16px;">{{site_name}}</div>'
+            . '<div style="font-size:10px;color:#6d6455;letter-spacing:0.08em;line-height:1.7;">{{address}}</div>'
+            . '<div style="font-size:10px;color:#6d6455;letter-spacing:0.04em;margin-top:4px;">{{contact_phone}} &nbsp;&middot;&nbsp; {{contact_email}}</div>'
+            . $headerExtra
+            . '</td>'
+            . '<td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:48px 48px 36px;vertical-align:top;text-align:right;">'
+            . '<div style="font-size:9px;letter-spacing:0.25em;text-transform:uppercase;color:#9b8f7e;font-weight:600;margin-bottom:12px;">' . htmlspecialchars($documentLabel, ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:24px;color:#3e3930;letter-spacing:0.04em;line-height:1.1;font-weight:400;">' . $documentNumber . '</div>'
+            . '<div style="font-size:11px;color:#6d6455;margin-top:12px;letter-spacing:0.06em;">' . htmlspecialchars($dateLine, ENT_QUOTES, 'UTF-8') . '</div>'
+            . $statusHtml
+            . '</td>'
+            . '</tr></table></td></tr>'
+            . '<tr><td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:0 48px;"><table width="100%" cellpadding="0" cellspacing="0"><tr><td bgcolor="#d3cbc0" style="background-color:#d3cbc0;height:1px;font-size:1px;line-height:1px;"> </td></tr></table></td></tr>'
+            . '<tr><td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:0;"><table style="width:100%;border-collapse:collapse;" cellpadding="0" cellspacing="0"><tr>'
+            . '<td bgcolor="#f5f2eb" style="background-color:#f5f2eb;width:50%;padding:32px 48px;vertical-align:top;border-right:1px solid #d3cbc0;">'
+            . '<div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:#9b8f7e;font-weight:600;margin-bottom:20px;">' . htmlspecialchars($leftHeading, ENT_QUOTES, 'UTF-8') . '</div>'
+            . $leftContentHtml
+            . '</td>'
+            . '<td bgcolor="#f5f2eb" style="background-color:#f5f2eb;width:50%;padding:32px 48px;vertical-align:top;">'
+            . '<div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:#9b8f7e;font-weight:600;margin-bottom:20px;">' . htmlspecialchars($rightHeading, ENT_QUOTES, 'UTF-8') . '</div>'
+            . $rightContentHtml
+            . '</td>'
+            . '</tr></table></td></tr>'
+            . '<tr><td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:0 48px;"><table width="100%" cellpadding="0" cellspacing="0"><tr><td bgcolor="#d3cbc0" style="background-color:#d3cbc0;height:1px;font-size:1px;line-height:1px;"> </td></tr></table></td></tr>'
+            . '<tr><td bgcolor="#f5f2eb" style="background-color:#f5f2eb;padding:36px 48px 36px;">'
+            . '<div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:#9b8f7e;font-weight:600;margin-bottom:20px;">' . htmlspecialchars($contentHeading, ENT_QUOTES, 'UTF-8') . '</div>'
+            . $contentHtml
+            . '</td></tr>'
+            . $extraHtml
+            . '<tr><td bgcolor="#ece8e0" style="background-color:#ece8e0;padding:0;"><table style="width:100%;border-collapse:collapse;background-color:#ece8e0;" cellpadding="0" cellspacing="0" bgcolor="#ece8e0"><tr>'
+            . '<td style="padding:28px 48px;vertical-align:middle;"><span style="font-family:Georgia,\'Times New Roman\',serif;font-size:15px;color:#3e3930;font-weight:400;letter-spacing:0.06em;">{{site_name}}</span></td>'
+            . '<td style="padding:28px 48px;text-align:right;vertical-align:middle;"><span style="font-size:9px;color:#9b8f7e;letter-spacing:0.18em;text-transform:uppercase;">' . htmlspecialchars($footerNote, ENT_QUOTES, 'UTF-8') . '</span></td>'
+            . '</tr></table></td></tr>'
+            . '</table>'
+            . '</td></tr></table>'
+            . '</td></tr></table>';
+    }
+}
+
+if (!function_exists('hotel_default_payment_invoice_document_html')) {
+    function hotel_default_payment_invoice_document_html(): string
+    {
+        $statusHtml = '<div style="margin-top:16px;"><span style="display:inline-block;padding:6px 16px;background:{{status_bg}};color:{{status_fg}};font-size:9px;letter-spacing:0.15em;text-transform:uppercase;font-weight:700;border-radius:2px;border:1px solid rgba(0,0,0,0.05);box-shadow:0 1px 2px rgba(0,0,0,0.02);">{{status_text}}</span></div>';
+        $leftContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Name', 'value' => '{{guest_name}}'],
+            ['label' => 'Email', 'value' => '{{guest_email}}'],
+            ['label' => 'Phone', 'value' => '{{guest_phone}}'],
+        ], '30%', '#3e3930', '500');
+        $rightContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Reference', 'value' => '{{booking_reference}}'],
+            ['label' => 'Room', 'value' => '{{room_name}}'],
+            ['label' => 'Check-in', 'value' => '{{check_in}}'],
+            ['label' => 'Check-out', 'value' => '{{check_out}}'],
+            ['label' => 'Guests', 'value' => '{{guests}}'],
+            ['label' => 'Duration', 'value' => '{{nights}} night(s)'],
+        ], '35%', '#6d6455', '500');
+        $contentHtml = '<table width="100%" border="1" bordercolor="#C8BEB0" style="width:100%;border-collapse:collapse;" cellpadding="0" cellspacing="0">'
+            . '<tr style="background-color:#8A775F;">'
+            . '<td width="50%" bgcolor="#8A775F" style="padding:10px 12px;border-bottom:2px solid #9A8E82;border-right:1px solid #9A8E82;color:#FFFFFF;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;background-color:#8A775F;">Description</td>'
+            . '<td width="10%" bgcolor="#8A775F" style="padding:10px 8px;border-bottom:2px solid #9A8E82;border-right:1px solid #9A8E82;color:#FFFFFF;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;text-align:center;background-color:#8A775F;">Qty</td>'
+            . '<td width="15%" bgcolor="#8A775F" style="padding:10px 8px;border-bottom:2px solid #9A8E82;border-right:1px solid #9A8E82;color:#FFFFFF;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;text-align:right;background-color:#8A775F;">Unit Rate</td>'
+            . '<td width="25%" bgcolor="#8A775F" style="padding:10px 12px;border-bottom:2px solid #9A8E82;color:#FFFFFF;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;text-align:right;background-color:#8A775F;">Line Total</td>'
+            . '</tr>'
+            . '{{charges_table_rows}}'
+            . '{{totals_rows}}'
+            . '</table>';
+
+        return hotel_japandi_document_shell(
+            'Invoice',
+            '{{invoice_number}}',
+            'Issued',
+            '{{issued_date}}',
+            $statusHtml,
+            'Bill To',
+            $leftContentHtml,
+            'Stay Summary',
+            $rightContentHtml,
+            'Invoice Items',
+            $contentHtml,
+            ['{{payment_history_section}}', '{{bank_details}}', '{{invoice_terms}}'],
+            'Thank you for choosing us',
+            '{{vat_number_html}}'
+        );
+    }
+}
+
+if (!function_exists('hotel_default_conference_invoice_document_html')) {
+    function hotel_default_conference_invoice_document_html(): string
+    {
+        $statusHtml = '<div style="margin-top:16px;"><span style="display:inline-block;padding:6px 16px;background:#ece5db;color:#5b5246;font-size:9px;letter-spacing:0.15em;text-transform:uppercase;font-weight:700;border-radius:2px;border:1px solid rgba(0,0,0,0.05);">{{status_text}}</span></div>';
+        $leftContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Company', 'value' => '{{company_name}}'],
+            ['label' => 'Contact', 'value' => '{{contact_person}}'],
+            ['label' => 'Client Email', 'value' => '{{client_email}}'],
+            ['label' => 'Client Phone', 'value' => '{{client_phone}}'],
+        ], '34%', '#3e3930', '500');
+        $rightContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Reference', 'value' => '{{inquiry_reference}}'],
+            ['label' => 'Room', 'value' => '{{conference_room}}'],
+            ['label' => 'Date', 'value' => '{{event_date}}'],
+            ['label' => 'Time', 'value' => '{{event_time}}'],
+            ['label' => 'Attendees', 'value' => '{{attendees}}'],
+            ['label' => 'Type', 'value' => '{{event_type}}'],
+        ], '32%', '#6d6455', '500');
+        $contentHtml = hotel_japandi_summary_table([
+            ['label' => 'Event Type', 'value' => '{{event_type}}'],
+            ['label' => 'Total Amount', 'value' => '{{total_amount}}', 'tone' => 'accent'],
+            ['label' => 'Amount Paid', 'value' => '{{amount_paid}}'],
+            ['label' => 'Balance Due', 'value' => '{{balance_due}}', 'tone' => 'alert'],
+        ], 'Line Item', 'Amount');
+
+        return hotel_japandi_document_shell(
+            'Invoice',
+            '{{invoice_number}}',
+            'Issued',
+            '{{issued_date}}',
+            $statusHtml,
+            'Bill To',
+            $leftContentHtml,
+            'Event Summary',
+            $rightContentHtml,
+            'Invoice Summary',
+            $contentHtml,
+            [],
+            'We appreciate your business'
+        );
+    }
+}
+
+if (!function_exists('hotel_default_room_quotation_document_html')) {
+    function hotel_default_room_quotation_document_html(): string
+    {
+        $leftContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Guest', 'value' => '{{guest_name}}'],
+            ['label' => 'Reference', 'value' => '{{booking_reference}}'],
+            ['label' => 'Valid Until', 'value' => '{{valid_until}}'],
+        ], '32%', '#3e3930', '500');
+        $rightContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Room', 'value' => '{{room_name}}'],
+            ['label' => 'Check-in', 'value' => '{{check_in_date}}'],
+            ['label' => 'Check-out', 'value' => '{{check_out_date}}'],
+            ['label' => 'Guests', 'value' => '{{guests}}'],
+            ['label' => 'Duration', 'value' => '{{nights}} night(s)'],
+        ], '35%', '#6d6455', '500');
+        $contentHtml = hotel_japandi_summary_table([
+            ['label' => 'Rate Per Night', 'value' => '{{rate_per_night}}'],
+            ['label' => 'Room Subtotal', 'value' => '{{room_subtotal}}'],
+            ['label' => 'VAT', 'value' => '{{vat_amount}}'],
+            ['label' => 'Deposit', 'value' => '{{deposit_amount}}'],
+            ['label' => 'Total Quotation', 'value' => '{{total_amount}}', 'tone' => 'total'],
+            ['label' => 'Balance Due', 'value' => '{{balance_due}}', 'tone' => 'alert'],
+        ], 'Line Item', 'Amount')
+            . '<div style="margin-top:18px;font-size:12px;line-height:1.8;color:#6d6455;">{{payment_policy}}</div>'
+            . '<div style="margin-top:12px;font-size:12px;line-height:1.8;color:#6d6455;">{{quotation_notes}}</div>';
+
+        return hotel_japandi_document_shell(
+            'Quotation',
+            '{{quotation_reference}}',
+            'Valid Until',
+            '{{valid_until}}',
+            '',
+            'Prepared For',
+            $leftContentHtml,
+            'Stay Summary',
+            $rightContentHtml,
+            'Quotation Summary',
+            $contentHtml,
+            [],
+            'Prepared for your review'
+        );
+    }
+}
+
+if (!function_exists('hotel_default_conference_quotation_document_html')) {
+    function hotel_default_conference_quotation_document_html(): string
+    {
+        $leftContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Company', 'value' => '{{company_name}}'],
+            ['label' => 'Contact', 'value' => '{{contact_person}}'],
+            ['label' => 'Inquiry', 'value' => '{{inquiry_reference}}'],
+            ['label' => 'Valid Until', 'value' => '{{valid_until}}'],
+        ], '34%', '#3e3930', '500');
+        $rightContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Room', 'value' => '{{conference_room}}'],
+            ['label' => 'Date', 'value' => '{{event_date}}'],
+            ['label' => 'Time', 'value' => '{{event_time}}'],
+            ['label' => 'Attendees', 'value' => '{{attendees}}'],
+        ], '32%', '#6d6455', '500');
+        $contentHtml = hotel_japandi_summary_table([
+            ['label' => 'Total Amount', 'value' => '{{total_amount}}', 'tone' => 'total'],
+            ['label' => 'VAT', 'value' => '{{vat_amount}}'],
+            ['label' => 'Deposit Required', 'value' => '{{deposit_amount}}', 'tone' => 'accent'],
+        ], 'Line Item', 'Amount')
+            . '<div style="margin-top:18px;font-size:12px;line-height:1.8;color:#6d6455;">{{payment_policy}}</div>'
+            . '<div style="margin-top:12px;font-size:12px;line-height:1.8;color:#6d6455;">{{quotation_notes}}</div>';
+
+        return hotel_japandi_document_shell(
+            'Quotation',
+            '{{quotation_reference}}',
+            'Valid Until',
+            '{{valid_until}}',
+            '',
+            'Client',
+            $leftContentHtml,
+            'Event Summary',
+            $rightContentHtml,
+            'Quotation Summary',
+            $contentHtml,
+            [],
+            'Prepared for your review'
+        );
+    }
+}
+
+if (!function_exists('hotel_default_event_quotation_document_html')) {
+    function hotel_default_event_quotation_document_html(): string
+    {
+        $leftContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Recipient', 'value' => '{{recipient_name}}'],
+            ['label' => 'Reference', 'value' => '{{quotation_reference}}'],
+            ['label' => 'Valid Until', 'value' => '{{valid_until}}'],
+        ], '34%', '#3e3930', '500');
+        $rightContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Event', 'value' => '{{event_title}}'],
+            ['label' => 'Date', 'value' => '{{event_date}}'],
+            ['label' => 'Time', 'value' => '{{event_time}}'],
+            ['label' => 'Location', 'value' => '{{event_location}}'],
+            ['label' => 'Attendees', 'value' => '{{attendee_count}}'],
+        ], '32%', '#6d6455', '500');
+        $contentHtml = hotel_japandi_summary_table([
+            ['label' => 'Rate Per Attendee', 'value' => '{{rate_per_attendee}}'],
+            ['label' => 'Attendee Count', 'value' => '{{attendee_count}} attendees'],
+            ['label' => 'Total Quotation', 'value' => '{{total_amount}}', 'tone' => 'total'],
+        ], 'Line Item', 'Amount')
+            . '<div style="margin-top:18px;font-size:12px;line-height:1.8;color:#6d6455;">{{quotation_notes}}</div>';
+
+        return hotel_japandi_document_shell(
+            'Quotation',
+            '{{quotation_reference}}',
+            'Valid Until',
+            '{{valid_until}}',
+            '',
+            'Prepared For',
+            $leftContentHtml,
+            'Event Summary',
+            $rightContentHtml,
+            'Quotation Summary',
+            $contentHtml,
+            [],
+            'Prepared for your review'
+        );
+    }
+}
+
+if (!function_exists('hotel_default_credit_note_document_html')) {
+    function hotel_default_credit_note_document_html(): string
+    {
+        $leftContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Guest', 'value' => '{{guest_name}}'],
+            ['label' => 'Email', 'value' => '{{guest_email}}'],
+            ['label' => 'Booking Ref', 'value' => '{{booking_reference}}'],
+        ], '34%', '#3e3930', '500');
+        $rightContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Reason', 'value' => '{{reason}}'],
+            ['label' => 'Issued', 'value' => '{{issued_date}}'],
+            ['label' => 'Expires', 'value' => '{{expires_at}}'],
+        ], '30%', '#6d6455', '500');
+        $contentHtml = hotel_japandi_summary_table([
+            ['label' => 'Original Value', 'value' => '{{amount}}'],
+            ['label' => 'Amount Used', 'value' => '{{amount_used}}'],
+            ['label' => 'Available Balance', 'value' => '{{balance}}', 'tone' => 'total'],
+        ], 'Line Item', 'Amount')
+            . '<div style="margin-top:18px;font-size:10px;line-height:1.8;color:#6d6455;">{{reason_notes}}</div>';
+
+        return hotel_japandi_document_shell(
+            'Credit Note',
+            '{{credit_note_number}}',
+            'Issued',
+            '{{issued_date}}',
+            '',
+            'Issued To',
+            $leftContentHtml,
+            'Reference',
+            $rightContentHtml,
+            'Credit Summary',
+            $contentHtml,
+            [],
+            'Issued for your records'
+        );
+    }
+}
+
+if (!function_exists('hotel_default_receipt_document_html')) {
+    function hotel_default_receipt_document_html(): string
+    {
+        $statusHtml = '<div style="margin-top:16px;"><span style="display:inline-block;padding:6px 16px;background:#ece5db;color:#5b5246;font-size:9px;letter-spacing:0.15em;text-transform:uppercase;font-weight:700;border-radius:2px;border:1px solid rgba(0,0,0,0.05);">{{payment_status}}</span></div>';
+        $leftContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Guest', 'value' => '{{guest_name}}'],
+            ['label' => 'Email', 'value' => '{{guest_email}}'],
+            ['label' => 'Phone', 'value' => '{{guest_phone}}'],
+        ], '30%', '#3e3930', '500');
+        $rightContentHtml = hotel_japandi_key_value_rows([
+            ['label' => 'Type', 'value' => '{{booking_type}}'],
+            ['label' => 'Booking Ref', 'value' => '{{booking_reference}}'],
+            ['label' => 'Payment Ref', 'value' => '{{payment_reference}}'],
+            ['label' => 'Method', 'value' => '{{payment_method}}'],
+        ], '34%', '#6d6455', '500');
+        $contentHtml = '<div style="margin:0 0 18px;font-size:10px;line-height:1.8;color:#6d6455;">{{description}}</div>'
+            . hotel_japandi_summary_table([
+                ['label' => 'Payment Amount', 'value' => '{{payment_amount}}'],
+                ['label' => 'VAT Component', 'value' => '{{vat_amount}}'],
+                ['label' => 'Total Received', 'value' => '{{total_amount}}', 'tone' => 'total'],
+            ], 'Description', 'Amount');
+
+        return hotel_japandi_document_shell(
+            'Receipt',
+            '{{receipt_number}}',
+            'Received',
+            '{{payment_date}}',
+            $statusHtml,
+            'Received From',
+            $leftContentHtml,
+            'Payment Summary',
+            $rightContentHtml,
+            'Receipt Summary',
+            $contentHtml,
+            ['{{bank_details_html}}', '{{receipt_terms}}'],
+            'Payment received with thanks'
+        );
+    }
+}
+
+if (!function_exists('bookingTemplateReplaceMap')) {
+    function bookingTemplateReplaceMap(array $vars): array
+    {
+        $replace = [];
+        foreach ($vars as $key => $value) {
+            if (!is_string($key) || $key === '') {
+                continue;
+            }
+            $replace['{{' . $key . '}}'] = (string)$value;
+        }
+
+        return $replace;
+    }
+}
+
+if (!function_exists('renderBookingDocumentTemplate')) {
+    function renderBookingDocumentTemplate(string $templateKey, array $vars, string $fallbackHtml = ''): string
+    {
+        $templateHtml = $fallbackHtml;
+        if (function_exists('getBookingEmailTemplateConfig')) {
+            $template = getBookingEmailTemplateConfig($templateKey, []);
+            if (!empty($template['html_body']) && (int)($template['is_active'] ?? 1) === 1) {
+                $templateHtml = (string)$template['html_body'];
+            }
+        }
+
+        return strtr($templateHtml, bookingTemplateReplaceMap($vars));
+    }
+}
+
+if (!function_exists('hotel_load_tcpdf')) {
+    /**
+     * Load the TCPDF PDF engine from whichever location exists on this host:
+     * Composer autoload, the vendor TCPDF package directly, or a standalone
+     * TCPDF/ folder in the project root. Never fatals when none are present —
+     * returns false so callers can degrade or raise a clean error instead.
+     */
+    function hotel_load_tcpdf(): bool
+    {
+        if (class_exists('TCPDF')) {
+            return true;
+        }
+
+        $candidates = [
+            __DIR__ . '/../vendor/tecnickcom/tcpdf/tcpdf.php',
+            __DIR__ . '/../vendor/autoload.php',
+            __DIR__ . '/../TCPDF/tcpdf.php',
+        ];
+        foreach ($candidates as $file) {
+            if (is_file($file)) {
+                require_once $file;
+                if (class_exists('TCPDF')) {
+                    return true;
+                }
+            }
+        }
+
+        return class_exists('TCPDF');
+    }
+}
+
+if (!function_exists('bookingRenderPdfFromHtml')) {
+    function bookingRenderPdfFromHtml(string $html, string $title = 'Document'): string
+    {
+        if (!hotel_load_tcpdf()) {
+            throw new RuntimeException('The PDF engine (TCPDF) is not installed on this server. Upload the vendor/ folder (composer install) or a TCPDF/ folder to enable PDF documents.');
+        }
+
+        // Anonymous subclass fills #D5CFC4 sand on every page — matches the document shell
+        // outer table so no white gap appears in margins or on overflow pages.
+        $pdf = new class('P', 'mm', 'A4', true, 'UTF-8', false) extends TCPDF {
+            public function AddPage($orientation = '', $format = '', $keepmargins = false, $tocpage = false): void
+            {
+                parent::AddPage($orientation, $format, $keepmargins, $tocpage);
+                $this->SetFillColor(213, 207, 196); // #D5CFC4 — Japandi sand, matches outer table
+                $this->Rect(0, 0, $this->getPageWidth(), $this->getPageHeight(), 'F');
+            }
+        };
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetMargins(12, 12, 12);
+        $pdf->SetAutoPageBreak(true, 14);
+        $pdf->SetTitle($title);
+        $pdf->AddPage();
+        $pdf->writeHTML($html, true, false, true, false, '');
+
+        return $pdf->Output('', 'S');
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Premium Email Theme Helpers
+ * Shared helpers that build the Japandi-premium HTML email shell used
+ * by all transactional email templates.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+if (!function_exists('hotel_premium_email_summary_rows')) {
+    /**
+     * Build a summary box table section (a <tr> block) for the premium email shell.
+     *
+     * @param string  $heading  Short heading shown above the rows (all-caps label style).
+     * @param array[] $rows     Each row: [label, value] or [label, value, bool $large_value].
+     */
+    function hotel_premium_email_summary_rows(string $heading, array $rows): string
+    {
+        $rowsHtml = '';
+        foreach ($rows as $i => $row) {
+            $label = (string)($row[0] ?? '');
+            $value = (string)($row[1] ?? '');
+            $large = !empty($row[2]);
+            $border = $i > 0 ? 'border-top:1px solid #e1dbce;padding-top:8px;' : '';
+            $valStyle = $large
+                ? 'color:#3e3930;font-weight:600;font-size:14px;'
+                : 'color:#6d6455;font-weight:500;';
+            $rowsHtml .=
+                '<tr>'
+                . '<td width="40%" style="color:#9b8f7e;font-weight:600;text-transform:uppercase;'
+                . 'letter-spacing:0.1em;font-size:9px;padding-bottom:8px;' . $border . '">' . $label . '</td>'
+                . '<td width="60%" style="' . $valStyle . 'padding-bottom:8px;text-align:right;' . $border . '">'
+                . $value . '</td>'
+                . '</tr>';
+        }
+        return '<tr><td style="padding:0 48px 36px;">'
+            . '<table width="100%" border="0" cellspacing="0" cellpadding="0"'
+            . ' style="border:1px solid #d3cbc0;background:rgba(211,203,192,0.15);">'
+            . '<tr><td style="padding:24px;">'
+            . '<div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;'
+            . 'color:#9b8f7e;font-weight:600;margin-bottom:16px;text-align:center;">' . $heading . '</div>'
+            . '<table width="100%" border="0" cellspacing="0" cellpadding="0"'
+            . ' style="font-size:12px;line-height:1.8;">' . $rowsHtml . '</table>'
+            . '</td></tr></table>'
+            . '</td></tr>';
+    }
+}
+
+if (!function_exists('hotel_premium_email_cta')) {
+    /**
+     * Build a CTA button row for the premium email shell.
+     *
+     * @param string $url_tag   A {{placeholder}} or literal URL.
+     * @param string $label     Button label text.
+     */
+    function hotel_premium_email_cta(string $url_tag, string $label): string
+    {
+        return '<tr><td align="center" style="padding:0 48px 48px;">'
+            . '<table border="0" cellspacing="0" cellpadding="0"><tr>'
+            . '<td align="center" style="border-radius:2px;background-color:#524b3f;">'
+            . '<a href="' . $url_tag . '" target="_blank" style="font-size:11px;'
+            . "font-family:'DM Sans',Arial,sans-serif;"
+            . 'color:#ffffff;text-decoration:none;padding:14px 28px;border:1px solid #524b3f;'
+            . 'display:inline-block;letter-spacing:0.15em;text-transform:uppercase;font-weight:600;">'
+            . $label . '</a>'
+            . '</td></tr></table>'
+            . '</td></tr>';
+    }
+}
+
+if (!function_exists('hotel_premium_email_body')) {
+    /**
+     * Build the greeting + body text row for the premium email shell.
+     *
+     * @param string $name_tag    Placeholder for the recipient name, e.g. {{guest_name}}.
+     * @param string $message_html Inner <p> tags with the email message.
+     */
+    function hotel_premium_email_body(string $name_tag, string $message_html): string
+    {
+        return '<tr><td style="padding:0 48px 32px;font-size:14px;line-height:1.8;color:#5c5549;">'
+            . '<p style="margin:0 0 16px;">Dear ' . $name_tag . ',</p>'
+            . $message_html
+            . '</td></tr>';
+    }
+}
+
+if (!function_exists('hotel_premium_email_html')) {
+    /**
+     * Wrap inner HTML rows inside the full Japandi-premium email shell.
+     *
+     * @param string $preheader       Hidden preview text (may contain {{placeholders}}).
+     * @param string $inner_html      The <tr> blocks between the header separator and card footer.
+     * @param string $guest_email_tag Placeholder for the recipient email address shown in legal footer.
+     */
+    function hotel_premium_email_html(
+        string $preheader,
+        string $inner_html,
+        string $guest_email_tag = '{{guest_email}}'
+    ): string {
+        $fonts  = 'https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1'
+            . '&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700'
+            . '&family=Noto+Serif+JP:wght@300;400&display=swap';
+        return '<!DOCTYPE html>'
+            . '<html lang="en"><head><meta charset="UTF-8">'
+            . '<meta name="viewport" content="width=device-width,initial-scale=1.0">'
+            . '<!--[if !mso]><!-->'
+            . '<link rel="preconnect" href="https://fonts.googleapis.com">'
+            . '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+            . '<link href="' . $fonts . '" rel="stylesheet">'
+            . '<!--<![endif]-->'
+            . '<style>'
+            . 'body{margin:0;padding:0;background-color:#d5cfc4;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}'
+            . 'table,td{border-collapse:collapse;}'
+            . 'img{border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}'
+            . '</style>'
+            . '</head>'
+            . '<body style="margin:0;padding:0;background-color:#d5cfc4;">'
+            . '<div style="font-family:\'DM Sans\',Arial,Helvetica,sans-serif;color:#3e3930;'
+            . 'background-color:#d5cfc4;padding:40px 20px;margin:0;">'
+            . '<div style="display:none;font-size:1px;color:#d5cfc4;line-height:1px;'
+            . 'max-height:0px;max-width:0px;opacity:0;overflow:hidden;">' . $preheader . '</div>'
+            . '<table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#d5cfc4;">'
+            . '<tr><td align="center" style="padding:20px 0;">'
+            /* ── card ── */
+            . '<table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;'
+            . 'margin:0 auto;background-color:#f5f2eb;border-radius:1px;'
+            . 'box-shadow:0 16px 40px rgba(70,60,50,0.15),0 4px 12px rgba(70,60,50,0.08);'
+            . 'border:1px solid rgba(190,175,155,0.5);">'
+            /* ── card header ── */
+            . '<tr><td align="center" style="padding:48px 48px 32px;">'
+            . '<div style="margin-bottom:16px;color:#9b8f7e;">{{logo_html}}</div>'
+            . '<div style="font-family:\'Noto Serif JP\',\'DM Serif Display\',Georgia,serif;'
+            . 'font-size:24px;color:#3e3930;letter-spacing:0.04em;line-height:1;font-weight:400;">{{site_name}}</div>'
+            . '</td></tr>'
+            /* ── injected inner content ── */
+            . $inner_html
+            /* ── separator ── */
+            . '<tr><td style="padding:0 48px;">'
+            . '<div style="height:1px;background:#d3cbc0;line-height:1px;font-size:1px;">&nbsp;</div>'
+            . '</td></tr>'
+            /* ── card footer ── */
+            . '<tr><td style="padding:32px 48px;background:rgba(211,203,192,0.25);">'
+            . '<table width="100%" border="0" cellspacing="0" cellpadding="0">'
+            . '<tr><td align="center" style="padding-bottom:12px;">'
+            . '<span style="font-family:\'Noto Serif JP\',\'DM Serif Display\',Georgia,serif;'
+            . 'font-size:14px;color:#3e3930;font-weight:400;letter-spacing:0.06em;">{{site_name}}</span>'
+            . '</td></tr>'
+            . '<tr><td align="center" style="font-size:10px;color:#6d6455;line-height:1.6;letter-spacing:0.04em;">'
+            . '{{address}}<br>'
+            . '{{contact_phone}}&nbsp;|&nbsp;'
+            . '<a href="mailto:{{contact_email}}" style="color:#6d6455;text-decoration:none;">{{contact_email}}</a>'
+            . '</td></tr>'
+            . '</table>'
+            . '</td></tr>'
+            /* ── end card ── */
+            . '</table>'
+            /* ── outer legal footer ── */
+            . '<table width="100%" border="0" cellspacing="0" cellpadding="0"'
+            . ' style="max-width:600px;width:100%;margin:0 auto;">'
+            . '<tr><td align="center" style="padding:24px 20px;font-size:9px;color:#8a8376;'
+            . 'letter-spacing:0.06em;line-height:1.6;">'
+            . 'This email was sent to ' . $guest_email_tag . '.<br>'
+            . 'If you have any questions, please contact our reservations team.'
+            . '</td></tr>'
+            . '</table>'
+            . '</td></tr></table>'
+            . '</div>'
+            . '</body></html>';
+    }
+}
+
+/**
+ * Ensure booking email template defaults exist in DB
+ */
+function ensureBookingEmailTemplateDefaults()
+{
+    if (!function_exists('ensureBookingEmailTemplatesTable') || !function_exists('upsertBookingEmailTemplateConfig')) {
+        return;
+    }
+
+    if (!ensureBookingEmailTemplatesTable()) {
+        return;
+    }
+
+    $defaults = [
+        /* ── Room booking emails ─────────────────────────────────── */
+        'booking_received' => [
+            'name'    => 'Booking Received (Customer)',
+            'subject' => 'Booking Received — {{site_name}} · {{booking_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Your booking request has been received — Reference: {{booking_reference}}',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">Thank you for choosing <strong>{{site_name}}</strong>. We have received your booking request for <strong>{{room_name}}</strong> and will confirm it shortly.</p>'
+                        . '<p style="margin:0;">We will be in touch within 24 hours. For immediate assistance contact us at <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a>.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Booking Summary', [
+                        ['Reference',        '{{booking_reference}}'],
+                        ['Room',             '{{room_name}}'],
+                        ['Occupancy',        '{{occupancy_type}}'],
+                        ['Check-in',         '{{check_in_date_formatted}}'],
+                        ['Check-out',        '{{check_out_date_formatted}}'],
+                        ['Nights',           '{{number_of_nights}}'],
+                        ['Guests',           '{{number_of_guests}}'],
+                        ['Rate Plan',        '{{rate_plan_label}}'],
+                        ['Total',            '{{currency_symbol}} {{total_amount_formatted}}', true],
+                    ])
+                    . '{{packages_html}}'
+                    . '<tr><td style="padding:0 48px 48px;font-size:12px;line-height:1.8;color:#9b8f7e;text-align:center;font-style:italic;">{{payment_policy}}</td></tr>'
+            ),
+        ],
+        'booking_confirmed' => [
+            'name'    => 'Booking Confirmed (Customer)',
+            'subject' => 'Booking Confirmed — {{site_name}} · {{booking_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Your booking is confirmed — Reference: {{booking_reference}}',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">Your booking at <strong>{{site_name}}</strong> is confirmed. We look forward to welcoming you to <strong>{{room_name}}</strong>.</p>'
+                        . '<p style="margin:0;">Check-in from <strong>{{check_in_time}}</strong> &middot; Check-out by <strong>{{check_out_time}}</strong>.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Confirmed Booking', [
+                        ['Reference',        '{{booking_reference}}'],
+                        ['Room',             '{{room_name}}'],
+                        ['Occupancy',        '{{occupancy_type}}'],
+                        ['Check-in',         '{{check_in_date_formatted}}'],
+                        ['Check-out',        '{{check_out_date_formatted}}'],
+                        ['Nights',           '{{number_of_nights}}'],
+                        ['Guests',           '{{number_of_guests}}'],
+                        ['Rate Plan',        '{{rate_plan_label}}'],
+                        ['Total',            '{{currency_symbol}} {{total_amount_formatted}}', true],
+                    ])
+                    . '{{packages_html}}'
+                    . '<tr><td style="padding:0 48px 48px;font-size:12px;line-height:1.8;color:#9b8f7e;text-align:center;font-style:italic;">{{payment_policy}}</td></tr>'
+            ),
+        ],
+        'booking_reminder' => [
+            'name'    => 'Check-in Reminder (Late / Overdue)',
+            'subject' => 'Reminder: Your Stay at {{site_name}} — {{booking_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Reminder: Your booking {{booking_reference}} at {{site_name}}',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '{{urgency_notice}}'
+                        . '<p style="margin:0;">If you have any questions or need to adjust your booking, please contact us at <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a> or {{phone_main}}.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Your Reservation', [
+                        ['Reference',  '{{booking_reference}}'],
+                        ['Room',       '{{room_name}}'],
+                        ['Check-in',   '{{check_in_date_formatted}}'],
+                        ['Check-out',  '{{check_out_date_formatted}}'],
+                        ['Nights',     '{{number_of_nights}}'],
+                        ['Guests',     '{{number_of_guests}}'],
+                        ['Total',      '{{currency_symbol}} {{total_amount_formatted}}', true],
+                    ])
+                    . '<tr><td style="padding:0 48px 48px;font-size:12px;line-height:1.8;color:#9b8f7e;text-align:center;font-style:italic;">{{payment_policy}}</td></tr>'
+            ),
+        ],
+        'booking_cancelled' => [
+            'name'    => 'Booking Cancelled (Customer)',
+            'subject' => 'Booking Cancelled — {{booking_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Your booking {{booking_reference}} has been cancelled',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;"><span style="color:#b0552b;font-weight:600;">Your booking has been cancelled.</span> If you believe this is an error or wish to rebook, please contact us.</p>'
+                        . '<p style="margin:0;">We apologise for any inconvenience. For assistance: <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a> &middot; {{phone_main}}.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Cancelled Booking', [
+                        ['Reference',  '{{booking_reference}}'],
+                        ['Room',       '{{room_name}}'],
+                        ['Check-in',   '{{check_in_date_formatted}}'],
+                        ['Check-out',  '{{check_out_date_formatted}}'],
+                        ['Reason',     '{{cancellation_reason}}'],
+                    ])
+            ),
+        ],
+        /* ── Invoice emails ──────────────────────────────────────── */
+        'payment_invoice' => [
+            'name'    => 'Room Invoice Email',
+            'subject' => 'Your Invoice {{invoice_number}} — {{site_name}}',
+            'html'    => hotel_premium_email_html(
+                'Your invoice {{invoice_number}} from {{site_name}} is ready',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">Thank you for choosing to stay with us. We hope you had a wonderful experience. Please find attached the official invoice (<strong>{{invoice_number}}</strong>) for your recent stay.</p>'
+                        . '<p style="margin:0;">A brief summary is shown below. The full invoice PDF is attached to this email.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Stay Summary', [
+                        ['Booking Reference',              '{{booking_reference}}'],
+                        ['Invoice Number',                 '{{invoice_number}}'],
+                        ['Check-out',                      '{{check_out}}'],
+                        ['Sub-total',                      '{{subtotal_amount}}'],
+                        ['Tourism Levy ({{levy_rate}}%)',   '{{levy_amount}}'],
+                        ['VAT ({{vat_rate}}%)',             '{{vat_amount}}'],
+                        ['Total Due',                      '{{total_amount}}', true],
+                    ])
+                    . '<tr><td style="padding:0 48px 8px;text-align:center;">{{vat_number_html}}</td></tr>'
+
+            ),
+        ],
+        'conference_invoice' => [
+            'name'    => 'Conference Invoice Email',
+            'subject' => 'Conference Invoice — {{site_name}} · {{inquiry_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Conference invoice for {{inquiry_reference}} — {{site_name}}',
+                hotel_premium_email_body(
+                    '{{contact_person}}',
+                    '<p style="margin:0 0 16px;">Thank you for hosting with us. Your conference invoice PDF is attached for your records.</p>'
+                        . '<p style="margin:0;">For any adjustments, contact us at <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a> or {{contact_phone}}.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Conference Summary', [
+                        ['Reference',             '{{inquiry_reference}}'],
+                        ['Company',               '{{company_name}}'],
+                        ['Conference Room',        '{{conference_room}}'],
+                        ['Event Date',             '{{event_date}}'],
+                        ['Event Time',             '{{event_time}}'],
+                        ['Sub-total',              '{{subtotal_amount}}'],
+                        ['VAT ({{vat_rate}}%)',    '{{vat_amount}}'],
+                        ['Total',                  '{{total_amount}}', true],
+                    ])
+                    . '<tr><td style="padding:0 48px 8px;text-align:center;">{{vat_number_html}}</td></tr>',
+                '{{contact_email}}'
+            ),
+        ],
+        /* ── Tentative booking emails ─────────────────────────────── */
+        'tentative_booking_created' => [
+            'name'    => 'Tentative Booking Created',
+            'subject' => 'Tentative Hold Confirmed — {{site_name}} · {{booking_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Your room is on tentative hold — Reference: {{booking_reference}}',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">Your room has been placed on a tentative hold with <strong>{{site_name}}</strong>. Please confirm your booking before the hold expires to secure your stay.</p>'
+                        . '<p style="margin:0;">Contact us at <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a> or {{phone_main}} to confirm.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Tentative Hold', [
+                        ['Reference',    '{{booking_reference}}'],
+                        ['Room',         '{{room_name}}'],
+                        ['Check-in',     '{{check_in_date_formatted}}'],
+                        ['Check-out',    '{{check_out_date_formatted}}'],
+                        ['Nights',       '{{number_of_nights}}'],
+                        ['Hold Expires', '{{tentative_expires_at_formatted}}'],
+                        ['Total',        '{{currency_symbol}} {{total_amount_formatted}}', true],
+                    ])
+            ),
+        ],
+        'tentative_booking_reminder' => [
+            'name'    => 'Tentative Booking Reminder',
+            'subject' => 'Reminder: Your Tentative Hold Expires Soon — {{booking_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Reminder: Your tentative hold expires soon — {{booking_reference}}',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">This is a friendly reminder that your tentative booking hold at <strong>{{site_name}}</strong> is expiring soon. Please confirm to secure your stay.</p>'
+                        . '<p style="margin:0;">Contact us at <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a> or {{phone_main}} to confirm.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Hold Reminder', [
+                        ['Reference',    '{{booking_reference}}'],
+                        ['Room',         '{{room_name}}'],
+                        ['Hold Expires', '{{tentative_expires_at_formatted}}', true],
+                    ])
+            ),
+        ],
+        'tentative_booking_expired' => [
+            'name'    => 'Tentative Booking Expired',
+            'subject' => 'Tentative Hold Expired — {{booking_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Your tentative hold for {{booking_reference}} has expired',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">Your tentative booking hold has expired and the room has been released. We hope to see you again soon.</p>'
+                        . '<p style="margin:0;">To make a new booking, please contact us at <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a> or {{phone_main}}.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Expired Hold', [
+                        ['Reference',    '{{booking_reference}}'],
+                        ['Room',         '{{room_name}}'],
+                        ['Was Check-in', '{{check_in_date_formatted}}'],
+                        ['Was Check-out', '{{check_out_date_formatted}}'],
+                    ])
+            ),
+        ],
+        'tentative_booking_converted' => [
+            'name'    => 'Tentative Booking Converted',
+            'subject' => 'Booking Now Confirmed — {{site_name}} · {{booking_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Your booking is now confirmed — Reference: {{booking_reference}}',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">Great news — your tentative booking has been confirmed at <strong>{{site_name}}</strong>. We look forward to welcoming you.</p>'
+                        . '<p style="margin:0;">Check-in from <strong>{{check_in_time}}</strong> &middot; Check-out by <strong>{{check_out_time}}</strong>.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Confirmed Stay', [
+                        ['Reference',  '{{booking_reference}}'],
+                        ['Room',       '{{room_name}}'],
+                        ['Check-in',   '{{check_in_date_formatted}}'],
+                        ['Check-out',  '{{check_out_date_formatted}}'],
+                        ['Nights',     '{{number_of_nights}}'],
+                        ['Total',      '{{currency_symbol}} {{total_amount_formatted}}', true],
+                    ])
+                    . '<tr><td style="padding:0 48px 48px;font-size:12px;line-height:1.8;color:#9b8f7e;text-align:center;font-style:italic;">{{payment_policy}}</td></tr>'
+            ),
+        ],
+        /* ── Quotation emails ────────────────────────────────────── */
+        'tentative_quotation' => [
+            'name'    => 'Room Quotation Email',
+            'subject' => 'Your Stay Quotation — {{site_name}} · {{quotation_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Your stay quotation {{quotation_reference}} from {{site_name}} is ready',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">Please find your stay quotation from <strong>{{site_name}}</strong>. Your quotation PDF is attached for review.</p>'
+                        . '<p style="margin:0;">{{quotation_notes}}</p>'
+                )
+                    . hotel_premium_email_summary_rows('Quotation Summary', [
+                        ['Quote Reference',   '{{quotation_reference}}'],
+                        ['Booking Reference', '{{booking_reference}}'],
+                        ['Room',              '{{room_name}}'],
+                        ['Check-in',          '{{check_in_date}}'],
+                        ['Check-out',         '{{check_out_date}}'],
+                        ['Valid Until',        '{{valid_until}}'],
+                        ['Total',             '{{total_amount}}', true],
+                    ])
+            ),
+        ],
+        'tentative_quotation_document' => [
+            'name'    => 'Room Quotation PDF',
+            'subject' => 'Room Quotation Document',
+            'html'    => hotel_default_room_quotation_document_html(),
+        ],
+        'conference_quotation' => [
+            'name'    => 'Conference Quotation Email',
+            'subject' => 'Conference Quotation — {{site_name}} · {{inquiry_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Conference quotation {{quotation_reference}} from {{site_name}}',
+                hotel_premium_email_body(
+                    '{{contact_person}}',
+                    '<p style="margin:0 0 16px;">Your conference quotation from <strong>{{site_name}}</strong> is ready. The quotation PDF is attached for your records.</p>'
+                        . '<p style="margin:0;">{{quotation_notes}}</p>'
+                )
+                    . hotel_premium_email_summary_rows('Conference Quotation', [
+                        ['Inquiry Reference', '{{inquiry_reference}}'],
+                        ['Quote Reference',   '{{quotation_reference}}'],
+                        ['Company',           '{{company_name}}'],
+                        ['Conference Room',   '{{conference_room}}'],
+                        ['Event Date',        '{{event_date}}'],
+                        ['Attendees',         '{{attendees}}'],
+                        ['Valid Until',        '{{valid_until}}'],
+                        ['Total',             '{{total_amount}}', true],
+                    ]),
+                '{{contact_email}}'
+            ),
+        ],
+        'conference_quotation_document' => [
+            'name'    => 'Conference Quotation PDF',
+            'subject' => 'Conference Quotation Document',
+            'html'    => hotel_default_conference_quotation_document_html(),
+        ],
+        'event_quotation' => [
+            'name'    => 'Event Quotation Email',
+            'subject' => 'Event Quotation — {{site_name}} · {{quotation_reference}}',
+            'html'    => hotel_premium_email_html(
+                'Your event quotation {{quotation_reference}} from {{site_name}}',
+                hotel_premium_email_body(
+                    '{{recipient_name}}',
+                    '<p style="margin:0 0 16px;">Your event quotation from <strong>{{site_name}}</strong> is ready. Please find the quotation PDF attached.</p>'
+                        . '<p style="margin:0;">{{quotation_notes}}</p>'
+                )
+                    . hotel_premium_email_summary_rows('Event Quotation', [
+                        ['Quote Reference', '{{quotation_reference}}'],
+                        ['Event',           '{{event_title}}'],
+                        ['Date',            '{{event_date}}'],
+                        ['Time',            '{{event_time}}'],
+                        ['Location',        '{{event_location}}'],
+                        ['Attendees',       '{{attendee_count}}'],
+                        ['Valid Until',      '{{valid_until}}'],
+                        ['Total',           '{{total_amount}}', true],
+                    ]),
+                '{{guest_email}}'
+            ),
+        ],
+        'event_quotation_document' => [
+            'name'    => 'Event Quotation PDF',
+            'subject' => 'Event Quotation Document',
+            'html'    => hotel_default_event_quotation_document_html(),
+        ],
+        /* ── Credit note ─────────────────────────────────────────── */
+        'credit_note' => [
+            'name'    => 'Credit Note Email',
+            'subject' => 'Credit Note {{credit_note_number}} — {{site_name}}',
+            'html'    => hotel_premium_email_html(
+                'Credit note {{credit_note_number}} has been issued to your account',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">A credit note has been issued to your account with <strong>{{site_name}}</strong>. The credit note PDF is attached for your records.</p>'
+                        . '<p style="margin:0;">Please quote <strong>{{credit_note_number}}</strong> when making your next booking. This credit note is non-transferable and cannot be exchanged for cash.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Credit Note Summary', [
+                        ['Credit Note No.',   '{{credit_note_number}}'],
+                        ['Face Value',        '{{amount}}'],
+                        ['Reason',            '{{reason}}'],
+                        ['Valid Until',        '{{expires_at}}'],
+                        ['Available Balance', '{{balance}}', true],
+                    ])
+            ),
+        ],
+        'credit_note_document' => [
+            'name'    => 'Credit Note PDF',
+            'subject' => 'Credit Note Document',
+            'html'    => hotel_default_credit_note_document_html(),
+        ],
+        /* ── Refund notification ─────────────────────────────────── */
+        'refund_notification' => [
+            'name'    => 'Refund Notification Email',
+            'subject' => 'Refund Issued — {{site_name}} · {{refund_reference}}',
+            'html'    => hotel_premium_email_html(
+                'A refund of {{currency_symbol}} {{refund_amount_formatted}} has been issued — {{refund_reference}}',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">We are writing to confirm that a refund has been issued on your account with <strong>{{site_name}}</strong>.</p>'
+                        . '<p style="margin:0 0 16px;">The refund will be processed through your original payment method. Please allow 3&ndash;5 business days for the funds to appear in your account.</p>'
+                        . '<p style="margin:0;">If you have any questions about this refund, please contact us at <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a>.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Refund Details', [
+                        ['Refund Reference',  '{{refund_reference}}'],
+                        ['Booking Reference', '{{booking_reference}}'],
+                        ['Reason',            '{{refund_reason_display}}'],
+                        ['Date Issued',       '{{refund_date_formatted}}'],
+                        ['Refund Amount',     '{{currency_symbol}} {{refund_amount_formatted}}', true],
+                    ])
+            ),
+        ],
+        /* ── Receipt ─────────────────────────────────────────────── */
+        'payment_receipt' => [
+            'name'    => 'Payment Receipt Email',
+            'subject' => 'Payment Receipt {{receipt_number}} — {{site_name}}',
+            'html'    => hotel_premium_email_html(
+                'Your payment receipt {{receipt_number}} from {{site_name}}',
+                hotel_premium_email_body(
+                    '{{guest_name}}',
+                    '<p style="margin:0 0 16px;">Thank you for your payment. Your receipt PDF is attached for your records.</p>'
+                        . '<p style="margin:0;">Questions? Contact us at <a href="mailto:{{contact_email}}" style="color:#524b3f;">{{contact_email}}</a>.</p>'
+                )
+                    . hotel_premium_email_summary_rows('Payment Summary', [
+                        ['Receipt No.',       '{{receipt_number}}'],
+                        ['Reference',         '{{payment_reference}}'],
+                        ['Type',              '{{booking_type}}'],
+                        ['Payment Date',      '{{payment_date}}'],
+                        ['VAT Incl.',         '{{vat_amount}}'],
+                        ['Amount Received',   '{{total_amount}}', true],
+                    ])
+                    . '<tr><td style="padding:0 48px 8px;text-align:center;">{{vat_number_html}}</td></tr>'
+            ),
+        ],
+        'payment_receipt_document' => [
+            'name'    => 'Payment Receipt PDF',
+            'subject' => 'Payment Receipt Document',
+            'html'    => hotel_default_receipt_document_html(),
+        ],
+        'payment_invoice_document' => [
+            'name'    => 'Room Invoice PDF',
+            'subject' => 'Invoice Document',
+            'html'    => hotel_default_payment_invoice_document_html(),
+        ],
+        'conference_invoice_document' => [
+            'name'    => 'Conference Invoice PDF',
+            'subject' => 'Conference Invoice Document',
+            'html'    => hotel_default_conference_invoice_document_html(),
+        ],
+    ];
+
+    // Keep an in-memory copy so admin reset/revert actions can use the exact same defaults.
+    $GLOBALS['hotel_booking_template_defaults'] = $defaults;
+
+    foreach ($defaults as $key => $def) {
+        $existing = getBookingEmailTemplateConfig($key, []);
+        if (empty($existing['subject']) || empty($existing['html_body'])) {
+            upsertBookingEmailTemplateConfig($key, $def['name'], $def['subject'], $def['html'], '', 1);
+        }
+    }
+}
+
+if (!function_exists('hotel_booking_template_defaults_map')) {
+    /**
+     * Return the canonical booking template defaults map used for seeding and resets.
+     *
+     * @return array<string, array{name: string, subject: string, html: string}>
+     */
+    function hotel_booking_template_defaults_map(): array
+    {
+        $defaults = $GLOBALS['hotel_booking_template_defaults'] ?? null;
+        if (is_array($defaults) && $defaults !== []) {
+            return $defaults;
+        }
+
+        if (function_exists('ensureBookingEmailTemplateDefaults')) {
+            ensureBookingEmailTemplateDefaults();
+        }
+
+        $seededDefaults = $GLOBALS['hotel_booking_template_defaults'] ?? [];
+        return is_array($seededDefaults) ? $seededDefaults : [];
+    }
+}
+
+if (!function_exists('resetBookingEmailTemplatesToDefaults')) {
+    /**
+     * Force reset every booking email/PDF template to the built-in defaults.
+     *
+     * @return array{success: bool, message: string, updated?: int}
+     */
+    function resetBookingEmailTemplatesToDefaults(bool $preserveActivationState = true): array
+    {
+        if (!function_exists('ensureBookingEmailTemplatesTable') || !function_exists('upsertBookingEmailTemplateConfig') || !function_exists('getBookingEmailTemplateConfig')) {
+            return [
+                'success' => false,
+                'message' => 'Booking template storage is not available.',
+            ];
+        }
+
+        if (!ensureBookingEmailTemplatesTable()) {
+            return [
+                'success' => false,
+                'message' => 'Booking template table could not be prepared.',
+            ];
+        }
+
+        $defaults = hotel_booking_template_defaults_map();
+        if ($defaults === []) {
+            return [
+                'success' => false,
+                'message' => 'Built-in booking template defaults were not available.',
+            ];
+        }
+
+        $updatedCount = 0;
+        foreach ($defaults as $templateKey => $templateDefaults) {
+            $existing = getBookingEmailTemplateConfig($templateKey, []);
+            $isActive = 1;
+            if ($preserveActivationState && isset($existing['is_active'])) {
+                $isActive = (int)$existing['is_active'] === 1 ? 1 : 0;
+            }
+
+            $saved = upsertBookingEmailTemplateConfig(
+                $templateKey,
+                (string)$templateDefaults['name'],
+                (string)$templateDefaults['subject'],
+                (string)$templateDefaults['html'],
+                '',
+                $isActive
+            );
+
+            if (!$saved) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to reset template: ' . $templateKey,
+                ];
+            }
+
+            $updatedCount++;
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Booking templates reset to defaults.',
+            'updated' => $updatedCount,
+        ];
+    }
+}
+
+/**
+ * Build booking email variables
+ */
+function buildBookingEmailVariables(array $booking, ?array $room = null, array $extra = [])
+{
+    global $email_site_name, $email_site_url, $email_from_email, $pdo;
+
+    $currency = getSetting('currency_symbol');
+    $roomTypeName = $room['name'] ?? ($booking['room_name'] ?? '');
+    $roomAssignment = '';
+    if (!empty($booking['id']) && function_exists('getBookingRoomLabel')) {
+        $roomAssignment = getBookingRoomLabel((int)$booking['id']);
+    }
+    $displayRoomName = $roomAssignment !== '' ? trim($roomTypeName . ' - ' . $roomAssignment) : $roomTypeName;
+
+    $occupancyType = (string)($booking['occupancy_type'] ?? '');
+    $occupancyLabel = $occupancyType !== '' ? ucfirst(str_replace('_', ' ', $occupancyType)) : '';
+
+    $vars = [
+        'site_name' => $email_site_name,
+        'site_url' => $email_site_url,
+        'contact_email' => $email_from_email ?: getSetting('email_main', ''),
+        'phone_main' => getSetting('phone_main', ''),
+        'currency_symbol' => $currency,
+        'payment_policy' => getSetting('payment_policy', ''),
+        'check_in_time' => getSetting('check_in_time', '2:00 PM'),
+        'check_out_time' => getSetting('check_out_time', '11:00 AM'),
+        'booking_reference' => $booking['booking_reference'] ?? '',
+        'guest_name' => $booking['guest_name'] ?? '',
+        'guest_email' => $booking['guest_email'] ?? '',
+        'guest_phone' => $booking['guest_phone'] ?? '',
+        'room_name' => $displayRoomName,
+        'room_assignment' => $roomAssignment,
+        'room_numbers' => $roomAssignment,
+        'occupancy_type' => $occupancyLabel,
+        'check_in_date_formatted' => !empty($booking['check_in_date']) ? date('F j, Y', strtotime($booking['check_in_date'])) : '',
+        'check_out_date_formatted' => !empty($booking['check_out_date']) ? date('F j, Y', strtotime($booking['check_out_date'])) : '',
+        'number_of_nights' => (string)($booking['number_of_nights'] ?? ''),
+        'number_of_guests' => (string)($booking['number_of_guests'] ?? ''),
+        'adult_guests' => (string)($booking['adult_guests'] ?? max(1, ((int)($booking['number_of_guests'] ?? 1)) - (int)($booking['child_guests'] ?? 0))),
+        'child_guests' => (string)($booking['child_guests'] ?? 0),
+        'tentative_expires_at_formatted' => !empty($booking['tentative_expires_at']) ? date('F j, Y g:i A', strtotime((string)$booking['tentative_expires_at'])) : '',
+        'tentative_status' => ucfirst((string)($booking['status'] ?? '')),
+        'child_price_multiplier' => (string)($booking['child_price_multiplier'] ?? getSetting('booking_child_price_multiplier', getSetting('child_guest_price_multiplier', 50))),
+        'child_supplement_total_formatted' => isset($booking['child_supplement_total']) ? number_format((float)$booking['child_supplement_total'], 0) : number_format(0, 0),
+        'total_amount_formatted' => isset($booking['total_amount']) ? number_format((float)$booking['total_amount'], 0) : '',
+        'special_requests' => $booking['special_requests'] ?? '',
+        'cancellation_reason' => $extra['cancellation_reason'] ?? '',
+        'rate_plan_label' => $booking['rate_plan_label'] ?? '',
+        'rate_plan_discount_formatted' => isset($booking['rate_plan_discount']) && (float)$booking['rate_plan_discount'] > 0
+            ? number_format((float)$booking['rate_plan_discount'], 0) : '',
+        'package_total_formatted' => isset($booking['package_total']) && (float)$booking['package_total'] > 0
+            ? number_format((float)$booking['package_total'], 0) : '',
+    ];
+
+    // ── Booking packages / extras ────────────────────────────────────────────
+    $packagesHtml = '';
+    $bookingId = (int)($booking['id'] ?? 0);
+    if ($bookingId > 0 && isset($pdo)) {
+        try {
+            $pkgStmt = $pdo->prepare(
+                'SELECT package_name, price_type, price_amount, quantity, total_cost
+                 FROM booking_packages WHERE booking_id = ? ORDER BY id ASC'
+            );
+            $pkgStmt->execute([$bookingId]);
+            $pkgRows = $pkgStmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($pkgRows)) {
+                $summaryRows = [];
+                foreach ($pkgRows as $pkg) {
+                    $priceSuffix = $pkg['price_type'] === 'per_night' ? '/night' : '';
+                    $qty         = (int)$pkg['quantity'];
+                    $label       = htmlspecialchars($pkg['package_name']);
+                    $costFmt     = $currency . ' ' . number_format((float)$pkg['total_cost'], 0);
+                    $detail      = $qty > 1 ? " (x{$qty}{$priceSuffix})" : ($priceSuffix ? " ({$priceSuffix})" : '');
+                    $summaryRows[] = [$label . $detail, $costFmt];
+                }
+                if (function_exists('hotel_premium_email_summary_rows')) {
+                    $packagesHtml = hotel_premium_email_summary_rows('Extras & Packages', $summaryRows);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('buildBookingEmailVariables packages query error: ' . $e->getMessage());
+        }
+    }
+    $vars['packages_html'] = $packagesHtml;
+
+    // ── VAT / Levy tax vars ─────────────────────────────────────────────
+    $vatEnabled   = in_array(getSetting('vat_enabled'), ['1', 1, true, 'true', 'on'], true);
+    $levyEnabled  = in_array(getSetting('tourism_levy_enabled'), ['1', 1, true, 'true', 'on'], true);
+    $vatRateVal   = $vatEnabled ? (float)getSetting('vat_rate') : 0.0;
+    $vatNumVal    = (string)getSetting('vat_number', '');
+    $vatAmtVal    = (float)($booking['vat_amount'] ?? (isset($booking['total_amount']) ? vat_components((float)$booking['total_amount'])['vat'] : 0.0));
+    // Use booking levy percent, fall back to site setting when levy is enabled
+    $levyPctVal   = (float)($booking['tourism_levy_percent'] ?? ($levyEnabled ? (float)getSetting('tourism_levy_percent', 0) : 0.0));
+    // Compute levy amount from subtotal when the booking has a rate but amount was 0
+    $levyAmtVal   = (float)($booking['tourism_levy_amount'] ?? 0.0);
+    if ($levyAmtVal === 0.0 && $levyPctVal > 0.0) {
+        $levyAmtVal = (float)($booking['total_amount'] ?? 0) * $levyPctVal / 100.0;
+    }
+    $totalTaxVal  = (float)($booking['total_with_vat'] ?? (vat_mode() === 'inclusive'
+        ? (float)($booking['total_amount'] ?? 0) + $levyAmtVal
+        : (float)($booking['total_amount'] ?? 0) + $vatAmtVal + $levyAmtVal));
+    $vars['vat_number']      = $vatNumVal;
+    $vars['vat_rate']        = $vatRateVal > 0.0 ? number_format($vatRateVal, 1) : '0';
+    $vars['vat_amount']      = $vatAmtVal > 0.0 ? vat_document_value($currency . ' ' . number_format($vatAmtVal, 2)) : '—';
+    $vars['levy_rate']       = $levyPctVal > 0.0 ? number_format($levyPctVal, 1) : '0';
+    $vars['levy_amount']     = $levyAmtVal > 0.0 ? ($currency . ' ' . number_format($levyAmtVal, 2)) : '—';
+    $vars['subtotal_amount'] = $currency . ' ' . number_format((float)($booking['total_amount'] ?? 0), 2);
+    $vars['total_amount']    = $currency . ' ' . number_format($totalTaxVal, 2);
+    $vars['vat_number_html'] = $vatNumVal !== ''
+        ? '<p style="margin:8px 0 0;font-size:11px;color:#9b8f7e;text-align:center;">VAT Reg. No.: ' . htmlspecialchars($vatNumVal, ENT_QUOTES, 'UTF-8') . '</p>'
+        : '';
+
+    // ── Logo / address vars ─────────────────────────────────────────────
+    // Use public HTTPS URL — email clients (Gmail/Outlook) block data: URIs
+    $logoSrc  = function_exists('hotel_email_logo_url') ? hotel_email_logo_url() : '';
+    $logoHtml = $logoSrc !== ''
+        ? '<img src="' . htmlspecialchars($logoSrc, ENT_QUOTES, 'UTF-8') . '" alt="' . htmlspecialchars((string)$email_site_name, ENT_QUOTES, 'UTF-8') . '" style="max-width:110px;height:auto;display:block;margin:0 auto;">'
+        : '';
+    $vars['logo_html']     = $logoHtml;
+    $vars['address']       = htmlspecialchars((string)getSetting('hotel_address', getSetting('address', '')), ENT_QUOTES, 'UTF-8');
+    $vars['contact_phone'] = htmlspecialchars((string)getSetting('phone_main', ''), ENT_QUOTES, 'UTF-8');
+
+    return array_merge($vars, $extra);
+}
+
+/**
+ * Render booking email template from DB
+ */
+function renderBookingEmailTemplate(string $templateKey, array $vars)
+{
+    if (!function_exists('getBookingEmailTemplateConfig')) {
+        return null;
+    }
+
+    $template = getBookingEmailTemplateConfig($templateKey, []);
+    if (empty($template['subject']) || empty($template['html_body']) || (int)($template['is_active'] ?? 1) !== 1) {
+        return null;
+    }
+
+    $replace = [];
+    foreach ($vars as $k => $v) {
+        $replace['{{' . $k . '}}'] = (string)$v;
+    }
+
+    return [
+        'subject' => strtr($template['subject'], $replace),
+        'html_body' => strtr($template['html_body'], $replace),
+        'text_body' => !empty($template['text_body']) ? strtr($template['text_body'], $replace) : ''
+    ];
+}
+
+ensureBookingEmailTemplateDefaults();
 
 /**
  * Log cancellation to database
@@ -282,57 +2025,15 @@ function logEmail($to, $toName, $subject, $status, $error = '') {
  * @param string $email_status Email status message
  * @return bool Success status
  */
-function logCancellationToDatabase($booking_id, $booking_reference, $booking_type, $guest_email, $cancelled_by, $cancellation_reason = '', $email_sent = false, $email_status = '', $cancelled_by_type = 'admin', $cancelled_by_employee_id = null) {
+function logCancellationToDatabase(int $booking_id, string $booking_reference, string $booking_type, string $guest_email, mixed $cancelled_by, string $cancellation_reason = '', bool $email_sent = false, string $email_status = '')
+{
     global $pdo;
-    
+
     try {
-        // Ensure cancellation log table and newer audit columns exist.
-        $pdo->exec("CREATE TABLE IF NOT EXISTS cancellation_log (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            booking_id INT UNSIGNED NOT NULL,
-            booking_reference VARCHAR(80) NOT NULL,
-            booking_type VARCHAR(30) NOT NULL,
-            guest_email VARCHAR(255) DEFAULT NULL,
-            cancelled_by INT UNSIGNED DEFAULT 0,
-            cancellation_reason TEXT NULL,
-            email_sent TINYINT(1) DEFAULT 0,
-            email_status TEXT NULL,
-            cancelled_by_type VARCHAR(20) DEFAULT 'admin',
-            cancelled_by_employee_id INT UNSIGNED NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            cancellation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_booking_id (booking_id),
-            INDEX idx_booking_type (booking_type),
-            INDEX idx_cancelled_by (cancelled_by),
-            INDEX idx_cancelled_by_type (cancelled_by_type),
-            INDEX idx_cancellation_date (cancellation_date)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-        try {
-            $pdo->exec("ALTER TABLE cancellation_log ADD COLUMN IF NOT EXISTS cancelled_by_type VARCHAR(20) DEFAULT 'admin' AFTER cancelled_by");
-            $pdo->exec("ALTER TABLE cancellation_log ADD COLUMN IF NOT EXISTS cancelled_by_employee_id INT UNSIGNED NULL AFTER cancelled_by_type");
-            $pdo->exec("ALTER TABLE cancellation_log ADD COLUMN IF NOT EXISTS cancellation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER created_at");
-        } catch (Throwable $e) {
-            // Ignore if DB does not support IF NOT EXISTS for ALTER TABLE.
-        }
-
-        // Auto-detect employee-linked actor where possible.
-        $actorType = $cancelled_by_type;
-        $actorEmployeeId = $cancelled_by_employee_id ? (int)$cancelled_by_employee_id : null;
-        if ((int)$cancelled_by <= 0) {
-            $actorType = 'guest';
-        } elseif ($actorEmployeeId === null) {
-            $empRef = resolveEmployeeForAdminUser($pdo, (int)$cancelled_by);
-            if (!empty($empRef['employee_id'])) {
-                $actorType = 'employee';
-                $actorEmployeeId = (int)$empRef['employee_id'];
-            }
-        }
-
         $stmt = $pdo->prepare("
             INSERT INTO cancellation_log
-            (booking_id, booking_reference, booking_type, guest_email, cancelled_by, cancelled_by_type, cancelled_by_employee_id, cancellation_reason, email_sent, email_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (booking_id, booking_reference, booking_type, guest_email, cancelled_by, cancellation_reason, email_sent, email_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $booking_id,
@@ -340,35 +2041,10 @@ function logCancellationToDatabase($booking_id, $booking_reference, $booking_typ
             $booking_type,
             $guest_email,
             $cancelled_by,
-            $actorType,
-            $actorEmployeeId,
             $cancellation_reason,
             $email_sent ? 1 : 0,
             $email_status
         ]);
-
-        try {
-            $detail = 'Cancellation logged for booking ' . $booking_reference . ' (' . $booking_type . '). Email sent: ' . ($email_sent ? 'yes' : 'no');
-            $ip = $_SERVER['REMOTE_ADDR'] ?? null;
-            $ua = isset($_SERVER['HTTP_USER_AGENT']) ? substr($_SERVER['HTTP_USER_AGENT'], 0, 500) : null;
-
-            if ((int)$cancelled_by > 0) {
-                $unameStmt = $pdo->prepare("SELECT username FROM admin_users WHERE id = ? LIMIT 1");
-                $unameStmt->execute([(int)$cancelled_by]);
-                $username = (string)($unameStmt->fetchColumn() ?: '');
-
-                logAdminActivity($pdo, (int)$cancelled_by, $username !== '' ? $username : null, 'booking_cancelled', $detail, $ip, $ua);
-            } else {
-                logAdminActivity($pdo, null, 'guest', 'booking_cancelled_guest', $detail, $ip, $ua);
-            }
-
-            if (!empty($actorEmployeeId)) {
-                logEmployeeActivity($pdo, (int)$actorEmployeeId, (int)$cancelled_by > 0 ? (int)$cancelled_by : null, (int)$cancelled_by > 0 ? (int)$cancelled_by : null, 'booking_cancelled', $detail, 'cancellation_log', $ip, $ua);
-            }
-        } catch (Throwable $e) {
-            // Do not block cancellation logging flow if activity mirror fails.
-        }
-
         return true;
     } catch (Exception $e) {
         error_log("Failed to log cancellation to database: " . $e->getMessage());
@@ -388,18 +2064,19 @@ function logCancellationToDatabase($booking_id, $booking_reference, $booking_typ
  * @param string $email_status Email status message
  * @return bool Success status
  */
-function logCancellationToFile($booking_reference, $booking_type, $guest_email, $cancelled_by_name, $cancellation_reason = '', $email_sent = false, $email_status = '') {
+function logCancellationToFile(string $booking_reference, string $booking_type, string $guest_email, string $cancelled_by_name, string $cancellation_reason = '', bool $email_sent = false, string $email_status = '')
+{
     $logDir = __DIR__ . '/../logs';
     if (!file_exists($logDir)) {
         mkdir($logDir, 0755, true);
     }
-    
+
     $logFile = $logDir . '/cancellations.log';
     $timestamp = date('Y-m-d H:i:s');
     $emailStatus = $email_sent ? 'SENT' : 'FAILED';
-    
+
     $logEntry = "[$timestamp] CANCELLATION - Ref: $booking_reference | Type: $booking_type | Email: $guest_email | Cancelled by: $cancelled_by_name | Reason: $cancellation_reason | Email: $emailStatus ($email_status)\n";
-    
+
     $result = file_put_contents($logFile, $logEntry, FILE_APPEND);
     return $result !== false;
 }
@@ -407,157 +2084,86 @@ function logCancellationToFile($booking_reference, $booking_type, $guest_email, 
 /**
  * Send booking received email (sent immediately when user submits booking)
  */
-/**
- * Build a promotional rate notice HTML block for inclusion in booking emails.
- * Uses pre-computed promo metadata from $booking if available,
- * otherwise performs a live DB lookup via getRoomEffectivePricing.
- */
-function buildPromoEmailBlock(array $booking, array $room) {
-    $currency = getSetting('currency_symbol', 'MWK');
-    $nights   = max(1, (int)($booking['number_of_nights'] ?? 1));
-
-    if (!empty($booking['has_active_promo'])) {
-        // Pre-computed promo data passed in from booking.php submission
-        $promo_title        = $booking['promo_title'] ?? 'Special Offer';
-        $discount_percent   = (float)($booking['promo_discount_percent'] ?? 0);
-        $discount_per_night = (float)($booking['promo_discount_amount'] ?? 0);
-        $original_per_night = (float)($booking['promo_original_price'] ?? 0);
-        $final_per_night    = $original_per_night - $discount_per_night;
-        $total_savings      = round($discount_per_night * $nights, 2);
-    } else {
-        // Live lookup — used for admin-triggered emails where promo metadata was not pre-loaded
-        $occupancy = function_exists('normalizeOccupancyType')
-            ? normalizeOccupancyType($booking['occupancy_type'] ?? 'double')
-            : ($booking['occupancy_type'] ?? 'double');
-        $pricing = getRoomEffectivePricing($room, $occupancy, $booking['check_in_date'] ?? null);
-        if (empty($pricing['has_promo']) || (float)($pricing['discount_amount'] ?? 0) <= 0) {
-            return '';
-        }
-        $promo_title        = $pricing['promotion']['title'] ?? 'Special Offer';
-        $discount_percent   = (float)($pricing['discount_percent'] ?? 0);
-        $discount_per_night = (float)($pricing['discount_amount'] ?? 0);
-        $original_per_night = (float)($pricing['base_price'] ?? 0);
-        $final_per_night    = (float)($pricing['final_price'] ?? $original_per_night);
-        $total_savings      = round($discount_per_night * $nights, 2);
-    }
-
-    if ($total_savings <= 0) {
-        return '';
-    }
-
-    return '
-        <div style="background: linear-gradient(135deg, #eef9f2 0%, #dff3e8 100%); padding: 15px; border-left: 4px solid #1f7a4f; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #1f7a4f; margin-top: 0;">&#127991; Promotional Rate Applied</h3>
-            <p style="color: #1f7a4f; margin: 0 0 6px;"><strong>' . htmlspecialchars($promo_title) . '</strong></p>
-            <p style="color: #1f7a4f; margin: 0; font-size: 14px;">
-                You saved <strong>' . $currency . ' ' . number_format($total_savings, 0) . '</strong> (' . number_format($discount_percent, 0) . '% off) on your stay.<br>
-                <span style="opacity: 0.85;">Original rate: ' . $currency . ' ' . number_format($original_per_night, 0) . '/night &rarr; Promo rate: ' . $currency . ' ' . number_format($final_per_night, 0) . '/night</span>
-            </p>
-        </div>';
-}
-
-function sendBookingReceivedEmail($booking) {
+function sendBookingReceivedEmail(array $booking)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get room details
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Room not found");
         }
-        
+
+        $templateVars = buildBookingEmailVariables($booking, $room);
+        $dbTemplate = renderBookingEmailTemplate('booking_received', $templateVars);
+        if ($dbTemplate) {
+            return sendEmail(
+                $booking['guest_email'],
+                $booking['guest_name'],
+                $dbTemplate['subject'],
+                $dbTemplate['html_body'],
+                $dbTemplate['text_body']
+            );
+        }
+
         // Prepare email content
         $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">Booking Received - Awaiting Confirmation</h1>
+        <h1 style="color: #8B7355; text-align: center;">Booking Received - Awaiting Confirmation</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
         <p>Thank you for your booking request with <strong>' . htmlspecialchars($email_site_name) . '</strong>. We have received your reservation and it is currently being reviewed by our team.</p>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Nights:</span>
-                <span style="color: #333;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Nights:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Guests:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>
-        
-        <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #0d6efd; margin-top: 0;">What Happens Next?</h3>
-            <p style="color: #0d6efd; margin: 0;">
+
+        <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">What Happens Next?</h3>
+            <p style="color: #5C4A32; margin: 0;">
                 <strong>Our team will review your booking and contact you within 24 hours to confirm availability.</strong><br>
                 Once confirmed, you will receive a second email with final confirmation.
             </p>
         </div>
-        
+
         <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #856404; margin-top: 0;">Payment Information</h3>
+            <h3 style="color: #856404; margin-top: 0;;text-align:left;">Payment Information</h3>
             <p style="color: #856404; margin: 0;">
                 ' . getSetting('payment_policy', 'Payment will be made at the hotel upon arrival.<br>We accept cash payments only. Please bring the total amount of <strong>' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</strong> with you.') . '
             </p>
         </div>';
-        
+
         if (!empty($booking['special_requests'])) {
             $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Special Requests</h3>
-                <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($booking['special_requests']) . '</p>
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Special Requests</h3>
+                <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($booking['special_requests']) . '</p>
             </div>';
         }
-        
+
         $htmlBody .= '
         <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
+
         <p>Thank you for choosing ' . htmlspecialchars($email_site_name) . '!</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
-        // Inject promo notice before Payment Information section
-        $promo_block = buildPromoEmailBlock($booking, $room);
-        if ($promo_block !== '') {
-            $marker = '<div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107';
-            $pos = strpos($htmlBody, $marker);
-            if ($pos !== false) {
-                $htmlBody = substr($htmlBody, 0, $pos) . $promo_block . "\n        " . substr($htmlBody, $pos);
-            }
-        }
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
 
         // Send email
         return sendEmail(
@@ -566,7 +2172,6 @@ function sendBookingReceivedEmail($booking) {
             'Booking Received - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Booking Received Email Error: " . $e->getMessage());
         return [
@@ -579,127 +2184,119 @@ function sendBookingReceivedEmail($booking) {
 /**
  * Send booking confirmed email (sent when admin approves booking)
  */
-function sendBookingConfirmedEmail($booking) {
+function sendBookingConfirmedEmail(array $booking)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get room details
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Room not found");
         }
-        
+
+        $templateVars = buildBookingEmailVariables($booking, $room);
+        $dbTemplate = renderBookingEmailTemplate('booking_confirmed', $templateVars);
+        if ($dbTemplate) {
+            return sendEmail(
+                $booking['guest_email'],
+                $booking['guest_name'],
+                $dbTemplate['subject'],
+                $dbTemplate['html_body'],
+                $dbTemplate['text_body']
+            );
+        }
+
         // Prepare email content
         $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">Booking Confirmed!</h1>
+        <h1 style="color: #8B7355; text-align: center;">Booking Confirmed!</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
         <p>Great news! Your booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been confirmed by our team.</p>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Nights:</span>
-                <span style="color: #333;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Nights:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Guests:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>
-        
+
         <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">✅ Booking Status: Confirmed</h3>
+            <h3 style="color: #155724; margin-top: 0;;text-align:left;">✅ Booking Status: Confirmed</h3>
             <p style="color: #155724; margin: 0;">
                 <strong>Your booking is now confirmed and guaranteed!</strong><br>
                 We look forward to welcoming you to ' . htmlspecialchars($email_site_name) . '.
             </p>
         </div>
-        
+
         <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #856404; margin-top: 0;">Payment Information</h3>
+            <h3 style="color: #856404; margin-top: 0;;text-align:left;">Payment Information</h3>
             <p style="color: #856404; margin: 0;">
                 ' . getSetting('payment_policy', 'Payment will be made at the hotel upon arrival.<br>We accept cash payments only. Please bring the total amount of <strong>' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</strong> with you.') . '
             </p>
         </div>
-        
-        <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #0d6efd; margin-top: 0;">Next Steps</h3>
-            <p style="color: #0d6efd; margin: 0;">
+
+        <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Next Steps</h3>
+            <p style="color: #5C4A32; margin: 0;">
                 <strong>Please save your booking reference:</strong> ' . htmlspecialchars($booking['booking_reference']) . '<br>
                 <strong>Check-in time:</strong> ' . getSetting('check_in_time', '2:00 PM') . '<br>
                 <strong>Check-out time:</strong> ' . getSetting('check_out_time', '11:00 AM') . '<br>
                 <strong>Contact us:</strong> If you need to make any changes, please contact us at least ' . getSetting('booking_change_policy', '48 hours') . ' before your arrival.
             </p>
         </div>';
-        
+
         if (!empty($booking['special_requests'])) {
             $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Special Requests</h3>
-                <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($booking['special_requests']) . '</p>
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Special Requests</h3>
+                <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($booking['special_requests']) . '</p>
             </div>';
         }
-        
+
         $htmlBody .= '
         <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
+
         <p>We look forward to welcoming you to ' . htmlspecialchars($email_site_name) . '!</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
-        // Inject promo notice before Payment Information section
-        $promo_block = buildPromoEmailBlock($booking, $room);
-        if ($promo_block !== '') {
-            $marker = '<div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107';
-            $pos = strpos($htmlBody, $marker);
-            if ($pos !== false) {
-                $htmlBody = substr($htmlBody, 0, $pos) . $promo_block . "\n        " . substr($htmlBody, $pos);
-            }
-        }
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
 
         // Send email
-        return sendEmail(
+        $emailResult = sendEmail(
             $booking['guest_email'],
             $booking['guest_name'],
             'Booking Confirmed - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
             $htmlBody
         );
-        
+
+        // Send WhatsApp notification if enabled
+        $whatsappResult = ['guest' => ['success' => false, 'message' => 'WhatsApp not available'], 'hotel' => ['success' => false, 'message' => 'WhatsApp not available']];
+        if (function_exists('sendBookingConfirmedWhatsApp') && function_exists('isWhatsAppEnabled') && isWhatsAppEnabled()) {
+            $bookingForWhatsApp = $booking;
+            $bookingForWhatsApp['room_name'] = $room['name'];
+            $whatsappResult = sendBookingConfirmedWhatsApp($bookingForWhatsApp, $room);
+        }
+
+        return [
+            'success' => $emailResult['success'],
+            'message' => $emailResult['message'],
+            'whatsapp_guest_sent' => $whatsappResult['guest']['success'] ?? false,
+            'whatsapp_hotel_sent' => $whatsappResult['hotel']['success'] ?? false
+        ];
     } catch (Exception $e) {
         error_log("Send Booking Confirmed Email Error: " . $e->getMessage());
         return [
@@ -712,82 +2309,69 @@ function sendBookingConfirmedEmail($booking) {
 /**
  * Send booking modified email (sent when admin edits a booking)
  */
-function sendBookingModifiedEmail($booking, $changes = []) {
+function sendBookingModifiedEmail(array $booking, array $changes = [])
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Room not found");
         }
-        
+
         $changesHtml = '';
         if (!empty($changes)) {
             $changesHtml = '
-            <div style="background: #e3f2fd; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">What Changed</h3>
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">What Changed</h3>
                 <table style="width: 100%; border-collapse: collapse; font-size: 14px;">';
-            
+
             $fieldLabels = [
-                'room' => 'Room', 'check_in_date' => 'Check-in Date', 'check_out_date' => 'Check-out Date',
-                'number_of_nights' => 'Number of Nights', 'number_of_guests' => 'Number of Guests',
-                'occupancy_type' => 'Occupancy Type', 'total_amount' => 'Total Amount',
-                'guest_name' => 'Guest Name', 'guest_email' => 'Email', 'guest_phone' => 'Phone', 'guest_country' => 'Country'
+                'room' => 'Room',
+                'check_in_date' => 'Check-in Date',
+                'check_out_date' => 'Check-out Date',
+                'number_of_nights' => 'Number of Nights',
+                'number_of_guests' => 'Number of Guests',
+                'occupancy_type' => 'Occupancy Type',
+                'total_amount' => 'Total Amount',
+                'guest_name' => 'Guest Name',
+                'guest_email' => 'Email',
+                'guest_phone' => 'Phone',
+                'guest_country' => 'Country'
             ];
-            
+
             foreach ($changes as $field => $change) {
                 $label = $fieldLabels[$field] ?? ucfirst(str_replace('_', ' ', $field));
                 $changesHtml .= '
                     <tr style="border-bottom: 1px solid #bbdefb;">
-                        <td style="padding: 8px; font-weight: bold; color: #0d6efd; width: 40%;">' . htmlspecialchars($label) . '</td>
+                        <td style="padding: 8px; font-weight: bold; color: #8B7355; width: 40%;">' . htmlspecialchars($label) . '</td>
                         <td style="padding: 8px; color: #999; text-decoration: line-through;">' . htmlspecialchars($change['old']) . '</td>
                         <td style="padding: 8px; color: #155724; font-weight: 600;">' . htmlspecialchars($change['new']) . '</td>
                     </tr>';
             }
             $changesHtml .= '</table></div>';
         }
-        
+
         $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">Booking Updated</h1>
+        <h1 style="color: #8B7355; text-align: center;">Booking Updated</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
         <p>Your booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been updated by our team. Please review the details below.</p>
         ' . $changesHtml . '
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Updated Booking Details</h2>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Nights:</span>
-                <span style="color: #333;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Updated Booking Details</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Nights:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Guests:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>
         <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">Next Steps</h3>
+            <h3 style="color: #155724; margin-top: 0;;text-align:left;">Next Steps</h3>
             <p style="color: #155724; margin: 0;">
                 <strong>Check-in time:</strong> ' . getSetting('check_in_time', '2:00 PM') . '<br>
                 <strong>Check-out time:</strong> ' . getSetting('check_out_time', '11:00 AM') . '<br>
@@ -796,13 +2380,10 @@ function sendBookingModifiedEmail($booking, $changes = []) {
         </div>
         <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
         <p>Thank you for choosing ' . htmlspecialchars($email_site_name) . '!</p>
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
         return sendEmail(
             $booking['guest_email'],
             $booking['guest_name'],
@@ -818,69 +2399,161 @@ function sendBookingModifiedEmail($booking, $changes = []) {
 /**
  * Send admin notification email
  */
-function sendAdminNotificationEmail($booking) {
-    global $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
-    try {
-        $bookings_email = resolveDepartmentAdminEmail('booking_admin_email', 'admin_notification_email');
+function sendAdminNotificationEmail(array $booking)
+{
+    global $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url, $pdo;
 
-        $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">📋 New Booking Received</h1>
-        <p>A new booking has been made on the website.</p>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Booking Details</h2>
-            
-            <div style=\'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;\'>
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style=\'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;\'>
-                <span style="font-weight: bold; color: #0A1929;">Guest Name:</span>
-                <span style="color: #333;">' . htmlspecialchars($booking['guest_name']) . '</span>
-            </div>
-            
-            <div style=\'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;\'>
-                <span style="font-weight: bold; color: #0A1929;">Guest Email:</span>
-                <span style="color: #333;">' . htmlspecialchars($booking['guest_email']) . '</span>
-            </div>
-            
-            <div style=\'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;\'>
-                <span style="font-weight: bold; color: #0A1929;">Guest Phone:</span>
-                <span style="color: #333;">' . htmlspecialchars($booking['guest_phone']) . '</span>
-            </div>
-            
-            <div style=\'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;\'>
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style=\'display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;\'>
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style=\'display: flex; justify-content: space-between; padding: 10px 0;\'>
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
-        </div>
-        
-        <div style="text-align: center; margin-top: 30px;">
-            <a href="' . htmlspecialchars($email_site_url) . '/admin/bookings.php" style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
-                View Booking in Admin Panel
-            </a>
-        </div>';
-        
+    try {
+        $notificationEmail = trim((string)getSetting('booking_notification_email', ''));
+        if (empty($notificationEmail) || !filter_var($notificationEmail, FILTER_VALIDATE_EMAIL)) {
+            $notificationEmail = trim((string)getSetting('admin_notification_email', ''));
+        }
+        if (empty($notificationEmail) || !filter_var($notificationEmail, FILTER_VALIDATE_EMAIL)) {
+            $notificationEmail = trim((string)$email_admin_email);
+        }
+
+        if (empty($notificationEmail) || !filter_var($notificationEmail, FILTER_VALIDATE_EMAIL)) {
+            return [
+                'success' => false,
+                'message' => 'No valid booking notification email configured'
+            ];
+        }
+
+        $adminBaseUrl = rtrim((string)$email_site_url, '/');
+        $bookingId = (int)($booking['id'] ?? 0);
+        $bookingReference = trim((string)($booking['booking_reference'] ?? ''));
+        $adminBookingUrl = $adminBaseUrl . '/admin/bookings.php';
+        if ($bookingId > 0) {
+            $adminBookingUrl = $adminBaseUrl . '/admin/booking-details.php?id=' . $bookingId;
+        } elseif ($bookingReference !== '') {
+            $adminBookingUrl = $adminBaseUrl . '/admin/bookings.php?search=' . rawurlencode($bookingReference);
+        }
+
+        // Build admin notification using premium email shell for visual consistency
+        $currency = getSetting('currency_symbol');
+        $nights   = (int)($booking['number_of_nights'] ?? 0);
+        $occupancyRaw = (string)($booking['occupancy_type'] ?? '');
+        $occupancyLabel = $occupancyRaw !== '' ? ucfirst(str_replace('_', ' ', $occupancyRaw)) : '—';
+        $ratePlan = (string)($booking['rate_plan_label'] ?? '');
+
+        // Detect tentative booking
+        $isTentative = !empty($booking['is_tentative']) || (string)($booking['status'] ?? '') === 'tentative';
+        $tentativeExpiresAt = trim((string)($booking['tentative_expires_at'] ?? ''));
+        $tentativeExpiresFormatted = ($isTentative && $tentativeExpiresAt !== '')
+            ? date('F j, Y g:i A', strtotime($tentativeExpiresAt))
+            : '';
+
+        // Collect packages for admin view
+        $adminPackageRows = [];
+        if (isset($pdo) && $bookingId > 0) {
+            try {
+                $ap = $pdo->prepare('SELECT package_name, price_type, quantity, total_cost FROM booking_packages WHERE booking_id = ? ORDER BY id ASC');
+                $ap->execute([$bookingId]);
+                foreach ($ap->fetchAll(PDO::FETCH_ASSOC) as $pkg) {
+                    $suffix = $pkg['price_type'] === 'per_night' ? '/night' : '';
+                    $qty    = (int)$pkg['quantity'];
+                    $label  = htmlspecialchars($pkg['package_name']) . ($qty > 1 ? " x{$qty}" : '') . ($suffix ? " ({$suffix})" : '');
+                    $adminPackageRows[] = [$label, $currency . ' ' . number_format((float)$pkg['total_cost'], 0)];
+                }
+            } catch (\Throwable $ignored) {}
+        }
+
+        $summaryHeading = $isTentative ? 'Tentative Hold Details' : 'New Booking Details';
+        $summaryRows = [
+            ['Reference',    htmlspecialchars($booking['booking_reference'] ?? '')],
+            ['Guest',        htmlspecialchars($booking['guest_name'] ?? '') . ' &lt;' . htmlspecialchars($booking['guest_email'] ?? '') . '&gt;'],
+            ['Phone',        htmlspecialchars($booking['guest_phone'] ?? '')],
+            ['Room',         htmlspecialchars($booking['room_name'] ?? '')],
+            ['Occupancy',    $occupancyLabel],
+            ['Check-in',     !empty($booking['check_in_date']) ? date('D, j M Y', strtotime($booking['check_in_date'])) : ''],
+            ['Check-out',    !empty($booking['check_out_date']) ? date('D, j M Y', strtotime($booking['check_out_date'])) : ''],
+            ['Nights',       $nights . ($nights === 1 ? ' night' : ' nights')],
+            ['Guests',       (string)($booking['number_of_guests'] ?? '')],
+        ];
+        if ($ratePlan !== '') {
+            $summaryRows[] = ['Rate Plan', htmlspecialchars($ratePlan)];
+        }
+        if ($isTentative && $tentativeExpiresFormatted !== '') {
+            $summaryRows[] = ['Hold Expires', $tentativeExpiresFormatted, true];
+        }
+        $summaryRows[] = ['Total', $currency . ' ' . number_format((float)($booking['total_amount'] ?? 0), 0), true];
+
+        $adminBodyText = $isTentative
+            ? '<p style="margin:0 0 16px;">A <strong>tentative hold</strong> has been placed via the website. The guest must confirm before the hold expires. Please review and follow up as needed.</p>'
+                . ($tentativeExpiresFormatted !== ''
+                    ? '<p style="margin:0 0 16px;background:rgba(201,169,97,0.1);border-left:3px solid #C9A961;padding:10px 14px;font-size:13px;color:#5c5549;">'
+                        . '<strong>Hold expires:</strong> ' . $tentativeExpiresFormatted . '</p>'
+                    : '')
+            : '<p style="margin:0 0 16px;">A new booking has been submitted via the website. Please review and confirm the reservation.</p>';
+
+        $innerHtml = hotel_premium_email_body('Reservations Team', $adminBodyText)
+            . hotel_premium_email_summary_rows($summaryHeading, $summaryRows)
+            . (!empty($adminPackageRows) ? hotel_premium_email_summary_rows('Extras & Packages', $adminPackageRows) : '')
+            . (!empty($booking['special_requests'])
+                ? '<tr><td style="padding:0 48px 24px;"><div style="background:rgba(201,169,97,0.08);border-left:3px solid #C9A961;padding:14px 16px;font-size:12px;line-height:1.7;color:#5c5549;"><strong style="font-size:9px;letter-spacing:0.15em;text-transform:uppercase;color:#9b8f7e;">Special Requests</strong><br>' . htmlspecialchars($booking['special_requests']) . '</div></td></tr>'
+                : '')
+            . hotel_premium_email_cta($adminBookingUrl, 'Open in Admin Panel');
+
+        $preheader = $isTentative
+            ? 'Tentative hold — ' . ($booking['booking_reference'] ?? '')
+            : 'New booking received — ' . ($booking['booking_reference'] ?? '');
+
+        $htmlBody = hotel_premium_email_html(
+            $preheader,
+            $innerHtml,
+            'reservations@' . ($_SERVER['HTTP_HOST'] ?? 'hotel')
+        );
+
+        // Substitute header/footer tokens that hotel_premium_email_html() leaves as placeholders
+        $logoSrc      = function_exists('hotel_email_logo_url') ? hotel_email_logo_url() : '';
+        $logoHtml     = $logoSrc !== ''
+            ? '<img src="' . htmlspecialchars($logoSrc, ENT_QUOTES, 'UTF-8') . '" alt="'
+                . htmlspecialchars($email_site_name, ENT_QUOTES, 'UTF-8')
+                . '" style="max-width:110px;height:auto;display:block;margin:0 auto;">'
+            : '';
+        $htmlBody = strtr($htmlBody, [
+            '{{logo_html}}'     => $logoHtml,
+            '{{site_name}}'     => htmlspecialchars($email_site_name, ENT_QUOTES, 'UTF-8'),
+            '{{address}}'       => htmlspecialchars((string)getSetting('hotel_address', getSetting('address', '')), ENT_QUOTES, 'UTF-8'),
+            '{{contact_phone}}' => htmlspecialchars((string)getSetting('phone_main', ''), ENT_QUOTES, 'UTF-8'),
+            '{{contact_email}}' => htmlspecialchars((string)($email_from_email ?: getSetting('email_main', '')), ENT_QUOTES, 'UTF-8'),
+        ]);
+
+        $adminSubject = ($isTentative ? 'Tentative Hold' : 'New Booking')
+            . ' - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']';
+
         // Send email
-        return sendEmail(
-            $bookings_email,
+        $primaryResult = sendEmail(
+            $notificationEmail,
             'Reservations Team',
-            'New Booking - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
+            $adminSubject,
             $htmlBody
         );
-        
+
+        // Optional CC notifications configured from booking settings
+        $ccRaw = trim((string)getSetting('booking_notification_cc_emails', ''));
+        if (!empty($ccRaw)) {
+            $ccList = array_filter(array_map('trim', explode(',', $ccRaw)));
+            foreach ($ccList as $ccEmail) {
+                if (!filter_var($ccEmail, FILTER_VALIDATE_EMAIL)) {
+                    continue;
+                }
+
+                // avoid duplicate send to primary recipient
+                if (strcasecmp($ccEmail, $notificationEmail) === 0) {
+                    continue;
+                }
+
+                sendEmail(
+                    $ccEmail,
+                    'Reservations Team',
+                    $adminSubject,
+                    $htmlBody
+                );
+            }
+        }
+
+        return $primaryResult;
     } catch (Exception $e) {
         error_log("Send Admin Notification Error: " . $e->getMessage());
         return [
@@ -893,22 +2566,23 @@ function sendAdminNotificationEmail($booking) {
 /**
  * Send conference enquiry email (sent when customer submits enquiry)
  */
-function sendConferenceEnquiryEmail($data) {
+function sendConferenceEnquiryEmail(array $data)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get conference room details
         $stmt = $pdo->prepare("SELECT * FROM conference_rooms WHERE id = ?");
         $stmt->execute([$data['conference_room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Conference room not found");
         }
-        
+
         $currency_symbol = getSetting('currency_symbol');
         $total_amount = $data['total_amount'] ? number_format($data['total_amount'], 0) : 'To be determined';
-        
+
         // Prepare template data
         $template_data = [
             'contact_person' => $data['contact_person'],
@@ -925,109 +2599,84 @@ function sendConferenceEnquiryEmail($data) {
             'av_equipment' => $data['av_equipment'] ?? '',
             'special_requirements' => $data['special_requirements'] ?? ''
         ];
-        
+
         // Try to load template, fall back to hardcoded HTML if template not found
         $htmlBody = loadEmailTemplate('conference-enquiry-customer.html', $template_data);
-        
+
         if (empty($htmlBody)) {
             // Fallback to hardcoded HTML if template fails
             $htmlBody = '
-            <h1 style="color: #0A1929; text-align: center;">Conference Enquiry Received</h1>
+            <h1 style="color: #8B7355; text-align: center;">Conference Enquiry Received</h1>
             <p>Dear ' . htmlspecialchars($data['contact_person']) . ',</p>
             <p>Thank you for your conference enquiry with <strong>' . htmlspecialchars($email_site_name) . '</strong>. We have received your request and it is currently being reviewed by our team.</p>
-            
-            <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-                <h2 style="color: #0A1929; margin-top: 0;">Enquiry Details</h2>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Enquiry Reference:</span>
-                    <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . htmlspecialchars($data['inquiry_reference']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Company:</span>
-                    <span style="color: #333;">' . htmlspecialchars($data['company_name']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Conference Room:</span>
-                    <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Date:</span>
-                    <span style="color: #333;">' . date('F j, Y', strtotime($data['event_date'])) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Time:</span>
-                    <span style="color: #333;">' . date('H:i', strtotime($data['start_time'])) . ' - ' . date('H:i', strtotime($data['end_time'])) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Number of Attendees:</span>
-                    <span style="color: #333;">' . (int) $data['number_of_attendees'] . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                    <span style="font-weight: bold; color: #0A1929;">Estimated Amount:</span>
-                    <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . $currency_symbol . ' ' . $total_amount . '</span>
-                </div>
+
+            <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Enquiry Details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Enquiry Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['inquiry_reference']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Company:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['company_name']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Conference Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($data['event_date'])) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Time:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('H:i', strtotime($data['start_time'])) . ' - ' . date('H:i', strtotime($data['end_time'])) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Attendees:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . (int) $data['number_of_attendees'] . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Estimated Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . $currency_symbol . ' ' . $total_amount . '</td></tr></table>
             </div>
-            
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">What Happens Next?</h3>
-                <p style="color: #0d6efd; margin: 0;">
+
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">What Happens Next?</h3>
+                <p style="color: #5C4A32; margin: 0;">
                     <strong>Our team will review your enquiry and contact you within 24 hours to confirm availability and finalize details.</strong><br>
                     Once confirmed, you will receive a second email with final confirmation and payment instructions.
                 </p>
             </div>';
-            
+
             if (!empty($data['event_type'])) {
                 $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">Event Type</h3>
-                    <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($data['event_type']) . '</p>
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Event Type</h3>
+                    <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($data['event_type']) . '</p>
                 </div>';
             }
-            
+
             if ($data['catering_required']) {
                 $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">Catering</h3>
-                    <p style="color: #0d6efd; margin: 0;">Catering services have been requested for your event.</p>
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Catering</h3>
+                    <p style="color: #5C4A32; margin: 0;">Catering services have been requested for your event.</p>
                 </div>';
             }
-            
+
             if (!empty($data['av_equipment'])) {
                 $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">AV Equipment Requirements</h3>
-                    <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($data['av_equipment']) . '</p>
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">AV Equipment Requirements</h3>
+                    <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($data['av_equipment']) . '</p>
                 </div>';
             }
-            
+
             if (!empty($data['special_requirements'])) {
                 $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">Special Requirements</h3>
-                    <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($data['special_requirements']) . '</p>
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Special Requirements</h3>
+                    <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($data['special_requirements']) . '</p>
                 </div>';
             }
-            
+
             $htmlBody .= '
             <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-            
+
             <p>Thank you for considering ' . htmlspecialchars($email_site_name) . ' for your event!</p>
-            
-            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-                <p style="color: #666; font-size: 14px;">
-                    <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                    <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-                </p>
-            </div>';
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
         }
-        
+
         // Send email
         return sendEmail(
             $data['email'],
@@ -1035,8 +2684,7 @@ function sendConferenceEnquiryEmail($data) {
             'Conference Enquiry Received - ' . htmlspecialchars($email_site_name) . ' [' . $data['inquiry_reference'] . ']',
             $htmlBody
         );
-        
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         error_log("Send Conference Enquiry Email Error: " . $e->getMessage());
         return [
             'success' => false,
@@ -1048,21 +2696,32 @@ function sendConferenceEnquiryEmail($data) {
 /**
  * Send admin notification for conference enquiry
  */
-function sendConferenceAdminNotificationEmail($data) {
+function sendConferenceAdminNotificationEmail(array $data)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get conference room details
         $stmt = $pdo->prepare("SELECT * FROM conference_rooms WHERE id = ?");
         $stmt->execute([$data['conference_room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
+        if (!$room) {
+            throw new \RuntimeException("Conference room #{$data['conference_room_id']} not found — cannot send admin notification.");
+        }
+
         $currency_symbol = getSetting('currency_symbol');
         $total_amount = $data['total_amount'] ? number_format($data['total_amount'], 0) : 'To be determined';
-        
-        // Resolve conference recipient from email_settings first, then legacy settings.
-        $conference_email = resolveDepartmentAdminEmail('conference_admin_email', 'conference_email');
-        
+
+        // Get conference email with fallback to main contact email
+        $conference_email = getSetting('conference_email');
+        if (empty($conference_email) || !filter_var($conference_email, FILTER_VALIDATE_EMAIL)) {
+            $conference_email = getSetting('email_main');
+        }
+        if (empty($conference_email) || !filter_var($conference_email, FILTER_VALIDATE_EMAIL)) {
+            $conference_email = $email_admin_email;
+        }
+
         // Prepare template data
         $template_data = [
             'inquiry_reference' => $data['inquiry_reference'],
@@ -1070,6 +2729,7 @@ function sendConferenceAdminNotificationEmail($data) {
             'contact_person' => $data['contact_person'],
             'email' => $data['email'],
             'phone' => $data['phone'],
+            'submission_date' => date('F j, Y H:i'),
             'room_name' => $room['name'],
             'event_date' => date('F j, Y', strtotime($data['event_date'])),
             'start_time' => date('H:i', strtotime($data['start_time'])),
@@ -1081,107 +2741,74 @@ function sendConferenceAdminNotificationEmail($data) {
             'av_equipment' => $data['av_equipment'] ?? '',
             'special_requirements' => $data['special_requirements'] ?? ''
         ];
-        
+
         // Try to load template, fall back to hardcoded HTML if template not found
         $htmlBody = loadEmailTemplate('conference-enquiry-admin.html', $template_data);
-        
+
         if (empty($htmlBody)) {
             // Fallback to hardcoded HTML if template fails
             $htmlBody = '
-            <h1 style="color: #0A1929; text-align: center;">📋 New Conference Enquiry Received</h1>
+            <h1 style="color: #8B7355; text-align: center;">📋 New Conference Enquiry Received</h1>
             <p>A new conference enquiry has been submitted on the website.</p>
-            
-            <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-                <h2 style="color: #0A1929; margin-top: 0;">Enquiry Details</h2>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Enquiry Reference:</span>
-                    <span style="color: #D4AF37; font-weight: bold;">' . htmlspecialchars($data['inquiry_reference']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Company:</span>
-                    <span style="color: #333;">' . htmlspecialchars($data['company_name']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Contact Person:</span>
-                    <span style="color: #333;">' . htmlspecialchars($data['contact_person']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Email:</span>
-                    <span style="color: #333;">' . htmlspecialchars($data['email']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Phone:</span>
-                    <span style="color: #333;">' . htmlspecialchars($data['phone']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Conference Room:</span>
-                    <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Date:</span>
-                    <span style="color: #333;">' . date('F j, Y', strtotime($data['event_date'])) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Time:</span>
-                    <span style="color: #333;">' . date('H:i', strtotime($data['start_time'])) . ' - ' . date('H:i', strtotime($data['end_time'])) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Number of Attendees:</span>
-                    <span style="color: #333;">' . (int) $data['number_of_attendees'] . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Type:</span>
-                    <span style="color: #333;">' . htmlspecialchars($data['event_type'] ?: 'Not specified') . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                    <span style="font-weight: bold; color: #0A1929;">Estimated Amount:</span>
-                    <span style="color: #D4AF37; font-weight: bold;">' . $currency_symbol . ' ' . $total_amount . '</span>
-                </div>
+
+            <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Enquiry Details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Enquiry Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['inquiry_reference']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Company:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['company_name']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Contact Person:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['contact_person']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Email:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['email']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Phone:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['phone']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Conference Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($data['event_date'])) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Time:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('H:i', strtotime($data['start_time'])) . ' - ' . date('H:i', strtotime($data['end_time'])) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Attendees:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . (int) $data['number_of_attendees'] . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Type:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['event_type'] ?: 'Not specified') . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Estimated Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . $currency_symbol . ' ' . $total_amount . '</td></tr></table>
             </div>';
-            
+
             if ($data['catering_required']) {
                 $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">Catering Required</h3>
-                    <p style="color: #0d6efd; margin: 0;">Yes - catering services requested</p>
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Catering Required</h3>
+                    <p style="color: #5C4A32; margin: 0;">Yes - catering services requested</p>
                 </div>';
             }
-            
+
             if (!empty($data['av_equipment'])) {
                 $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">AV Equipment Requirements</h3>
-                    <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($data['av_equipment']) . '</p>
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">AV Equipment Requirements</h3>
+                    <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($data['av_equipment']) . '</p>
                 </div>';
             }
-            
+
             if (!empty($data['special_requirements'])) {
                 $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">Special Requirements</h3>
-                    <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($data['special_requirements']) . '</p>
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Special Requirements</h3>
+                    <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($data['special_requirements']) . '</p>
                 </div>';
             }
-            
+
             $htmlBody .= '
             <div style="text-align: center; margin-top: 30px;">
-                <a href="' . htmlspecialchars($email_site_url) . '/admin/conference-management.php" style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
+                <a href="' . htmlspecialchars($email_site_url) . '/admin/conference-management.php" style="display: inline-block; background: #8B7355; color: #1A1A1A; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
                     View Enquiry in Admin Panel
                 </a>
             </div>';
         }
-        
+
         // Send email
         return sendEmail(
             $conference_email,
@@ -1189,8 +2816,7 @@ function sendConferenceAdminNotificationEmail($data) {
             'New Conference Enquiry - ' . htmlspecialchars($email_site_name) . ' [' . $data['inquiry_reference'] . ']',
             $htmlBody
         );
-        
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         error_log("Send Conference Admin Notification Error: " . $e->getMessage());
         return [
             'success' => false,
@@ -1202,32 +2828,33 @@ function sendConferenceAdminNotificationEmail($data) {
 /**
  * Send conference payment confirmation email
  */
-function sendConferencePaymentEmail($data) {
+function sendConferencePaymentEmail(array $data)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get conference room details
         $stmt = $pdo->prepare("SELECT * FROM conference_rooms WHERE id = ?");
         $stmt->execute([$data['conference_room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Conference room not found");
         }
-        
+
         $currency_symbol = getSetting('currency_symbol');
         $total_amount = number_format($data['total_amount'], 0);
         $payment_amount = number_format($data['payment_amount'], 0);
         $payment_date = date('F j, Y', strtotime($data['payment_date']));
-        
+
         // Prepare email content
         $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">Payment Confirmation</h1>
+        <h1 style="color: #8B7355; text-align: center;">Payment Confirmation</h1>
         <p>Dear ' . htmlspecialchars($data['contact_person']) . ',</p>
         <p>We are pleased to confirm that we have received your payment for the conference booking at <strong>' . htmlspecialchars($email_site_name) . '</strong>.</p>
-        
+
         <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">✅ Payment Received</h3>
+            <h3 style="color: #155724; margin-top: 0;;text-align:left;">✅ Payment Received</h3>
             <p style="color: #155724; margin: 0;">
                 <strong>Payment Date:</strong> ' . $payment_date . '<br>
                 <strong>Amount Paid:</strong> ' . $currency_symbol . ' ' . $payment_amount . '<br>
@@ -1235,99 +2862,74 @@ function sendConferencePaymentEmail($data) {
                 <strong>Transaction Reference:</strong> ' . htmlspecialchars($data['payment_reference'] ?: $data['inquiry_reference']) . '
             </p>
         </div>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Final Booking Summary</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . htmlspecialchars($data['inquiry_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Company:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['company_name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Conference Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Event Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($data['event_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Event Time:</span>
-                <span style="color: #333;">' . date('H:i', strtotime($data['start_time'])) . ' - ' . date('H:i', strtotime($data['end_time'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Attendees:</span>
-                <span style="color: #333;">' . (int) $data['number_of_attendees'] . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . $currency_symbol . ' ' . $total_amount . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Final Booking Summary</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['inquiry_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Company:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['company_name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Conference Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($data['event_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Time:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('H:i', strtotime($data['start_time'])) . ' - ' . date('H:i', strtotime($data['end_time'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Attendees:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . (int) $data['number_of_attendees'] . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . $currency_symbol . ' ' . $total_amount . '</td></tr></table>
         </div>
-        
+
         <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">✅ Booking Status: Fully Paid</h3>
+            <h3 style="color: #155724; margin-top: 0;;text-align:left;">✅ Booking Status: Fully Paid</h3>
             <p style="color: #155724; margin: 0;">
                 <strong>Your conference booking is now fully paid and confirmed!</strong><br>
                 We look forward to hosting your event at ' . htmlspecialchars($email_site_name) . '.
             </p>
         </div>';
-        
+
         if ($data['catering_required']) {
             $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Catering</h3>
-                <p style="color: #0d6efd; margin: 0;">Catering services have been confirmed for your event.</p>
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Catering</h3>
+                <p style="color: #5C4A32; margin: 0;">Catering services have been confirmed for your event.</p>
             </div>';
         }
-        
+
         if (!empty($data['av_equipment'])) {
             $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">AV Equipment</h3>
-                <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($data['av_equipment']) . '</p>
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">AV Equipment</h3>
+                <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($data['av_equipment']) . '</p>
             </div>';
         }
-        
+
         if (!empty($data['special_requirements'])) {
             $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Special Requirements</h3>
-                <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($data['special_requirements']) . '</p>
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Special Requirements</h3>
+                <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($data['special_requirements']) . '</p>
             </div>';
         }
-        
+
         $htmlBody .= '
-        <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #0d6efd; margin-top: 0;">Next Steps</h3>
-            <p style="color: #0d6efd; margin: 0;">
+        <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Next Steps</h3>
+            <p style="color: #5C4A32; margin: 0;">
                 <strong>Please save your booking reference:</strong> ' . htmlspecialchars($data['inquiry_reference']) . '<br>
                 <strong>Arrival:</strong> Please arrive at least 30 minutes before your event start time<br>
                 <strong>Contact us:</strong> If you need to make any changes, please contact us at least ' . getSetting('booking_change_policy', '48 hours') . ' before your event.
             </p>
         </div>
-        
+
         <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
+
         <p>Thank you for your payment! We look forward to hosting your event at ' . htmlspecialchars($email_site_name) . '.</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
         // Send email
         return sendEmail(
             $data['email'],
@@ -1335,7 +2937,6 @@ function sendConferencePaymentEmail($data) {
             'Payment Confirmation - ' . htmlspecialchars($email_site_name) . ' [' . $data['inquiry_reference'] . ']',
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Conference Payment Email Error: " . $e->getMessage());
         return [
@@ -1348,314 +2949,690 @@ function sendConferencePaymentEmail($data) {
 /**
  * Send conference enquiry confirmed email
  */
-function sendConferenceConfirmedEmail($enquiry) {
-        global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-        
-        try {
-            // Get conference room details
-            $stmt = $pdo->prepare("SELECT * FROM conference_rooms WHERE id = ?");
-            $stmt->execute([$enquiry['conference_room_id']]);
-            $room = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$room) {
-                throw new Exception("Conference room not found");
-            }
-            
-            $currency_symbol = getSetting('currency_symbol');
-            $total_amount = $enquiry['total_amount'] ? number_format($enquiry['total_amount'], 0) : 'To be determined';
-            
-            // Prepare email content
-            $htmlBody = '
-            <h1 style="color: #0A1929; text-align: center;">Conference Booking Confirmed!</h1>
+function sendConferenceConfirmedEmail(array $enquiry)
+{
+    global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
+
+    try {
+        // Get conference room details
+        $stmt = $pdo->prepare("SELECT * FROM conference_rooms WHERE id = ?");
+        $stmt->execute([$enquiry['conference_room_id']]);
+        $room = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$room) {
+            throw new Exception("Conference room not found");
+        }
+
+        $currency_symbol = getSetting('currency_symbol');
+        $total_amount = $enquiry['total_amount'] ? number_format($enquiry['total_amount'], 0) : 'To be determined';
+
+        // Prepare email content
+        $htmlBody = '
+            <h1 style="color: #8B7355; text-align: center;">Conference Booking Confirmed!</h1>
             <p>Dear ' . htmlspecialchars($enquiry['contact_person']) . ',</p>
             <p>Great news! Your conference booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been confirmed by our team.</p>
-            
-            <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-                <h2 style="color: #0A1929; margin-top: 0;">Conference Details</h2>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Reference:</span>
-                    <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . htmlspecialchars($enquiry['inquiry_reference']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Company:</span>
-                    <span style="color: #333;">' . htmlspecialchars($enquiry['company_name']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Conference Room:</span>
-                    <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Date:</span>
-                    <span style="color: #333;">' . date('F j, Y', strtotime($enquiry['event_date'])) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Time:</span>
-                    <span style="color: #333;">' . date('H:i', strtotime($enquiry['start_time'])) . ' - ' . date('H:i', strtotime($enquiry['end_time'])) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Number of Attendees:</span>
-                    <span style="color: #333;">' . (int) $enquiry['number_of_attendees'] . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                    <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                    <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . $currency_symbol . ' ' . $total_amount . '</span>
-                </div>
+
+            <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Conference Details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($enquiry['inquiry_reference']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Company:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($enquiry['company_name']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Conference Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($enquiry['event_date'])) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Time:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('H:i', strtotime($enquiry['start_time'])) . ' - ' . date('H:i', strtotime($enquiry['end_time'])) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Attendees:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . (int) $enquiry['number_of_attendees'] . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . $currency_symbol . ' ' . $total_amount . '</td></tr></table>
             </div>
-            
+
             <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #155724; margin-top: 0;">✅ Booking Status: Confirmed</h3>
+                <h3 style="color: #155724; margin-top: 0;;text-align:left;">✅ Booking Status: Confirmed</h3>
                 <p style="color: #155724; margin: 0;">
                     <strong>Your conference booking is now confirmed!</strong><br>
                     We look forward to hosting your event at ' . htmlspecialchars($email_site_name) . '.
                 </p>
             </div>';
-            
-            if ($enquiry['catering_required']) {
-                $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">Catering</h3>
-                    <p style="color: #0d6efd; margin: 0;">Catering services have been requested for your event.</p>
-                </div>';
-            }
-            
-            if (!empty($enquiry['av_equipment'])) {
-                $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">AV Equipment</h3>
-                    <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($enquiry['av_equipment']) . '</p>
-                </div>';
-            }
-            
-            if (!empty($enquiry['special_requirements'])) {
-                $htmlBody .= '
-                <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #0d6efd; margin-top: 0;">Special Requirements</h3>
-                    <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($enquiry['special_requirements']) . '</p>
-                </div>';
-            }
-            
+
+        if ($enquiry['catering_required']) {
             $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Next Steps</h3>
-                <p style="color: #0d6efd; margin: 0;">
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Catering</h3>
+                    <p style="color: #5C4A32; margin: 0;">Catering services have been requested for your event.</p>
+                </div>';
+        }
+
+        if (!empty($enquiry['av_equipment'])) {
+            $htmlBody .= '
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">AV Equipment</h3>
+                    <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($enquiry['av_equipment']) . '</p>
+                </div>';
+        }
+
+        if (!empty($enquiry['special_requirements'])) {
+            $htmlBody .= '
+                <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Special Requirements</h3>
+                    <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($enquiry['special_requirements']) . '</p>
+                </div>';
+        }
+
+        $htmlBody .= '
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Next Steps</h3>
+                <p style="color: #5C4A32; margin: 0;">
                     <strong>Please save your booking reference:</strong> ' . htmlspecialchars($enquiry['inquiry_reference']) . '<br>
                     <strong>Arrival:</strong> Please arrive at least 30 minutes before your event start time<br>
                     <strong>Contact us:</strong> If you need to make any changes, please contact us at least ' . getSetting('booking_change_policy', '48 hours') . ' before your event.
                 </p>
             </div>
-            
+
             <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-            
+
             <p>We look forward to hosting your event at ' . htmlspecialchars($email_site_name) . '!</p>
-            
-            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-                <p style="color: #666; font-size: 14px;">
-                    <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                    <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-                </p>
-            </div>';
-            
-            // Send email
-            return sendEmail(
-                $enquiry['email'],
-                $enquiry['contact_person'],
-                'Conference Confirmed - ' . htmlspecialchars($email_site_name) . ' [' . $enquiry['inquiry_reference'] . ']',
-                $htmlBody
-            );
-            
-        } catch (Exception $e) {
-            error_log("Send Conference Confirmed Email Error: " . $e->getMessage());
-            return [
-                'success' => false,
-                'message' => $e->getMessage()
-            ];
-        }
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        // Send email
+        return sendEmail(
+            $enquiry['email'],
+            $enquiry['contact_person'],
+            'Conference Confirmed - ' . htmlspecialchars($email_site_name) . ' [' . $enquiry['inquiry_reference'] . ']',
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log("Send Conference Confirmed Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
 }
 
 /**
  * Send conference cancelled email
  */
-function sendConferenceCancelledEmail($enquiry) {
-        global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-        
-        try {
-            // Get conference room details
-            $stmt = $pdo->prepare("SELECT * FROM conference_rooms WHERE id = ?");
-            $stmt->execute([$enquiry['conference_room_id']]);
-            $room = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Prepare email content
-            $htmlBody = '
+function sendConferenceCancelledEmail(array $enquiry)
+{
+    global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
+
+    try {
+        // Get conference room details
+        $stmt = $pdo->prepare("SELECT * FROM conference_rooms WHERE id = ?");
+        $stmt->execute([$enquiry['conference_room_id']]);
+        $room = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Prepare email content
+        $htmlBody = '
             <h1 style="color: #dc3545; text-align: center;">Conference Booking Cancelled</h1>
             <p>Dear ' . htmlspecialchars($enquiry['contact_person']) . ',</p>
             <p>We regret to inform you that your conference booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been cancelled.</p>
-            
-            <div style="background: #f8f9fa; border: 2px solid #dc3545; padding: 20px; margin: 20px 0; border-radius: 10px;">
-                <h2 style="color: #dc3545; margin-top: 0;">Cancelled Booking Details</h2>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Reference:</span>
-                    <span style="color: #dc3545; font-weight: bold; font-size: 18px;">' . htmlspecialchars($enquiry['inquiry_reference']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Company:</span>
-                    <span style="color: #333;">' . htmlspecialchars($enquiry['company_name']) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Conference Room:</span>
-                    <span style="color: #333;">' . htmlspecialchars($room['name'] ?? 'N/A') . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Date:</span>
-                    <span style="color: #333;">' . date('F j, Y', strtotime($enquiry['event_date'])) . '</span>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                    <span style="font-weight: bold; color: #0A1929;">Event Time:</span>
-                    <span style="color: #333;">' . date('H:i', strtotime($enquiry['start_time'])) . ' - ' . date('H:i', strtotime($enquiry['end_time'])) . '</span>
-                </div>
+
+            <div style="background: #FAF6F0; border: 2px solid #dc3545; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #dc3545; margin-top: 0;;text-align:left;">Cancelled Booking Details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Reference:</td><td style="padding:10px 0 10px 6px;color: #dc3545; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($enquiry['inquiry_reference']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Company:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($enquiry['company_name']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Conference Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name'] ?? 'N/A') . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($enquiry['event_date'])) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Event Time:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . date('H:i', strtotime($enquiry['start_time'])) . ' - ' . date('H:i', strtotime($enquiry['end_time'])) . '</td></tr></table>
             </div>
-            
+
             <div style="background: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #721c24; margin-top: 0;">❌ Booking Status: Cancelled</h3>
+                <h3 style="color: #721c24; margin-top: 0;;text-align:left;">❌ Booking Status: Cancelled</h3>
                 <p style="color: #721c24; margin: 0;">
                     <strong>This booking has been cancelled.</strong><br>
                     If you believe this is an error, please contact us immediately.
                 </p>
             </div>
-            
+
             <p>If you have any questions or would like to reschedule, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-            
+
             <p>We hope to have the opportunity to serve you in the future.</p>
-            
-            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-                <p style="color: #666; font-size: 14px;">
-                    <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                    <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        // Send email
+        return sendEmail(
+            $enquiry['email'],
+            $enquiry['contact_person'],
+            'Conference Cancelled - ' . htmlspecialchars($email_site_name) . ' [' . $enquiry['inquiry_reference'] . ']',
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log("Send Conference Cancelled Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Send gym membership confirmed email (mirrors sendConferenceConfirmedEmail).
+ */
+function sendGymConfirmedEmail(array $inquiry)
+{
+    global $email_from_email, $email_site_name;
+
+    try {
+        $currency_symbol = getSetting('currency_symbol');
+        $total_amount = !empty($inquiry['total_amount']) ? number_format($inquiry['total_amount'], 0) : 'To be determined';
+
+        $htmlBody = '
+            <h1 style="color: #8B7355; text-align: center;">Gym Membership Confirmed!</h1>
+            <p>Dear ' . htmlspecialchars($inquiry['name']) . ',</p>
+            <p>Great news! Your gym membership booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been confirmed by our team.</p>
+
+            <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #8B7355; margin-top: 0;text-align:left;">Membership Details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($inquiry['reference_number']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Package:</td><td style="padding:10px 0 10px 6px;color: #333;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($inquiry['membership_type'] ?? 'N/A') . '</td></tr></table>
+
+                ' . (!empty($inquiry['preferred_date']) ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Preferred Start Date:</td><td style="padding:10px 0 10px 6px;color: #333;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($inquiry['preferred_date'])) . '</td></tr></table>' : '') . '
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . $currency_symbol . ' ' . $total_amount . '</td></tr></table>
+            </div>
+
+            <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #155724; margin-top: 0;text-align:left;">&#9989; Booking Status: Confirmed</h3>
+                <p style="color: #155724; margin: 0;">
+                    <strong>Your gym membership booking is now confirmed!</strong><br>
+                    We look forward to seeing you at ' . htmlspecialchars($email_site_name) . '.
                 </p>
-            </div>';
-            
-            // Send email
-            return sendEmail(
-                $enquiry['email'],
-                $enquiry['contact_person'],
-                'Conference Cancelled - ' . htmlspecialchars($email_site_name) . ' [' . $enquiry['inquiry_reference'] . ']',
-                $htmlBody
-            );
-            
-        } catch (Exception $e) {
-            error_log("Send Conference Cancelled Email Error: " . $e->getMessage());
-            return [
-                'success' => false,
-                'message' => $e->getMessage()
-            ];
+            </div>
+
+            <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        return sendEmail(
+            $inquiry['email'],
+            $inquiry['name'],
+            'Gym Membership Confirmed - ' . htmlspecialchars($email_site_name) . ' [' . $inquiry['reference_number'] . ']',
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log("Send Gym Confirmed Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Send gym membership cancelled email (mirrors sendConferenceCancelledEmail).
+ */
+function sendGymCancelledEmail(array $inquiry)
+{
+    global $email_from_email, $email_site_name;
+
+    try {
+        $htmlBody = '
+            <h1 style="color: #dc3545; text-align: center;">Gym Membership Booking Cancelled</h1>
+            <p>Dear ' . htmlspecialchars($inquiry['name']) . ',</p>
+            <p>We regret to inform you that your gym membership booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been cancelled.</p>
+
+            <div style="background: #FAF6F0; border: 2px solid #dc3545; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #dc3545; margin-top: 0;text-align:left;">Cancelled Booking Details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Reference:</td><td style="padding:10px 0 10px 6px;color: #dc3545; font-weight: bold; font-size: 18px;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($inquiry['reference_number']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Package:</td><td style="padding:10px 0 10px 6px;color: #333;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . htmlspecialchars($inquiry['membership_type'] ?? 'N/A') . '</td></tr></table>
+            </div>
+
+            <div style="background: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #721c24; margin-top: 0;text-align:left;">&#10060; Booking Status: Cancelled</h3>
+                <p style="color: #721c24; margin: 0;">
+                    <strong>This booking has been cancelled.</strong><br>
+                    If you believe this is an error, please contact us immediately.
+                </p>
+            </div>
+
+            <p>If you have any questions or would like to rebook, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
+
+            <p>We hope to have the opportunity to serve you in the future.</p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        return sendEmail(
+            $inquiry['email'],
+            $inquiry['name'],
+            'Gym Membership Cancelled - ' . htmlspecialchars($email_site_name) . ' [' . $inquiry['reference_number'] . ']',
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log("Send Gym Cancelled Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Send gym membership quotation email (mirrors sendConferenceQuotationEmail,
+ * simplified: no PDF attachment / WhatsApp — gym has no per-room booking
+ * complexity that would justify the extra generator subsystem conference has).
+ */
+function sendGymQuotationEmail(array $inquiry, array $options = []): array
+{
+    global $email_log_enabled, $email_site_name;
+
+    try {
+        $recipientEmail = trim((string)($inquiry['email'] ?? ''));
+        if ($recipientEmail === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            throw new Exception('Gym inquiry does not have a valid email address.');
         }
+
+        $siteName = $email_site_name ?: getSetting('site_name', "Liwonde Sun Hotel");
+        $currency = (string)getSetting('currency_symbol', 'MWK ');
+        $validDays = max(1, (int)($options['valid_days'] ?? 7));
+        $notes = trim((string)($options['quotation_notes'] ?? ''));
+        $attachPdf = (bool)($options['attach_pdf'] ?? true);
+        $sendWhatsapp = (bool)($options['send_whatsapp'] ?? true);
+        $validUntil = (new DateTime())->modify('+' . $validDays . ' days');
+
+        $quoteRef = trim((string)($options['quote_reference'] ?? ''));
+        if ($quoteRef === '') {
+            $quoteRef = 'GQ-' . strtoupper((string)($inquiry['reference_number'] ?? ('GYM-' . (int)($inquiry['id'] ?? 0))));
+        }
+
+        $baseAmount = (float)($inquiry['total_amount'] ?? 0);
+        $vatAmount = (float)($inquiry['vat_amount'] ?? 0);
+        $totalAmount = (float)($inquiry['total_with_vat'] ?? 0);
+        if ($totalAmount <= 0) {
+            // Inclusive mode: the priced amount already contains VAT.
+            $totalAmount = vat_mode() === 'inclusive' ? $baseAmount : $baseAmount + $vatAmount;
+        }
+
+        $subject = 'Gym Membership Quotation - ' . $siteName . ' [' . $quoteRef . ']';
+        $htmlBody = '<h1 style="color:#8B7355;text-align:center;">Gym Membership Quotation</h1>'
+            . '<p>Dear ' . htmlspecialchars((string)($inquiry['name'] ?? 'Member'), ENT_QUOTES, 'UTF-8') . ',</p>'
+            . '<p>Thank you for your gym membership enquiry. Please find your quotation details below.</p>'
+            . '<p><strong>Inquiry Ref:</strong> ' . htmlspecialchars((string)($inquiry['reference_number'] ?? ''), ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Quotation Ref:</strong> ' . htmlspecialchars($quoteRef, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Package:</strong> ' . htmlspecialchars((string)($inquiry['membership_type'] ?? ''), ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Total:</strong> ' . htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($totalAmount, 0) . '<br>'
+            . '<strong>Valid Until:</strong> ' . $validUntil->format('F j, Y') . '</p>';
+
+        if ($notes !== '') {
+            $htmlBody .= '<p><strong>Notes:</strong><br>' . nl2br(htmlspecialchars($notes, ENT_QUOTES, 'UTF-8')) . '</p>';
+        }
+
+        $htmlBody .= '<p>To confirm this quotation, reply to this email or contact us at '
+            . htmlspecialchars((string)getSetting('phone_main', ''), ENT_QUOTES, 'UTF-8') . '.</p>';
+
+        $result = ['success' => false, 'message' => 'Unable to send quotation email.'];
+        if ($attachPdf) {
+            if (!function_exists('generateGymQuotationPDF')) {
+                require_once __DIR__ . '/invoice.php';
+            }
+            $pdfContent = generateGymQuotationPDF($inquiry, [
+                'valid_days' => $validDays,
+                'quotation_notes' => $notes,
+                'quote_reference' => $quoteRef,
+            ]);
+            $result = sendEmailWithBinaryAttachment(
+                $recipientEmail,
+                (string)($inquiry['name'] ?? 'Member'),
+                $subject,
+                $htmlBody,
+                $pdfContent,
+                'Gym-Quotation-' . $quoteRef . '.pdf',
+                'application/pdf',
+                'Please review the attached gym membership quotation PDF.'
+            );
+        } else {
+            $result = sendEmail($recipientEmail, (string)($inquiry['name'] ?? 'Member'), $subject, $htmlBody);
+        }
+
+        if (!empty($result['success']) && $email_log_enabled) {
+            logEmail($recipientEmail, (string)($inquiry['name'] ?? ''), $subject, 'sent');
+        }
+
+        if (!empty($result['success']) && $sendWhatsapp && empty($result['preview_url']) && function_exists('sendGymQuotationWhatsApp')) {
+            $waResult = sendGymQuotationWhatsApp($inquiry, [
+                'valid_days' => $validDays,
+                'quote_reference' => $quoteRef,
+                'quotation_notes' => $notes,
+            ]);
+            $result['whatsapp'] = $waResult;
+            if (!empty($waResult['success'])) {
+                $result['message'] = ($result['message'] ?? '') . ' WhatsApp quotation sent.';
+            } elseif (!in_array($waResult['message'] ?? '', ['No contact phone', 'WhatsApp disabled'], true)) {
+                $result['message'] = ($result['message'] ?? '') . ' WhatsApp not sent: ' . ($waResult['message'] ?? 'Unknown error');
+            }
+        }
+
+        return $result;
+    } catch (Exception $e) {
+        error_log("Send Gym Quotation Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Send guest confirmation email for a new event booking/RSVP (mirrors
+ * sendGymBookingEmail — the initial guest acknowledgement, not the admin
+ * "confirmed" status email below).
+ */
+function sendEventBookingConfirmedEmail(array $inquiry): array
+{
+    global $email_from_email, $email_site_name;
+
+    try {
+        $htmlBody = '
+            <h1 style="color: #8B7355; text-align: center;">Event Booking Confirmed!</h1>
+            <p>Dear ' . htmlspecialchars($inquiry['name']) . ',</p>
+            <p>Great news! Your event booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been confirmed by our team.</p>
+
+            <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #8B7355; margin-top: 0;text-align:left;">Booking Details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($inquiry['reference_number']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event:</td><td style="padding:10px 0 10px 6px;color: #333;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($inquiry['event_title'] ?? 'N/A') . '</td></tr></table>
+
+                ' . (!empty($inquiry['event_date']) ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Event Date:</td><td style="padding:10px 0 10px 6px;color: #333;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($inquiry['event_date'])) . '</td></tr></table>' : '') . '
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Attendees:</td><td style="padding:10px 0 10px 6px;color: #333;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . (int)($inquiry['guests'] ?? 1) . '</td></tr></table>
+            </div>
+
+            <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #155724; margin-top: 0;text-align:left;">&#9989; Booking Status: Confirmed</h3>
+                <p style="color: #155724; margin: 0;">
+                    <strong>Your event booking is now confirmed!</strong><br>
+                    We look forward to seeing you at ' . htmlspecialchars($email_site_name) . '.
+                </p>
+            </div>
+
+            <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        return sendEmail(
+            $inquiry['email'],
+            $inquiry['name'],
+            'Event Booking Confirmed - ' . htmlspecialchars($email_site_name) . ' [' . $inquiry['reference_number'] . ']',
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log("Send Event Booking Confirmed Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Send event booking cancelled email (mirrors sendGymCancelledEmail).
+ */
+function sendEventCancelledEmail(array $inquiry): array
+{
+    global $email_from_email, $email_site_name;
+
+    try {
+        $htmlBody = '
+            <h1 style="color: #dc3545; text-align: center;">Event Booking Cancelled</h1>
+            <p>Dear ' . htmlspecialchars($inquiry['name']) . ',</p>
+            <p>We regret to inform you that your event booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been cancelled.</p>
+
+            <div style="background: #FAF6F0; border: 2px solid #dc3545; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #dc3545; margin-top: 0;text-align:left;">Cancelled Booking Details</h2>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Reference:</td><td style="padding:10px 0 10px 6px;color: #dc3545; font-weight: bold; font-size: 18px;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($inquiry['reference_number']) . '</td></tr></table>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Event:</td><td style="padding:10px 0 10px 6px;color: #333;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . htmlspecialchars($inquiry['event_title'] ?? 'N/A') . '</td></tr></table>
+            </div>
+
+            <div style="background: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #721c24; margin-top: 0;text-align:left;">&#10060; Booking Status: Cancelled</h3>
+                <p style="color: #721c24; margin: 0;">
+                    <strong>This booking has been cancelled.</strong><br>
+                    If you believe this is an error, please contact us immediately.
+                </p>
+            </div>
+
+            <p>If you have any questions or would like to rebook, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
+
+            <p>We hope to have the opportunity to serve you in the future.</p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        return sendEmail(
+            $inquiry['email'],
+            $inquiry['name'],
+            'Event Booking Cancelled - ' . htmlspecialchars($email_site_name) . ' [' . $inquiry['reference_number'] . ']',
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log("Send Event Cancelled Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Send event *booking* quotation email — i.e. a follow-up quotation for an
+ * existing event_inquiries row (mirrors sendGymQuotationEmail, simplified:
+ * no PDF attachment / WhatsApp, same rationale as gym).
+ *
+ * Distinct from sendEventQuotationEmail() below, which is a pre-booking
+ * sales-outreach quotation admins send directly against an `events` listing
+ * row (no inquiry/booking required) via events-management.php's
+ * "send_event_quotation" action — keep both, they serve different flows.
+ */
+function sendEventInquiryQuotationEmail(array $inquiry, array $options = []): array
+{
+    global $email_log_enabled, $email_site_name;
+
+    try {
+        $recipientEmail = trim((string)($inquiry['email'] ?? ''));
+        if ($recipientEmail === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            throw new Exception('Event inquiry does not have a valid email address.');
+        }
+
+        $siteName = $email_site_name ?: getSetting('site_name', "Liwonde Sun Hotel");
+        $currency = (string)getSetting('currency_symbol', 'MWK ');
+        $validDays = max(1, (int)($options['valid_days'] ?? 7));
+        $notes = trim((string)($options['quotation_notes'] ?? ''));
+        $attachPdf = (bool)($options['attach_pdf'] ?? true);
+        $sendWhatsapp = (bool)($options['send_whatsapp'] ?? true);
+        $validUntil = (new DateTime())->modify('+' . $validDays . ' days');
+
+        $quoteRef = trim((string)($options['quote_reference'] ?? ''));
+        if ($quoteRef === '') {
+            $quoteRef = 'EQ-' . strtoupper((string)($inquiry['reference_number'] ?? ('EVT-' . (int)($inquiry['id'] ?? 0))));
+        }
+
+        $baseAmount = (float)($inquiry['total_amount'] ?? 0);
+        $vatAmount = (float)($inquiry['vat_amount'] ?? 0);
+        $totalAmount = (float)($inquiry['total_with_vat'] ?? 0);
+        if ($totalAmount <= 0) {
+            // Inclusive mode: the priced amount already contains VAT.
+            $totalAmount = vat_mode() === 'inclusive' ? $baseAmount : $baseAmount + $vatAmount;
+        }
+
+        $subject = 'Event Booking Quotation - ' . $siteName . ' [' . $quoteRef . ']';
+        $htmlBody = '<h1 style="color:#8B7355;text-align:center;">Event Booking Quotation</h1>'
+            . '<p>Dear ' . htmlspecialchars((string)($inquiry['name'] ?? 'Attendee'), ENT_QUOTES, 'UTF-8') . ',</p>'
+            . '<p>Thank you for your event enquiry. Please find your quotation details below.</p>'
+            . '<p><strong>Inquiry Ref:</strong> ' . htmlspecialchars((string)($inquiry['reference_number'] ?? ''), ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Quotation Ref:</strong> ' . htmlspecialchars($quoteRef, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Event:</strong> ' . htmlspecialchars((string)($inquiry['event_title'] ?? ''), ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Total:</strong> ' . htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($totalAmount, 0) . '<br>'
+            . '<strong>Valid Until:</strong> ' . $validUntil->format('F j, Y') . '</p>';
+
+        if ($notes !== '') {
+            $htmlBody .= '<p><strong>Notes:</strong><br>' . nl2br(htmlspecialchars($notes, ENT_QUOTES, 'UTF-8')) . '</p>';
+        }
+
+        $htmlBody .= '<p>To confirm this quotation, reply to this email or contact us at '
+            . htmlspecialchars((string)getSetting('phone_main', ''), ENT_QUOTES, 'UTF-8') . '.</p>';
+
+        $result = ['success' => false, 'message' => 'Unable to send quotation email.'];
+        if ($attachPdf) {
+            if (!function_exists('generateEventInquiryQuotationPDF')) {
+                require_once __DIR__ . '/invoice.php';
+            }
+            $pdfContent = generateEventInquiryQuotationPDF($inquiry, [
+                'valid_days' => $validDays,
+                'quotation_notes' => $notes,
+                'quote_reference' => $quoteRef,
+            ]);
+            $result = sendEmailWithBinaryAttachment(
+                $recipientEmail,
+                (string)($inquiry['name'] ?? 'Attendee'),
+                $subject,
+                $htmlBody,
+                $pdfContent,
+                'Event-Quotation-' . $quoteRef . '.pdf',
+                'application/pdf',
+                'Please review the attached event booking quotation PDF.'
+            );
+        } else {
+            $result = sendEmail($recipientEmail, (string)($inquiry['name'] ?? 'Attendee'), $subject, $htmlBody);
+        }
+
+        if (!empty($result['success']) && $email_log_enabled) {
+            logEmail($recipientEmail, (string)($inquiry['name'] ?? ''), $subject, 'sent');
+        }
+
+        if (!empty($result['success']) && $sendWhatsapp && empty($result['preview_url']) && function_exists('sendEventInquiryQuotationWhatsApp')) {
+            $waResult = sendEventInquiryQuotationWhatsApp($inquiry, [
+                'valid_days' => $validDays,
+                'quote_reference' => $quoteRef,
+                'quotation_notes' => $notes,
+            ]);
+            $result['whatsapp'] = $waResult;
+            if (!empty($waResult['success'])) {
+                $result['message'] = ($result['message'] ?? '') . ' WhatsApp quotation sent.';
+            } elseif (!in_array($waResult['message'] ?? '', ['No contact phone', 'WhatsApp disabled'], true)) {
+                $result['message'] = ($result['message'] ?? '') . ' WhatsApp not sent: ' . ($waResult['message'] ?? 'Unknown error');
+            }
+        }
+
+        return $result;
+    } catch (Exception $e) {
+        error_log("Send Event Inquiry Quotation Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
 }
 
 /**
  * Send booking cancelled email
  */
-function sendBookingCancelledEmail($booking, $cancellation_reason = '') {
+function sendBookingCancelledEmail(array $booking, string $cancellation_reason = '')
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get room details
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Room not found");
         }
-        
+
+        $templateVars = buildBookingEmailVariables($booking, $room, [
+            'cancellation_reason' => $cancellation_reason
+        ]);
+        $dbTemplate = renderBookingEmailTemplate('booking_cancelled', $templateVars);
+        if ($dbTemplate) {
+            $ccEmails = getCCEmails();
+            return sendEmailWithCC(
+                $booking['guest_email'],
+                $booking['guest_name'],
+                $dbTemplate['subject'],
+                $dbTemplate['html_body'],
+                $dbTemplate['text_body'],
+                $ccEmails
+            );
+        }
+
         // Prepare email content
         $htmlBody = '
         <h1 style="color: #dc3545; text-align: center;">Booking Cancelled</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
         <p>We regret to inform you that your booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been cancelled.</p>
-        
-        <div style="background: #f8f9fa; border: 2px solid #dc3545; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #dc3545; margin-top: 0;">Cancelled Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #dc3545; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Nights:</span>
-                <span style="color: #333;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #dc3545; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #dc3545; margin-top: 0;;text-align:left;">Cancelled Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #dc3545; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Nights:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Guests:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>';
-        
+
         if ($cancellation_reason) {
             $htmlBody .= '
             <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #856404; margin-top: 0;">Cancellation Reason</h3>
+                <h3 style="color: #856404; margin-top: 0;;text-align:left;">Cancellation Reason</h3>
                 <p style="color: #856404; margin: 0;">' . htmlspecialchars($cancellation_reason) . '</p>
             </div>';
         }
-        
+
         $htmlBody .= '
         <div style="background: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #721c24; margin-top: 0;">❌ Booking Status: Cancelled</h3>
+            <h3 style="color: #721c24; margin-top: 0;;text-align:left;">❌ Booking Status: Cancelled</h3>
             <p style="color: #721c24; margin: 0;">
                 <strong>This booking has been cancelled.</strong><br>
                 If you believe this is an error, please contact us immediately.
             </p>
         </div>
-        
+
         <p>If you have any questions or would like to make a new booking, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
+
         <p>We hope to have the opportunity to serve you in the future.</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
         // Get CC emails for invoice recipients
         $ccEmails = getCCEmails();
-        
+
         // Send email with CC to admin/invoice recipients
-        return sendEmailWithCC(
+        $emailResult = sendEmailWithCC(
             $booking['guest_email'],
             $booking['guest_name'],
             'Booking Cancelled - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
@@ -1663,7 +3640,21 @@ function sendBookingCancelledEmail($booking, $cancellation_reason = '') {
             '',
             $ccEmails
         );
-        
+
+        // Send WhatsApp notification if enabled
+        $whatsappResult = ['guest' => ['success' => false, 'message' => 'WhatsApp not available'], 'hotel' => ['success' => false, 'message' => 'WhatsApp not available']];
+        if (function_exists('sendBookingCancelledWhatsApp') && function_exists('isWhatsAppEnabled') && isWhatsAppEnabled()) {
+            $bookingForWhatsApp = $booking;
+            $bookingForWhatsApp['room_name'] = $room['name'];
+            $whatsappResult = sendBookingCancelledWhatsApp($bookingForWhatsApp, $room);
+        }
+
+        return [
+            'success' => $emailResult['success'],
+            'message' => $emailResult['message'],
+            'whatsapp_guest_sent' => $whatsappResult['guest']['success'] ?? false,
+            'whatsapp_hotel_sent' => $whatsappResult['hotel']['success'] ?? false
+        ];
     } catch (Exception $e) {
         error_log("Send Booking Cancelled Email Error: " . $e->getMessage());
         return [
@@ -1674,61 +3665,191 @@ function sendBookingCancelledEmail($booking, $cancellation_reason = '') {
 }
 
 /**
+ * Send booking room upgrade email
+ */
+function sendBookingRoomUpgradeEmail(array $booking)
+{
+    global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
+
+    try {
+        $old_room_name = $booking['old_room_name'] ?? 'Previous Room';
+        $new_room_name = $booking['new_room_name'] ?? 'New Room';
+        $old_total = (float)($booking['old_total'] ?? 0);
+        $new_total = (float)($booking['new_total'] ?? 0);
+        $price_difference = (float)($booking['price_difference'] ?? 0);
+
+        $currency_symbol = getSetting('currency_symbol');
+
+        $htmlBody = '
+        <h1 style="color: #8B7355; text-align: center;">Room Upgrade Confirmed</h1>
+        <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
+        <p>We are pleased to inform you that your booking with <strong>' . htmlspecialchars($email_site_name) . '</strong> has been upgraded to a better room!</p>
+
+        <div style="background: #FAF6F0; border: 2px solid #8B7355; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Upgrade Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <div style="background: #fff3cd; padding: 12px; border-radius: 6px; margin: 16px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 6px;"><tr><td style="padding:6px 8px 6px 0;font-weight:bold;color:#666;width:44%;vertical-align:top;">Previous Room:</td><td style="padding:6px 0 6px 8px;color:#666;text-decoration:line-through;text-align:left;vertical-align:top;">' . htmlspecialchars($old_room_name) . '</td></tr></table>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:6px 8px 6px 0;font-weight:bold;color:#28a745;font-size:16px;width:44%;vertical-align:top;">New Room:</td><td style="padding:6px 0 6px 8px;color:#28a745;font-weight:bold;font-size:16px;text-align:left;vertical-align:top;">' . htmlspecialchars($new_room_name) . '</td></tr></table>
+            </div>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <div style="background: #e7f3ff; padding: 12px; border-radius: 6px; margin: 16px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 6px;"><tr><td style="padding:6px 8px 6px 0;font-weight:bold;color:#666;width:44%;vertical-align:top;">Previous Total:</td><td style="padding:6px 0 6px 8px;color:#666;text-align:left;vertical-align:top;">' . $currency_symbol . ' ' . number_format($old_total, 0) . '</td></tr></table>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:6px 8px 6px 0;font-weight:bold;color:#666;width:44%;vertical-align:top;">New Total:</td><td style="padding:6px 0 6px 8px;color:#333;text-align:left;vertical-align:top;">' . $currency_symbol . ' ' . number_format($new_total, 0) . '</td></tr></table>';
+
+        if ($price_difference > 0) {
+            $htmlBody .= '
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;border-top:1px dashed #ccc;"><tr><td style="padding:8px 8px 6px 0;font-weight:bold;color:#dc3545;width:44%;vertical-align:top;">Additional Amount:</td><td style="padding:8px 0 6px 8px;color:#dc3545;font-weight:bold;font-size:16px;text-align:left;vertical-align:top;">+' . $currency_symbol . ' ' . number_format($price_difference, 0) . '</td></tr></table>
+                <p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">* Please pay the additional amount upon check-in.</p>';
+        } elseif ($price_difference < 0) {
+            $htmlBody .= '
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;border-top:1px dashed #ccc;"><tr><td style="padding:8px 8px 6px 0;font-weight:bold;color:#28a745;width:44%;vertical-align:top;">Discount Applied:</td><td style="padding:8px 0 6px 8px;color:#28a745;font-weight:bold;font-size:16px;text-align:left;vertical-align:top;">-' . $currency_symbol . ' ' . number_format(abs($price_difference), 0) . '</td></tr></table>
+                <p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">* A discount has been applied to your booking!</p>';
+        } else {
+            $htmlBody .= '
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;border-top:1px dashed #ccc;"><tr><td style="padding:8px 8px 6px 0;font-weight:bold;color:#8B7355;width:44%;vertical-align:top;">Price Adjustment:</td><td style="padding:8px 0 6px 8px;color:#8B7355;text-align:left;vertical-align:top;">No change in total amount</td></tr></table>';
+        }
+
+        $htmlBody .= '
+            </div>
+        </div>
+
+        <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #155724; margin-top: 0;;text-align:left;"><i class="fas fa-arrow-up"></i> Room Upgraded Successfully!</h3>
+            <p style="color: #155724; margin: 0;">
+                Your room has been upgraded from <strong>' . htmlspecialchars($old_room_name) . '</strong> to <strong>' . htmlspecialchars($new_room_name) . '</strong>.
+                We hope you enjoy your enhanced stay with us!
+            </p>
+        </div>
+
+        <p>If you have any questions about your upgrade, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a>.</p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        // Get CC emails
+        $ccEmails = getCCEmails();
+
+        // Send email with CC
+        $emailResult = sendEmailWithCC(
+            $booking['guest_email'],
+            $booking['guest_name'],
+            'Room Upgraded - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
+            $htmlBody,
+            '',
+            $ccEmails
+        );
+
+        return [
+            'success' => $emailResult['success'],
+            'message' => $emailResult['message']
+        ];
+    } catch (Exception $e) {
+        error_log("Send Room Upgrade Email Error: " . $e->getMessage());
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
  * Send email with CC recipients
  */
-function sendEmailWithCC($to, $toName, $subject, $htmlBody, $textBody = '', $ccEmails = []) {
-    global $development_mode, $email_log_enabled, $email_preview_enabled, $smtp_password;
-    
+function sendEmailWithCC(string $to, ?string $toName, string $subject, string $htmlBody, string $textBody = '', array $ccEmails = [])
+{
+    global $email_from_name, $email_from_email, $email_admin_email;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
+    global $email_bcc_admin, $development_mode, $email_log_enabled, $email_preview_enabled;
+
     // If in development mode and no password or preview enabled, show preview
     if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
         return createEmailPreview($to, $toName, $subject, $htmlBody, $textBody);
     }
-    
+
     try {
         // Create PHPMailer instance
         $mail = new PHPMailer(true);
 
-        configureSmtpTransport($mail);
-        configureMailRecipients($mail, $to, $toName);
-        
+        // Server settings
+        $mail->isSMTP();
+        $mail->Host = $smtp_host;
+        $mail->SMTPAuth = true;
+        $mail->Username = $smtp_username;
+        $mail->Password = $smtp_password;
+        $mail->SMTPSecure = $smtp_secure;
+        $mail->Port = $smtp_port;
+        $mail->Timeout = $smtp_timeout;
+
+        if ($smtp_debug > 0) {
+            $mail->SMTPDebug = $smtp_debug;
+        }
+
+        // Recipients — use smtp_username as From (relay requirement); Reply-To points to hotel address
+        $smtpSecureNormCC = strtolower(trim((string)$smtp_secure));
+        if ($smtpSecureNormCC === '' && (int)$smtp_port === 587) {
+            $smtpSecureNormCC = 'tls';
+            $mail->SMTPSecure = $smtpSecureNormCC;
+        } elseif ($smtpSecureNormCC === '' && (int)$smtp_port === 465) {
+            $smtpSecureNormCC = 'ssl';
+            $mail->SMTPSecure = $smtpSecureNormCC;
+        }
+        $mail->setFrom($smtp_username, $email_from_name ?: getSetting('site_name', ''));
+        $mail->addAddress($to, $toName ?? '');
+        if (!empty($email_from_email) && filter_var($email_from_email, FILTER_VALIDATE_EMAIL)) {
+            $mail->addReplyTo($email_from_email, $email_from_name ?: getSetting('site_name', ''));
+        }
+
         // Add CC recipients
         if (!empty($ccEmails)) {
             foreach ($ccEmails as $ccEmail) {
                 $mail->addCC($ccEmail);
             }
         }
-        
-        // Content
+
+        // Add BCC for admin if enabled
+        if ($email_bcc_admin && !empty($email_admin_email)) {
+            $mail->addBCC($email_admin_email);
+        }
+
+        // Content — force UTF-8
+        $mail->CharSet  = PHPMailer::CHARSET_UTF8;
+        $mail->Encoding = PHPMailer::ENCODING_BASE64;
         $mail->isHTML(true);
         $mail->Subject = $subject;
-        $mail->Body = $htmlBody;
+        $mail->Body = hotel_embed_logo_cid($mail, wrapEmailTemplate($htmlBody, $subject));
         $mail->AltBody = $textBody ?: strip_tags($htmlBody);
-        
+
         $mail->send();
-        
+
         // Log email if enabled
         if ($email_log_enabled) {
             logEmail($to, $toName, $subject, 'sent');
         }
-        
+
         return [
             'success' => true,
             'message' => 'Email sent successfully via SMTP'
         ];
-        
     } catch (Exception $e) {
         error_log("PHPMailer Error: " . $e->getMessage());
-        
+
         // Log error if enabled
         if ($email_log_enabled) {
             logEmail($to, $toName, $subject, 'failed', $e->getMessage());
         }
-        
+
         // If development mode, show preview instead of failing
         if ($development_mode) {
             return createEmailPreview($to, $toName, $subject, $htmlBody, $textBody);
         }
-        
+
         return [
             'success' => false,
             'message' => 'Failed to send email: ' . $e->getMessage()
@@ -1739,38 +3860,42 @@ function sendEmailWithCC($to, $toName, $subject, $htmlBody, $textBody = '', $ccE
 /**
  * Get CC emails from settings
  */
-function getCCEmails() {
+function getCCEmails()
+{
+    global $pdo;
+
     try {
-        // Stored as a comma/semicolon/newline separated list in email_settings.setting_value
-        $raw = getEmailSetting('invoice_recipients', '');
-        if (empty($raw)) {
-            return [];
+        $stmt = $pdo->query("SELECT email_value FROM email_settings WHERE email_key = 'cc_emails' LIMIT 1");
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($result && !empty($result['email_value'])) {
+            $emails = json_decode($result['email_value'], true);
+            if (is_array($emails) && !empty($emails)) {
+                return array_filter($emails, function (mixed $email) {
+                    return filter_var($email, FILTER_VALIDATE_EMAIL);
+                });
+            }
         }
-
-        $candidates = preg_split('/[\s,;]+/', $raw, -1, PREG_SPLIT_NO_EMPTY);
-        $valid = array_filter($candidates, function($email) {
-            return filter_var($email, FILTER_VALIDATE_EMAIL);
-        });
-
-        return array_values(array_unique($valid));
     } catch (Exception $e) {
         error_log("Error getting CC emails: " . $e->getMessage());
-        return [];
     }
+
+    return [];
 }
 
 /**
  * Generate WhatsApp link with pre-filled message
  */
-function generateWhatsAppLink($booking, $room) {
+function generateWhatsAppLink(array $booking, array $room)
+{
     $whatsapp_number = getSetting('whatsapp_number', getSetting('phone_main', ''));
-    
+
     // Remove any non-numeric characters except +
     $whatsapp_number = preg_replace('/[^0-9+]/', '', $whatsapp_number);
-    
+
     // Remove + if present (WhatsApp API format doesn't use +)
     $whatsapp_number = ltrim($whatsapp_number, '+');
-    
+
     // Create pre-filled message
     $message = "Hello! I would like to confirm my tentative booking:\n\n";
     $message .= "📅 Booking Reference: " . $booking['booking_reference'] . "\n";
@@ -1780,97 +3905,200 @@ function generateWhatsAppLink($booking, $room) {
     $message .= "📆 Check-out: " . date('F j, Y', strtotime($booking['check_out_date'])) . "\n";
     $message .= "💰 Total Amount: " . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . "\n\n";
     $message .= "Please confirm my booking. Thank you!";
-    
+
     return 'https://wa.me/' . $whatsapp_number . '?text=' . urlencode($message);
+}
+
+/**
+ * Send a booking reminder email.
+ *
+ * This single email serves two DISTINCT conditions and must never conflate them:
+ *   1. Missed / upcoming check-in (a potential no-show) — driven by check_in_date.
+ *   2. Overdue checkout (guest has arrived but not departed) — driven by check_out_date.
+ *
+ * Precedence rules (highest first):
+ *   - A no-show / cancelled / checked-out / completed / expired booking NEVER
+ *     receives a reminder. No-show status supersedes all time-based logic.
+ *   - A booking that has NOT been checked in is always treated as a potential
+ *     no-show (check-in reminder) — even if its checkout date has also elapsed.
+ *     It is NEVER framed as a late checkout.
+ *   - Only a genuinely checked-in booking past its checkout date is treated as
+ *     an overdue checkout.
+ */
+function sendBookingReminderEmail(array $booking): array
+{
+    global $pdo;
+
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
+        $stmt->execute([$booking['room_id']]);
+        $room = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$room) {
+            throw new Exception('Room not found');
+        }
+
+        $status = (string)($booking['status'] ?? '');
+
+        // ── PRECEDENCE GUARD ───────────────────────────────────────────────
+        // A no-show (or otherwise closed) booking must NEVER generate a
+        // late/overdue reminder. This is enforced here, independent of the
+        // caller, so the rule holds no matter which code path invokes it.
+        $blockedStatuses = ['no-show', 'cancelled', 'checked-out', 'completed', 'expired'];
+        if (in_array($status, $blockedStatuses, true)) {
+            throw new Exception('Reminder emails cannot be sent for ' . ($status !== '' ? $status : 'closed') . ' bookings.');
+        }
+
+        $today        = new DateTime('today');
+        $checkInDate  = (string)($booking['check_in_date'] ?? '');
+        $checkOutDate = (string)($booking['check_out_date'] ?? '');
+        $checkInObj   = $checkInDate  !== '' ? (new DateTime($checkInDate))->setTime(0, 0, 0)  : null;
+        $checkOutObj  = $checkOutDate !== '' ? (new DateTime($checkOutDate))->setTime(0, 0, 0) : null;
+
+        $hasCheckedIn   = ($status === 'checked-in');
+        $checkInPassed  = $checkInObj  ? ($checkInObj  < $today) : false;
+        $checkOutPassed = $checkOutObj ? ($checkOutObj < $today) : false;
+
+        if ($hasCheckedIn && $checkOutPassed) {
+            // ── OVERDUE CHECKOUT ── guest arrived but has not departed.
+            $daysOverdue = (int)$checkOutObj->diff($today)->days;
+            $urgencyLine = '<p style="margin:0 0 16px;color:#b0552b;font-weight:600;">'
+                . 'Your checkout date was ' . $daysOverdue . ' day' . ($daysOverdue === 1 ? '' : 's')
+                . ' ago. Please contact reception to complete your checkout or to extend your stay.</p>';
+            $referenceLabel = 'Checkout';
+            $referenceDate  = $checkOutDate;
+        } else {
+            // ── MISSED / UPCOMING CHECK-IN (potential no-show) ──
+            // Any not-yet-checked-in booking lands here, including ones whose
+            // checkout date has also elapsed — it is a no-show candidate, not a
+            // late checkout.
+            $daysOverdue = $checkInPassed ? (int)$checkInObj->diff($today)->days : 0;
+            if ($checkInPassed) {
+                $urgencyLine = '<p style="margin:0 0 16px;color:#b0552b;font-weight:600;">'
+                    . 'Your check-in date was ' . $daysOverdue . ' day' . ($daysOverdue === 1 ? '' : 's')
+                    . ' ago. Please contact us to confirm your arrival or to reschedule.</p>';
+            } elseif ($checkInObj && $checkInObj == $today) {
+                $urgencyLine = '<p style="margin:0 0 16px;color:#7a5c2e;font-weight:600;">Your check-in is today. We are expecting you and your room is ready.</p>';
+            } else {
+                $urgencyLine = '<p style="margin:0 0 16px;">Your upcoming stay at <strong>{{site_name}}</strong> is approaching. We wanted to remind you of your reservation details.</p>';
+            }
+            $referenceLabel = 'Check-in';
+            $referenceDate  = $checkInDate;
+        }
+
+        $templateVars = buildBookingEmailVariables($booking, $room, [
+            'days_overdue'   => (string)max(0, $daysOverdue),
+            'urgency_notice' => $urgencyLine,
+        ]);
+        $dbTemplate = renderBookingEmailTemplate('booking_reminder', $templateVars);
+        if ($dbTemplate) {
+            return sendEmail(
+                $booking['guest_email'],
+                $booking['guest_name'],
+                $dbTemplate['subject'],
+                $dbTemplate['html_body'],
+                $dbTemplate['text_body'] ?? ''
+            );
+        }
+
+        // Fallback plain email if template not configured
+        $subject = 'Reminder: Your stay at ' . getSetting('site_name', 'Liwonde Sun Hotel');
+        $htmlBody = '<p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>'
+            . $urgencyLine
+            . '<p>Booking Reference: <strong>' . htmlspecialchars($booking['booking_reference']) . '</strong></p>'
+            . '<p>Room: ' . htmlspecialchars($room['name']) . '</p>'
+            . '<p>' . htmlspecialchars($referenceLabel) . ': ' . htmlspecialchars($referenceDate) . '</p>'
+            . '<p>Please contact us if you have any questions.</p>';
+        return sendEmail($booking['guest_email'], $booking['guest_name'], $subject, $htmlBody);
+    } catch (Exception $e) {
+        error_log('sendBookingReminderEmail error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
 }
 
 /**
  * Send tentative booking confirmed email (sent when tentative booking is created)
  */
-function sendTentativeBookingConfirmedEmail($booking) {
+function sendTentativeBookingConfirmedEmail(array $booking)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get room details
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Room not found");
         }
-        
+
         // Get tentative settings
         $tentative_duration_hours = (int)getSetting('tentative_duration_hours', 48);
         $expires_at = new DateTime($booking['tentative_expires_at']);
         $hours_until_expiry = (new DateTime())->diff($expires_at)->h + ((new DateTime())->diff($expires_at)->days * 24);
-        
+
         // Generate WhatsApp link
         $whatsapp_link = generateWhatsAppLink($booking, $room);
-        
+
+        $templateVars = buildBookingEmailVariables($booking, $room, [
+            'tentative_duration_hours' => (string)$tentative_duration_hours,
+            'tentative_expires_at_formatted' => $expires_at->format('F j, Y g:i A'),
+            'hours_until_expiry' => (string)$hours_until_expiry,
+            'whatsapp_link' => $whatsapp_link,
+        ]);
+        $renderedTemplate = renderBookingEmailTemplate('tentative_booking_created', $templateVars);
+        if ($renderedTemplate !== null) {
+            return sendEmail(
+                $booking['guest_email'],
+                $booking['guest_name'],
+                $renderedTemplate['subject'],
+                $renderedTemplate['html_body']
+            );
+        }
+
         // Prepare email content
         $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">Tentative Booking Confirmed</h1>
+        <h1 style="color: #8B7355; text-align: center;">Tentative Booking Confirmed</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
         <p>Thank you for your interest in <strong>' . htmlspecialchars($email_site_name) . '</strong>. Your room has been placed on tentative hold.</p>
-        
+
         <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #856404; margin-top: 0;">⏰ Tentative Hold Period</h3>
+            <h3 style="color: #856404; margin-top: 0;;text-align:left;">⏰ Tentative Hold Period</h3>
             <p style="color: #856404; margin: 0;">
                 <strong>Your room is reserved until:</strong><br>
                 ' . $expires_at->format('F j, Y') . ' at ' . $expires_at->format('g:i A') . '<br><br>
                 You will receive a reminder email 24 hours before expiration.
             </p>
         </div>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Nights:</span>
-                <span style="color: #333;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Nights:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Guests:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>
-        
+
         <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">What Happens Next?</h3>
+            <h3 style="color: #155724; margin-top: 0;;text-align:left;">What Happens Next?</h3>
             <p style="color: #155724; margin: 0;">
                 <strong>1.</strong> You will receive a reminder 24 hours before expiration<br>
                 <strong>2.</strong> Confirm your booking anytime before expiration via WhatsApp<br>
                 <strong>3.</strong> No penalty if you decide not to book
             </p>
         </div>
-        
+
         <div style="text-align: center; margin-top: 30px;">
             <a href="' . htmlspecialchars($whatsapp_link) . '"
                style="display: inline-block; background: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;"
@@ -1878,46 +4106,30 @@ function sendTentativeBookingConfirmedEmail($booking) {
                 💬 Confirm My Booking Now via WhatsApp
             </a>
         </div>';
-        
+
         if (!empty($booking['special_requests'])) {
             $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Special Requests</h3>
-                <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($booking['special_requests']) . '</p>
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Special Requests</h3>
+                <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($booking['special_requests']) . '</p>
             </div>';
         }
-        
+
         $htmlBody .= '
         <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
-        <p>Thank you for considering ' . htmlspecialchars($email_site_name) . '!</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
-        // Send email
-        // Inject promo notice before the 'What Happens Next?' section
-        // (tentative confirmed email has no Payment Info block, so target the green status div)
-        $promo_block = buildPromoEmailBlock($booking, $room);
-        if ($promo_block !== '') {
-            $marker = '<div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745';
-            $pos = strpos($htmlBody, $marker);
-            if ($pos !== false) {
-                $htmlBody = substr($htmlBody, 0, $pos) . $promo_block . "\n        " . substr($htmlBody, $pos);
-            }
-        }
 
+        <p>Thank you for considering ' . htmlspecialchars($email_site_name) . '!</p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        // Send email
         return sendEmail(
             $booking['guest_email'],
             $booking['guest_name'],
             'Tentative Booking Confirmed - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Tentative Booking Confirmed Email Error: " . $e->getMessage());
         return [
@@ -1930,55 +4142,61 @@ function sendTentativeBookingConfirmedEmail($booking) {
 /**
  * Send tentative booking reminder email (24 hours before expiration)
  */
-function sendTentativeBookingReminderEmail($booking) {
+function sendTentativeBookingReminderEmail(array $booking)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get room details
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Room not found");
         }
-        
+
         $expires_at = new DateTime($booking['tentative_expires_at']);
-        
+
+        $templateVars = buildBookingEmailVariables($booking, $room, [
+            'tentative_expires_at_formatted' => $expires_at->format('F j, Y g:i A'),
+            'whatsapp_link' => generateWhatsAppLink($booking, $room),
+        ]);
+        $renderedTemplate = renderBookingEmailTemplate('tentative_booking_reminder', $templateVars);
+        if ($renderedTemplate !== null) {
+            return sendEmail(
+                $booking['guest_email'],
+                $booking['guest_name'],
+                $renderedTemplate['subject'],
+                $renderedTemplate['html_body']
+            );
+        }
+
         // Prepare email content
         $htmlBody = '
         <h1 style="color: #dc3545; text-align: center;">⏰ Your Tentative Booking Expires Soon</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
         <p>This is a friendly reminder that your tentative booking at <strong>' . htmlspecialchars($email_site_name) . '</strong> will expire in 24 hours.</p>
-        
+
         <div style="background: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #721c24; margin-top: 0;">Expiration Details</h3>
+            <h3 style="color: #721c24; margin-top: 0;;text-align:left;">Expiration Details</h3>
             <p style="color: #721c24; margin: 0;">
                 <strong>Expires:</strong> ' . $expires_at->format('F j, Y') . ' at ' . $expires_at->format('g:i A') . '<br>
                 <strong>Booking Reference:</strong> ' . htmlspecialchars($booking['booking_reference']) . '<br>
                 <strong>Room:</strong> ' . htmlspecialchars($room['name']) . '
             </p>
         </div>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Your Booking</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Your Booking</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>
-        
+
         <div style="text-align: center; margin-top: 30px;">
             <a href="' . htmlspecialchars(generateWhatsAppLink($booking, $room)) . '"
                style="display: inline-block; background: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;"
@@ -1986,16 +4204,12 @@ function sendTentativeBookingReminderEmail($booking) {
                 💬 Confirm My Booking Now via WhatsApp
             </a>
         </div>
-        
+
         <p style="margin-top: 20px;">If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
         // Send email
         return sendEmail(
             $booking['guest_email'],
@@ -2003,7 +4217,6 @@ function sendTentativeBookingReminderEmail($booking) {
             'Reminder: Tentative Booking Expiring Soon - ' . $booking['booking_reference'],
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Tentative Booking Reminder Email Error: " . $e->getMessage());
         return [
@@ -2016,71 +4229,71 @@ function sendTentativeBookingReminderEmail($booking) {
 /**
  * Send tentative booking expired email (when booking expires)
  */
-function sendTentativeBookingExpiredEmail($booking) {
+function sendTentativeBookingExpiredEmail(array $booking)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get room details
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
+        $templateVars = buildBookingEmailVariables($booking, $room ?: null, [
+            'tentative_expires_at_formatted' => !empty($booking['tentative_expires_at'])
+                ? date('F j, Y g:i A', strtotime((string)$booking['tentative_expires_at']))
+                : '',
+        ]);
+        $renderedTemplate = renderBookingEmailTemplate('tentative_booking_expired', $templateVars);
+        if ($renderedTemplate !== null) {
+            return sendEmail(
+                $booking['guest_email'],
+                $booking['guest_name'],
+                $renderedTemplate['subject'],
+                $renderedTemplate['html_body']
+            );
+        }
+
         // Prepare email content
         $htmlBody = '
         <h1 style="color: #6c757d; text-align: center;">Tentative Booking Expired</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
         <p>Your tentative booking at <strong>' . htmlspecialchars($email_site_name) . '</strong> has expired.</p>
-        
+
         <div style="background: #e2e3e5; padding: 15px; border-left: 4px solid #6c757d; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #383d41; margin-top: 0;">What This Means</h3>
+            <h3 style="color: #383d41; margin-top: 0;;text-align:left;">What This Means</h3>
             <p style="color: #383d41; margin: 0;">
                 Your room hold has been released and is now available for other guests.<br>
                 There is no penalty for an expired tentative booking.
             </p>
         </div>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Expired Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #6c757d; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name'] ?? 'N/A') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Expired Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #6c757d; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name'] ?? 'N/A') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
         </div>
-        
+
         <p>If you are still interested in booking with us, please visit our website to check availability and make a new booking.</p>
-        
+
         <div style="text-align: center; margin-top: 30px;">
             <a href="' . htmlspecialchars($email_site_url) . '/booking.php"
-               style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+               style="display: inline-block; background: #8B7355; color: #1A1A1A; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                 Make a New Booking
             </a>
         </div>
-        
+
         <p style="margin-top: 20px;">If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
         // Send email
         return sendEmail(
             $booking['guest_email'],
@@ -2088,7 +4301,6 @@ function sendTentativeBookingExpiredEmail($booking) {
             'Tentative Booking Expired - ' . $booking['booking_reference'],
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Tentative Booking Expired Email Error: " . $e->getMessage());
         return [
@@ -2101,135 +4313,114 @@ function sendTentativeBookingExpiredEmail($booking) {
 /**
  * Send tentative booking converted email (when converted to confirmed)
  */
-function sendTentativeBookingConvertedEmail($booking) {
+function sendTentativeBookingConvertedEmail(array $booking)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Debug: Log what data we received
         error_log("sendTentativeBookingConvertedEmail called with booking data: " . json_encode($booking));
-        
+
         // Check if room_id exists
         if (!isset($booking['room_id']) || empty($booking['room_id'])) {
             throw new Exception("Room ID not found in booking data. Available keys: " . implode(', ', array_keys($booking)));
         }
-        
+
         // Get room details
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$room) {
             throw new Exception("Room not found with ID: " . $booking['room_id']);
         }
-        
+
         error_log("Room found: " . json_encode($room));
-        
+
+        $templateVars = buildBookingEmailVariables($booking, $room, [
+            'conversion_status' => 'converted',
+        ]);
+        $renderedTemplate = renderBookingEmailTemplate('tentative_booking_converted', $templateVars);
+        if ($renderedTemplate !== null) {
+            return sendEmail(
+                $booking['guest_email'],
+                $booking['guest_name'],
+                $renderedTemplate['subject'],
+                $renderedTemplate['html_body']
+            );
+        }
+
         // Prepare email content specifically for conversion
         $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">Booking Confirmed!</h1>
+        <h1 style="color: #8B7355; text-align: center;">Booking Confirmed!</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
-        
+
         <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">✅ Great News!</h3>
+            <h3 style="color: #155724; margin-top: 0;;text-align:left;">✅ Great News!</h3>
             <p style="color: #155724; margin: 0;">
                 <strong>Your tentative booking has been successfully converted to a confirmed booking!</strong><br>
                 Your reservation is now guaranteed and we look forward to welcoming you to ' . htmlspecialchars($email_site_name) . '.
             </p>
         </div>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Nights:</span>
-                <span style="color: #333;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Nights:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_nights'] . ' night' . ($booking['number_of_nights'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Number of Guests:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $booking['number_of_guests'] . ' guest' . ($booking['number_of_guests'] != 1 ? 's' : '') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>
-        
+
         <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #155724; margin-top: 0;">✅ Booking Status: Confirmed</h3>
+            <h3 style="color: #155724; margin-top: 0;;text-align:left;">✅ Booking Status: Confirmed</h3>
             <p style="color: #155724; margin: 0;">
                 <strong>Your booking is now confirmed and guaranteed!</strong><br>
                 We look forward to welcoming you to ' . htmlspecialchars($email_site_name) . '.
             </p>
         </div>
-        
+
         <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #856404; margin-top: 0;">Payment Information</h3>
+            <h3 style="color: #856404; margin-top: 0;;text-align:left;">Payment Information</h3>
             <p style="color: #856404; margin: 0;">
                 ' . getSetting('payment_policy', 'Payment will be made at the hotel upon arrival.<br>We accept cash payments only. Please bring the total amount of <strong>' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</strong> with you.') . '
             </p>
         </div>
-        
-        <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #0d6efd; margin-top: 0;">Next Steps</h3>
-            <p style="color: #0d6efd; margin: 0;">
+
+        <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Next Steps</h3>
+            <p style="color: #5C4A32; margin: 0;">
                 <strong>Please save your booking reference:</strong> ' . htmlspecialchars($booking['booking_reference']) . '<br>
                 <strong>Check-in time:</strong> ' . getSetting('check_in_time', '2:00 PM') . '<br>
                 <strong>Check-out time:</strong> ' . getSetting('check_out_time', '11:00 AM') . '<br>
                 <strong>Contact us:</strong> If you need to make any changes, please contact us at least ' . getSetting('booking_change_policy', '48 hours') . ' before your arrival.
             </p>
         </div>';
-        
+
         if (!empty($booking['special_requests'])) {
             $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Special Requests</h3>
-                <p style="color: #0d6efd; margin: 0;">' . htmlspecialchars($booking['special_requests']) . '</p>
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Special Requests</h3>
+                <p style="color: #5C4A32; margin: 0;">' . htmlspecialchars($booking['special_requests']) . '</p>
             </div>';
         }
-        
+
         $htmlBody .= '
         <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
+
         <p>We look forward to welcoming you to ' . htmlspecialchars($email_site_name) . '!</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
-        // Inject promo notice before Payment Information section
-        $promo_block = buildPromoEmailBlock($booking, $room);
-        if ($promo_block !== '') {
-            $marker = '<div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107';
-            $pos = strpos($htmlBody, $marker);
-            if ($pos !== false) {
-                $htmlBody = substr($htmlBody, 0, $pos) . $promo_block . "\n        " . substr($htmlBody, $pos);
-            }
-        }
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
 
         // Send email with unique subject line for conversion
         return sendEmail(
@@ -2238,7 +4429,6 @@ function sendTentativeBookingConvertedEmail($booking) {
             'Booking Confirmed (Converted) - ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Tentative Booking Converted Email Error: " . $e->getMessage());
         return [
@@ -2251,9 +4441,10 @@ function sendTentativeBookingConvertedEmail($booking) {
 /**
  * Send pending booking expired email (when pending booking expires)
  */
-function sendPendingBookingExpiredEmail($booking, $room = null) {
+function sendPendingBookingExpiredEmail(array $booking, ?array $room = null)
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get room details if not provided
         if (!$room) {
@@ -2261,69 +4452,50 @@ function sendPendingBookingExpiredEmail($booking, $room = null) {
             $stmt->execute([$booking['room_id']]);
             $room = $stmt->fetch(PDO::FETCH_ASSOC);
         }
-        
+
         // Prepare email content
         $htmlBody = '
         <h1 style="color: #6c757d; text-align: center;">Pending Booking Expired</h1>
         <p>Dear ' . htmlspecialchars($booking['guest_name']) . ',</p>
         <p>Your pending booking at <strong>' . htmlspecialchars($email_site_name) . '</strong> has expired due to lack of confirmation.</p>
-        
+
         <div style="background: #e2e3e5; padding: 15px; border-left: 4px solid #6c757d; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #383d41; margin-top: 0;">What This Means</h3>
+            <h3 style="color: #383d41; margin-top: 0;;text-align:left;">What This Means</h3>
             <p style="color: #383d41; margin: 0;">
                 Your booking request was not confirmed within the required time period.<br>
                 The room has been released and is now available for other guests.<br>
                 There is no penalty for an expired pending booking.
             </p>
         </div>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Expired Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #6c757d; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name'] ?? 'N/A') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Expired Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #6c757d; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name'] ?? 'N/A') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>
-        
+
         <p>If you are still interested in booking with us, please visit our website to check availability and make a new booking.</p>
-        
+
         <div style="text-align: center; margin-top: 30px;">
             <a href="' . htmlspecialchars($email_site_url) . '/booking.php"
-               style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+               style="display: inline-block; background: #8B7355; color: #1A1A1A; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                 Make a New Booking
             </a>
         </div>
-        
+
         <p style="margin-top: 20px;">If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($email_site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
         // Send email
         return sendEmail(
             $booking['guest_email'],
@@ -2331,7 +4503,6 @@ function sendPendingBookingExpiredEmail($booking, $room = null) {
             'Pending Booking Expired - ' . $booking['booking_reference'],
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Pending Booking Expired Email Error: " . $e->getMessage());
         return [
@@ -2344,100 +4515,80 @@ function sendPendingBookingExpiredEmail($booking, $room = null) {
 /**
  * Send admin notification for expired booking
  */
-function sendAdminBookingExpiredNotification($booking, $booking_type = 'tentative') {
+function sendAdminBookingExpiredNotification(array $booking, string $booking_type = 'tentative')
+{
     global $pdo, $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         // Get room details
         $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
         $stmt->execute([$booking['room_id']]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        // Resolve booking notification recipient from email settings first, then legacy keys.
-        $admin_notification_email = resolveDepartmentAdminEmail('booking_admin_email', 'admin_notification_email');
-        
+
+        // Get admin notification email with fallback
+        $admin_notification_email = getSetting('admin_notification_email');
+        if (empty($admin_notification_email) || !filter_var($admin_notification_email, FILTER_VALIDATE_EMAIL)) {
+            $admin_notification_email = $email_admin_email;
+        }
+
         // Determine reason based on booking type
         $reason = $booking_type === 'tentative'
             ? 'Tentative booking expired (not confirmed within time limit)'
             : 'Pending booking expired (not confirmed within time limit)';
-        
+
         $type_label = $booking_type === 'tentative' ? 'Tentative' : 'Pending';
-        
+
         // Prepare email content
         $htmlBody = '
         <h1 style="color: #dc3545; text-align: center;">🔔 Booking Auto-Expired</h1>
         <p>A ' . strtolower($type_label) . ' booking has been automatically expired by the system.</p>
-        
+
         <div style="background: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #721c24; margin-top: 0;">Expiration Details</h3>
+            <h3 style="color: #721c24; margin-top: 0;;text-align:left;">Expiration Details</h3>
             <p style="color: #721c24; margin: 0;">
                 <strong>Booking Type:</strong> ' . htmlspecialchars($type_label) . '<br>
                 <strong>Reason:</strong> ' . htmlspecialchars($reason) . '<br>
                 <strong>Expired At:</strong> ' . date('F j, Y g:i A') . '
             </p>
         </div>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Booking Reference:</span>
-                <span style="color: #dc3545; font-weight: bold; font-size: 18px;">' . htmlspecialchars($booking['booking_reference']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Guest Name:</span>
-                <span style="color: #333;">' . htmlspecialchars($booking['guest_name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Guest Email:</span>
-                <span style="color: #333;">' . htmlspecialchars($booking['guest_email']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Guest Phone:</span>
-                <span style="color: #333;">' . htmlspecialchars($booking['guest_phone']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Room:</span>
-                <span style="color: #333;">' . htmlspecialchars($room['name'] ?? 'N/A') . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-in Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Check-out Date:</span>
-                <span style="color: #333;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Total Amount:</span>
-                <span style="color: #D4AF37; font-weight: bold; font-size: 18px;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</span>
-            </div>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color: #dc3545; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Guest Name:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['guest_name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Guest Email:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['guest_email']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Guest Phone:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['guest_phone']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name'] ?? 'N/A') . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Total Amount:</td><td style="padding:10px 0 10px 6px;color: #8B7355; font-weight: bold; font-size: 18px;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . getSetting('currency_symbol') . ' ' . number_format($booking['total_amount'], 0) . '</td></tr></table>
         </div>
-        
-        <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #0d6efd; margin-top: 0;">Actions Taken</h3>
-            <p style="color: #0d6efd; margin: 0;">
+
+        <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Actions Taken</h3>
+            <p style="color: #5C4A32; margin: 0;">
                 <strong>✓</strong> Booking status changed to "expired"<br>
                 <strong>✓</strong> Room availability restored<br>
                 <strong>✓</strong> Expiration email sent to guest<br>
                 <strong>✓</strong> Logged to tentative_booking_log
             </p>
         </div>
-        
+
         <div style="text-align: center; margin-top: 30px;">
             <a href="' . htmlspecialchars($email_site_url) . '/admin/tentative-bookings.php?status=expired"
-               style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
+               style="display: inline-block; background: #8B7355; color: #1A1A1A; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
                 View Expired Bookings
             </a>
         </div>';
-        
+
         // Send email
         return sendEmail(
             $admin_notification_email,
@@ -2445,7 +4596,6 @@ function sendAdminBookingExpiredNotification($booking, $booking_type = 'tentativ
             'Booking Auto-Expired: ' . $booking['booking_reference'] . ' - ' . $booking['guest_name'],
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Admin Booking Expired Notification Error: " . $e->getMessage());
         return [
@@ -2461,113 +4611,87 @@ function sendAdminBookingExpiredNotification($booking, $booking_type = 'tentativ
  * @param array $data Booking data with keys: name, email, phone, preferred_date, preferred_time, package_choice, guests, goals
  * @return array Result array with success status and message
  */
-function sendGymBookingEmail($data) {
+function sendGymBookingEmail(array $data)
+{
     global $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         $site_name = getSetting('site_name');
-        
-        // Prepare email content
-        $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">Gym Booking Request Received</h1>
+
+        // Try template-first rendering for customization support
+        $template_data = [
+            'name' => $data['name'] ?? '',
+            'email' => $data['email'] ?? '',
+            'phone' => $data['phone'] ?? '',
+            'preferred_date' => $data['preferred_date'] ?? '',
+            'preferred_time' => $data['preferred_time'] ?? '',
+            'package_choice' => $data['package_choice'] ?? '',
+            'guests' => (int)($data['guests'] ?? 1),
+            'goals' => $data['goals'] ?? ''
+        ];
+        $htmlBody = loadEmailTemplate('gym-booking-customer.html', $template_data);
+
+        // Fallback if template missing
+        if (empty($htmlBody)) {
+            $htmlBody = '
+        <h1 style="color: #8B7355; text-align: center;">Gym Booking Request Received</h1>
         <p>Dear ' . htmlspecialchars($data['name']) . ',</p>
         <p>Thank you for your gym booking request with <strong>' . htmlspecialchars($site_name) . '</strong>. We have received your submission and will confirm your booking shortly.</p>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Name:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Email:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['email']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Phone:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['phone']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Preferred Date:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['preferred_date']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Preferred Time:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['preferred_time']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Package:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['package_choice']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">';
-        
-        if (!empty($data['guests']) && $data['guests'] > 1) {
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Name:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Email:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['email']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Phone:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['phone']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Preferred Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['preferred_date']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Preferred Time:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['preferred_time']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Package:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['package_choice']) . '</td></tr></table>
+
+            ';
+            $guestCount1 = (!empty($data['guests']) && $data['guests'] > 1) ? (int)$data['guests'] : 1;
+            $htmlBody .= '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 8px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;">Number of People:</td><td style="padding:10px 0 10px 8px;color:#333;text-align:left;vertical-align:top;">' . $guestCount1 . '</td></tr></table>';
             $htmlBody .= '
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">' . (int)$data['guests'] . '</span>
-            </div>';
-        } else {
-            $htmlBody .= '
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">1</span>
-            </div>';
-        }
-        
-        $htmlBody .= '
         </div>';
-        
-        if (!empty($data['goals'])) {
-            $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Fitness Goals / Notes</h3>
-                <p style="color: #0d6efd; margin: 0;">' . nl2br(htmlspecialchars($data['goals'])) . '</p>
+
+            if (!empty($data['goals'])) {
+                $htmlBody .= '
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Fitness Goals / Notes</h3>
+                <p style="color: #5C4A32; margin: 0;">' . nl2br(htmlspecialchars($data['goals'])) . '</p>
             </div>';
-        }
-        
-        $htmlBody .= '
-        <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-            <h3 style="color: #0d6efd; margin-top: 0;">What Happens Next?</h3>
-            <p style="color: #0d6efd; margin: 0;">
+            }
+
+            $htmlBody .= '
+        <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+            <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">What Happens Next?</h3>
+            <p style="color: #5C4A32; margin: 0;">
                 <strong>Our team will contact you within 24 hours to confirm your booking.</strong><br>
                 If you have any questions in the meantime, please contact us.
             </p>
         </div>
-        
+
         <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a> or call ' . getSetting('phone_main') . '.</p>
-        
+
         <p>Thank you for choosing ' . htmlspecialchars($site_name) . '!</p>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #0A1929;">
-            <p style="color: #666; font-size: 14px;">
-                <strong>The ' . htmlspecialchars($site_name) . ' Team</strong><br>
-                <a href="' . htmlspecialchars($email_site_url) . '">' . htmlspecialchars($email_site_url) . '</a>
-            </p>
-        </div>';
-        
-        // Add reference number if available
-        if (!empty($data['reference'])) {
-            $htmlBody = '
-            <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 15px; margin: 0 0 20px 0; border-radius: 10px; text-align: center;">
-                <p style="color: #666; margin: 0 0 5px 0; font-size: 14px;">Your Reference Number:</p>
-                <p style="color: #D4AF37; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 1px;">' . htmlspecialchars($data['reference']) . '</p>
-            </div>' . $htmlBody;
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>'
+        . (function_exists('rh_gym_data_notice') ? rh_gym_data_notice() : '');
         }
-        
+
         // Send email
         return sendEmail(
             $data['email'],
             $data['name'],
-            'Gym Booking Request Received - ' . htmlspecialchars($site_name) . (!empty($data['reference']) ? ' [' . $data['reference'] . ']' : ''),
+            'Gym Booking Request Received - ' . htmlspecialchars($site_name),
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Gym Booking Email Error: " . $e->getMessage());
         return [
@@ -2583,107 +4707,87 @@ function sendGymBookingEmail($data) {
  * @param array $data Booking data with keys: name, email, phone, preferred_date, preferred_time, package_choice, guests, goals
  * @return array Result array with success status and message
  */
-function sendGymAdminNotificationEmail($data) {
+function sendGymAdminNotificationEmail(array $data)
+{
     global $email_from_name, $email_from_email, $email_admin_email, $email_site_name, $email_site_url;
-    
+
     try {
         $site_name = getSetting('site_name');
-        
-        // Resolve gym recipient from email_settings first, then legacy settings.
-        $gym_email = resolveDepartmentAdminEmail('gym_admin_email', 'gym_email');
-        
-        // Prepare email content
-        $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">📋 New Gym Booking Request</h1>
+
+        // Get gym email with fallback to main contact email
+        $gym_email = getSetting('gym_email');
+        if (empty($gym_email) || !filter_var($gym_email, FILTER_VALIDATE_EMAIL)) {
+            $gym_email = getSetting('email_main');
+        }
+        if (empty($gym_email) || !filter_var($gym_email, FILTER_VALIDATE_EMAIL)) {
+            $gym_email = $email_admin_email;
+        }
+
+        // Try template-first rendering for customization support
+        $template_data = [
+            'name' => $data['name'] ?? '',
+            'email' => $data['email'] ?? '',
+            'phone' => $data['phone'] ?? '',
+            'preferred_date' => $data['preferred_date'] ?? '',
+            'preferred_time' => $data['preferred_time'] ?? '',
+            'package_choice' => $data['package_choice'] ?? '',
+            'guests' => (int)($data['guests'] ?? 1),
+            'goals' => $data['goals'] ?? '',
+            'submission_date' => date('F j, Y g:i A')
+        ];
+        $htmlBody = loadEmailTemplate('gym-booking-admin.html', $template_data);
+
+        // Fallback if template missing
+        if (empty($htmlBody)) {
+            $htmlBody = '
+        <h1 style="color: #8B7355; text-align: center;">📋 New Gym Booking Request</h1>
         <p>A new gym booking request has been submitted on the website.</p>
-        
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Booking Details</h2>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Name:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['name']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Email:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['email']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Phone:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['phone']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Preferred Date:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['preferred_date']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Preferred Time:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['preferred_time']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Package:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['package_choice']) . '</span>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">';
-        
-        if (!empty($data['guests']) && $data['guests'] > 1) {
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;;text-align:left;">Booking Details</h2>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Name:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['name']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Email:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['email']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Phone:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['phone']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Preferred Date:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['preferred_date']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Preferred Time:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['preferred_time']) . '</td></tr></table>
+
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Package:</td><td style="padding:10px 0 10px 6px;color: #333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($data['package_choice']) . '</td></tr></table>
+
+            ';
+            $guestCount2 = (!empty($data['guests']) && $data['guests'] > 1) ? (int)$data['guests'] : 1;
+            $htmlBody .= '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 8px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;">Number of People:</td><td style="padding:10px 0 10px 8px;color:#333;text-align:left;vertical-align:top;">' . $guestCount2 . '</td></tr></table>';
             $htmlBody .= '
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">' . (int)$data['guests'] . '</span>
-            </div>';
-        } else {
-            $htmlBody .= '
-                <span style="font-weight: bold; color: #0A1929;">Number of Guests:</span>
-                <span style="color: #333;">1</span>
-            </div>';
-        }
-        
-        $htmlBody .= '
         </div>';
-        
-        if (!empty($data['goals'])) {
-            $htmlBody .= '
-            <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0d6efd; border-radius: 5px; margin: 20px 0;">
-                <h3 style="color: #0d6efd; margin-top: 0;">Fitness Goals / Notes</h3>
-                <p style="color: #0d6efd; margin: 0;">' . nl2br(htmlspecialchars($data['goals'])) . '</p>
+
+            if (!empty($data['goals'])) {
+                $htmlBody .= '
+            <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+                <h3 style="color: #5C4A32; margin-top: 0;;text-align:left;">Fitness Goals / Notes</h3>
+                <p style="color: #5C4A32; margin: 0;">' . nl2br(htmlspecialchars($data['goals'])) . '</p>
             </div>';
-        }
-        
-        // Add reference number if available
-        if (!empty($data['reference'])) {
+            }
+
             $htmlBody .= '
-            <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 15px; margin: 20px 0; border-radius: 10px; text-align: center;">
-                <p style="color: #666; margin: 0 0 5px 0; font-size: 14px;">Reference Number:</p>
-                <p style="color: #D4AF37; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 1px;">' . htmlspecialchars($data['reference']) . '</p>
-            </div>';
-        }
-        
-        $htmlBody .= '
         <div style="text-align: center; margin-top: 30px;">
-            <a href="' . htmlspecialchars($email_site_url) . '/admin/gym-inquiries.php"
-               style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; margin-right: 10px;">
-                View in Admin Panel
-            </a>
             <a href="mailto:' . htmlspecialchars($data['email']) . '"
-               style="display: inline-block; background: #0A1929; color: #D4AF37; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
+               style="display: inline-block; background: #8B7355; color: #1A1A1A; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
                 Reply to Customer
             </a>
         </div>';
-        
+        }
+
         // Send email
         return sendEmail(
             $gym_email,
             'Gym Team',
-            'New Gym Booking Request - ' . htmlspecialchars($data['name']) . (!empty($data['reference']) ? ' [' . $data['reference'] . ']' : ''),
+            'New Gym Booking Request - ' . htmlspecialchars($data['name']),
             $htmlBody
         );
-        
     } catch (Exception $e) {
         error_log("Send Gym Admin Notification Email Error: " . $e->getMessage());
         return [
@@ -2694,141 +4798,216 @@ function sendGymAdminNotificationEmail($data) {
 }
 
 /**
- * Send restaurant reservation confirmation email to customer.
+ * Get hotel logo URL for emails
+ * IMPORTANT: Email clients require absolute URLs for images
  */
-function sendRestaurantReservationEmail($data) {
-    global $email_site_name, $email_site_url;
+function getHotelLogoUrl()
+{
+    $site_url = trim((string)getSetting('site_url', ''));
+    $candidates = [
+        (string)getSetting('site_logo', ''),
+        (string)getSetting('logo_url', ''),
+        (string)getSetting('hotel_logo', ''),
+        'images/logo/logo.png',
+    ];
 
-    try {
-        $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">Restaurant Reservation Request Received</h1>
-        <p>Thank you for your reservation request at <strong>' . htmlspecialchars($email_site_name) . '</strong>.</p>
+    $selected = '';
+    foreach ($candidates as $candidate) {
+        $candidate = trim($candidate);
+        if ($candidate === '') {
+            continue;
+        }
 
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Reservation Details</h2>
+        if (preg_match('#^https?://#i', $candidate)) {
+            return $candidate;
+        }
 
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold;">' . htmlspecialchars($data['reference']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Name:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['name']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Date:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['preferred_date']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Time:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['preferred_time']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Guests:</span>
-                <span style="color: #333;">' . (int)$data['guests'] . '</span>
-            </div>
-        </div>
+        $relative = ltrim($candidate, '/');
+        $localPath = __DIR__ . '/../' . $relative;
+        if (is_file($localPath)) {
+            $selected = $relative;
+            break;
+        }
 
-        <p>Our team will contact you shortly to confirm availability.</p>
-
-        <p style="text-align: center; margin-top: 25px;">
-            <a href="' . htmlspecialchars($email_site_url) . '/restaurant.php" style="display: inline-block; background: #D4AF37; color: #0A1929; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Restaurant Page</a>
-        </p>';
-
-        return sendEmail(
-            $data['email'],
-            $data['name'],
-            'Restaurant Reservation Request - ' . htmlspecialchars($email_site_name) . ' [' . $data['reference'] . ']',
-            $htmlBody
-        );
-    } catch (Exception $e) {
-        error_log("Send Restaurant Reservation Email Error: " . $e->getMessage());
-        return [
-            'success' => false,
-            'message' => $e->getMessage()
-        ];
+        if ($selected === '') {
+            $selected = $relative;
+        }
     }
+
+    if ($selected === '') {
+        return '';
+    }
+
+    $base_url = $site_url !== '' ? $site_url : (defined('BASE_URL') ? (string)BASE_URL : '');
+    if ($base_url === '') {
+        return $selected;
+    }
+
+    return rtrim($base_url, '/') . '/' . ltrim($selected, '/');
 }
 
 /**
- * Send restaurant reservation notification email to restaurant/admin.
+ * Wrap email content with beautiful hotel branding template
+ *
+ * @param string $content The email body content
+ * @param string $title Optional email title/heading
+ * @return string Wrapped HTML email
  */
-function sendRestaurantAdminNotificationEmail($data) {
-    global $email_admin_email;
+function wrapEmailTemplate(string $content, string $title = '')
+{
+    global $email_site_name, $email_site_url, $email_from_email;
 
-    try {
-        $restaurant_email = trim((string)getEmailSetting('restaurant_admin_email', ''));
-        if (!filter_var($restaurant_email, FILTER_VALIDATE_EMAIL)) {
-            $restaurant_email = trim((string)getSetting('email_restaurant', ''));
-        }
-        if (!filter_var($restaurant_email, FILTER_VALIDATE_EMAIL)) {
-            $restaurant_email = trim((string)getSetting('restaurant_email', ''));
-        }
-        if (!filter_var($restaurant_email, FILTER_VALIDATE_EMAIL)) {
-            $restaurant_email = trim((string)getSetting('email_main', ''));
-        }
-        if (!filter_var($restaurant_email, FILTER_VALIDATE_EMAIL)) {
-            $restaurant_email = trim((string)$email_admin_email);
-        }
-
-        $htmlBody = '
-        <h1 style="color: #0A1929; text-align: center;">New Restaurant Reservation Request</h1>
-        <p>A new reservation request has been submitted from the restaurant page.</p>
-
-        <div style="background: #f8f9fa; border: 2px solid #0A1929; padding: 20px; margin: 20px 0; border-radius: 10px;">
-            <h2 style="color: #0A1929; margin-top: 0;">Request Details</h2>
-
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Reference:</span>
-                <span style="color: #D4AF37; font-weight: bold;">' . htmlspecialchars($data['reference']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Name:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['name']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Email:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['email']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Phone:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['phone']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Date:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['preferred_date']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Time:</span>
-                <span style="color: #333;">' . htmlspecialchars($data['preferred_time']) . '</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Guests:</span>
-                <span style="color: #333;">' . (int)$data['guests'] . '</span>
-            </div>
-            <div style="padding: 10px 0; border-bottom: 1px solid #ddd;">
-                <span style="font-weight: bold; color: #0A1929;">Occasion:</span>
-                <span style="color: #333;"> ' . htmlspecialchars($data['occasion'] ?? '') . '</span>
-            </div>
-            <div style="padding: 10px 0;">
-                <span style="font-weight: bold; color: #0A1929;">Special Requests:</span>
-                <div style="color: #333; margin-top: 6px;">' . nl2br(htmlspecialchars($data['special_requests'] ?? '')) . '</div>
-            </div>
-        </div>';
-
-        return sendEmail(
-            $restaurant_email,
-            'Restaurant Team',
-            'New Restaurant Reservation - ' . htmlspecialchars($data['name']) . ' [' . $data['reference'] . ']',
-            $htmlBody
-        );
-    } catch (Exception $e) {
-        error_log("Send Restaurant Admin Notification Email Error: " . $e->getMessage());
-        return [
-            'success' => false,
-            'message' => $e->getMessage()
-        ];
+    // If content is already a complete HTML document (e.g. from hotel_premium_email_html()),
+    // return it as-is — the template already contains its own header and footer.
+    $trimmedContent = ltrim($content);
+    if (stripos($trimmedContent, '<!DOCTYPE html') === 0 || stripos($trimmedContent, '<html') === 0) {
+        return $content;
     }
+
+    $site_name     = $email_site_name ?: getSetting('site_name', 'Our Hotel');
+    $site_url      = $email_site_url  ?: getSetting('site_url', '');
+    $contact_email = $email_from_email ?: getSetting('email_main', '');
+    $phone         = getSetting('phone_main', '');
+    $logo_url      = getHotelLogoUrl();
+
+    $accent = '#8B7355';
+    $dark   = '#1A1A1A';
+
+    // Logo block
+    $logo_html = '';
+    if (!empty($logo_url)) {
+        $logo_html = '<img src="' . htmlspecialchars($logo_url) . '" alt="' . htmlspecialchars($site_name) . '"
+                          style="max-width:110px;height:auto;display:block;margin:0 auto 12px;">';
+    }
+
+    // Contact rows — each item stacks vertically in its own table row so they always centre
+    $contact_rows = '';
+    if (!empty($phone)) {
+        $contact_rows .= '
+                                <tr>
+                                    <td align="center" style="padding:4px 0;">
+                                        <a href="tel:' . htmlspecialchars($phone) . '"
+                                           style="color:' . $accent . ';text-decoration:none;font-size:14px;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">'
+            . htmlspecialchars($phone) . '</a>
+                                    </td>
+                                </tr>';
+    }
+    if (!empty($contact_email)) {
+        $contact_rows .= '
+                                <tr>
+                                    <td align="center" style="padding:4px 0;">
+                                        <a href="mailto:' . htmlspecialchars($contact_email) . '"
+                                           style="color:' . $accent . ';text-decoration:none;font-size:14px;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">'
+            . htmlspecialchars($contact_email) . '</a>
+                                    </td>
+                                </tr>';
+    }
+    if (!empty($site_url)) {
+        $contact_rows .= '
+                                <tr>
+                                    <td align="center" style="padding:4px 0;">
+                                        <a href="' . htmlspecialchars($site_url) . '"
+                                           style="color:' . $accent . ';text-decoration:none;font-size:14px;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">'
+            . htmlspecialchars($site_url) . '</a>
+                                    </td>
+                                </tr>';
+    }
+
+    return '<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>' . htmlspecialchars($title ?: $site_name) . '</title>
+    <style>
+        @media only screen and (max-width:640px) {
+            .ew-card  { width:100% !important; }
+            .ew-body  { padding:28px 20px !important; }
+            .ew-foot  { padding:22px 20px !important; }
+        }
+    </style>
+</head>
+<body style="margin:0;padding:0;background-color:#EDE8DF;font-family:\'Segoe UI\',Tahoma,Geneva,Verdana,sans-serif;">
+
+    <!-- Outer wrapper -->
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+           style="background-color:#EDE8DF;padding:28px 0;">
+        <tr>
+            <td align="center" valign="top">
+
+                <!-- Email card (paper-white japandi body; header shares the same background) -->
+                <table role="presentation" class="ew-card"
+                       style="width:100%;max-width:620px;background:#FFFDF9;border-radius:12px;
+                              overflow:hidden;border:1px solid #D6CDBF;"
+                       cellspacing="0" cellpadding="0">
+
+                    <!-- ─── HEADER ─── -->
+                    <tr>
+                        <td align="center"
+                            style="background-color:#FFFDF9;padding:36px 40px 28px;">
+                            ' . $logo_html . '
+                            <p style="margin:0;font-family:Georgia,\'Times New Roman\',serif;
+                                       color:' . $dark . ';
+                                       font-size:' . (empty($logo_html) ? '24px' : '13px') . ';
+                                       font-weight:600;letter-spacing:2.5px;text-transform:uppercase;">
+                                ' . htmlspecialchars($site_name) . '
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- ─── BODY ─── -->
+                    <tr>
+                        <td class="ew-body" align="left"
+                            style="padding:36px 40px;color:#2d2d2d;font-size:15px;line-height:1.65;text-align:left;">
+                            ' . $content . '
+                        </td>
+                    </tr>
+
+                    <!-- ─── FOOTER ─── -->
+                    <tr>
+                        <td class="ew-foot"
+                            style="background:#F5F0EA;padding:26px 40px;border-top:1px solid #D6CDBF;">
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                <!-- Hotel name -->
+                                <tr>
+                                    <td align="center" style="padding-bottom:10px;">
+                                        <span style="font-family:Georgia,\'Times New Roman\',serif;
+                                                     font-size:16px;font-weight:700;color:' . $dark . ';
+                                                     letter-spacing:1px;text-transform:uppercase;">
+                                            ' . htmlspecialchars($site_name) . '
+                                        </span>
+                                    </td>
+                                </tr>
+                                <!-- Separator -->
+                                <tr>
+                                    <td align="center" style="padding-bottom:12px;">
+                                        <div style="width:40px;height:2px;background:' . $accent . ';margin:0 auto;"></div>
+                                    </td>
+                                </tr>
+                                ' . $contact_rows . '
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- ─── COPYRIGHT BAR ─── -->
+                    <tr>
+                        <td align="center"
+                            style="background-color:' . $dark . ';padding:14px 40px;">
+                            <p style="margin:0;color:#C8BFB0;font-size:12px;
+                                       font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">
+                                &copy; ' . date('Y') . ' ' . htmlspecialchars($site_name) . '. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+
+                </table><!-- /email card -->
+
+            </td>
+        </tr>
+    </table><!-- /outer wrapper -->
+
+</body>
+</html>';
 }
 
 /**
@@ -2838,24 +5017,25 @@ function sendRestaurantAdminNotificationEmail($data) {
  * @param array $data Data to populate template with
  * @return string Populated HTML content
  */
-function loadEmailTemplate($template, $data) {
+function loadEmailTemplate(string $template, array $data)
+{
     $template_path = __DIR__ . '/../templates/emails/' . $template;
-    
+
     // Check if template exists
     if (!file_exists($template_path)) {
         error_log("Email template not found: $template_path");
         return '';
     }
-    
+
     $html = file_get_contents($template_path);
-    
+
     // Add common data
     $site_name = getSetting('site_name');
     $site_url = getSetting('site_url');
     $contact_email = getSetting('email_main');
     $phone = getSetting('phone_main');
     $currency_symbol = getSetting('currency_symbol');
-    
+
     $common_data = [
         'site_name' => $site_name,
         'site_url' => $site_url,
@@ -2865,18 +5045,18 @@ function loadEmailTemplate($template, $data) {
         'submission_source' => $_SERVER['HTTP_HOST'] ?? 'localhost',
         'admin_url' => $site_url . '/admin/conference-management.php'
     ];
-    
+
     // Merge user data with common data
     $data = array_merge($common_data, $data);
-    
+
     // Replace simple placeholders {{key}}
-    $html = preg_replace_callback('/\{\{(\w+)\}\}/', function($matches) use ($data) {
+    $html = preg_replace_callback('/\{\{(\w+)\}\}/', function (array $matches) use ($data) {
         $key = $matches[1];
         return $data[$key] ?? '';
     }, $html);
-    
+
     // Handle conditional blocks {{#if key}}...{{/if}}
-    $html = preg_replace_callback('/\{\{#if\s+(\w+)\}\}(.*?)\{\{\/if\}\}/s', function($matches) use ($data) {
+    $html = preg_replace_callback('/\{\{#if\s+(\w+)\}\}(.*?)\{\{\/if\}\}/s', function (array $matches) use ($data) {
         $key = $matches[1];
         $content = $matches[2];
         // Show content if key exists and is not empty
@@ -2885,6 +5065,1972 @@ function loadEmailTemplate($template, $data) {
         }
         return '';
     }, $html);
-    
+
     return $html;
+}
+
+/**
+ * Send gym inquiry "contacted" email to the guest
+ * Called when admin changes inquiry status to 'contacted'
+ *
+ * @param array $inquiry  Row from gym_inquiries table
+ * @return array Result array with success/message keys
+ */
+function sendGymInquiryContactedEmail(array $inquiry): array
+{
+    global $email_from_email, $email_site_name, $email_site_url;
+
+    try {
+        $site_name = getSetting('site_name', $email_site_name);
+        $name = htmlspecialchars($inquiry['name'] ?? 'Member');
+        $ref  = htmlspecialchars($inquiry['reference_number'] ?? '');
+        $type = htmlspecialchars($inquiry['membership_type'] ?? 'Membership');
+        $date = !empty($inquiry['preferred_date']) ? date('F j, Y', strtotime($inquiry['preferred_date'])) : 'Flexible';
+        $time = htmlspecialchars($inquiry['preferred_time'] ?? 'Flexible');
+        $contact_email = htmlspecialchars($email_from_email);
+        $phone = getSetting('phone_main', '');
+
+        $htmlBody = '
+        <h1 style="color:#8B7355; text-align:center;">We\'re In Touch!</h1>
+        <p>Dear ' . $name . ',</p>
+        <p>Thank you for your interest in our gym facilities at <strong>' . htmlspecialchars($site_name) . '</strong>. Our team has reviewed your inquiry and is reaching out to assist you.</p>
+
+        <div style="background:#FAF6F0; border:2px solid #1A1A1A; padding:20px; margin:20px 0; border-radius:10px;">
+            <h2 style="color:#8B7355; margin-top:0;;text-align:left;">Your Inquiry Details</h2>
+            ' . (!empty($ref) ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Reference:</td><td style="padding:10px 0 10px 6px;color:#8B7355; font-weight:bold;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $ref . '</td></tr></table>' : '') . '
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Membership Type:</td><td style="padding:10px 0 10px 6px;color:#333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $type . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Preferred Date:</td><td style="padding:10px 0 10px 6px;color:#333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $date . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Preferred Time:</td><td style="padding:10px 0 10px 6px;color:#333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . $time . '</td></tr></table>
+        </div>
+
+        <div style="background:#d4edda; padding:15px; border-left:4px solid #28a745; border-radius:5px; margin:20px 0;">
+            <h3 style="color:#155724; margin-top:0;;text-align:left;">✅ Status: We\'re Reaching Out</h3>
+            <p style="color:#155724; margin:0;">
+                A member of our team will contact you shortly to finalise the details of your membership and answer any questions you may have.
+            </p>
+        </div>
+
+        <p>In the meantime, if you have any questions please contact us directly:</p>
+        <ul style="color:#333; line-height:2;">
+            <li>Email: <a href="mailto:' . $contact_email . '">' . $contact_email . '</a></li>
+            ' . (!empty($phone) ? '<li>Phone: <a href="tel:' . htmlspecialchars($phone) . '">' . htmlspecialchars($phone) . '</a></li>' : '') . '
+        </ul>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        return sendEmail(
+            $inquiry['email'],
+            $inquiry['name'],
+            'Your Gym Inquiry — We\'re In Touch | ' . $site_name . ($ref ? ' [' . $inquiry['reference_number'] . ']' : ''),
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log('sendGymInquiryContactedEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send a no-show notification email to the guest.
+ * Called immediately after a booking is marked as no-show.
+ *
+ * @param array  $booking       Full booking row (guest_email, amount_paid, etc.)
+ * @param float  $refund_amount Amount queued for refund (0 = no refund)
+ * @param string $refund_ref    Refund reference (empty if none)
+ */
+function sendNoShowEmail(array $booking, float $refund_amount = 0.0, string $refund_ref = ''): array
+{
+    global $pdo, $email_from_email, $email_site_name;
+
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
+        $stmt->execute([$booking['room_id']]);
+        $room = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$room) {
+            throw new Exception('Room not found for no-show email');
+        }
+
+        $currency  = getSetting('currency_symbol', 'MWK');
+        $phone     = getSetting('phone_main', '');
+        $guestName = htmlspecialchars($booking['guest_name'] ?? 'Guest');
+        $amtPaid   = (float)($booking['amount_paid'] ?? 0);
+
+        // ── Refund / no-refund block ──────────────────────────────────────
+        if ($refund_amount > 0 && $refund_ref !== '') {
+            $refundBlock = '
+            <div style="background:#e7f9f0;border-left:4px solid #28a745;padding:16px 20px;border-radius:6px;margin:20px 0;">
+                <h3 style="color:#155724;margin:0 0 8px;text-align:left;">Refund Pending</h3>
+                <p style="color:#155724;margin:0 0 6px;">A refund of <strong>' . $currency . ' ' . number_format($refund_amount, 0) . '</strong> has been queued for processing.</p>
+                <p style="color:#6c7a7d;font-size:12px;margin:4px 0 0;">Refund reference: <strong>' . htmlspecialchars($refund_ref) . '</strong><br>
+                Our team will process this within 3–5 business days. You will be notified once completed.</p>
+            </div>';
+        } else {
+            $refundBlock = '
+            <div style="background:#fff3cd;border-left:4px solid #ffc107;padding:16px 20px;border-radius:6px;margin:20px 0;">
+                <h3 style="color:#856404;margin:0 0 8px;text-align:left;">No Refund Applicable</h3>
+                <p style="color:#856404;margin:0;">As per our no-show policy, no refund will be processed for this booking.
+                If you believe this is an error or you need to reschedule, please contact us immediately.</p>
+            </div>';
+        }
+
+        $htmlBody = '
+        <h1 style="color:#8B7355;text-align:center;">We Missed You</h1>
+        <p>Dear ' . $guestName . ',</p>
+        <p>We noticed that you did not check in for your reservation at <strong>' . htmlspecialchars($email_site_name) . '</strong>.
+        Your booking has been marked as a <strong>no-show</strong>.</p>
+
+        <div style="background:#FAF6F0;border:2px solid #e0d5c5;padding:20px;margin:20px 0;border-radius:10px;">
+            <h2 style="color:#8B7355;margin-top:0;text-align:left;">Booking Details</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;">
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td>
+                    <td style="padding:10px 0 10px 6px;color:#8B7355;font-weight:bold;font-size:18px;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td>
+                    <td style="padding:10px 0 10px 6px;color:#333;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td>
+                    <td style="padding:10px 0 10px 6px;color:#333;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-out Date:</td>
+                    <td style="padding:10px 0 10px 6px;color:#333;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Nights:</td>
+                    <td style="padding:10px 0 10px 6px;color:#333;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . (int)($booking['number_of_nights'] ?? 1) . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Amount Paid:</td>
+                    <td style="padding:10px 0 10px 6px;color:#8B7355;font-weight:bold;font-size:18px;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . $currency . ' ' . number_format($amtPaid, 0) . '</td>
+                </tr>
+            </table>
+        </div>
+
+        ' . $refundBlock . '
+
+        <div style="background:#f1f3f5;padding:15px 20px;border-radius:6px;margin:20px 0;">
+            <p style="margin:0;font-size:14px;color:#555;">Need to reschedule or have questions? Contact us:<br>
+            &#x1F4DE; ' . htmlspecialchars($phone) . '<br>
+            &#x2709;&#xFE0F; <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a>
+            </p>
+        </div>
+
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            We hope to welcome you soon &mdash; ' . htmlspecialchars($email_site_name) . '
+        </p>';
+
+        $ccEmails    = getCCEmails();
+        $emailResult = sendEmailWithCC(
+            $booking['guest_email'],
+            $booking['guest_name'],
+            'No-Show Notification — ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
+            $htmlBody,
+            '',
+            $ccEmails
+        );
+
+        return [
+            'success' => $emailResult['success'],
+            'message' => $emailResult['message'],
+        ];
+    } catch (Exception $e) {
+        error_log('sendNoShowEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send a stay-dates-adjusted email to the guest.
+ * Used when an admin extends or shortens a confirmed booking.
+ *
+ * @param array $booking       Full updated booking row (guest_email, check_in_date, check_out_date, etc.)
+ * @param float $amount_delta  Positive = extra charge, negative = credit/refund, 0 = same total
+ * @param string $old_checkout Previous checkout date (YYYY-MM-DD)
+ */
+function sendExtendStayEmail(array $booking, float $amount_delta = 0.0, string $old_checkout = ''): array
+{
+    global $pdo, $email_from_email, $email_site_name;
+
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM rooms WHERE id = ?");
+        $stmt->execute([$booking['room_id']]);
+        $room = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$room) {
+            throw new Exception('Room not found for extend-stay email');
+        }
+
+        $currency  = getSetting('currency_symbol', 'MWK');
+        $phone     = getSetting('phone_main', '');
+        $guestName = htmlspecialchars($booking['guest_name'] ?? 'Guest');
+
+        // ── Delta block ───────────────────────────────────────────────────
+        if ($amount_delta > 0.01) {
+            $deltaBlock = '
+            <div style="background:#fff3cd;border-left:4px solid #ffc107;padding:16px 20px;border-radius:6px;margin:20px 0;">
+                <h3 style="color:#856404;margin:0 0 8px;text-align:left;">Additional Amount Due</h3>
+                <p style="color:#856404;margin:0;">The date change results in an additional charge of
+                <strong>' . $currency . ' ' . number_format($amount_delta, 0) . '</strong>.
+                Our team will contact you to arrange payment, or you may settle on arrival.</p>
+            </div>';
+        } elseif ($amount_delta < -0.01) {
+            $deltaBlock = '
+            <div style="background:#e7f9f0;border-left:4px solid #28a745;padding:16px 20px;border-radius:6px;margin:20px 0;">
+                <h3 style="color:#155724;margin:0 0 8px;text-align:left;">Credit / Refund</h3>
+                <p style="color:#155724;margin:0;">The date change results in a credit of
+                <strong>' . $currency . ' ' . number_format(abs($amount_delta), 0) . '</strong>.
+                This will be applied to your account or refunded — our team will be in touch.</p>
+            </div>';
+        } else {
+            $deltaBlock = '';
+        }
+
+        $oldCheckoutLine = $old_checkout
+            ? '<tr>
+                    <td style="padding:8px 10px 8px 0;font-weight:bold;color:#1A1A1A;width:44%;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Previous Check-out:</td>
+                    <td style="padding:8px 0 8px 6px;color:#a0522d;text-decoration:line-through;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($old_checkout)) . '</td>
+               </tr>'
+            : '';
+
+        $htmlBody = '
+        <h1 style="color:#8B7355;text-align:center;">Your Stay Has Been Updated</h1>
+        <p>Dear ' . $guestName . ',</p>
+        <p>We have updated the dates for your reservation at <strong>' . htmlspecialchars($email_site_name) . '</strong>.
+        Please review the new details below.</p>
+
+        <div style="background:#FAF6F0;border:2px solid #e0d5c5;padding:20px;margin:20px 0;border-radius:10px;">
+            <h2 style="color:#8B7355;margin-top:0;text-align:left;">Updated Booking Details</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;">
+                <tr>
+                    <td style="padding:8px 10px 8px 0;font-weight:bold;color:#1A1A1A;width:44%;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Booking Reference:</td>
+                    <td style="padding:8px 0 8px 6px;color:#8B7355;font-weight:bold;font-size:18px;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($booking['booking_reference']) . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:8px 10px 8px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Room:</td>
+                    <td style="padding:8px 0 8px 6px;color:#333;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($room['name']) . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:8px 10px 8px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Check-in Date:</td>
+                    <td style="padding:8px 0 8px 6px;color:#333;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_in_date'])) . '</td>
+                </tr>
+                ' . $oldCheckoutLine . '
+                <tr>
+                    <td style="padding:8px 10px 8px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">New Check-out Date:</td>
+                    <td style="padding:8px 0 8px 6px;color:#28a745;font-weight:bold;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . date('F j, Y', strtotime($booking['check_out_date'])) . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:8px 10px 8px 0;font-weight:bold;color:#1A1A1A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Nights:</td>
+                    <td style="padding:8px 0 8px 6px;color:#333;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . (int)($booking['number_of_nights'] ?? 1) . '</td>
+                </tr>
+            </table>
+        </div>
+
+        ' . $deltaBlock . '
+
+        <div style="background:#f1f3f5;padding:15px 20px;border-radius:6px;margin:20px 0;">
+            <p style="margin:0;font-size:14px;color:#555;">Any questions? Contact us:<br>
+            &#x1F4DE; ' . htmlspecialchars($phone) . '<br>
+            &#x2709;&#xFE0F; <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a>
+            </p>
+        </div>
+
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            We look forward to welcoming you &mdash; ' . htmlspecialchars($email_site_name) . '
+        </p>';
+
+        $ccEmails    = getCCEmails();
+        $emailResult = sendEmailWithCC(
+            $booking['guest_email'],
+            $booking['guest_name'],
+            'Updated Stay Dates — ' . htmlspecialchars($email_site_name) . ' [' . $booking['booking_reference'] . ']',
+            $htmlBody,
+            '',
+            $ccEmails
+        );
+
+        return [
+            'success' => $emailResult['success'],
+            'message' => $emailResult['message'],
+        ];
+    } catch (Exception $e) {
+        error_log('sendExtendStayEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send gym inquiry "converted / welcome" email to the new member
+ * Called when admin changes inquiry status to 'converted'
+ *
+ * @param array $inquiry  Row from gym_inquiries table
+ * @return array Result array with success/message keys
+ */
+function sendGymInquiryConvertedEmail(array $inquiry): array
+{
+    global $email_from_email, $email_site_name, $email_site_url;
+
+    try {
+        $site_name = getSetting('site_name', $email_site_name);
+        $name = htmlspecialchars($inquiry['name'] ?? 'Member');
+        $ref  = htmlspecialchars($inquiry['reference_number'] ?? '');
+        $type = htmlspecialchars($inquiry['membership_type'] ?? 'Membership');
+        $contact_email = htmlspecialchars($email_from_email);
+        $phone = getSetting('phone_main', '');
+
+        $htmlBody = '
+        <h1 style="color:#8B7355; text-align:center;">Welcome to the Gym!</h1>
+        <p>Dear ' . $name . ',</p>
+        <p>Congratulations and welcome to the <strong>' . htmlspecialchars($site_name) . '</strong> gym family! Your membership enquiry has been successfully processed.</p>
+
+        <div style="background:#FAF6F0; border:2px solid #8B7355; padding:20px; margin:20px 0; border-radius:10px;">
+            <h2 style="color:#8B7355; margin-top:0;;text-align:left;">Membership Summary</h2>
+            ' . (!empty($ref) ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Reference:</td><td style="padding:10px 0 10px 6px;color:#8B7355; font-weight:bold;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $ref . '</td></tr></table>' : '') . '
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Membership Type:</td><td style="padding:10px 0 10px 6px;color:#333;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . $type . '</td></tr></table>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Status:</td><td style="padding:10px 0 10px 6px;color:#28a745; font-weight:bold;;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Active Member</td></tr></table>
+        </div>
+
+        <div style="background:#d4edda; padding:15px; border-left:4px solid #28a745; border-radius:5px; margin:20px 0;">
+            <h3 style="color:#155724; margin-top:0;;text-align:left;">🎉 Membership Activated</h3>
+            <p style="color:#155724; margin:0;">
+                Your membership is now active! Our team will share your full membership details, access schedule, and any onboarding information you need.
+            </p>
+        </div>
+
+        <div style="background:#FDF6EC; padding:15px; border-left:4px solid #8B7355; border-radius:5px; margin:20px 0;">
+            <h3 style="color:#5C4A32; margin-top:0;;text-align:left;">Getting Started</h3>
+            <ul style="color:#5C4A32; margin:0; padding-left:20px; line-height:1.9;">
+                <li>Present this confirmation at the gym reception on your first visit</li>
+                <li>Our trainers will walk you through facilities and equipment</li>
+                <li>Your fitness journey starts here — let\'s go!</li>
+            </ul>
+        </div>
+
+        <p>Questions? We are happy to help:</p>
+        <ul style="color:#333; line-height:2;">
+            <li>Email: <a href="mailto:' . $contact_email . '">' . $contact_email . '</a></li>
+            ' . (!empty($phone) ? '<li>Phone: <a href="tel:' . htmlspecialchars($phone) . '">' . htmlspecialchars($phone) . '</a></li>' : '') . '
+        </ul>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; see you soon.
+        </p>';
+
+        return sendEmail(
+            $inquiry['email'],
+            $inquiry['name'],
+            'Welcome to ' . $site_name . ' Gym — Membership Confirmed!' . ($ref ? ' [' . $inquiry['reference_number'] . ']' : ''),
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log('sendGymInquiryConvertedEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send admin notification when a new gym inquiry is submitted from the public site
+ *
+ * @param array $inquiry  Row from gym_inquiries table
+ * @return array Result array with success/message keys
+ */
+function sendNewGymInquiryAdminEmail(array $inquiry): array
+{
+    global $email_admin_email, $email_site_name, $email_site_url;
+
+    try {
+        $site_name = getSetting('site_name', $email_site_name);
+        $admin_email = $email_admin_email ?: getSetting('email_admin_email', '');
+        if (empty($admin_email) || !filter_var($admin_email, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'message' => 'No admin email configured'];
+        }
+
+        $name  = htmlspecialchars($inquiry['name'] ?? '');
+        $email = htmlspecialchars($inquiry['email'] ?? '');
+        $phone = htmlspecialchars($inquiry['phone'] ?? '');
+        $type  = htmlspecialchars($inquiry['membership_type'] ?? '');
+        $ref   = htmlspecialchars($inquiry['reference_number'] ?? '');
+        $date  = !empty($inquiry['preferred_date']) ? date('F j, Y', strtotime($inquiry['preferred_date'])) : 'Flexible';
+        $time  = htmlspecialchars($inquiry['preferred_time'] ?? '');
+
+        $htmlBody = '
+        <h1 style="color:#8B7355; text-align:center;">📋 New Gym Inquiry Received</h1>
+        <p>A new gym membership inquiry has been submitted on the website.</p>
+
+        <div style="background:#FAF6F0; border:2px solid #1A1A1A; padding:20px; margin:20px 0; border-radius:10px;">
+            <h2 style="color:#8B7355; margin-top:0;;text-align:left;">Inquiry Details</h2>
+            ' . (!empty($ref) ? '<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #ddd;"><span style="font-weight:bold;">Reference:</span><span style="color:#8B7355; font-weight:bold;">' . $ref . '</span></div>' : '') . '
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #ddd;"><span style="font-weight:bold;">Name:</span><span>' . $name . '</span></div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #ddd;"><span style="font-weight:bold;">Email:</span><span><a href="mailto:' . $email . '">' . $email . '</a></span></div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #ddd;"><span style="font-weight:bold;">Phone:</span><span>' . $phone . '</span></div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #ddd;"><span style="font-weight:bold;">Membership Type:</span><span>' . $type . '</span></div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #ddd;"><span style="font-weight:bold;">Preferred Date:</span><span>' . $date . '</span></div>
+            <div style="display:flex; justify-content:space-between; padding:10px 0;"><span style="font-weight:bold;">Preferred Time:</span><span>' . $time . '</span></div>
+        </div>
+
+        <div style="text-align:center; margin:20px 0;">
+            <a href="' . htmlspecialchars($email_site_url) . '/admin/gym-inquiries.php"
+               style="display:inline-block; background:#8B7355; color:#fff; padding:12px 28px; text-decoration:none; border-radius:6px; font-weight:bold;">
+                View in Admin Panel
+            </a>
+        </div>';
+
+        return sendEmail($admin_email, 'Admin', 'New Gym Inquiry — ' . ($name ?: 'Unknown') . ' | ' . $site_name, $htmlBody);
+    } catch (Exception $e) {
+        error_log('sendNewGymInquiryAdminEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send a direct reply to a public contact inquiry from the hotel email configured in the database.
+ */
+function sendContactInquiryReplyEmail(array $inquiry, string $replySubject, string $replyMessage, array $adminUser = []): array
+{
+    global $email_from_name, $email_from_email, $email_admin_email, $email_site_name;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
+    global $email_bcc_admin, $development_mode, $email_log_enabled, $email_preview_enabled;
+
+    $hotelFromEmail = trim((string)$email_from_email);
+    if (!filter_var($hotelFromEmail, FILTER_VALIDATE_EMAIL)) {
+        $hotelFromEmail = trim((string)getSetting('email_main', ''));
+    }
+
+    if (!filter_var($hotelFromEmail, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Hotel sender email is not configured.'];
+    }
+
+    $recipientEmail = trim((string)($inquiry['email'] ?? ''));
+    if (!filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Inquiry recipient email is invalid.'];
+    }
+
+    $escape = static function (mixed $value): string {
+        return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    };
+
+    $reference = trim((string)($inquiry['reference_number'] ?? ''));
+    $guestName = trim((string)($inquiry['name'] ?? 'Guest'));
+    $siteName = trim((string)($email_site_name ?: getSetting('site_name', 'Hotel')));
+    $fromName = trim((string)($email_from_name ?: $siteName));
+    $phone = trim((string)getSetting('phone_main', ''));
+    $adminName = trim((string)($adminUser['full_name'] ?? $adminUser['username'] ?? 'Reservations Team'));
+    $emailSubject = trim($replySubject);
+
+    if ($reference !== '' && stripos($emailSubject, $reference) === false) {
+        $emailSubject .= ' [' . $reference . ']';
+    }
+
+    $htmlBody = '
+        <h1 style="color:#8B7355;text-align:center;">Reply from ' . $escape($siteName) . '</h1>
+        <p>Dear ' . $escape($guestName) . ',</p>
+        <div style="background:#FAF6F0;border:1px solid #e0d5c5;padding:20px;border-radius:10px;margin:20px 0;line-height:1.7;color:#333;">
+            ' . nl2br($escape($replyMessage)) . '
+        </div>
+        <div style="background:#f7f3ee;padding:16px 20px;border-radius:8px;margin:20px 0;">
+            <p style="margin:0;color:#5E554D;font-size:14px;"><strong>Original inquiry reference:</strong> ' . $escape($reference ?: 'N/A') . '</p>
+            <p style="margin:8px 0 0;color:#5E554D;font-size:14px;"><strong>Original subject:</strong> ' . $escape($inquiry['subject'] ?? '') . '</p>
+        </div>
+        <p style="margin:24px 0 0;color:#555;">Kind regards,<br><strong>' . $escape($adminName) . '</strong><br>' . $escape($siteName) . '</p>
+        <p style="margin-top:18px;color:#777;font-size:13px;">
+            Email: <a href="mailto:' . $escape($hotelFromEmail) . '">' . $escape($hotelFromEmail) . '</a>' .
+        ($phone !== '' ? '<br>Phone: ' . $escape($phone) : '') . '
+        </p>';
+
+    $textBody = $replyMessage . "\n\n---\nOriginal inquiry reference: " . ($reference ?: 'N/A') . "\nOriginal subject: " . (string)($inquiry['subject'] ?? '') . "\n\n" . $siteName . "\n" . $hotelFromEmail;
+
+    if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
+        return createEmailPreview($recipientEmail, $guestName, $emailSubject, $htmlBody, $textBody);
+    }
+
+    try {
+        $mail = new PHPMailer(true);
+        $smtpSecureNormalized = strtolower(trim((string)$smtp_secure));
+        if ($smtpSecureNormalized === '' && (int)$smtp_port === 587) {
+            $smtpSecureNormalized = 'tls';
+        } elseif ($smtpSecureNormalized === '' && (int)$smtp_port === 465) {
+            $smtpSecureNormalized = 'ssl';
+        }
+
+        $mail->isSMTP();
+        $mail->Host = $smtp_host;
+        $mail->SMTPAuth = true;
+        $mail->Username = $smtp_username;
+        $mail->Password = $smtp_password;
+        if ($smtpSecureNormalized !== '') {
+            $mail->SMTPSecure = $smtpSecureNormalized;
+        }
+        $mail->Port = $smtp_port;
+        $mail->Timeout = $smtp_timeout;
+
+        if ($smtp_debug > 0) {
+            $mail->SMTPDebug = $smtp_debug;
+        }
+
+        if (filter_var($smtp_username, FILTER_VALIDATE_EMAIL)) {
+            $mail->Sender = $smtp_username;
+        }
+
+        $mail->setFrom($hotelFromEmail, $fromName);
+        $mail->addAddress($recipientEmail, $guestName);
+        $mail->addReplyTo($hotelFromEmail, $fromName);
+
+        if ($email_bcc_admin && filter_var($email_admin_email, FILTER_VALIDATE_EMAIL)) {
+            $mail->addBCC($email_admin_email);
+        }
+
+        $mail->CharSet = PHPMailer::CHARSET_UTF8;
+        $mail->Encoding = PHPMailer::ENCODING_BASE64;
+        $mail->isHTML(true);
+        $mail->Subject = $emailSubject;
+        $mail->Body = hotel_embed_logo_cid($mail, wrapEmailTemplate($htmlBody, $emailSubject));
+        $mail->AltBody = $textBody;
+
+        $mail->send();
+
+        if ($email_log_enabled) {
+            logEmail($recipientEmail, $guestName, $emailSubject, 'sent');
+        }
+
+        return ['success' => true, 'message' => 'Reply email sent successfully.'];
+    } catch (Exception $e) {
+        error_log('sendContactInquiryReplyEmail Error: ' . $e->getMessage());
+        if ($email_log_enabled) {
+            logEmail($recipientEmail, $guestName, $emailSubject, 'failed', $e->getMessage());
+        }
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send a formal quotation email for a tentative booking.
+ *
+ * @param array $booking   Full row from the bookings table.
+ * @param array $options {
+ *   valid_days       int     Days until quotation expires (default 7).
+ *   quotation_notes  string  Admin note to include in the email.
+ * }
+ */
+function sendTentativeQuotationEmail(array $booking, array $options = []): array
+{
+    global $pdo, $email_from_name, $email_from_email, $email_site_name, $email_log_enabled;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
+    global $email_admin_email, $email_bcc_admin, $development_mode, $email_preview_enabled;
+
+    try {
+        $site_name      = $email_site_name ?: getSetting('site_name', "Liwonde Sun Hotel");
+        $currency       = getSetting('currency_symbol', 'MWK ');
+        $valid_days     = max(1, (int)($options['valid_days'] ?? 7));
+        $notes          = trim((string)($options['quotation_notes'] ?? ''));
+        $attach_pdf     = (bool)($options['attach_pdf'] ?? true);
+        $send_whatsapp  = (bool)($options['send_whatsapp'] ?? true);
+        $valid_until    = (new DateTime())->modify("+{$valid_days} days");
+        $quote_ref      = 'QT-' . strtoupper((string)$booking['booking_reference']);
+        $vat_enabled    = in_array(getSetting('vat_enabled'), ['1', 1, true, 'true', 'on'], true);
+        $check_in_time  = getSetting('check_in_time', '2:00 PM');
+        $check_out_time = getSetting('check_out_time', '11:00 AM');
+        $contact_phone  = getSetting('phone_main', '');
+
+        // Room details
+        $roomStmt = $pdo->prepare("SELECT name, price_per_night, short_description, bed_type, size_sqm, max_guests FROM rooms WHERE id = ?");
+        $roomStmt->execute([$booking['room_id']]);
+        $room = $roomStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$room) {
+            throw new Exception('Room not found for booking ' . $booking['booking_reference']);
+        }
+
+        $nights      = (int)$booking['number_of_nights'];
+        $adults      = (int)($booking['adult_guests'] ?? $booking['number_of_guests'] ?? 1);
+        $children    = (int)($booking['child_guests'] ?? 0);
+        $total       = (float)$booking['total_amount'];
+        $vat_amount  = (float)($booking['vat_amount'] ?? 0);
+        $vat_rate    = (float)($booking['vat_rate'] ?? 0);
+        $child_supp  = (float)($booking['child_supplement_total'] ?? 0);
+        $deposit_req = !empty($booking['deposit_required']);
+        $deposit_amt = (float)($booking['deposit_amount'] ?? 0);
+
+        // Exclusive: VAT was added on top, so strip it to recover the room line.
+        // Inclusive/off: the priced total IS the room line (VAT, if any, is inside it).
+        $room_subtotal  = $total - (vat_mode() === 'exclusive' ? $vat_amount : 0.0) - $child_supp;
+        $rate_per_night = $nights > 0 ? $room_subtotal / $nights : (float)$room['price_per_night'];
+
+        $fmt = static function (float $v) use ($currency): string {
+            return htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($v, 0);
+        };
+        $trow = static function (string $label, string $value, bool $accent = false): string {
+            $col = $accent ? '#8B7355' : '#1A1A1A';
+            $fw  = $accent ? 'font-weight:600;' : '';
+            return '<tr>'
+                . '<td style="padding:9px 12px 9px 0;color:#555;font-size:14px;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #EDE8E0;width:55%;">' . $label . '</td>'
+                . '<td style="padding:9px 0 9px 6px;color:' . $col . ';font-size:14px;' . $fw . 'font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #EDE8E0;">' . $value . '</td>'
+                . '</tr>';
+        };
+
+        $guest_label = $adults . ' adult' . ($adults !== 1 ? 's' : '');
+        if ($children > 0) {
+            $guest_label .= ', ' . $children . ' child' . ($children !== 1 ? 'ren' : '');
+        }
+
+        $htmlBody  = '
+        <h1 style="color:#8B7355;text-align:center;font-family:Georgia,serif;font-weight:400;letter-spacing:1px;">Hotel Quotation</h1>
+        <p style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:15px;color:#333;">
+            Dear ' . htmlspecialchars($booking['guest_name']) . ',
+        </p>
+        <p style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:15px;color:#333;">
+            Thank you for your enquiry. Please find below our formal quotation for your upcoming stay at
+            <strong>' . htmlspecialchars($site_name) . '</strong>.
+        </p>';
+
+        // Quote reference banner
+        $htmlBody .= '
+        <div style="background:#FAF6F0;border:2px solid #C8A45A;border-radius:8px;padding:18px 22px;margin:20px 0;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>
+                <td style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">
+                    <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:3px;">Quotation Reference</div>
+                    <div style="font-size:20px;font-weight:600;color:#8B7355;">' . htmlspecialchars($quote_ref) . '</div>
+                </td>
+                <td align="right" style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">
+                    <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:3px;">Valid Until</div>
+                    <div style="font-size:16px;font-weight:600;color:#C0392B;">' . $valid_until->format('F j, Y') . '</div>
+                </td>
+            </tr></table>
+        </div>';
+
+        // Room card
+        $htmlBody .= '
+        <div style="background:#FFF;border:1px solid #DDD;border-radius:8px;padding:18px 22px;margin:20px 0;">
+            <h2 style="color:#8B7355;font-family:Georgia,serif;font-weight:400;margin-top:0;font-size:18px;">'
+            . htmlspecialchars((string)$room['name']) . '</h2>';
+        if (!empty($room['short_description'])) {
+            $htmlBody .= '<p style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:14px;color:#666;margin-top:0;">'
+                . htmlspecialchars((string)$room['short_description']) . '</p>';
+        }
+        $meta = [];
+        if (!empty($room['bed_type'])) {
+            $meta[] = htmlspecialchars((string)$room['bed_type']);
+        }
+        if (!empty($room['size_sqm'])) {
+            $meta[] = htmlspecialchars((string)$room['size_sqm']) . ' m&sup2;';
+        }
+        if (!empty($room['max_guests'])) {
+            $meta[] = 'Max ' . (int)$room['max_guests'] . ' guests';
+        }
+        if (!empty($meta)) {
+            $htmlBody .= '<p style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:13px;color:#888;margin:0 0 6px;">'
+                . implode(' &nbsp;&middot;&nbsp; ', $meta) . '</p>';
+        }
+        $htmlBody .= '</div>';
+
+        // Stay details
+        $htmlBody .= '
+        <div style="background:#FAF6F0;border-radius:8px;padding:18px 22px;margin:20px 0;">
+            <h2 style="color:#8B7355;font-family:Georgia,serif;font-weight:400;margin-top:0;font-size:18px;">Stay Details</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">'
+            . $trow('Check-in', date('l, F j, Y', strtotime($booking['check_in_date'])) . ' &mdash; from ' . htmlspecialchars($check_in_time))
+            . $trow('Check-out', date('l, F j, Y', strtotime($booking['check_out_date'])) . ' &mdash; by ' . htmlspecialchars($check_out_time))
+            . $trow('Duration', $nights . ' night' . ($nights !== 1 ? 's' : ''))
+            . $trow('Guests', $guest_label);
+        if (!empty($booking['special_requests'])) {
+            $htmlBody .= $trow('Special Requests', htmlspecialchars((string)$booking['special_requests']));
+        }
+        $htmlBody .= '</table></div>';
+
+        // Pricing breakdown
+        $room_line  = htmlspecialchars((string)$room['name']) . ' &times; ' . $nights . ' night' . ($nights !== 1 ? 's' : '') . ' @ ' . $fmt($rate_per_night) . '/night';
+        $htmlBody .= '
+        <div style="background:#FFF;border:1px solid #DDD;border-radius:8px;padding:18px 22px;margin:20px 0;">
+            <h2 style="color:#8B7355;font-family:Georgia,serif;font-weight:400;margin-top:0;font-size:18px;">Pricing Breakdown</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">'
+            . $trow($room_line, $fmt($room_subtotal));
+        if ($children > 0 && $child_supp > 0) {
+            $htmlBody .= $trow('Child supplement (' . $children . ' child' . ($children !== 1 ? 'ren' : '') . ')', $fmt($child_supp));
+        }
+        if ($vat_enabled && $vat_amount > 0) {
+            $htmlBody .= $trow('VAT (' . number_format($vat_rate, 0) . '%)', vat_document_value($fmt($vat_amount)));
+        }
+        $htmlBody .= $trow('Total Amount', $fmt($total), true)
+            . '</table></div>';
+
+        // Deposit / payment terms
+        if ($deposit_req && $deposit_amt > 0) {
+            $balance = $total - $deposit_amt;
+            $htmlBody .= '
+        <div style="background:#FFF8DC;border-left:4px solid #F0A500;border-radius:4px;padding:15px 18px;margin:20px 0;">
+            <h3 style="color:#856404;margin-top:0;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:15px;">Deposit Required to Confirm</h3>
+            <p style="color:#856404;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:14px;margin:0;">
+                A deposit of <strong>' . $fmt($deposit_amt) . '</strong> is required to secure this booking.
+                The remaining balance of <strong>' . $fmt($balance) . '</strong> is due on arrival.
+            </p>
+        </div>';
+        } else {
+            $policy = (string)(getSetting('payment_policy') ?: 'Full payment is due on arrival. We accept cash and mobile money.');
+            $htmlBody .= '
+        <div style="background:#FFF8DC;border-left:4px solid #F0A500;border-radius:4px;padding:15px 18px;margin:20px 0;">
+            <h3 style="color:#856404;margin-top:0;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:15px;">Payment Terms</h3>
+            <p style="color:#856404;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:14px;margin:0;">' . $policy . '</p>
+        </div>';
+        }
+
+        // Admin note
+        if ($notes !== '') {
+            $htmlBody .= '
+        <div style="background:#F0F7FF;border-left:4px solid #4A90D9;border-radius:4px;padding:15px 18px;margin:20px 0;">
+            <h3 style="color:#1A4A8A;margin-top:0;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:15px;">Note from our team</h3>
+            <p style="color:#1A4A8A;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:14px;margin:0;">'
+                . nl2br(htmlspecialchars($notes)) . '</p>
+        </div>';
+        }
+
+        // CTA
+        $confirm_email  = $email_from_email ?: getSetting('email_main', '');
+        $mailto_subject = rawurlencode('Confirm Booking ' . $booking['booking_reference']);
+        $htmlBody .= '
+        <div style="text-align:center;margin:30px 0 20px;">
+            <p style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:14px;color:#555;margin-bottom:16px;">
+                To confirm this reservation, simply reply to this email or use the button below.
+            </p>
+            <a href="mailto:' . htmlspecialchars($confirm_email) . '?subject=' . $mailto_subject . '"
+               style="display:inline-block;background:#8B7355;color:#FFF;padding:13px 30px;text-decoration:none;border-radius:4px;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:15px;font-weight:600;letter-spacing:0.5px;">
+                Confirm My Booking
+            </a>';
+        if (!empty($contact_phone)) {
+            $htmlBody .= '<p style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:13px;color:#888;margin-top:14px;">Or call us: <a href="tel:' . htmlspecialchars($contact_phone) . '" style="color:#8B7355;">' . htmlspecialchars($contact_phone) . '</a></p>';
+        }
+        $htmlBody .= '
+        </div>
+        <p style="font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;font-size:13px;color:#999;text-align:center;">
+            This quotation is valid until <strong>' . $valid_until->format('F j, Y') . '</strong>.
+            Rates and availability are subject to change after this date.
+        </p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; we look forward to welcoming you.
+        </p>';
+
+        // ── Build subject & body (DB template takes priority) ─────────────────
+        $subject = 'Quotation for Your Stay — ' . $site_name . ' [' . $quote_ref . ']';
+        $textBody = '';
+
+        if (function_exists('buildBookingEmailVariables') && function_exists('renderBookingEmailTemplate')) {
+            $templateVars = buildBookingEmailVariables($booking, $room, [
+                'quotation_reference' => $quote_ref,
+                'quote_reference' => $quote_ref,
+                'check_in_date' => date('l, F j, Y', strtotime((string)$booking['check_in_date'])),
+                'check_out_date' => date('l, F j, Y', strtotime((string)$booking['check_out_date'])),
+                'check_in_date_formatted' => date('F j, Y', strtotime((string)$booking['check_in_date'])),
+                'check_out_date_formatted' => date('F j, Y', strtotime((string)$booking['check_out_date'])),
+                'nights' => (string)$nights,
+                'number_of_nights' => (string)$nights,
+                'adult_guests' => (string)$adults,
+                'child_guests' => (string)$children,
+                'number_of_guests' => (string)($adults + $children),
+                'guests' => $guest_label,
+                'total_amount' => $fmt($total),
+                'total_amount_formatted' => $fmt($total),
+                'rate_per_night' => $fmt($rate_per_night),
+                'room_subtotal' => $fmt($room_subtotal),
+                'vat_amount' => vat_document_value($fmt($vat_amount)),
+                'vat_rate' => number_format($vat_rate, 0),
+                'child_supplement' => $fmt($child_supp),
+                'deposit_amount' => $fmt($deposit_amt),
+                'balance_due' => $deposit_amt > 0 ? $fmt($total - $deposit_amt) : $fmt($total),
+                'payment_policy' => (string)(getSetting('payment_policy') ?: 'Full payment is due on arrival.'),
+                'valid_until' => $valid_until->format('F j, Y'),
+                'quotation_notes' => nl2br(htmlspecialchars($notes, ENT_QUOTES, 'UTF-8')),
+            ]);
+            $renderedTemplate = renderBookingEmailTemplate('tentative_quotation', $templateVars);
+            if ($renderedTemplate) {
+                $subject = (string)$renderedTemplate['subject'];
+                $htmlBody = (string)$renderedTemplate['html_body'];
+                $textBody = (string)($renderedTemplate['text_body'] ?? '');
+            }
+        }
+
+        // ── PDF attachment ────────────────────────────────────────────────────
+        $pdfContent = null;
+        if ($attach_pdf) {
+            if (!function_exists('generateQuotationPDF')) {
+                require_once __DIR__ . '/../includes/quotation-pdf.php';
+            }
+            $pdfContent = generateQuotationPDF($booking, $room, [
+                'valid_days'      => $valid_days,
+                'quotation_notes' => $notes,
+            ]);
+        }
+
+        // ── Send ──────────────────────────────────────────────────────────────
+        if ($pdfContent === null) {
+            // No attachment — use the standard sendEmail helper
+            $result = sendEmail($booking['guest_email'], $booking['guest_name'], $subject, $htmlBody, $textBody);
+        } else {
+            // Has attachment — must use PHPMailer directly
+            if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
+                return createEmailPreview($booking['guest_email'], $booking['guest_name'], $subject, $htmlBody, $textBody);
+            }
+            $mail = new PHPMailer(true);
+            $smtpSec = strtolower(trim((string)$smtp_secure));
+            if ($smtpSec === '' && (int)$smtp_port === 587) {
+                $smtpSec = 'tls';
+            } elseif ($smtpSec === '' && (int)$smtp_port === 465) {
+                $smtpSec = 'ssl';
+            }
+            $mail->isSMTP();
+            $mail->Host       = $smtp_host;
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $smtp_username;
+            $mail->Password   = $smtp_password;
+            if ($smtpSec !== '') {
+                $mail->SMTPSecure = $smtpSec;
+            }
+            $mail->Port       = $smtp_port;
+            $mail->Timeout    = $smtp_timeout;
+            if ($smtp_debug > 0) {
+                $mail->SMTPDebug = $smtp_debug;
+            }
+            $mail->setFrom($smtp_username, $email_from_name ?: $site_name);
+            $mail->addAddress($booking['guest_email'], $booking['guest_name']);
+            if (!empty($email_from_email) && filter_var($email_from_email, FILTER_VALIDATE_EMAIL)) {
+                $mail->addReplyTo($email_from_email, $email_from_name ?: $site_name);
+            }
+            if ($email_bcc_admin && !empty($email_admin_email)) {
+                $mail->addBCC($email_admin_email);
+            }
+            $mail->CharSet  = PHPMailer::CHARSET_UTF8;
+            $mail->Encoding = PHPMailer::ENCODING_BASE64;
+            $mail->isHTML(true);
+            $mail->Subject  = $subject;
+            $mail->Body     = hotel_embed_logo_cid($mail, wrapEmailTemplate($htmlBody, $subject));
+            $mail->AltBody  = $textBody !== ''
+                ? $textBody
+                : ('Please see the attached PDF quotation for your stay at ' . $site_name . '.');
+            $mail->addStringAttachment($pdfContent, 'Quotation-' . $quote_ref . '.pdf', 'base64', 'application/pdf');
+            $mail->send();
+            $result = ['success' => true, 'message' => 'Quotation email sent.'];
+        }
+
+        if (!empty($result['success']) && $email_log_enabled) {
+            logEmail($booking['guest_email'], $booking['guest_name'], $subject, 'sent');
+        }
+
+        if (!empty($result['success']) && $send_whatsapp && empty($result['preview_url']) && function_exists('sendRoomQuotationWhatsApp')) {
+            $waResult = sendRoomQuotationWhatsApp($booking, $room, [
+                'valid_days' => $valid_days,
+                'quote_reference' => $quote_ref,
+                'quotation_notes' => $notes,
+            ]);
+            $result['whatsapp'] = $waResult;
+
+            if (!empty($waResult['success'])) {
+                $result['message'] .= ' WhatsApp quotation sent.';
+            } elseif (!in_array($waResult['message'] ?? '', ['No guest phone', 'WhatsApp disabled'], true)) {
+                $result['message'] .= ' WhatsApp not sent: ' . ($waResult['message'] ?? 'Unknown error');
+            }
+        }
+
+        return $result;
+    } catch (Exception $e) {
+        error_log('sendTentativeQuotationEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send an HTML email with a binary attachment (typically PDF).
+ * Named distinctly to avoid conflict with invoice.php's file-path sendEmailWithAttachment.
+ */
+function sendEmailWithBinaryAttachment(
+    string $toEmail,
+    string $toName,
+    string $subject,
+    string $htmlBody,
+    string $attachmentContent,
+    string $attachmentName,
+    string $attachmentMime = 'application/pdf',
+    string $altBody = ''
+): array {
+    global $email_from_name, $email_from_email, $email_site_name, $email_admin_email, $email_bcc_admin;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
+    global $development_mode, $email_preview_enabled;
+
+    try {
+        if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
+            return createEmailPreview($toEmail, $toName, $subject, $htmlBody, $altBody);
+        }
+
+        $mail = new PHPMailer(true);
+        $smtpSec = strtolower(trim((string)$smtp_secure));
+        if ($smtpSec === '' && (int)$smtp_port === 587) {
+            $smtpSec = 'tls';
+        } elseif ($smtpSec === '' && (int)$smtp_port === 465) {
+            $smtpSec = 'ssl';
+        }
+
+        $mail->isSMTP();
+        $mail->Host = $smtp_host;
+        $mail->SMTPAuth = true;
+        $mail->Username = $smtp_username;
+        $mail->Password = $smtp_password;
+        if ($smtpSec !== '') {
+            $mail->SMTPSecure = $smtpSec;
+        }
+        $mail->Port = $smtp_port;
+        $mail->Timeout = $smtp_timeout;
+        if ($smtp_debug > 0) {
+            $mail->SMTPDebug = $smtp_debug;
+        }
+
+        $fromName = $email_from_name ?: ($email_site_name ?: getSetting('site_name', "Liwonde Sun Hotel"));
+        $mail->setFrom($smtp_username, $fromName);
+        $mail->addAddress($toEmail, $toName);
+
+        if (!empty($email_from_email) && filter_var($email_from_email, FILTER_VALIDATE_EMAIL)) {
+            $mail->addReplyTo($email_from_email, $fromName);
+        }
+        if ($email_bcc_admin && !empty($email_admin_email)) {
+            $mail->addBCC($email_admin_email);
+        }
+
+        $mail->CharSet = PHPMailer::CHARSET_UTF8;
+        $mail->Encoding = PHPMailer::ENCODING_BASE64;
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body = hotel_embed_logo_cid($mail, wrapEmailTemplate($htmlBody, $subject));
+        $mail->AltBody = $altBody !== '' ? $altBody : 'Please view this message in an HTML-compatible email client.';
+        $mail->addStringAttachment($attachmentContent, $attachmentName, 'base64', $attachmentMime);
+        $mail->send();
+
+        return ['success' => true, 'message' => 'Email sent successfully.'];
+    } catch (Exception $e) {
+        error_log('sendEmailWithBinaryAttachment Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send conference quotation email with optional PDF and WhatsApp message.
+ */
+function sendConferenceQuotationEmail(array $enquiry, array $options = []): array
+{
+    global $pdo, $email_log_enabled, $email_from_email, $email_site_name;
+
+    try {
+        $recipientEmail = trim((string)($enquiry['email'] ?? ''));
+        if ($recipientEmail === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            throw new Exception('Conference enquiry does not have a valid email address.');
+        }
+
+        $room = ['name' => (string)($enquiry['room_name'] ?? 'Conference Room')];
+        $roomId = (int)($enquiry['conference_room_id'] ?? $enquiry['room_id'] ?? 0);
+        if ($roomId > 0) {
+            $roomStmt = $pdo->prepare('SELECT * FROM conference_rooms WHERE id = ? LIMIT 1');
+            $roomStmt->execute([$roomId]);
+            $roomRow = $roomStmt->fetch(PDO::FETCH_ASSOC);
+            if ($roomRow) {
+                $room = $roomRow;
+            }
+        }
+
+        $siteName = $email_site_name ?: getSetting('site_name', "Liwonde Sun Hotel");
+        $currency = (string)getSetting('currency_symbol', 'MWK ');
+        $validDays = max(1, (int)($options['valid_days'] ?? 7));
+        $notes = trim((string)($options['quotation_notes'] ?? ''));
+        $attachPdf = (bool)($options['attach_pdf'] ?? true);
+        $sendWhatsapp = (bool)($options['send_whatsapp'] ?? true);
+        $validUntil = (new DateTime())->modify('+' . $validDays . ' days');
+
+        $quoteRef = trim((string)($options['quote_reference'] ?? ''));
+        if ($quoteRef === '') {
+            $quoteRef = 'CQ-' . strtoupper((string)($enquiry['inquiry_reference'] ?? ('CONF-' . (int)($enquiry['id'] ?? 0))));
+        }
+
+        $baseAmount = (float)($enquiry['total_amount'] ?? 0);
+        $vatAmount = (float)($enquiry['vat_amount'] ?? 0);
+        $totalAmount = (float)($enquiry['total_with_vat'] ?? 0);
+        if ($totalAmount <= 0) {
+            // Inclusive mode: the priced amount already contains VAT.
+            $totalAmount = vat_mode() === 'inclusive' ? $baseAmount : $baseAmount + $vatAmount;
+        }
+
+        $eventDate = !empty($enquiry['event_date']) ? date('l, F j, Y', strtotime((string)$enquiry['event_date'])) : 'To be confirmed';
+        $startTime = !empty($enquiry['start_time']) ? date('H:i', strtotime((string)$enquiry['start_time'])) : '';
+        $endTime = !empty($enquiry['end_time']) ? date('H:i', strtotime((string)$enquiry['end_time'])) : '';
+        $eventTime = trim($startTime . ($endTime !== '' ? ' - ' . $endTime : ''));
+        if ($eventTime === '') {
+            $eventTime = 'To be confirmed';
+        }
+
+        $subject = 'Conference Quotation - ' . $siteName . ' [' . $quoteRef . ']';
+        $htmlBody = '<h1 style="color:#8B7355;text-align:center;">Conference Quotation</h1>'
+            . '<p>Dear ' . htmlspecialchars((string)($enquiry['contact_person'] ?? 'Guest'), ENT_QUOTES, 'UTF-8') . ',</p>'
+            . '<p>Thank you for your conference enquiry. Please find your quotation details below.</p>'
+            . '<p><strong>Inquiry Ref:</strong> ' . htmlspecialchars((string)($enquiry['inquiry_reference'] ?? ''), ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Quotation Ref:</strong> ' . htmlspecialchars($quoteRef, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Company:</strong> ' . htmlspecialchars((string)($enquiry['company_name'] ?? ''), ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Room:</strong> ' . htmlspecialchars((string)($room['name'] ?? 'Conference Room'), ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Date:</strong> ' . htmlspecialchars($eventDate, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Time:</strong> ' . htmlspecialchars($eventTime, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Attendees:</strong> ' . (int)($enquiry['number_of_attendees'] ?? 1) . '<br>'
+            . '<strong>Total:</strong> ' . htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($totalAmount, 0) . '<br>'
+            . '<strong>Valid Until:</strong> ' . $validUntil->format('F j, Y') . '</p>';
+
+        if ($notes !== '') {
+            $htmlBody .= '<p><strong>Notes:</strong><br>' . nl2br(htmlspecialchars($notes, ENT_QUOTES, 'UTF-8')) . '</p>';
+        }
+
+        $htmlBody .= '<p>To confirm this quotation, reply to this email or contact us at '
+            . htmlspecialchars((string)getSetting('phone_main', ''), ENT_QUOTES, 'UTF-8') . '.</p>';
+
+        if (function_exists('getBookingEmailTemplateConfig')) {
+            $tplConfig = getBookingEmailTemplateConfig('conference_quotation', []);
+            if (!empty($tplConfig['subject']) && !empty($tplConfig['html_body'])) {
+                $tagMap = [
+                    '{{site_name}}' => htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8'),
+                    '{{guest_name}}' => htmlspecialchars((string)($enquiry['contact_person'] ?? 'Guest'), ENT_QUOTES, 'UTF-8'),
+                    '{{contact_person}}' => htmlspecialchars((string)($enquiry['contact_person'] ?? 'Guest'), ENT_QUOTES, 'UTF-8'),
+                    '{{company_name}}' => htmlspecialchars((string)($enquiry['company_name'] ?? ''), ENT_QUOTES, 'UTF-8'),
+                    '{{inquiry_reference}}' => htmlspecialchars((string)($enquiry['inquiry_reference'] ?? ''), ENT_QUOTES, 'UTF-8'),
+                    '{{quotation_reference}}' => htmlspecialchars($quoteRef, ENT_QUOTES, 'UTF-8'),
+                    '{{quote_reference}}' => htmlspecialchars($quoteRef, ENT_QUOTES, 'UTF-8'),
+                    '{{conference_room}}' => htmlspecialchars((string)($room['name'] ?? 'Conference Room'), ENT_QUOTES, 'UTF-8'),
+                    '{{event_type}}' => htmlspecialchars((string)($enquiry['event_type'] ?? 'Conference Event'), ENT_QUOTES, 'UTF-8'),
+                    '{{event_date}}' => htmlspecialchars($eventDate, ENT_QUOTES, 'UTF-8'),
+                    '{{event_time}}' => htmlspecialchars($eventTime, ENT_QUOTES, 'UTF-8'),
+                    '{{attendees}}' => (string)max(1, (int)($enquiry['number_of_attendees'] ?? 1)),
+                    '{{total_amount}}' => htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($totalAmount, 0),
+                    '{{total_amount_formatted}}' => htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($totalAmount, 0),
+                    '{{currency_symbol}}' => htmlspecialchars($currency, ENT_QUOTES, 'UTF-8'),
+                    '{{valid_until}}' => $validUntil->format('F j, Y'),
+                    '{{quotation_notes}}' => nl2br(htmlspecialchars($notes, ENT_QUOTES, 'UTF-8')),
+                    '{{contact_phone}}' => htmlspecialchars((string)getSetting('phone_main', ''), ENT_QUOTES, 'UTF-8'),
+                    '{{contact_email}}' => htmlspecialchars((string)($email_from_email ?: getSetting('email_main', '')), ENT_QUOTES, 'UTF-8'),
+                ];
+                $subject = strtr((string)$tplConfig['subject'], $tagMap);
+                $htmlBody = strtr((string)$tplConfig['html_body'], $tagMap);
+            }
+        }
+
+        $result = ['success' => false, 'message' => 'Unable to send quotation email.'];
+        if ($attachPdf) {
+            if (!function_exists('generateConferenceQuotationPDF')) {
+                require_once __DIR__ . '/../includes/quotation-pdf.php';
+            }
+            $pdfContent = generateConferenceQuotationPDF($enquiry, $room, [
+                'valid_days' => $validDays,
+                'quotation_notes' => $notes,
+                'quote_reference' => $quoteRef,
+            ]);
+            $result = sendEmailWithBinaryAttachment(
+                $recipientEmail,
+                (string)($enquiry['contact_person'] ?? 'Guest'),
+                $subject,
+                $htmlBody,
+                $pdfContent,
+                'Conference-Quotation-' . $quoteRef . '.pdf',
+                'application/pdf',
+                'Please review the attached conference quotation PDF.'
+            );
+        } else {
+            $result = sendEmail($recipientEmail, (string)($enquiry['contact_person'] ?? 'Guest'), $subject, $htmlBody);
+        }
+
+        if (!empty($result['success']) && $email_log_enabled) {
+            logEmail($recipientEmail, (string)($enquiry['contact_person'] ?? ''), $subject, 'sent');
+        }
+
+        if (!empty($result['success']) && $sendWhatsapp && empty($result['preview_url']) && function_exists('sendConferenceQuotationWhatsApp')) {
+            $waResult = sendConferenceQuotationWhatsApp($enquiry, $room, [
+                'valid_days' => $validDays,
+                'quote_reference' => $quoteRef,
+                'quotation_notes' => $notes,
+            ]);
+            $result['whatsapp'] = $waResult;
+            if (!empty($waResult['success'])) {
+                $result['message'] .= ' WhatsApp quotation sent.';
+            } elseif (!in_array($waResult['message'] ?? '', ['No contact phone', 'WhatsApp disabled'], true)) {
+                $result['message'] .= ' WhatsApp not sent: ' . ($waResult['message'] ?? 'Unknown error');
+            }
+        }
+
+        return $result;
+    } catch (Exception $e) {
+        error_log('sendConferenceQuotationEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send event quotation email with optional PDF and WhatsApp message.
+ */
+function sendEventQuotationEmail(array $event, array $options = []): array
+{
+    global $email_log_enabled, $email_from_email, $email_site_name;
+
+    try {
+        $recipientName = trim((string)($options['recipient_name'] ?? 'Guest'));
+        $recipientEmail = trim((string)($options['recipient_email'] ?? ''));
+        $recipientPhone = trim((string)($options['recipient_phone'] ?? ''));
+        if ($recipientEmail === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            throw new Exception('A valid recipient email is required for event quotations.');
+        }
+
+        $siteName = $email_site_name ?: getSetting('site_name', "Liwonde Sun Hotel");
+        $currency = (string)getSetting('currency_symbol', 'MWK ');
+        $attendeeCount = max(1, (int)($options['attendee_count'] ?? 1));
+        $validDays = max(1, (int)($options['valid_days'] ?? 7));
+        $notes = trim((string)($options['quotation_notes'] ?? ''));
+        $attachPdf = (bool)($options['attach_pdf'] ?? true);
+        $sendWhatsapp = (bool)($options['send_whatsapp'] ?? true);
+        $validUntil = (new DateTime())->modify('+' . $validDays . ' days');
+
+        $quoteRef = trim((string)($options['quote_reference'] ?? ''));
+        if ($quoteRef === '') {
+            $eventId = (int)($event['id'] ?? 0);
+            $quoteRef = 'EQ-' . strtoupper((string)$eventId) . '-' . strtoupper(substr(hash('crc32b', $recipientEmail), 0, 6));
+        }
+
+        $eventTitle = (string)($event['title'] ?? 'Event');
+        $eventDate = !empty($event['event_date']) ? date('l, F j, Y', strtotime((string)$event['event_date'])) : 'To be confirmed';
+        $startTime = !empty($event['start_time']) ? date('H:i', strtotime((string)$event['start_time'])) : '';
+        $endTime = !empty($event['end_time']) ? date('H:i', strtotime((string)$event['end_time'])) : '';
+        $eventTime = trim($startTime . ($endTime !== '' ? ' - ' . $endTime : ''));
+        if ($eventTime === '') {
+            $eventTime = 'To be confirmed';
+        }
+        $eventLocation = (string)($event['location'] ?? 'To be confirmed');
+        if ($eventLocation === '') {
+            $eventLocation = 'To be confirmed';
+        }
+
+        $unitPrice = (float)($event['ticket_price'] ?? 0);
+        $totalAmount = $unitPrice * $attendeeCount;
+
+        $subject = 'Event Quotation - ' . $siteName . ' [' . $quoteRef . ']';
+        $htmlBody = '<h1 style="color:#8B7355;text-align:center;">Event Quotation</h1>'
+            . '<p>Dear ' . htmlspecialchars($recipientName, ENT_QUOTES, 'UTF-8') . ',</p>'
+            . '<p>Please find your event quotation details below.</p>'
+            . '<p><strong>Quotation Ref:</strong> ' . htmlspecialchars($quoteRef, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Event:</strong> ' . htmlspecialchars($eventTitle, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Date:</strong> ' . htmlspecialchars($eventDate, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Time:</strong> ' . htmlspecialchars($eventTime, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Location:</strong> ' . htmlspecialchars($eventLocation, ENT_QUOTES, 'UTF-8') . '<br>'
+            . '<strong>Attendees:</strong> ' . $attendeeCount . '<br>'
+            . '<strong>Total:</strong> ' . htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($totalAmount, 0) . '<br>'
+            . '<strong>Valid Until:</strong> ' . $validUntil->format('F j, Y') . '</p>';
+
+        if ($notes !== '') {
+            $htmlBody .= '<p><strong>Notes:</strong><br>' . nl2br(htmlspecialchars($notes, ENT_QUOTES, 'UTF-8')) . '</p>';
+        }
+
+        $htmlBody .= '<p>To confirm this quotation, reply to this email or contact us at '
+            . htmlspecialchars((string)getSetting('phone_main', ''), ENT_QUOTES, 'UTF-8') . '.</p>';
+
+        if (function_exists('getBookingEmailTemplateConfig')) {
+            $tplConfig = getBookingEmailTemplateConfig('event_quotation', []);
+            if (!empty($tplConfig['subject']) && !empty($tplConfig['html_body'])) {
+                $tagMap = [
+                    '{{site_name}}' => htmlspecialchars($siteName, ENT_QUOTES, 'UTF-8'),
+                    '{{recipient_name}}' => htmlspecialchars($recipientName, ENT_QUOTES, 'UTF-8'),
+                    '{{quotation_reference}}' => htmlspecialchars($quoteRef, ENT_QUOTES, 'UTF-8'),
+                    '{{quote_reference}}' => htmlspecialchars($quoteRef, ENT_QUOTES, 'UTF-8'),
+                    '{{event_title}}' => htmlspecialchars($eventTitle, ENT_QUOTES, 'UTF-8'),
+                    '{{event_date}}' => htmlspecialchars($eventDate, ENT_QUOTES, 'UTF-8'),
+                    '{{event_time}}' => htmlspecialchars($eventTime, ENT_QUOTES, 'UTF-8'),
+                    '{{event_location}}' => htmlspecialchars($eventLocation, ENT_QUOTES, 'UTF-8'),
+                    '{{attendee_count}}' => (string)$attendeeCount,
+                    '{{total_amount}}' => htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($totalAmount, 0),
+                    '{{total_amount_formatted}}' => htmlspecialchars($currency, ENT_QUOTES, 'UTF-8') . number_format($totalAmount, 0),
+                    '{{currency_symbol}}' => htmlspecialchars($currency, ENT_QUOTES, 'UTF-8'),
+                    '{{valid_until}}' => $validUntil->format('F j, Y'),
+                    '{{quotation_notes}}' => nl2br(htmlspecialchars($notes, ENT_QUOTES, 'UTF-8')),
+                    '{{contact_phone}}' => htmlspecialchars((string)getSetting('phone_main', ''), ENT_QUOTES, 'UTF-8'),
+                    '{{contact_email}}' => htmlspecialchars((string)($email_from_email ?: getSetting('email_main', '')), ENT_QUOTES, 'UTF-8'),
+                ];
+                $subject = strtr((string)$tplConfig['subject'], $tagMap);
+                $htmlBody = strtr((string)$tplConfig['html_body'], $tagMap);
+            }
+        }
+
+        $result = ['success' => false, 'message' => 'Unable to send quotation email.'];
+        if ($attachPdf) {
+            if (!function_exists('generateEventQuotationPDF')) {
+                require_once __DIR__ . '/../includes/quotation-pdf.php';
+            }
+            $pdfContent = generateEventQuotationPDF($event, [
+                'name' => $recipientName,
+                'email' => $recipientEmail,
+                'phone' => $recipientPhone,
+            ], [
+                'attendee_count' => $attendeeCount,
+                'valid_days' => $validDays,
+                'quotation_notes' => $notes,
+                'quote_reference' => $quoteRef,
+            ]);
+            $result = sendEmailWithBinaryAttachment(
+                $recipientEmail,
+                $recipientName,
+                $subject,
+                $htmlBody,
+                $pdfContent,
+                'Event-Quotation-' . $quoteRef . '.pdf',
+                'application/pdf',
+                'Please review the attached event quotation PDF.'
+            );
+        } else {
+            $result = sendEmail($recipientEmail, $recipientName, $subject, $htmlBody);
+        }
+
+        if (!empty($result['success']) && $email_log_enabled) {
+            logEmail($recipientEmail, $recipientName, $subject, 'sent');
+        }
+
+        if (!empty($result['success']) && $sendWhatsapp && empty($result['preview_url']) && function_exists('sendEventQuotationWhatsApp')) {
+            $waResult = sendEventQuotationWhatsApp($event, [
+                'name' => $recipientName,
+                'phone' => $recipientPhone,
+            ], [
+                'attendee_count' => $attendeeCount,
+                'valid_days' => $validDays,
+                'quote_reference' => $quoteRef,
+                'quotation_notes' => $notes,
+            ]);
+            $result['whatsapp'] = $waResult;
+            if (!empty($waResult['success'])) {
+                $result['message'] .= ' WhatsApp quotation sent.';
+            } elseif (!in_array($waResult['message'] ?? '', ['No recipient phone', 'WhatsApp disabled'], true)) {
+                $result['message'] .= ' WhatsApp not sent: ' . ($waResult['message'] ?? 'Unknown error');
+            }
+        }
+
+        return $result;
+    } catch (Exception $e) {
+        error_log('sendEventQuotationEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send refund notification email to guest.
+ *
+ * @param array  $payment    Row from payments table (the refund row or original payment row).
+ * @param string $refundRef  The refund payment_reference (e.g. REF-2026-000123).
+ * @param float  $refundAmount The refund amount (total including VAT).
+ * @param string $refundReason Human-readable refund reason.
+ * @return array ['success' => bool, 'message' => string]
+ */
+function sendRefundNotificationEmail(array $payment, string $refundRef, float $refundAmount, string $refundReason = ''): array
+{
+    global $email_from_email, $email_site_name, $pdo;
+
+    try {
+        $currencySymbol = getSetting('currency_symbol', 'K');
+        $bookingType    = (string)($payment['booking_type'] ?? '');
+
+        // Resolve guest name and email depending on booking type
+        $guestName  = '';
+        $guestEmail = '';
+
+        if ($bookingType === 'room') {
+            $bStmt = $pdo->prepare("SELECT guest_name, guest_email FROM bookings WHERE id = ? LIMIT 1");
+            $bStmt->execute([$payment['booking_id']]);
+            $bRow = $bStmt->fetch(PDO::FETCH_ASSOC);
+            $guestName  = $bRow['guest_name']  ?? '';
+            $guestEmail = $bRow['guest_email'] ?? '';
+        } elseif ($bookingType === 'conference') {
+            // Use the customer_name / customer_email if already joined, else re-query
+            $guestName  = $payment['customer_name']  ?? '';
+            $guestEmail = $payment['customer_email'] ?? '';
+            if (empty($guestEmail)) {
+                $cfCompanyField = 'company_name';
+                $cfEmailField   = 'email';
+                if (function_exists('finance_conference_fields')) {
+                    $cfFields       = finance_conference_fields($pdo);
+                    $cfCompanyField = $cfFields['company'] ?? $cfCompanyField;
+                    $cfEmailField   = $cfFields['email']   ?? $cfEmailField;
+                }
+                $cfStmt = $pdo->prepare("SELECT {$cfCompanyField} AS cname, {$cfEmailField} AS cemail FROM conference_inquiries WHERE id = ? LIMIT 1");
+                $cfStmt->execute([$payment['booking_id']]);
+                $cfRow = $cfStmt->fetch(PDO::FETCH_ASSOC);
+                $guestName  = $cfRow['cname']  ?? '';
+                $guestEmail = $cfRow['cemail'] ?? '';
+            }
+        } elseif ($bookingType === 'restaurant') {
+            $guestName  = $payment['customer_name']  ?? '';
+            $guestEmail = $payment['customer_email'] ?? '';
+            if (empty($guestEmail)) {
+                try {
+                    $soStmt = $pdo->prepare("SELECT customer_name, customer_email FROM stock_orders WHERE id = ? LIMIT 1");
+                    $soStmt->execute([$payment['booking_id']]);
+                    $soRow = $soStmt->fetch(PDO::FETCH_ASSOC);
+                    $guestName  = $soRow['customer_name']  ?? '';
+                    $guestEmail = $soRow['customer_email'] ?? '';
+                } catch (\Throwable $soEx) {
+                    error_log('sendRefundNotificationEmail restaurant lookup: ' . $soEx->getMessage());
+                }
+            }
+        }
+
+        if (empty($guestEmail) || !filter_var($guestEmail, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'message' => 'No valid guest email found for refund notification'];
+        }
+
+        $reasonLabels = [
+            'early_checkout'        => 'Early Check-Out',
+            'late_checkout_charge'  => 'Late Check-Out Charge Reversal',
+            'cancellation'          => 'Booking Cancellation',
+            'service_issue'         => 'Service Issue',
+            'overpayment'           => 'Overpayment',
+            'other'                 => 'Other',
+        ];
+        $reasonDisplay = $reasonLabels[$refundReason] ?? ucwords(str_replace('_', ' ', $refundReason));
+        $bookingRef    = (string)($payment['booking_reference'] ?? '');
+
+        // Build the standard premium-shell variables (logo, site name, address,
+        // contact details, currency) plus the refund-specific placeholders so the
+        // editable DB template renders with the same UI/UX as every other email.
+        $shellBooking = [
+            'guest_name'        => $guestName,
+            'guest_email'       => $guestEmail,
+            'booking_reference' => $bookingRef,
+        ];
+        $vars = buildBookingEmailVariables($shellBooking, null, [
+            'refund_reference'        => $refundRef,
+            'refund_amount_formatted' => number_format($refundAmount, 2),
+            'refund_reason_display'   => $reasonDisplay,
+            'refund_date_formatted'   => date('F j, Y'),
+            'booking_reference'       => $bookingRef !== '' ? $bookingRef : '—',
+            'booking_type_label'      => ucfirst($bookingType),
+        ]);
+
+        // Preferred path: render the admin-editable template from the DB.
+        $dbTemplate = renderBookingEmailTemplate('refund_notification', $vars);
+        if ($dbTemplate) {
+            return sendEmail(
+                $guestEmail,
+                $guestName,
+                $dbTemplate['subject'],
+                $dbTemplate['html_body'],
+                $dbTemplate['text_body'] ?? ''
+            );
+        }
+
+        // Fallback: premium-wrapped HTML built in code (same shell as the template)
+        // used only when the DB template is missing or deactivated.
+        $siteName = htmlspecialchars($email_site_name);
+        $summaryRows = [
+            ['Refund Reference',  htmlspecialchars($refundRef)],
+            ['Booking Reference', $bookingRef !== '' ? htmlspecialchars($bookingRef) : '—'],
+            ['Reason',            htmlspecialchars($reasonDisplay)],
+            ['Date Issued',       date('F j, Y')],
+            ['Refund Amount',     htmlspecialchars($currencySymbol) . ' ' . number_format($refundAmount, 2), true],
+        ];
+        $innerHtml = hotel_premium_email_body(
+            htmlspecialchars($guestName),
+            '<p style="margin:0 0 16px;">We are writing to confirm that a refund has been issued on your account with <strong>' . $siteName . '</strong>.</p>'
+                . '<p style="margin:0 0 16px;">The refund will be processed through your original payment method. Please allow 3&ndash;5 business days for the funds to appear in your account.</p>'
+                . '<p style="margin:0;">If you have any questions about this refund, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '" style="color:#524b3f;">' . htmlspecialchars($email_from_email) . '</a>.</p>'
+        )
+            . hotel_premium_email_summary_rows('Refund Details', $summaryRows);
+        $shellHtml = hotel_premium_email_html(
+            'A refund of ' . htmlspecialchars($currencySymbol) . ' ' . number_format($refundAmount, 2) . ' has been issued — ' . htmlspecialchars($refundRef),
+            $innerHtml,
+            '{{guest_email}}'
+        );
+        // Resolve the {{...}} placeholders left in the shell (logo, site name, address, etc.)
+        $replace = [];
+        foreach ($vars as $k => $v) {
+            $replace['{{' . $k . '}}'] = (string)$v;
+        }
+        $shellHtml = strtr($shellHtml, $replace);
+
+        return sendEmail(
+            $guestEmail,
+            $guestName,
+            'Refund Issued — ' . $email_site_name . ($bookingRef !== '' ? ' [' . $bookingRef . ']' : ''),
+            $shellHtml
+        );
+    } catch (Exception $e) {
+        error_log('sendRefundNotificationEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Send review acknowledgement email to the reviewer.
+ *
+ * @param string $guestName  Reviewer's name.
+ * @param string $guestEmail Reviewer's email.
+ * @param string $reviewTitle The title of the review submitted.
+ * @param int    $rating     Overall star rating (1–5).
+ * @return array ['success' => bool, 'message' => string]
+ */
+function sendAdminWelcomeEmail(string $fullName, string $email, string $username, string $tempPassword, string $role): array
+{
+    global $email_site_name, $email_site_url;
+
+    try {
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'message' => 'No valid staff email provided'];
+        }
+
+        $siteName  = htmlspecialchars($email_site_name);
+        $adminUrl  = rtrim((string)$email_site_url, '/') . '/admin/';
+        $name      = htmlspecialchars($fullName);
+        $uname     = htmlspecialchars($username);
+        $roleLabel = htmlspecialchars(ucfirst($role));
+        $pass      = htmlspecialchars($tempPassword);
+
+        $htmlBody = '
+        <h1 style="color:#8B7355;text-align:center;">Welcome to ' . $siteName . '</h1>
+        <p>Dear ' . $name . ',</p>
+        <p>Your staff account has been created. You can log in to the admin panel using the credentials below.</p>
+
+        <div style="background:#FAF6F0;border:2px solid #C8A45A;padding:20px;margin:20px 0;border-radius:10px;">
+            <h2 style="color:#8B7355;margin-top:0;text-align:left;">Your Login Details</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;">
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:40%;vertical-align:top;border-bottom:1px solid #e8e0d4;">Username:</td>
+                    <td style="padding:10px 0 10px 6px;color:#333;border-bottom:1px solid #e8e0d4;">' . $uname . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:40%;vertical-align:top;border-bottom:1px solid #e8e0d4;">Password:</td>
+                    <td style="padding:10px 0 10px 6px;color:#333;border-bottom:1px solid #e8e0d4;font-family:monospace;">' . $pass . '</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:40%;vertical-align:top;">Role:</td>
+                    <td style="padding:10px 0 10px 6px;color:#333;">' . $roleLabel . '</td>
+                </tr>
+            </table>
+        </div>
+
+        <div style="background:#FDF6EC;padding:15px;border-left:4px solid #C8A45A;border-radius:5px;margin:20px 0;">
+            <p style="color:#5C4A32;margin:0;font-size:13px;">
+                <strong>Security reminder:</strong> Please change your password after your first login.
+            </p>
+        </div>
+
+        <p style="text-align:center;margin:28px 0;">
+            <a href="' . htmlspecialchars($adminUrl) . '" style="display:inline-block;background:#8B7355;color:#fff;padding:14px 32px;text-decoration:none;border-radius:4px;font-size:15px;letter-spacing:0.04em;">
+                Go to Admin Panel &rarr;
+            </a>
+        </p>
+
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; ' . $siteName . '
+        </p>';
+
+        return sendEmail($email, $fullName, 'Welcome to ' . $email_site_name . ' — Your Account is Ready', $htmlBody);
+    } catch (Exception $e) {
+        error_log('sendAdminWelcomeEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+function sendReviewAcknowledgementEmail(string $guestName, string $guestEmail, string $reviewTitle, int $rating = 0): array
+{
+    global $email_from_email, $email_site_name;
+
+    try {
+        if (empty($guestEmail) || !filter_var($guestEmail, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'message' => 'No valid reviewer email provided'];
+        }
+
+        $siteName = htmlspecialchars($email_site_name);
+        $stars    = $rating > 0 ? str_repeat('&#9733;', min(5, $rating)) . str_repeat('&#9734;', max(0, 5 - $rating)) : '';
+
+        $htmlBody = '
+        <h1 style="color: #8B7355; text-align: center;">Thank You for Your Review!</h1>
+        <p>Dear ' . htmlspecialchars($guestName) . ',</p>
+        <p>Thank you for taking the time to share your experience at <strong>' . $siteName . '</strong>. Your feedback is greatly appreciated and helps us continue to improve our services.</p>
+
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0; text-align:left;">Review Received</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;">
+                <tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">Review Title:</td>
+                    <td style="padding:10px 0 10px 6px;color:#333;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($reviewTitle) . '</td></tr>
+            </table>
+            ' . ($stars !== '' ? '
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;">
+                <tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">Your Rating:</td>
+                    <td style="padding:10px 0 10px 6px;color:#C8A45A;font-size:20px;text-align:left;vertical-align:top;font-family:\'Segoe UI\',Tahoma,Verdana,sans-serif;">' . $stars . '</td></tr>
+            </table>' : '') . '
+        </div>
+
+        <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+            <p style="color: #5C4A32; margin: 0;">
+                Your review is currently being reviewed by our team and will be published on our website shortly. We value honest guest feedback as it helps us deliver the best possible experience.
+            </p>
+        </div>
+
+        <p>We hope to welcome you back to ' . $siteName . ' again soon!</p>
+        <p>If you have any questions, please contact us at <a href="mailto:' . htmlspecialchars($email_from_email) . '">' . htmlspecialchars($email_from_email) . '</a>.</p>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">
+            Warm regards &mdash; ' . $siteName . '
+        </p>';
+
+        return sendEmail(
+            $guestEmail,
+            $guestName,
+            'Thank You for Your Review - ' . $siteName,
+            $htmlBody
+        );
+    } catch (Exception $e) {
+        error_log('sendReviewAcknowledgementEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Email a gym member their digital membership card: a CODE 128 barcode of
+ * their member number (the payload the Gym Check-In scanner reads), shown
+ * inline (CID) and attached as a PNG for saving to a phone.
+ *
+ * Non-blocking by design — callers treat a failure as "member saved, email
+ * failed" and never roll back the enrolment.
+ */
+
+/**
+ * Fine-print data-collection & privacy notice appended to gym member emails.
+ * We log check-in/check-out times, so members are told plainly that this
+ * usage data is collected to improve their gym experience.
+ */
+if (!function_exists('rh_gym_data_notice')) {
+    function rh_gym_data_notice(): string
+    {
+        $siteName = function_exists('getSetting') ? (string)getSetting('site_name', 'the gym') : 'the gym';
+        return '<p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #eee;font-size:11px;line-height:1.6;color:#999;text-align:center;">'
+            . 'Privacy note: when you check in and out we record your visit times and attendance. '
+            . htmlspecialchars($siteName) . ' uses this data only to improve your gym experience &mdash; understanding peak hours, '
+            . 'tailoring facilities and services, and keeping your membership up to date. We do not sell your personal data. '
+            . 'Contact us any time to ask about the information we hold.'
+            . '</p>';
+    }
+}
+
+function sendGymMemberCardEmail(array $member): array
+{
+    global $email_from_name, $email_from_email, $email_site_name, $email_admin_email, $email_bcc_admin;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $smtp_secure, $smtp_timeout, $smtp_debug;
+    global $development_mode, $email_preview_enabled;
+
+    try {
+        $toEmail = trim((string)($member['email'] ?? ''));
+        if ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'message' => 'Member has no valid email address.'];
+        }
+        $memberNumber = trim((string)($member['member_number'] ?? ''));
+        if ($memberNumber === '') {
+            return ['success' => false, 'message' => 'Member number missing.'];
+        }
+        $name     = (string)($member['full_name'] ?? 'Member');
+        $siteName = $email_site_name ?: getSetting('site_name', 'Gym');
+
+        // Barcode: CODE 128 symbology — same the check-in scanner reads.
+        // PNG (GD/Imagick) is the primary format: a CID-embedded <img> is the
+        // only barcode rendering that displays in ALL email clients, and the
+        // same bytes are attached so members can save the card to their phone.
+        // Gmail/Outlook/Yahoo strip inline <svg>, so SVG is never inlined —
+        // when no image library exists we render the bars as an HTML table
+        // (client-safe) and attach the SVG file as the saveable copy.
+        $barcodePng  = '';
+        $barcodeSvg  = '';
+        $barcodeBars = [];
+        try {
+            if (!class_exists('TCPDFBarcode')) {
+                foreach ([
+                    __DIR__ . '/../vendor/tecnickcom/tcpdf/tcpdf_barcodes_1d.php',
+                    __DIR__ . '/../TCPDF/tcpdf_barcodes_1d.php',
+                ] as $bcPath) {
+                    if (is_file($bcPath)) {
+                        require_once $bcPath;
+                        break;
+                    }
+                }
+            }
+            if (class_exists('TCPDFBarcode')) {
+                $bc = new TCPDFBarcode($memberNumber, 'C128');
+
+                // PNG — needs GD or Imagick; returns false (not an exception) without them
+                $pngData = $bc->getBarcodePngData(3, 80, [0, 0, 0]);
+                if (is_object($pngData) && method_exists($pngData, 'getImageBlob')) {
+                    $pngData = $pngData->getImageBlob(); // Imagick branch returns an object
+                }
+                if (is_string($pngData) && $pngData !== '') {
+                    $barcodePng = $pngData;
+                } else {
+                    // No image library: SVG attachment + HTML-bars inline fallback
+                    $barcodeSvg = trim((string)$bc->getBarcodeSVGcode(3, 80, 'black'));
+                    if (stripos($barcodeSvg, '<svg') === false) {
+                        $barcodeSvg = ''; // defensive: treat garbage as empty
+                    }
+                    $bcArr = $bc->getBarcodeArray();
+                    if (!empty($bcArr['bcode'])) {
+                        $barcodeBars = $bcArr['bcode'];
+                    }
+                    error_log('sendGymMemberCardEmail: no GD/Imagick — using HTML bars + SVG attachment for ' . $memberNumber);
+                }
+            } else {
+                error_log('sendGymMemberCardEmail: TCPDFBarcode not found — upload vendor/ (composer install) or a TCPDF/ folder with tcpdf_barcodes_1d.php');
+            }
+        } catch (Throwable $bcEx) {
+            error_log('sendGymMemberCardEmail barcode generation failed: ' . $bcEx->getMessage());
+        }
+
+        $expiryLine = !empty($member['expiry_date'])
+            ? date('F j, Y', strtotime((string)$member['expiry_date']))
+            : 'No expiry set';
+
+        // Inline barcode block — PNG CID first (renders in every client),
+        // HTML-bars table when no image library, then text-only member number.
+        if ($barcodePng !== '') {
+            $barcodeBlock = '<div style="background:#ffffff;border:2px dashed #C8A45A;border-radius:10px;padding:22px;text-align:center;margin:20px 0;">'
+                . '<img src="cid:gymmembercard" alt="Member barcode ' . htmlspecialchars($memberNumber) . '" style="max-width:100%;height:auto;">'
+                . '<div style="font-size:20px;font-weight:bold;letter-spacing:3px;color:#1A1A1A;margin-top:10px;">' . htmlspecialchars($memberNumber) . '</div>'
+                . '</div>';
+        } elseif (!empty($barcodeBars)) {
+            // One table cell per CODE 128 bar/space — survives Gmail/Outlook,
+            // which strip <svg>, and scans from the screen.
+            $barsHtml = '';
+            foreach ($barcodeBars as $bar) {
+                $bw  = max(1, (int)round((float)($bar['w'] ?? 1) * 2));
+                $col = !empty($bar['t']) ? '#000000' : '#ffffff';
+                $barsHtml .= '<td width="' . $bw . '" style="padding:0;width:' . $bw . 'px;height:80px;background-color:' . $col . ';line-height:0;font-size:0;">&nbsp;</td>';
+            }
+            $barcodeBlock = '<div style="background:#ffffff;border:2px dashed #C8A45A;border-radius:10px;padding:22px;text-align:center;margin:20px 0;">'
+                . '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="border-collapse:collapse;margin:0 auto;background:#ffffff;"><tr>' . $barsHtml . '</tr></table>'
+                . '<div style="font-size:20px;font-weight:bold;letter-spacing:3px;color:#1A1A1A;margin-top:10px;">' . htmlspecialchars($memberNumber) . '</div>'
+                . '</div>';
+        } else {
+            $barcodeBlock = '<div style="background:#ffffff;border:2px dashed #C8A45A;border-radius:10px;padding:22px;text-align:center;margin:20px 0;">'
+                . '<div style="font-size:26px;font-weight:bold;letter-spacing:4px;color:#1A1A1A;">' . htmlspecialchars($memberNumber) . '</div>'
+                . '</div>';
+        }
+
+        $htmlBody = '
+            <h1 style="color: #8B7355; text-align: center;">Your Membership Card</h1>
+            <p>Dear ' . htmlspecialchars($name) . ',</p>
+            <p>Welcome to <strong>' . htmlspecialchars($siteName) . '</strong>! Your membership is set up &mdash; this email is your digital membership card.</p>
+            ' . $barcodeBlock . '
+            <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+                <h2 style="color: #8B7355; margin-top: 0;text-align:left;">Membership Details</h2>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;border-bottom:1px solid #e8e0d4;">Member Number:</td><td style="padding:10px 0 10px 6px;color:#8B7355;font-weight:bold;font-size:18px;text-align:left;vertical-align:top;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($memberNumber) . '</td></tr></table>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;border-bottom:1px solid #e8e0d4;">Package:</td><td style="padding:10px 0 10px 6px;color:#333;text-align:left;vertical-align:top;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars((string)($member['membership_type'] ?? '') !== '' ? (string)$member['membership_type'] : 'N/A') . '</td></tr></table>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;">Valid Until:</td><td style="padding:10px 0 10px 6px;color:#333;text-align:left;vertical-align:top;">' . htmlspecialchars($expiryLine) . '</td></tr></table>
+            </div>
+            <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
+                <p style="color: #155724; margin: 0;">
+                    <strong>How to use it:</strong> present this barcode (on your phone or printed) at reception when you arrive &mdash; we scan it to check you in, and again on your way out. The attached image can be saved to your phone for quick access.
+                </p>
+            </div>
+            <p>If you have any questions, contact us at <a href="mailto:' . htmlspecialchars((string)$email_from_email) . '">' . htmlspecialchars((string)$email_from_email) . '</a>' . (getSetting('phone_main') ? ' or call ' . htmlspecialchars((string)getSetting('phone_main')) : '') . '.</p>
+            <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">See you at the gym!</p>'
+            . rh_gym_data_notice();
+
+        $subject = 'Your Membership Card - ' . $siteName . ' [' . $memberNumber . ']';
+        $altBody = 'Your ' . $siteName . ' member number is ' . $memberNumber . '. Present it at reception to check in. Valid until: ' . $expiryLine . '.';
+
+        if ($development_mode && (empty($smtp_password) || $email_preview_enabled)) {
+            return createEmailPreview($toEmail, $name, $subject, $htmlBody, $altBody);
+        }
+
+        $mail = new PHPMailer(true);
+        $smtpSec = strtolower(trim((string)$smtp_secure));
+        if ($smtpSec === '' && (int)$smtp_port === 587) {
+            $smtpSec = 'tls';
+        } elseif ($smtpSec === '' && (int)$smtp_port === 465) {
+            $smtpSec = 'ssl';
+        }
+
+        $mail->isSMTP();
+        $mail->Host = $smtp_host;
+        $mail->SMTPAuth = true;
+        $mail->Username = $smtp_username;
+        $mail->Password = $smtp_password;
+        if ($smtpSec !== '') {
+            $mail->SMTPSecure = $smtpSec;
+        }
+        $mail->Port = $smtp_port;
+        $mail->Timeout = $smtp_timeout;
+        if ($smtp_debug > 0) {
+            $mail->SMTPDebug = $smtp_debug;
+        }
+
+        $fromName = $email_from_name ?: $siteName;
+        $mail->setFrom($smtp_username, $fromName);
+        $mail->addAddress($toEmail, $name);
+        if (!empty($email_from_email) && filter_var($email_from_email, FILTER_VALIDATE_EMAIL)) {
+            $mail->addReplyTo($email_from_email, $fromName);
+        }
+        if ($email_bcc_admin && !empty($email_admin_email)) {
+            $mail->addBCC($email_admin_email);
+        }
+
+        $mail->CharSet = PHPMailer::CHARSET_UTF8;
+        $mail->Encoding = PHPMailer::ENCODING_BASE64;
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        if ($barcodePng !== '') {
+            $mail->addStringEmbeddedImage($barcodePng, 'gymmembercard', 'member-card-' . $memberNumber . '.png', 'base64', 'image/png');
+            $mail->addStringAttachment($barcodePng, 'member-card-' . $memberNumber . '.png', 'base64', 'image/png');
+        } elseif ($barcodeSvg !== '') {
+            // No PNG possible on this host — attach the SVG so the card is still saveable
+            $mail->addStringAttachment($barcodeSvg, 'member-card-' . $memberNumber . '.svg', 'base64', 'image/svg+xml');
+        }
+        $mail->Body = hotel_embed_logo_cid($mail, wrapEmailTemplate($htmlBody, $subject));
+        $mail->AltBody = $altBody;
+        $mail->send();
+
+        return ['success' => true, 'message' => 'Membership card emailed to ' . $toEmail . '.'];
+    } catch (Exception $e) {
+        error_log('sendGymMemberCardEmail Error: ' . $e->getMessage());
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+}
+
+/**
+ * Upcoming-class reminder for an enrolled gym member.
+ *
+ * Sent from the Gym Classes page ("Send reminder") to everyone enrolled in a
+ * class. Warm, non-transactional: the class name, when it runs, the level, and
+ * a short description, plus the member's number so they can check in on arrival.
+ *
+ * @param array $member  member_number, full_name, email
+ * @param array $class   title, day_label, time_label, level_label, description
+ */
+function sendGymClassReminderEmail(array $member, array $class): array
+{
+    global $email_site_name, $email_from_email;
+
+    $toEmail = trim((string)($member['email'] ?? ''));
+    if ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Member has no valid email address.'];
+    }
+    $name     = (string)($member['full_name'] ?? 'Member');
+    $siteName = $email_site_name ?: getSetting('site_name', 'Gym');
+
+    $title   = (string)($class['title'] ?? 'your class');
+    $day     = trim((string)($class['day_label'] ?? ''));
+    $time    = trim((string)($class['time_label'] ?? ''));
+    $level   = trim((string)($class['level_label'] ?? ''));
+    $desc    = trim((string)($class['description'] ?? ''));
+    $memberNo = trim((string)($member['member_number'] ?? ''));
+
+    $when = trim($day . ($day && $time ? ' · ' : '') . $time);
+
+    $detailRow = static function (string $label, string $value): string {
+        if ($value === '') { return ''; }
+        return '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr>'
+            . '<td style="padding:9px 10px 9px 0;font-weight:bold;color:#1A1A1A;width:40%;vertical-align:top;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($label) . '</td>'
+            . '<td style="padding:9px 0 9px 6px;color:#333;text-align:left;vertical-align:top;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($value) . '</td>'
+            . '</tr></table>';
+    };
+
+    $htmlBody = '
+        <h1 style="color:#8B7355;text-align:center;">Class Reminder</h1>
+        <p>Dear ' . htmlspecialchars($name) . ',</p>
+        <p>This is a friendly reminder that you are enrolled in <strong>' . htmlspecialchars($title) . '</strong> at <strong>' . htmlspecialchars($siteName) . '</strong>.'
+        . ($desc !== '' ? ' ' . htmlspecialchars($desc) : '') . '</p>
+        <div style="background:#FAF6F0;border:2px solid #C8A45A;padding:20px;margin:20px 0;border-radius:10px;">
+            <h2 style="color:#8B7355;margin-top:0;text-align:left;">' . htmlspecialchars($title) . '</h2>'
+            . $detailRow('When:', $when)
+            . $detailRow('Level:', $level)
+            . ($memberNo !== '' ? $detailRow('Your Member #:', $memberNo) : '')
+            . '</div>
+        <div style="background:#d4edda;padding:15px;border-left:4px solid #28a745;border-radius:5px;margin:20px 0;">
+            <p style="color:#155724;margin:0;">Please arrive a few minutes early and bring your membership barcode so we can check you in. See you there!</p>
+        </div>
+        <p>Questions? Contact us at <a href="mailto:' . htmlspecialchars((string)$email_from_email) . '">' . htmlspecialchars((string)$email_from_email) . '</a>'
+        . (getSetting('phone_main') ? ' or call ' . htmlspecialchars((string)getSetting('phone_main')) : '') . '.</p>'
+        . rh_gym_data_notice();
+
+    $subject = 'Reminder: ' . $title . ($when !== '' ? ' — ' . $when : '') . ' · ' . $siteName;
+    $altBody = 'Reminder: you are enrolled in ' . $title . ($when !== '' ? ' (' . $when . ')' : '') . ' at ' . $siteName . '.'
+        . ($memberNo !== '' ? ' Your member number is ' . $memberNo . '.' : '');
+
+    return sendEmail($toEmail, $name, $subject, wrapEmailTemplate($htmlBody, $subject), $altBody);
+}
+
+/**
+ * OTP email for the self-service password change (admin/change-password.php).
+ * Plain sendEmail() — the OTP is short-lived (10 min) and session-bound.
+ */
+function sendPasswordChangeOtpEmail(string $toEmail, string $name, string $otp): array
+{
+    global $email_site_name;
+    $siteName = $email_site_name ?: getSetting('site_name', 'Admin');
+
+    $htmlBody = '
+        <h1 style="color: #8B7355; text-align: center;">Password Change Verification</h1>
+        <p>Dear ' . htmlspecialchars($name) . ',</p>
+        <p>You requested a password change on your <strong>' . htmlspecialchars($siteName) . '</strong> staff account. Enter this code to confirm it:</p>
+        <div style="background:#FAF6F0;border:2px solid #C8A45A;border-radius:10px;padding:24px;text-align:center;margin:22px 0;">
+            <div style="font-size:34px;font-weight:bold;letter-spacing:10px;color:#1A1A1A;">' . htmlspecialchars($otp) . '</div>
+            <div style="font-size:12px;color:#8a7f73;margin-top:8px;">Valid for 10 minutes</div>
+        </div>
+        <div style="background:#fff3cd;padding:14px;border-left:4px solid #ffc107;border-radius:5px;margin:20px 0;">
+            <p style="color:#856404;margin:0;font-size:14px;"><strong>Didn\'t request this?</strong> Ignore this email — your password stays unchanged — and tell your administrator.</p>
+        </div>';
+
+    return sendEmail($toEmail, $name, 'Your verification code: ' . $otp . ' — ' . $siteName, wrapEmailTemplate($htmlBody, 'Password Change Verification'), 'Your ' . $siteName . ' password change verification code is ' . $otp . ' (valid 10 minutes).');
+}
+
+/**
+ * Membership renewal reminder — warm nudge sent N days before expiry by the
+ * gym reminder engine (admin/includes/gym-reminders-lib.php). Deliberately
+ * NOT invoice-like: it's a "we'd love to keep seeing you" note with the
+ * renewal details and a contact CTA.
+ */
+function sendGymRenewalReminderEmail(array $member, int $daysLeft): array
+{
+    global $email_site_name, $email_from_email;
+
+    $toEmail = trim((string)($member['email'] ?? ''));
+    if ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Member has no valid email address.'];
+    }
+    $name       = (string)($member['full_name'] ?? 'Member');
+    $siteName   = $email_site_name ?: getSetting('site_name', 'Gym');
+    $package    = trim((string)($member['membership_type'] ?? ''));
+    $expiryDate = !empty($member['expiry_date']) ? date('l, F j, Y', strtotime((string)$member['expiry_date'])) : '';
+    $fee        = isset($member['monthly_fee']) && $member['monthly_fee'] !== null && (float)$member['monthly_fee'] > 0
+        ? trim((string)getSetting('currency_symbol', 'K')) . ' ' . number_format((float)$member['monthly_fee'], 2)
+        : '';
+    $phone      = (string)getSetting('phone_main', '');
+
+    $daysWord = $daysLeft === 0 ? 'today' : ($daysLeft === 1 ? 'tomorrow' : 'in ' . $daysLeft . ' days');
+
+    $htmlBody = '
+        <h1 style="color: #8B7355; text-align: center;">Your Membership Renews Soon</h1>
+        <p>Hi ' . htmlspecialchars($name) . ',</p>
+        <p>Just a friendly heads-up — your <strong>' . htmlspecialchars($siteName) . '</strong> membership expires <strong>' . htmlspecialchars($daysWord) . '</strong>. We\'d love to keep seeing you, so renew any time before then and your training won\'t miss a beat.</p>
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;text-align:left;">Renewal Details</h2>'
+            . ($package !== '' ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;border-bottom:1px solid #e8e0d4;">Package:</td><td style="padding:10px 0 10px 6px;color:#333;text-align:left;vertical-align:top;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($package) . '</td></tr></table>' : '')
+            . ($expiryDate !== '' ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;border-bottom:1px solid #e8e0d4;">Expires:</td><td style="padding:10px 0 10px 6px;color:#8B7355;font-weight:bold;text-align:left;vertical-align:top;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($expiryDate) . '</td></tr></table>' : '')
+            . ($fee !== '' ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;">Monthly fee:</td><td style="padding:10px 0 10px 6px;color:#333;text-align:left;vertical-align:top;">' . htmlspecialchars($fee) . '</td></tr></table>' : '') . '
+        </div>
+        <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 5px; margin: 20px 0;">
+            <p style="color: #155724; margin: 0;">
+                <strong>Renewing is easy:</strong> speak to us at reception on your next visit'
+                . ($phone !== '' ? ', call ' . htmlspecialchars($phone) : '')
+                . (!empty($email_from_email) ? ', or reply to this email' : '') . ' and we\'ll sort it in a minute.
+            </p>
+        </div>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">Keep the momentum going — see you at the gym!</p>'
+        . rh_gym_data_notice();
+
+    $subject = 'Your membership expires ' . $daysWord . ' — ' . $siteName;
+    $altBody = 'Hi ' . $name . ', your ' . $siteName . ' membership'
+        . ($package !== '' ? ' (' . $package . ')' : '')
+        . ' expires ' . $daysWord
+        . ($expiryDate !== '' ? ' on ' . $expiryDate : '')
+        . '. Renew at reception' . ($phone !== '' ? ' or call ' . $phone : '') . '.';
+
+    return sendEmail($toEmail, $name, $subject, wrapEmailTemplate($htmlBody, 'Membership Renewal Reminder'), $altBody);
+}
+
+/**
+ * Pre-arrival reminder — warm nudge sent N days before check-in by the guest
+ * lifecycle engine (admin/includes/guest-lifecycle-lib.php).
+ *
+ * @param array $booking Row from the bookings table (id, booking_reference,
+ *                        room_id, guest_name, guest_email, check_in_date,
+ *                        check_out_date, status).
+ */
+function sendPreArrivalReminderEmail(array $booking): array
+{
+    global $pdo, $email_site_name;
+
+    $toEmail = trim((string)($booking['guest_email'] ?? ''));
+    if ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Booking has no valid guest email address.'];
+    }
+
+    $name = (string)($booking['guest_name'] ?? 'Guest');
+    $siteName = $email_site_name ?: getSetting('site_name', 'Hotel');
+    $reference = (string)($booking['booking_reference'] ?? '');
+
+    $roomName = '';
+    if (!empty($booking['room_id'])) {
+        try {
+            $stmt = $pdo->prepare("SELECT name FROM rooms WHERE id = ?");
+            $stmt->execute([$booking['room_id']]);
+            $room = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($room) {
+                $roomName = (string)$room['name'];
+            }
+        } catch (Throwable $e) {
+            error_log('sendPreArrivalReminderEmail room lookup: ' . $e->getMessage());
+        }
+    }
+
+    $checkInDate = !empty($booking['check_in_date']) ? date('l, F j, Y', strtotime((string)$booking['check_in_date'])) : '';
+    $checkInTime = trim((string)getSetting('check_in_time', ''));
+
+    $htmlBody = '
+        <h1 style="color: #8B7355; text-align: center;">Your Stay Is Coming Up</h1>
+        <p>Dear ' . htmlspecialchars($name) . ',</p>
+        <p>We look forward to welcoming you to <strong>' . htmlspecialchars($siteName) . '</strong> soon! Here is a quick reminder of your upcoming stay.</p>
+        <div style="background: #FAF6F0; border: 2px solid #C8A45A; padding: 20px; margin: 20px 0; border-radius: 10px;">
+            <h2 style="color: #8B7355; margin-top: 0;text-align:left;">Booking Details</h2>'
+            . ($reference !== '' ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;border-bottom:1px solid #e8e0d4;">Booking Reference:</td><td style="padding:10px 0 10px 6px;color:#8B7355;font-weight:bold;font-size:18px;text-align:left;vertical-align:top;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($reference) . '</td></tr></table>' : '')
+            . ($roomName !== '' ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;border-bottom:1px solid #e8e0d4;">Room:</td><td style="padding:10px 0 10px 6px;color:#333;text-align:left;vertical-align:top;border-bottom:1px solid #e8e0d4;">' . htmlspecialchars($roomName) . '</td></tr></table>' : '')
+            . ($checkInDate !== '' ? '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0;"><tr><td style="padding:10px 10px 10px 0;font-weight:bold;color:#1A1A1A;width:44%;vertical-align:top;">Check-in Date:</td><td style="padding:10px 0 10px 6px;color:#333;text-align:left;vertical-align:top;">' . htmlspecialchars($checkInDate) . '</td></tr></table>' : '') . '
+        </div>
+        <div style="background: #FDF6EC; padding: 15px; border-left: 4px solid #8B7355; border-radius: 5px; margin: 20px 0;">
+            <p style="color: #5C4A32; margin: 0;">
+                Check-in is available from' . ($checkInTime !== '' ? ' <strong>' . htmlspecialchars($checkInTime) . '</strong>' : ' the afternoon') . '. If your plans have changed or you have any special requests, just reply to this email and we will be happy to help.
+            </p>
+        </div>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">We look forward to welcoming you!</p>';
+
+    $subject = 'We look forward to welcoming you — ' . $siteName;
+    $altBody = 'Dear ' . $name . ', this is a reminder that your stay at ' . $siteName
+        . ($reference !== '' ? ' (booking ' . $reference . ')' : '')
+        . ($checkInDate !== '' ? ' begins ' . $checkInDate : ' begins soon')
+        . '. We look forward to welcoming you.';
+
+    return sendEmail($toEmail, $name, $subject, wrapEmailTemplate($htmlBody, 'Your Stay Is Coming Up'), $altBody);
+}
+
+/**
+ * Post-stay review request — thank-you note sent N days after check-out by
+ * the guest lifecycle engine (admin/includes/guest-lifecycle-lib.php), with
+ * a link to submit-review.php (optionally pre-selecting the room they stayed in).
+ *
+ * @param array $booking Row from the bookings table (id, booking_reference,
+ *                        room_id, guest_name, guest_email, check_in_date,
+ *                        check_out_date, status).
+ */
+function sendPostStayReviewRequestEmail(array $booking): array
+{
+    global $email_site_name, $email_site_url;
+
+    $toEmail = trim((string)($booking['guest_email'] ?? ''));
+    if ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Booking has no valid guest email address.'];
+    }
+
+    $name = (string)($booking['guest_name'] ?? 'Guest');
+    $siteName = $email_site_name ?: getSetting('site_name', 'Hotel');
+
+    $base = $email_site_url !== '' ? $email_site_url : (defined('BASE_URL') ? (string)BASE_URL : '');
+    $reviewLink = rtrim($base, '/') . '/submit-review.php';
+    if (!empty($booking['room_id'])) {
+        $reviewLink .= '?room_id=' . (int)$booking['room_id'];
+    }
+
+    $htmlBody = '
+        <h1 style="color: #8B7355; text-align: center;">How Was Your Stay?</h1>
+        <p>Dear ' . htmlspecialchars($name) . ',</p>
+        <p>Thank you for staying with <strong>' . htmlspecialchars($siteName) . '</strong>! We hope you had a wonderful experience.</p>
+        <p>Your feedback means a great deal to us and helps other guests plan their stay. Would you take a moment to share a review?</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="' . htmlspecialchars($reviewLink) . '" style="background: #8B7355; color: #ffffff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Leave a Review</a>
+        </div>
+        <p style="margin:28px 0 0;font-size:14px;color:#777;text-align:center;font-style:italic;">Thank you for choosing ' . htmlspecialchars($siteName) . ' — we hope to welcome you back soon.</p>';
+
+    $subject = 'How was your stay? — ' . $siteName;
+    $altBody = 'Dear ' . $name . ', thank you for staying with ' . $siteName . '. We would love to hear about your experience — leave a review here: ' . $reviewLink;
+
+    return sendEmail($toEmail, $name, $subject, wrapEmailTemplate($htmlBody, 'How Was Your Stay?'), $altBody);
 }

@@ -1,0 +1,5350 @@
+/**
+ * Booking Section Styles
+ * Rosalyn's Hotel 2026
+ * Styles for booking-related pages and components
+ */
+
+/* ============================================
+   BOOKING FORM
+   ============================================ */
+
+.form-section {
+    padding: var(--spacing-lg, 24px);
+    border-bottom: 1px solid var(--color-border-light, #E8E4DD);
+    transition: background 0.3s ease;
+}
+
+.form-section:last-of-type {
+    border-bottom: none;
+}
+
+.form-section:hover {
+    background: rgba(139, 115, 85, 0.02);
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-md, 16px);
+}
+
+.back-to-rooms-link {
+    margin-top: var(--spacing-md, 16px);
+    text-align: center;
+}
+
+.back-to-rooms-link a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-primary, #8B7355);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.back-to-rooms-link a:hover {
+    color: var(--color-text-primary, #1A1A1A);
+}
+
+.booking-form {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: var(--spacing-lg, 24px);
+    background: var(--color-bg-white, #ffffff);
+    border-radius: var(--radius-lg, 12px);
+    box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+/* ============================================================
+   BOOKING MODAL FORM — standardized (shared: gym.php, events.php)
+   These forms sit inside .modal__body. The .booking-form card styling above is for
+   the standalone booking page; inside a modal it produced a cramped "card-in-a-card"
+   (a 600px white box with its own shadow inside the modal). Neutralise it so the form
+   fills the modal, and define the pieces the markup uses that had no CSS at all
+   (.form-consent, .checkbox label, .booking-pill, .privacy-note, .full spanning).
+   ============================================================ */
+.modal__body .booking-form {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Full-width fields span every column of the form grid. */
+.modal__body .form-grid .full,
+.modal__body .form-grid .form-group.full,
+.modal__body .form-grid .form-consent.full {
+    grid-column: 1 / -1;
+}
+
+/* Consent row: inline checkbox + label (was undefined, so the box stacked above the
+   text and centered). Matches the .checkbox-group pattern used elsewhere. */
+.form-consent {
+    margin-top: var(--space-1, 0.25rem);
+}
+
+.form-consent .checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3, 0.75rem);
+    cursor: pointer;
+    font-size: var(--text-sm, 0.875rem);
+    line-height: 1.5;
+    color: var(--color-text-secondary, #4A5568);
+    margin: 0;
+}
+
+.form-consent .checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-primary, #8B7355);
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+/* Eyebrow pill above the modal title. */
+.booking-pill {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 4px 12px;
+    margin-bottom: 8px;
+    border-radius: var(--radius-full, 9999px);
+    background: color-mix(in srgb, var(--color-primary, #8B7355) 12%, transparent 88%);
+    color: var(--color-primary, #8B7355);
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    line-height: 1.4;
+}
+
+/* Small privacy note under the submit button. */
+.privacy-note {
+    margin: var(--space-3, 0.75rem) 0 0;
+    font-size: var(--text-xs, 0.75rem);
+    line-height: 1.5;
+    color: var(--color-text-muted, #6B6B6B);
+}
+
+/* Submit fills the modal footer width and sits with breathing room above the note. */
+.modal__body .booking-form .btn.full-width {
+    width: 100%;
+    margin-top: var(--space-5, 1.25rem);
+}
+
+.booking-form__title {
+    font-size: var(--text-2xl, 1.5rem);
+    font-weight: 600;
+    color: var(--color-text-primary, #1A1A1A);
+    margin-bottom: var(--spacing-lg, 24px);
+    text-align: center;
+}
+
+.booking-form__group {
+    margin-bottom: var(--spacing-md, 16px);
+}
+
+.booking-form__label {
+    display: block;
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 500;
+    color: var(--color-text-secondary, #4A5568);
+    margin-bottom: var(--spacing-xs, 4px);
+}
+
+.booking-form__input,
+.booking-form__select,
+.booking-form__textarea {
+    width: 100%;
+    padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
+    border: 1px solid var(--color-border, #E0E0E0);
+    border-radius: var(--radius-md, 8px);
+    font-size: var(--text-base, 1rem);
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    transition: border-color var(--transition-fast, 0.3s ease);
+}
+
+.booking-form__input:focus,
+.booking-form__select:focus,
+.booking-form__textarea:focus {
+    outline: none;
+    border-color: var(--color-primary, #8B7355);
+    box-shadow: 0 0 0 3px rgba(139, 115, 85, 0.1);
+}
+
+.booking-form__submit {
+    width: 100%;
+    margin-top: var(--spacing-md, 16px);
+}
+
+/* ============================================
+   BOOKING SUMMARY - Premium Card Design
+   ============================================ */
+
+.booking-summary {
+    background: linear-gradient(145deg, #FAF8F5 0%, #F5F3F0 50%, #FFFFFF 100%);
+    padding: var(--spacing-lg, 24px);
+    border-radius: var(--radius-lg, 16px);
+    margin-bottom: var(--spacing-lg, 24px);
+    border: 1px solid var(--color-border, #E8E4DD);
+    box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.04),
+        0 8px 24px rgba(139, 115, 85, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    display: none;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Premium accent border */
+.booking-summary::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--color-primary, #8B7355), var(--gold, #C9A961), var(--color-primary, #8B7355));
+    opacity: 0.9;
+}
+
+.booking-summary h3 {
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-text-secondary, #6B5740);
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(139, 115, 85, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: static;
+}
+
+.booking-summary h3 i {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--color-primary, #8B7355), var(--gold, #C9A961));
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(139, 115, 85, 0.3);
+}
+
+.booking-summary h3::before,
+.booking-summary h3::after {
+    display: none;
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm, 10px) 12px;
+    margin: 0 -12px;
+    border-bottom: 1px solid rgba(139, 115, 85, 0.08);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 8px;
+}
+
+.summary-row:hover {
+    background: rgba(139, 115, 85, 0.04);
+    transform: translateX(4px);
+}
+
+.summary-row:last-child {
+    border-bottom: none;
+    margin-top: var(--spacing-sm, 8px);
+    padding-top: var(--spacing-md, 12px);
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.06), rgba(201, 169, 97, 0.04));
+}
+
+.summary-row span:first-child {
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #6B5740);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
+.summary-row span:last-child {
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+    color: var(--color-text-primary, #1A1A1A);
+}
+
+/* Total row styling - premium emphasis */
+.summary-row:last-child span:first-child {
+    font-size: var(--text-base, 1rem);
+    font-weight: 600;
+    color: var(--color-text-primary, #1A1A1A);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.summary-row:last-child span:last-child {
+    font-size: var(--text-xl, 1.35rem);
+    font-weight: 700;
+    color: var(--color-primary, #8B7355);
+    background: linear-gradient(135deg, var(--color-primary, #8B7355), var(--gold, #C9A961));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Child charge row styling */
+#summaryChildChargeRow {
+    background: rgba(139, 115, 85, 0.05);
+    padding: var(--spacing-sm, 8px) 12px;
+    margin: 4px -12px;
+    border-radius: 6px;
+    border-left: 3px solid var(--gold, #C9A961);
+}
+
+/* Legacy BEM support */
+.booking-summary__row {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--spacing-sm, 8px) 0;
+    border-bottom: 1px solid var(--color-border-light, #E0E0E0);
+}
+
+.booking-summary__row:last-child {
+    border-bottom: none;
+}
+
+.booking-summary__label {
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #4A5568);
+}
+
+.booking-summary__value {
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+    color: var(--color-text-primary, #1A1A1A);
+}
+
+.booking-summary__total {
+    margin-top: var(--spacing-md, 16px);
+    padding-top: var(--spacing-md, 16px);
+    border-top: 2px solid var(--color-primary, #8B7355);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.booking-summary__total-label {
+    font-size: var(--text-lg, 1.125rem);
+    font-weight: 600;
+    color: var(--color-text-primary, #1A1A1A);
+}
+
+.booking-summary__total-value {
+    font-size: var(--text-xl, 1.25rem);
+    font-weight: 700;
+    color: var(--color-primary, #8B7355);
+}
+
+/* ============================================
+   ENHANCED BOOKING SUMMARY STYLES
+   New structured layout with sections and badges
+   ============================================ */
+
+/* Booking Type Badge */
+.summary-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+}
+
+.summary-badge.badge-standard {
+    background: linear-gradient(135deg, rgba(40, 167, 69, 0.15), rgba(40, 167, 69, 0.08));
+    color: #28a745;
+    border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.summary-badge.badge-tentative {
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.15), rgba(255, 193, 7, 0.08));
+    color: #856404;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.summary-badge i {
+    font-size: 16px;
+}
+
+/* Summary Sections */
+.summary-section {
+    margin-bottom: 20px;
+}
+
+.summary-section:last-child {
+    margin-bottom: 0;
+}
+
+.summary-section h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-primary, #8B7355);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(139, 115, 85, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.summary-section h4 i {
+    font-size: 14px;
+    color: var(--gold, #C9A961);
+}
+
+/* Summary Total Section */
+.summary-total {
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.06), rgba(201, 169, 97, 0.04));
+    padding: 16px;
+    border-radius: 12px;
+    margin-top: 20px;
+    border: 1px solid rgba(139, 115, 85, 0.15);
+}
+
+.summary-row--total {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+}
+
+.summary-row--total span:first-child {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--color-text-primary, #1A1A1A);
+}
+
+.summary-row--total span:last-child {
+    font-size: 24px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--color-primary, #8B7355), var(--gold, #C9A961));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.summary-note {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--color-text-secondary, #6B5740);
+    text-align: center;
+    font-style: italic;
+}
+
+.summary-note i {
+    color: var(--gold, #C9A961);
+    margin-right: 4px;
+}
+
+/* ============================================
+   BOOKING FORM CARD LAYOUT - Premium Structure
+   Ensures summary, button, and footer are cohesive
+   ============================================ */
+
+.booking-form-card {
+    max-width: 960px;
+    margin: 0 auto;
+    background: var(--color-surface, #FFFFFF);
+    border-radius: var(--radius-xl, 20px);
+    box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.06),
+        0 12px 40px rgba(139, 115, 85, 0.08);
+    overflow: hidden;
+    border: 1px solid rgba(139, 115, 85, 0.1);
+}
+
+/* Premium Submit Button */
+.btn-submit {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3, 12px);
+    padding: var(--space-4, 16px) var(--space-6, 24px);
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: var(--text-lg, 1.125rem);
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--color-primary, #8B7355) 0%, #9a8262 50%, var(--color-primary, #8B7355) 100%);
+    border: none;
+    border-radius: var(--radius-lg, 12px);
+    cursor: pointer;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+        0 4px 15px rgba(139, 115, 85, 0.3),
+        0 8px 30px rgba(139, 115, 85, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    margin: var(--spacing-xl, 32px) 0 var(--spacing-lg, 24px) 0;
+    letter-spacing: 0.02em;
+}
+
+.btn-submit::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s ease;
+}
+
+.btn-submit:hover {
+    background: linear-gradient(135deg, #9a8262 0%, #a89070 50%, #9a8262 100%);
+    transform: translateY(-3px);
+    box-shadow:
+        0 8px 25px rgba(139, 115, 85, 0.4),
+        0 15px 40px rgba(139, 115, 85, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.btn-submit:hover::before {
+    left: 100%;
+}
+
+.btn-submit:active {
+    transform: translateY(-1px);
+    box-shadow:
+        0 4px 15px rgba(139, 115, 85, 0.3),
+        0 8px 25px rgba(139, 115, 85, 0.15);
+}
+
+.btn-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 4px 15px rgba(139, 115, 85, 0.15);
+}
+
+.btn-submit i {
+    font-size: 1.1em;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+
+/* Enhanced Booking Footer Info */
+.booking-footer-info {
+    text-align: center;
+    padding: var(--spacing-md, 20px) var(--spacing-lg, 24px);
+    font-size: var(--text-sm, 0.9rem);
+    line-height: 1.6;
+    color: var(--color-text-secondary, #6B5740);
+    background: linear-gradient(135deg, rgba(248, 246, 243, 0.8) 0%, rgba(250, 248, 245, 0.9) 100%);
+    border-radius: var(--radius-md, 10px);
+    margin: 0;
+    border: 1px solid rgba(139, 115, 85, 0.08);
+    position: relative;
+}
+
+.booking-footer-info::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--color-primary, #8B7355), transparent);
+    border-radius: 0 0 3px 3px;
+}
+
+.booking-footer-info i {
+    color: var(--color-primary, #8B7355);
+    margin-right: var(--space-2, 8px);
+    font-size: 1em;
+}
+
+/* ============================================
+   RESPONSIVE - Booking Form Layout
+   ============================================ */
+
+@media (max-width: 768px) {
+    .booking-form-card {
+        max-width: 100%;
+        border-radius: var(--radius-lg, 16px);
+        margin: 0;
+    }
+
+    .booking-summary {
+        padding: var(--spacing-md, 20px);
+        margin-bottom: var(--spacing-md, 20px);
+        border-radius: var(--radius-md, 12px);
+    }
+
+    .summary-row {
+        padding: var(--spacing-sm, 8px) 10px;
+        margin: 0 -10px;
+    }
+
+    .summary-row span:first-child {
+        font-size: var(--text-xs, 0.8125rem);
+    }
+
+    .summary-row span:last-child {
+        font-size: var(--text-sm, 0.875rem);
+    }
+
+    .summary-row:last-child span:first-child {
+        font-size: var(--text-sm, 0.875rem);
+    }
+
+    .summary-row:last-child span:last-child {
+        font-size: var(--text-lg, 1.125rem);
+    }
+
+    .btn-submit {
+        padding: var(--space-3, 14px) var(--space-5, 20px);
+        font-size: var(--text-base, 1rem);
+        margin: var(--spacing-lg, 24px) 0 var(--spacing-md, 20px) 0;
+    }
+
+    .booking-footer-info {
+        padding: var(--spacing-sm, 16px) var(--spacing-md, 20px);
+        font-size: var(--text-xs, 0.8125rem);
+    }
+}
+
+@media (max-width: 480px) {
+    .booking-summary {
+        padding: var(--spacing-sm, 16px);
+        margin-bottom: var(--spacing-sm, 16px);
+    }
+
+    .summary-row {
+        padding: var(--space-2, 6px) 8px;
+        margin: 0 -8px;
+    }
+
+    .summary-row:last-child span:last-child {
+        font-size: var(--text-base, 1rem);
+    }
+
+    .btn-submit {
+        padding: var(--space-2, 12px) var(--space-4, 16px);
+        font-size: var(--text-sm, 0.9375rem);
+        margin: var(--spacing-md, 20px) 0 var(--spacing-sm, 16px) 0;
+    }
+
+    .booking-footer-info {
+        padding: var(--space-2, 12px) var(--spacing-sm, 16px);
+        font-size: 0.75rem;
+    }
+}
+
+/* ============================================
+   BOOKING STATUS
+   ============================================ */
+
+.booking-status {
+    padding: var(--spacing-md, 16px);
+    border-radius: var(--radius-md, 8px);
+    margin-bottom: var(--spacing-md, 16px);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm, 8px);
+}
+
+.booking-status--pending {
+    background: var(--color-warning-light, #FFF3CD);
+    border-left: 4px solid var(--color-warning, #FFC107);
+}
+
+.booking-status--confirmed {
+    background: var(--color-success-light, #D4EDDA);
+    border-left: 4px solid var(--color-success, #28A745);
+}
+
+.booking-status--cancelled {
+    background: var(--color-error-light, #F8D7DA);
+    border-left: 4px solid var(--color-error, #DC3545);
+}
+
+.booking-status__icon {
+    font-size: var(--text-lg, 1.125rem);
+}
+
+.booking-status--pending .booking-status__icon {
+    color: var(--color-warning, #FFC107);
+}
+
+.booking-status--confirmed .booking-status__icon {
+    color: var(--color-success, #28A745);
+}
+
+.booking-status--cancelled .booking-status__icon {
+    color: var(--color-error, #DC3545);
+}
+
+.booking-status__text {
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 500;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+    .booking-form {
+        padding: var(--spacing-md, 16px);
+    }
+
+    .booking-summary {
+        padding: var(--spacing-md, 18px);
+        border-radius: var(--radius-md, 12px);
+        margin-bottom: var(--spacing-md, 18px);
+    }
+
+    .booking-summary::before {
+        height: 3px;
+    }
+
+    .booking-summary h3 {
+        font-size: 0.75rem;
+        margin-bottom: 14px;
+        padding-bottom: 10px;
+    }
+
+    .summary-row {
+        padding: var(--space-2, 8px) 10px;
+        margin: 0 -10px;
+    }
+
+    .summary-row:hover {
+        transform: none;
+    }
+
+    .summary-row span:first-child {
+        font-size: var(--text-xs, 0.8125rem);
+    }
+
+    .summary-row span:last-child {
+        font-size: var(--text-xs, 0.8125rem);
+    }
+
+    .summary-row:last-child {
+        padding-top: var(--spacing-sm, 10px);
+    }
+
+    .summary-row:last-child span:first-child {
+        font-size: var(--text-sm, 0.875rem);
+    }
+
+    .summary-row:last-child span:last-child {
+        font-size: var(--text-lg, 1.125rem);
+    }
+
+    #summaryChildChargeRow {
+        padding: 6px 10px;
+        margin: 4px -10px;
+    }
+
+    /* Legacy BEM support - mobile */
+    .booking-summary__total-label {
+        font-size: var(--text-base, 1rem);
+    }
+
+    .booking-summary__total-value {
+        font-size: var(--text-lg, 1.125rem);
+    }
+}
+
+@media (max-width: 480px) {
+    .booking-summary {
+        padding: var(--spacing-sm, 14px);
+        border-radius: var(--radius-sm, 10px);
+    }
+
+    .booking-summary h3 {
+        font-size: var(--text-base, 1rem);
+    }
+
+    .summary-row:last-child span:last-child {
+        font-size: var(--text-base, 1rem);
+    }
+}
+
+/* ============================================
+   BOOKING PAGE LAYOUT
+   ============================================ */
+
+.booking-page {
+    background: var(--color-background, #FAF8F5);
+    min-height: 100vh;
+    --booking-status-pending-bg: #fff3cd;
+    --booking-status-pending-text: #856404;
+    --booking-status-confirmed-bg: #d1ecf1;
+    --booking-status-confirmed-text: #0c5460;
+    --booking-status-checkedin-bg: #d4edda;
+    --booking-status-checkedin-text: #155724;
+    --booking-status-blocked-bg: #f8d7da;
+    --booking-status-blocked-text: #721c24;
+}
+
+.booking-header {
+    text-align: center;
+    padding: var(--spacing-lg, 24px) 0;
+    margin-bottom: var(--spacing-lg, 24px);
+}
+
+.booking-header h1 {
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    font-size: var(--text-4xl, 2.25rem);
+    font-weight: var(--font-semibold, 600);
+    color: var(--color-text-primary, #1A1A1A);
+    margin-bottom: var(--space-2, 0.5rem);
+}
+
+.booking-header p {
+    font-size: var(--text-lg, 1.125rem);
+    color: var(--color-text-secondary, #6B5740);
+}
+
+.booking-form-card {
+    max-width: 960px;
+    margin: 0 auto;
+    background: var(--color-surface, #FFFFFF);
+    border-radius: var(--radius-lg, 12px);
+    box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 0, 0, 0.1));
+    overflow: hidden;
+}
+
+.booking-footer-info {
+    text-align: center;
+    padding: var(--spacing-md, 16px);
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #6B5740);
+    background: var(--color-bg-light, #F8F9FA);
+    border-radius: var(--radius-md, 8px);
+    margin-top: var(--spacing-md, 16px);
+}
+
+.booking-footer-info i {
+    color: var(--color-primary, #8B7355);
+    margin-right: var(--space-2, 0.5rem);
+}
+
+/* ============================================
+   BOOKING WIDGET (Homepage)
+   ============================================ */
+
+.booking-section {
+    padding: var(--section-padding-compact, var(--spacing-lg, 24px)) 0;
+    background: transparent;
+}
+
+.booking-widget-container {
+    max-width: var(--container-xl, 1280px);
+    margin: 0 auto;
+    padding: 0 var(--spacing-md, 16px);
+}
+
+/* ============================================
+   FORM SECTION TITLES
+   ============================================ */
+
+.form-section-title {
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    font-size: var(--text-xl, 1.25rem);
+    font-weight: var(--font-semibold, 600);
+    color: var(--color-text-primary, #1A1A1A);
+    margin-bottom: var(--spacing-md, 16px);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+}
+
+.form-section-title i {
+    color: var(--color-primary, #8B7355);
+}
+
+/* ============================================
+   AVAILABILITY MESSAGE BANNER
+   Sits inside .room-selection grid — must span full width.
+   ============================================ */
+
+.availability-message {
+    grid-column: 1 / -1;
+    /* span all grid columns */
+    display: none;
+    /* JS sets to flex when shown */
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.65;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    animation: avail-msg-in 0.25s ease both;
+    border-left: 4px solid transparent;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+@keyframes avail-msg-in {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Type variants */
+.availability-message--error {
+    background: #FEF2F2;
+    border-left-color: #E53E3E;
+    color: #7B1D1D;
+}
+
+.availability-message--warning {
+    background: #FFFBEB;
+    border-left-color: var(--color-lux-gold, #B18247);
+    color: #78350F;
+}
+
+.availability-message--success {
+    background: #F0FDF4;
+    border-left-color: #22C55E;
+    color: #14532D;
+}
+
+/* Icon column */
+.availability-message__icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    margin-top: 1px;
+}
+
+.availability-message--error .availability-message__icon {
+    background: rgba(229, 62, 62, 0.12);
+    color: #E53E3E;
+}
+
+.availability-message--warning .availability-message__icon {
+    background: rgba(177, 130, 71, 0.14);
+    color: var(--color-lux-gold, #B18247);
+}
+
+.availability-message--success .availability-message__icon {
+    background: rgba(34, 197, 94, 0.12);
+    color: #22C55E;
+}
+
+/* Tip pill nested inside the message */
+.availability-message__tip {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.availability-message--warning .availability-message__tip {
+    background: rgba(177, 130, 71, 0.08);
+}
+
+.availability-message--error .availability-message__tip {
+    background: rgba(229, 62, 62, 0.06);
+}
+
+/* ============================================
+   ROOM NOT AVAILABLE MODAL  (#availabilityModal)
+   ============================================ */
+
+/* The icon circle at the top of the modal */
+.avail-modal__icon-wrap {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #FEE2E2, #FCA5A5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    box-shadow: 0 4px 20px rgba(229, 62, 62, 0.25);
+    animation: avail-icon-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes avail-icon-pop {
+    from {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.avail-modal__icon-wrap i {
+    font-size: 28px;
+    color: #DC2626;
+}
+
+.avail-modal__body {
+    padding: 40px 36px 28px;
+    text-align: center;
+}
+
+.avail-modal__title {
+    font-family: var(--font-heading, 'Cormorant Garamond', Georgia, serif);
+    font-size: clamp(22px, 4vw, 30px);
+    font-weight: 500;
+    color: var(--color-lux-ink, #231F1C);
+    margin: 0 0 10px;
+    letter-spacing: 0.02em;
+}
+
+.avail-modal__message {
+    font-size: 15px;
+    color: var(--color-text-secondary, #5E554D);
+    line-height: 1.65;
+    margin: 0 0 24px;
+}
+
+/* Suggested options box */
+.avail-modal__suggestions {
+    background: linear-gradient(135deg,
+            rgba(177, 130, 71, 0.07),
+            rgba(177, 130, 71, 0.03));
+    border: 1px solid rgba(177, 130, 71, 0.2);
+    border-left: 3px solid var(--color-lux-gold, #B18247);
+    border-radius: 10px;
+    padding: 16px 20px;
+    text-align: left;
+    margin-bottom: 0;
+}
+
+.avail-modal__suggestions-title {
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-lux-gold, #B18247);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.avail-modal__suggestions ul {
+    margin: 0;
+    padding: 0 0 0 16px;
+    list-style: none;
+}
+
+.avail-modal__suggestions ul li {
+    position: relative;
+    font-size: 14px;
+    color: var(--color-text-secondary, #5E554D);
+    line-height: 1.6;
+    padding: 3px 0;
+}
+
+.avail-modal__suggestions ul li::before {
+    content: '';
+    position: absolute;
+    left: -14px;
+    top: 10px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--color-lux-gold, #B18247);
+}
+
+/* Footer button */
+.avail-modal__footer {
+    padding: 0 36px 36px;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+}
+
+/* Close button in modal header */
+.avail-modal__close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--color-text-secondary, #5E554D);
+    transition: background 0.15s, color 0.15s;
+    line-height: 1;
+}
+
+.avail-modal__close:hover {
+    background: rgba(0, 0, 0, 0.12);
+    color: var(--color-lux-ink, #231F1C);
+}
+
+/* Wrapper card inside the modal overlay */
+#availabilityModal .modal__wrapper {
+    max-width: 480px;
+    position: relative;
+    overflow: visible;
+}
+
+/* ============================================
+   ROOM SELECTION
+   ============================================ */
+
+.room-selection {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-md, 16px);
+    margin-bottom: var(--spacing-lg, 24px);
+}
+
+.room-option {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: var(--spacing-md, 16px);
+    border: 2px solid var(--color-border, #E8E4DD);
+    border-radius: var(--radius-md, 8px);
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--color-surface, #FFFFFF);
+    overflow: hidden;
+}
+
+.room-option::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.1), rgba(139, 115, 85, 0.05));
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+.room-option:hover {
+    border-color: var(--color-primary, #8B7355);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(139, 115, 85, 0.15);
+}
+
+.room-option:hover::before {
+    opacity: 0.5;
+}
+
+.room-option.selected {
+    border-color: var(--color-primary, #8B7355);
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.12), rgba(139, 115, 85, 0.05));
+    box-shadow: 0 6px 20px rgba(139, 115, 85, 0.2);
+    transform: translateY(-2px);
+}
+
+.room-option.selected::before {
+    opacity: 1;
+}
+
+.room-option.selected::after {
+    content: '✓';
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    top: auto;
+    width: 28px;
+    height: 28px;
+    background: var(--color-primary, #8B7355);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 0;
+    animation: checkPop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes checkPop {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    50% {
+        transform: scale(1.2);
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.room-option.selected .room-price-amount {
+    color: var(--color-primary, #8B7355);
+}
+
+.room-option.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.room-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+}
+
+.room-option__thumb {
+    flex-shrink: 0;
+    width: 88px;
+    height: 88px;
+    border-radius: var(--radius-sm, 6px);
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+.room-option__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.4s ease;
+}
+
+.room-option:hover .room-option__thumb img {
+    transform: scale(1.05);
+}
+
+.room-option .room-info {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.room-option.selected .room-info {
+    transform: translateX(-4px);
+}
+
+.room-option .room-price {
+    flex-shrink: 0;
+    text-align: right;
+    position: relative;
+    z-index: 1;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.room-option.selected .room-price {
+    transform: scale(1.05);
+}
+
+/* Disabled / unavailable state */
+.room-option-disabled {
+    opacity: 0.55;
+    pointer-events: none;
+    cursor: not-allowed;
+    filter: grayscale(0.2);
+    border-style: dashed !important;
+    border-color: var(--color-border, #E8E4DD) !important;
+    background: var(--color-lux-clay-50, #F3ECE4) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.room-option-disabled::before {
+    display: none;
+}
+
+.room-option-disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Unavailable badge — absolute so it doesn't become a flex item */
+.unavailable-badge {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(94, 85, 77, 0.09);
+    border: 1px solid rgba(94, 85, 77, 0.2);
+    color: var(--color-text-secondary, #5E554D);
+    font-size: 10px;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* ============================================
+   BOOKING TYPE SELECTION
+   ============================================ */
+
+.booking-type-selection {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-md, 16px);
+    margin-bottom: var(--spacing-md, 16px);
+}
+
+.booking-type-option {
+    position: relative;
+    padding: var(--spacing-lg, 24px);
+    border: 2px solid var(--color-border, #E8E4DD);
+    border-radius: var(--radius-lg, 12px);
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--color-surface, #FFFFFF);
+    overflow: hidden;
+}
+
+.booking-type-option::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.1), rgba(139, 115, 85, 0.03));
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+.booking-type-option:hover {
+    border-color: var(--color-primary, #8B7355);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(139, 115, 85, 0.15);
+}
+
+.booking-type-option:hover::before {
+    opacity: 0.5;
+}
+
+.booking-type-option.selected,
+.booking-type-option--selected {
+    border-color: var(--color-primary, #8B7355);
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.12), rgba(139, 115, 85, 0.05));
+    box-shadow: 0 8px 25px rgba(139, 115, 85, 0.2);
+    transform: translateY(-2px);
+}
+
+.booking-type-option.selected::before,
+.booking-type-option--selected::before {
+    opacity: 1;
+}
+
+.booking-type-option.selected::after,
+.booking-type-option--selected::after {
+    content: '✓';
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    background: var(--color-primary, #8B7355);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+    animation: checkPop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.booking-type-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+}
+
+.booking-type-content {
+    position: relative;
+    z-index: 1;
+}
+
+.booking-type-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 0.75rem);
+    margin-bottom: var(--space-3, 0.75rem);
+}
+
+.booking-type-header i {
+    font-size: 1.5rem;
+    color: var(--color-primary, #8B7355);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.booking-type-option.selected .booking-type-header i,
+.booking-type-option--selected .booking-type-header i {
+    transform: scale(1.1);
+}
+
+.booking-type-header h4 {
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    font-size: var(--text-xl, 1.25rem);
+    font-weight: 600;
+    color: var(--color-text-primary, #1A1A1A);
+    margin: 0;
+}
+
+.booking-type-description {
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #6B5740);
+    line-height: 1.6;
+    margin-bottom: var(--space-3, 0.75rem);
+}
+
+.booking-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.booking-type-option.selected .booking-type-badge,
+.booking-type-option--selected .booking-type-badge {
+    transform: scale(1.05);
+}
+
+.booking-type-badge.recommended {
+    background: linear-gradient(135deg, #8B7355, #a68b5b);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(139, 115, 85, 0.3);
+}
+
+.booking-type-badge.info {
+    background: var(--booking-status-confirmed-bg);
+    color: var(--booking-status-confirmed-text);
+}
+
+/* ============================================
+   OCCUPANCY TYPE GUIDE (Informational Only)
+   ============================================ */
+
+.occupancy-type-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3, 0.75rem);
+}
+
+/* Occupancy guide - non-interactive informational display */
+.occupancy-type-group.occupancy-guide .occupancy-type-label {
+    cursor: default;
+    pointer-events: none;
+}
+
+.occupancy-type-label {
+    position: relative;
+    border: 2px solid var(--color-border, #E8E4DD);
+    border-radius: var(--radius-md, 8px);
+    padding: var(--space-4, 1rem);
+    display: grid;
+    gap: 6px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--color-surface, #FFFFFF);
+    overflow: hidden;
+}
+
+.occupancy-type-label::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.08), rgba(139, 115, 85, 0.02));
+    opacity: 0;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+/* Only apply hover effects to non-guide occupancy labels */
+.occupancy-type-group:not(.occupancy-guide) .occupancy-type-label:hover {
+    border-color: var(--color-primary, #8B7355);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(139, 115, 85, 0.12);
+}
+
+.occupancy-type-group:not(.occupancy-guide) .occupancy-type-label:hover::before {
+    opacity: 0.5;
+}
+
+.occupancy-type-label.selected {
+    border-color: var(--color-primary, #8B7355);
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.1), rgba(139, 115, 85, 0.04));
+    box-shadow: 0 4px 12px rgba(139, 115, 85, 0.15);
+}
+
+.occupancy-type-label.selected::before {
+    opacity: 1;
+}
+
+.occupancy-type-label.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    background: var(--color-primary, #8B7355);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+    animation: checkPop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.occupancy-type-label.occupancy-tier--disabled {
+    opacity: 0.38;
+    filter: grayscale(0.65);
+}
+
+.occupancy-type-label.occupancy-tier--disabled::after {
+    content: none;
+}
+
+.booking-split-notice {
+    display: grid;
+    gap: var(--space-2, 0.5rem);
+    margin-top: var(--space-2, 0.5rem);
+    padding: var(--space-4, 1rem);
+    border-radius: var(--radius-md, 8px);
+    border: 1px solid color-mix(in srgb, var(--color-lux-gold) 35%, transparent);
+    background: color-mix(in srgb, var(--color-lux-clay-50) 70%, var(--color-surface));
+    color: var(--color-text-secondary);
+}
+
+.booking-split-notice strong {
+    color: var(--color-text-primary);
+    font-size: clamp(0.95rem, 0.9rem + 0.2vw, 1.05rem);
+    font-weight: 500;
+}
+
+.booking-split-notice p {
+    margin: 0;
+    font-size: clamp(0.85rem, 0.8rem + 0.18vw, 0.95rem);
+    line-height: 1.55;
+}
+
+.booking-split-notice--warning {
+    border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+    background: color-mix(in srgb, var(--color-error) 8%, var(--color-surface));
+}
+
+.occupancy-type-label input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+}
+
+.occupancy-type-label strong {
+    font-size: var(--text-base, 1rem);
+    color: var(--color-text-primary, #1A1A1A);
+}
+
+.occupancy-type-label span {
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #6B5740);
+}
+
+.price-display {
+    font-weight: 600;
+    color: var(--color-primary, #8B7355);
+    font-size: var(--text-base, 1rem);
+}
+
+/* ============================================
+   CALENDAR LEGEND + AVAILABILITY COLOURS
+   ============================================ */
+
+.calendar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3, 0.75rem);
+    margin: var(--space-4, 1rem) 0;
+    padding: var(--space-3, 0.75rem);
+    border: 1px solid var(--color-border, #E8E4DD);
+    border-radius: var(--radius-md, 8px);
+    background: #fff;
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: var(--color-text-secondary, #6B5740);
+}
+
+.legend-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.legend-color.available {
+    background: var(--booking-status-checkedin-bg);
+}
+
+.legend-color.booked {
+    background: #ff9800;
+}
+
+.legend-color.blocked {
+    background: var(--booking-status-blocked-bg);
+}
+
+.legend-color.selected {
+    background: var(--booking-status-confirmed-bg);
+}
+
+/* Blocked dates - manually blocked from admin (red/pink) */
+.flatpickr-day.blocked-date,
+.flatpickr-day.flatpickr-disabled.blocked-date {
+    background: var(--booking-status-blocked-bg) !important;
+    border-color: #e7b5bb !important;
+    color: var(--booking-status-blocked-text) !important;
+    opacity: 1 !important;
+}
+
+/* Booked dates - fully booked from availability check (orange) */
+.flatpickr-day.booked-date,
+.flatpickr-day.flatpickr-disabled.booked-date {
+    background: #ff9800 !important;
+    border-color: #f57c00 !important;
+    color: #fff !important;
+    opacity: 1 !important;
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange {
+    background: var(--booking-status-confirmed-bg) !important;
+    border-color: #9dd0dd !important;
+    color: var(--booking-status-confirmed-text) !important;
+}
+
+.flatpickr-day.today {
+    border-color: var(--color-primary, #8B7355) !important;
+}
+
+.blocked-indicator {
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--booking-status-blocked-text);
+}
+
+.booked-indicator {
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #fff;
+}
+
+#secondRoomSuggestion {
+    display: none;
+    margin-top: var(--space-3, 0.75rem);
+    padding: var(--space-3, 0.75rem);
+    border-left: 4px solid var(--color-primary, #8B7355);
+    background: #fff;
+    border-radius: var(--radius-md, 8px);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+    .booking-header h1 {
+        font-size: var(--text-3xl, 1.875rem);
+    }
+
+    .booking-form-card {
+        margin: 0 var(--spacing-sm, 8px);
+    }
+
+    .room-selection {
+        grid-template-columns: 1fr;
+    }
+
+    .occupancy-type-group {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-type-selection {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-type-option {
+        padding: var(--spacing-md, 16px);
+    }
+
+    .booking-type-header {
+        flex-wrap: wrap;
+    }
+
+    .booking-type-description {
+        font-size: 0.85rem;
+    }
+
+    .booking-summary {
+        padding: var(--spacing-md, 16px);
+    }
+
+    .summary-row span:first-child {
+        font-size: 0.85rem;
+    }
+
+    .summary-row span:last-child {
+        font-size: 0.85rem;
+    }
+}
+
+/* ============================================
+   BOOKING CONFIRMATION PAGE
+   ============================================ */
+
+.confirmation-page {
+    background: linear-gradient(180deg, #FAF8F5 0%, #FFFFFF 100%);
+    min-height: 100vh;
+}
+
+.confirmation-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--spacing-lg, 24px);
+    width: min(100%, 800px);
+}
+
+.success-icon {
+    text-align: center;
+    margin-bottom: var(--spacing-lg, 24px);
+}
+
+.success-icon i {
+    font-size: 80px;
+    color: var(--color-success, #28A745);
+    animation: successPop 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.success-icon.tentative i {
+    color: var(--color-warning, #FFC107);
+}
+
+@keyframes successPop {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    50% {
+        transform: scale(1.2);
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.confirmation-card {
+    background: var(--color-surface, #FFFFFF);
+    border-radius: var(--radius-xl, 16px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+    padding: var(--spacing-xl, 32px);
+    text-align: center;
+    overflow: hidden;
+}
+
+.confirmation-card h1 {
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    font-size: var(--text-3xl, 1.875rem);
+    font-weight: 600;
+    color: var(--color-text-primary, #1A1A1A);
+    margin-bottom: var(--space-2, 0.5rem);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3, 0.75rem);
+    flex-wrap: wrap;
+}
+
+.confirmation-card .subtitle {
+    font-size: var(--text-lg, 1.125rem);
+    color: var(--color-text-secondary, #6B5740);
+    margin-bottom: var(--spacing-lg, 24px);
+}
+
+/* Booking Type Indicator */
+.booking-type-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.booking-type-indicator.standard {
+    background: linear-gradient(135deg, #28A745, #34CE57);
+    color: white;
+}
+
+.booking-type-indicator.tentative {
+    background: linear-gradient(135deg, #FFC107, #FFD54F);
+    color: #5D4E37;
+}
+
+/* Tentative Badge */
+.tentative-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #FFF3CD, #FFE69C);
+    color: #856404;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: var(--spacing-lg, 24px);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+}
+
+.tentative-badge i {
+    font-size: 1.2rem;
+}
+
+/* Booking Reference Box */
+.booking-reference-box {
+    background: linear-gradient(135deg, var(--color-primary, #8B7355), #6f5b43);
+    color: white;
+    padding: var(--spacing-lg, 24px);
+    border-radius: var(--radius-lg, 12px);
+    margin-bottom: var(--spacing-lg, 24px);
+}
+
+.booking-reference-box label {
+    display: block;
+    font-size: var(--text-sm, 0.875rem);
+    opacity: 0.9;
+    margin-bottom: var(--space-2, 0.5rem);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.reference-number {
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    font-size: var(--text-3xl, 1.875rem);
+    font-weight: 700;
+    letter-spacing: 2px;
+}
+
+/* Booking Details Grid */
+.booking-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+    gap: var(--spacing-md, 16px);
+    text-align: left;
+    padding: var(--spacing-lg, 24px);
+    background: #FAF8F5;
+    border-radius: var(--radius-lg, 12px);
+    margin-bottom: var(--spacing-lg, 24px);
+    min-width: 0;
+}
+
+.detail-item {
+    padding: var(--space-3, 0.75rem);
+    min-width: 0;
+    max-width: 100%;
+}
+
+.detail-item.full-width {
+    grid-column: 1 / -1;
+    background: white;
+    border-radius: var(--radius-md, 8px);
+    padding: var(--spacing-md, 16px);
+    text-align: center;
+}
+
+.detail-item label {
+    display: block;
+    font-size: var(--text-xs, 0.75rem);
+    font-weight: 600;
+    color: var(--color-text-secondary, #6B5740);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--space-1, 0.25rem);
+}
+
+.detail-item .value {
+    font-size: var(--text-base, 1rem);
+    font-weight: 500;
+    color: var(--color-text-primary, #1A1A1A);
+    line-height: 1.45;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.detail-item.full-width .value {
+    font-size: var(--text-lg, 1.125rem);
+}
+
+/* Tentative Info Box */
+.tentative-info-box {
+    background: linear-gradient(135deg, #FFF8E1, #FFECB3);
+    border: 2px solid #FFD54F;
+    border-radius: var(--radius-lg, 12px);
+    padding: var(--spacing-lg, 24px);
+    margin-bottom: var(--spacing-lg, 24px);
+    text-align: left;
+}
+
+.tentative-info-box h3 {
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    font-size: var(--text-xl, 1.25rem);
+    color: #856404;
+    margin: 0 0 var(--space-3, 0.75rem) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+}
+
+.tentative-info-box p {
+    color: #6D5A00;
+    font-size: var(--text-sm, 0.875rem);
+    line-height: 1.6;
+    margin: 0 0 var(--space-3, 0.75rem) 0;
+}
+
+.tentative-info-box .expires-at {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #856404;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: var(--text-sm, 0.875rem);
+}
+
+/* Payment Info */
+.payment-info {
+    background: #E8F4FD;
+    border-radius: var(--radius-lg, 12px);
+    padding: var(--spacing-lg, 24px);
+    margin-bottom: var(--spacing-lg, 24px);
+    text-align: left;
+}
+
+.payment-info h3 {
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    font-size: var(--text-xl, 1.25rem);
+    color: #0C5460;
+    margin: 0 0 var(--space-3, 0.75rem) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+}
+
+.payment-info p {
+    color: #0A4A5C;
+    font-size: var(--text-sm, 0.875rem);
+    line-height: 1.8;
+    margin: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-3, 0.75rem);
+    margin-bottom: var(--spacing-lg, 24px);
+}
+
+.action-buttons .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-radius: var(--radius-md, 8px);
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.action-buttons .btn-secondary {
+    background: white;
+    color: var(--color-text-primary, #1A1A1A);
+    border: 2px solid var(--color-border, #E8E4DD);
+}
+
+.action-buttons .btn-secondary:hover {
+    background: var(--color-bg-light, #F8F9FA);
+    border-color: var(--color-primary, #8B7355);
+    transform: translateY(-2px);
+}
+
+.action-buttons .btn-primary {
+    background: linear-gradient(135deg, var(--color-primary, #8B7355), #6f5b43);
+    color: white;
+    border: none;
+}
+
+.action-buttons .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(139, 115, 85, 0.3);
+}
+
+.action-buttons .btn-whatsapp {
+    background: linear-gradient(135deg, #25D366, #128C7E);
+    color: white;
+    border: none;
+}
+
+.action-buttons .btn-whatsapp:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(37, 211, 102, 0.3);
+}
+
+/* Next Steps */
+.next-steps {
+    background: #FAF8F5;
+    border-radius: var(--radius-lg, 12px);
+    padding: var(--spacing-lg, 24px);
+    text-align: left;
+}
+
+.next-steps h3 {
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    font-size: var(--text-xl, 1.25rem);
+    color: var(--color-text-primary, #1A1A1A);
+    margin: 0 0 var(--spacing-md, 16px) 0;
+}
+
+.next-steps ol {
+    margin: 0;
+    padding-left: var(--spacing-lg, 24px);
+}
+
+.next-steps li {
+    color: var(--color-text-secondary, #6B5740);
+    font-size: var(--text-sm, 0.875rem);
+    line-height: 1.8;
+    margin-bottom: var(--space-3, 0.75rem);
+    padding-left: var(--space-2, 0.5rem);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.next-steps li strong {
+    color: var(--color-text-primary, #1A1A1A);
+}
+
+@media (max-width: 480px) {
+    .booking-header h1 {
+        font-size: var(--text-2xl, 1.5rem);
+    }
+
+    .booking-header p {
+        font-size: var(--text-base, 1rem);
+    }
+
+    .form-section-title {
+        font-size: var(--text-lg, 1.125rem);
+    }
+
+    .room-option {
+        padding: var(--spacing-sm, 12px);
+    }
+
+    .room-option__thumb {
+        width: 64px;
+        height: 64px;
+    }
+
+    .room-option.selected::after {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+        bottom: 8px;
+        right: 8px;
+        top: auto;
+    }
+
+    .booking-type-option.selected::after,
+    .booking-type-option--selected::after {
+        width: 26px;
+        height: 26px;
+        font-size: 14px;
+        top: 12px;
+        right: 12px;
+    }
+
+    .occupancy-type-label.selected::after {
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+        top: 6px;
+        right: 6px;
+    }
+
+    .booking-type-badge {
+        font-size: 0.75rem;
+        padding: 5px 10px;
+    }
+
+    /* Confirmation Page Responsive */
+    .confirmation-container {
+        padding: var(--spacing-md, 16px);
+    }
+
+    .confirmation-card {
+        padding: var(--spacing-lg, 24px);
+    }
+
+    .confirmation-card h1 {
+        font-size: var(--text-2xl, 1.5rem);
+    }
+
+    .success-icon i {
+        font-size: 60px;
+    }
+
+    .booking-details-grid {
+        grid-template-columns: 1fr;
+        padding: var(--spacing-md, 16px);
+    }
+
+    .reference-number {
+        font-size: var(--text-2xl, 1.5rem);
+    }
+
+    .action-buttons {
+        flex-direction: column;
+    }
+
+    .action-buttons .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 360px) {
+    .booking-details-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Rate Plan Badge ─────────────────────────────────────────────── */
+.rate-plan-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-family: var(--font-body, 'Jost', sans-serif);
+    font-size: clamp(0.8rem, 1.5vw, 0.9rem);
+    font-weight: 500;
+    width: 100%;
+}
+
+.rate-plan-badge--discount {
+    background: rgba(34, 139, 34, 0.08);
+    border: 1px solid rgba(34, 139, 34, 0.25);
+    color: #1a6e1a;
+}
+
+.rate-plan-badge--surcharge {
+    background: rgba(178, 130, 71, 0.1);
+    border: 1px solid rgba(178, 130, 71, 0.3);
+    color: var(--color-lux-gold, #B18247);
+}
+
+.rate-plan-badge__amount {
+    font-weight: 700;
+    margin-left: auto;
+}
+
+.summary-discount {
+    color: #1a6e1a;
+    font-weight: 600;
+}
+
+/* ── Package Selection ────────────────────────────────────────────── */
+.package-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px;
+    border: 1.5px solid rgba(139, 115, 85, 0.2);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: border-color var(--transition-base, 0.2s ease),
+        box-shadow var(--transition-base, 0.2s ease),
+        background var(--transition-base, 0.2s ease);
+    background: var(--color-background, #F7F3EE);
+}
+
+.package-option:hover {
+    border-color: var(--color-lux-gold, #B18247);
+    box-shadow: 0 2px 8px rgba(178, 130, 71, 0.15);
+    transform: translateY(-2px);
+}
+
+.package-option.selected {
+    border-color: var(--color-lux-gold, #B18247);
+    background: rgba(178, 130, 71, 0.06);
+    box-shadow: 0 2px 12px rgba(178, 130, 71, 0.2);
+}
+
+.package-option input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-lux-gold, #B18247);
+    flex-shrink: 0;
+    margin-top: 2px;
+    cursor: pointer;
+}
+
+.package-option__body {
+    flex: 1;
+    min-width: 0;
+}
+
+.package-option__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.package-option__icon {
+    color: var(--color-lux-gold, #B18247);
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.package-option__name {
+    font-family: var(--font-heading, 'Cormorant Garamond', serif);
+    font-size: clamp(1rem, 2vw, 1.15rem);
+    font-weight: 600;
+    color: var(--color-text-primary, #2A2723);
+    flex: 1;
+}
+
+.package-option__price {
+    font-weight: 700;
+    color: var(--color-lux-gold, #B18247);
+    font-size: clamp(0.9rem, 1.8vw, 1rem);
+    white-space: nowrap;
+}
+
+.package-option__price--free {
+    font-weight: 600;
+    font-size: clamp(0.8rem, 1.6vw, 0.9rem);
+    color: #1f7a42;
+    background: rgba(31, 122, 66, 0.1);
+    border: 1px solid rgba(31, 122, 66, 0.25);
+    padding: 2px 10px;
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.package-option__desc {
+    font-size: clamp(0.78rem, 1.4vw, 0.87rem);
+    color: var(--color-text-secondary, #5E554D);
+    margin: 6px 0 8px;
+    line-height: 1.5;
+}
+
+.package-option__inclusions {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+}
+
+.package-option__inclusions li {
+    font-size: 0.78rem;
+    padding: 2px 8px;
+    background: rgba(139, 115, 85, 0.08);
+    border-radius: 20px;
+    color: var(--color-text-secondary, #5E554D);
+    white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+    .package-option {
+        flex-direction: column;
+    }
+
+    .package-option__header {
+        flex-wrap: wrap;
+    }
+
+    .package-option__price {
+        margin-left: auto;
+    }
+}
+
+/* ============================================
+   BOOKING PAGE — main-content responsive fixes
+   Full fluid scaling 320px → 4K
+   ============================================ */
+
+.booking-page main {
+    padding-top: clamp(80px, 10vw, 104px);
+    padding-bottom: clamp(40px, 6vw, 80px);
+    background: var(--color-background, #F7F3EE);
+    min-height: 100dvh;
+}
+
+.booking-page .main-content {
+    max-width: 1100px;
+    width: 100%;
+    margin-inline: auto;
+    padding-inline: clamp(12px, 4vw, 48px);
+    padding-block: clamp(16px, 3vw, 40px);
+    box-sizing: border-box;
+}
+
+.booking-page .booking-header {
+    text-align: center;
+    margin-bottom: clamp(20px, 4vw, 40px);
+}
+
+.booking-page .booking-header h1 {
+    font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+    font-size: clamp(1.6rem, 4vw, 2.5rem);
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    margin-bottom: 8px;
+}
+
+.booking-page .booking-header p {
+    font-size: clamp(0.875rem, 1.5vw, 1rem);
+    max-width: 520px;
+    margin-inline: auto;
+}
+
+/* Booking form card fluid sizing — matches wrapper, no inner cap */
+.booking-page .booking-form-card {
+    max-width: 100%;
+    width: 100%;
+    margin-inline: auto;
+    box-sizing: border-box;
+}
+
+/* Form sections inner padding — generous breathing room */
+.booking-page .form-section {
+    padding-inline: clamp(28px, 5vw, 56px);
+    padding-block: clamp(32px, 4vw, 48px);
+}
+
+/* ── Breakpoint overrides ─────────────────── */
+
+@media (max-width: 480px) {
+    .booking-page .main-content {
+        padding-inline: 12px;
+        padding-block: 14px;
+    }
+
+    .booking-page .booking-form-card {
+        border-radius: 12px;
+        margin-inline: 0;
+    }
+
+    /* Tighten section padding slightly on very small screens */
+    .booking-page .form-section {
+        padding-inline: 18px;
+        padding-block: 24px;
+    }
+
+    .booking-page .booking-header h1 {
+        font-size: clamp(1.4rem, 6vw, 1.8rem);
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    .booking-page .main-content {
+        padding-inline: clamp(14px, 3vw, 24px);
+    }
+
+    .booking-page .booking-form-card {
+        margin-inline: 0;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+    .booking-page .main-content {
+        padding-inline: clamp(24px, 4vw, 40px);
+    }
+}
+
+@media (min-width: 1024px) {
+    .booking-page .main-content {
+        padding-inline: clamp(32px, 3vw, 48px);
+    }
+}
+
+@media (min-width: 1440px) {
+    .booking-page .main-content {
+        max-width: 1100px;
+        padding-inline: clamp(32px, 4vw, 64px);
+    }
+}
+
+/* 4K / ultra-wide */
+@media (min-width: 1920px) {
+    .booking-page .main-content {
+        max-width: 1200px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .booking-page * {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+/* ============================================
+   CHILD-FRIENDLY ROOM BADGES
+   ============================================ */
+
+.room-child-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-family: var(--font-body, 'Jost', sans-serif);
+    font-size: clamp(11px, 1.1vw, 12px);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+.room-child-badge--yes {
+    background: rgba(34, 139, 34, 0.1);
+    color: #1a7a1a;
+    border: 1px solid rgba(34, 139, 34, 0.25);
+}
+
+.room-child-badge--no {
+    background: rgba(120, 120, 120, 0.08);
+    color: var(--color-text-secondary, #5E554D);
+    border: 1px solid rgba(120, 120, 120, 0.2);
+}
+
+/* When children are in the booking, non-child-friendly rooms get a subtle warning */
+.room-option--children-warn {
+    border-color: #e0a040 !important;
+}
+
+.room-option--children-warn .room-child-badge--no {
+    background: rgba(224, 160, 64, 0.15);
+    color: #8a5c00;
+    border-color: rgba(224, 160, 64, 0.4);
+}
+
+.room-option--children-warn .room-child-badge--no::before {
+    content: '\26A0\FE0F\A0';
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .room-option--children-warn {
+        transition: border-color 0.25s ease;
+    }
+}
+
+/* ============================================
+   BOOKING PAGE REDESIGN 2026
+   Two-column layout, vertical room cards, modern form
+   ============================================ */
+
+/* ── Single-column booking wrapper ──────────
+   No sidebar. Form full-width, summary below.
+   ─────────────────────────────────────────── */
+
+.booking-form-wrapper {
+    width: 100%;
+}
+
+/* ── Guest Details + Booking Type: side-by-side ── */
+
+.form-sections-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;                 /* no gap — sections share the card edge */
+    align-items: start;
+    position: relative;
+}
+
+/* Vertical divider between the two panels */
+.form-sections-row::after {
+    content: '';
+    position: absolute;
+    top: clamp(32px, 4vw, 48px);
+    bottom: clamp(32px, 4vw, 48px);
+    left: 50%;
+    width: 1px;
+    background: rgba(139, 115, 85, 0.12);
+    pointer-events: none;
+}
+
+.form-sections-row > .form-section {
+    border-bottom: none;    /* row has its own bottom border below */
+    border-top: none;
+}
+
+/* Outer border below the row (replaces individual section borders) */
+.form-sections-row {
+    border-bottom: 1px solid var(--color-border-light, #E8E4DD);
+}
+
+/* ── Booking bottom section (summary + submit) ─── */
+
+.booking-bottom-section {
+    margin-top: 32px;
+}
+
+/* Empty state (horizontal bar style) */
+.booking-bottom-empty {
+    background: linear-gradient(145deg, #FAF8F5 0%, #F5F3F0 100%);
+    border: 1px solid rgba(139, 115, 85, 0.15);
+    border-radius: 16px;
+    padding: 20px 24px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 0;
+}
+
+.booking-bottom-empty::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--color-primary, #8B7355), var(--gold, #C9A961), var(--color-primary, #8B7355));
+    opacity: 0.5;
+}
+
+.bottom-empty-inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.bottom-empty-inner h4 {
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-primary, #1A1A1A);
+    margin-bottom: 3px;
+}
+
+.bottom-empty-inner p {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6B5740);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.sidebar-empty-icon {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    background: linear-gradient(135deg, rgba(139, 115, 85, 0.1), rgba(201, 169, 97, 0.08));
+    border: 1.5px solid rgba(139, 115, 85, 0.2);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--color-primary, #8B7355);
+}
+
+/* ── Summary at bottom: horizontal section grid ── */
+
+.booking-summary {
+    display: none;
+    border-radius: 16px 16px 0 0;
+    margin-bottom: 0;
+    border-bottom: none;
+}
+
+.booking-summary.is-visible {
+    animation: summaryFadeIn 0.35s ease forwards;
+}
+
+@keyframes summaryFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.summary-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(139, 115, 85, 0.12);
+}
+
+.summary-top-bar h3 {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.summary-sections-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0 28px;
+    align-items: start;
+}
+
+.summary-sections-grid .summary-section {
+    border-right: 1px solid rgba(139, 115, 85, 0.1);
+    padding-right: 24px;
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.summary-sections-grid .summary-section:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+/* ── Booking action bar (submit + trust) ──── */
+
+.booking-action-bar {
+    background: var(--color-background, #F7F3EE);
+    border: 1px solid rgba(139, 115, 85, 0.15);
+    border-top: none;
+    border-radius: 0 0 16px 16px;
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.booking-action-bar .btn-submit {
+    width: 100%;
+    max-width: 480px;
+    border-radius: 12px;
+    margin: 0;
+}
+
+.booking-action-bar .booking-footer-info {
+    margin: 0;
+    border: none;
+    background: transparent;
+    font-size: 0.78rem;
+    text-align: center;
+}
+
+.booking-trust-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+}
+
+/* ── Enhanced booking header ─────────────── */
+
+.booking-header__eyebrow {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--color-primary, #8B7355);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.booking-header__eyebrow i {
+    font-size: 0.85rem;
+}
+
+.booking-header__sub {
+    font-size: 0.9375rem;
+    color: var(--color-text-secondary, #6B5740);
+    max-width: 480px;
+    margin: 0 auto 8px;
+}
+
+.booking-header__trust {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 14px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #6B5740);
+    flex-wrap: wrap;
+}
+
+.booking-header__trust span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.booking-header__trust i {
+    color: var(--gold, #C9A961);
+}
+
+.trust-divider {
+    color: var(--color-border, #D4CEC6);
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+/* ── Trust badges (bottom action bar) ───── */
+
+.booking-trust-row .trust-badge {
+    /* inherits from .trust-badge */
+}
+
+.trust-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    color: var(--color-text-secondary, #6B5740);
+    padding: 6px 8px;
+    background: white;
+    border: 1px solid rgba(139, 115, 85, 0.12);
+    border-radius: 8px;
+    line-height: 1.3;
+    font-weight: 500;
+}
+
+.trust-badge i {
+    color: var(--color-primary, #8B7355);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+/* ── Form section step numbers ───────────── */
+
+.booking-form-card {
+    counter-reset: booking-step;
+}
+
+.form-section--step .form-section-title {
+    gap: 12px;
+}
+
+.form-section--step .form-section-title::before {
+    counter-increment: booking-step;
+    content: counter(booking-step);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    background: var(--color-primary, #8B7355);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    letter-spacing: 0;
+    order: -1;
+}
+
+/* ── Room card vertical redesign ─────────── */
+
+.booking-page .room-option {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    gap: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    border-width: 1.5px;
+}
+
+.booking-page .room-option__thumb {
+    width: 100%;
+    height: 190px;
+    border-radius: 0;
+    margin: 0;
+    flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
+    background: linear-gradient(135deg, #EDE9E3, #E8E4DD);
+}
+
+.booking-page .room-option__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.55s ease;
+    display: block;
+}
+
+.booking-page .room-option:hover .room-option__thumb img {
+    transform: scale(1.07);
+}
+
+.room-option__thumb--placeholder {
+    background: linear-gradient(145deg, #EDE9E3 0%, #E0DDD7 100%);
+}
+
+.room-thumb-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    color: rgba(139, 115, 85, 0.25);
+}
+
+.booking-page .room-option .room-child-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 2;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.booking-page .room-option .room-info {
+    padding: 16px 18px 10px;
+    flex: 1;
+    transform: none;
+}
+
+.booking-page .room-option.selected .room-info {
+    transform: none;
+}
+
+.booking-page .room-option .room-info h4 {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    letter-spacing: 0.01em;
+}
+
+.booking-page .room-option .room-info p {
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary, #6B5740);
+    line-height: 1.5;
+    margin: 0 0 6px;
+}
+
+.booking-page .room-option .room-price {
+    padding: 12px 18px 14px;
+    text-align: left;
+    border-top: 1px solid var(--color-border, #E8E4DD);
+    flex-direction: column;
+    align-items: flex-start;
+    flex-shrink: 0;
+    background: rgba(250, 248, 245, 0.7);
+}
+
+.booking-page .room-option.selected .room-price {
+    background: rgba(139, 115, 85, 0.06);
+}
+
+.booking-page .room-option .room-price-amount {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--color-primary, #8B7355);
+    font-family: var(--font-serif, 'Cormorant Garamond', serif);
+    line-height: 1.1;
+    display: block;
+}
+
+.booking-page .room-option .room-price-period {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary, #6B5740);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: block;
+}
+
+.booking-page .room-option.selected::after {
+    top: 10px;
+    right: 10px;
+    bottom: auto;
+    z-index: 3;
+    width: 28px;
+    height: 28px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.booking-page .room-option:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 32px rgba(139, 115, 85, 0.18);
+}
+
+.booking-page .room-selection {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.booking-page .unavailable-badge {
+    position: absolute;
+    bottom: 50px;
+    left: 0;
+    right: 0;
+    margin: 0;
+    border-radius: 0;
+    text-align: center;
+}
+
+/* ── Form section visual improvements ────── */
+
+.booking-page .form-section {
+    border-bottom: 1px solid rgba(139, 115, 85, 0.08);
+}
+
+.booking-page .form-section:last-of-type {
+    border-bottom: none;
+}
+
+.booking-page .form-section-title {
+    font-size: 1.0625rem;
+    margin-bottom: 20px;
+    color: var(--navy, #1a2744);
+}
+
+.booking-form-column .booking-form-card {
+    box-shadow:
+        0 2px 12px rgba(0,0,0,0.05),
+        0 8px 32px rgba(139, 115, 85, 0.08);
+}
+
+/* ── Booking type cards grid ────────────── */
+
+.booking-page .booking-type-selection {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* ── Responsive ──────────────────────────── */
+
+/* Tablet: summary sections 2-col */
+@media (max-width: 900px) {
+    .summary-sections-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 16px 24px;
+    }
+
+    .summary-sections-grid .summary-section {
+        border-right: none;
+        padding-right: 0;
+        border-bottom: 1px solid rgba(139, 115, 85, 0.1);
+        padding-bottom: 16px;
+        margin-bottom: 0;
+    }
+
+    .summary-sections-grid .summary-section:nth-child(3),
+    .summary-sections-grid .summary-section:nth-child(4) {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .booking-page .booking-type-selection {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Mobile: stack form sections row, summary to 1-col */
+@media (max-width: 680px) {
+    .form-sections-row {
+        grid-template-columns: 1fr;
+    }
+
+    /* Hide the vertical pseudo-divider when stacked */
+    .form-sections-row::after {
+        display: none;
+    }
+
+    .form-sections-row > .form-section + .form-section {
+        border-top: 1px solid rgba(139, 115, 85, 0.1);
+    }
+
+    .summary-sections-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-sections-grid .summary-section {
+        border-right: none;
+        border-bottom: 1px solid rgba(139, 115, 85, 0.1);
+        padding-bottom: 14px;
+    }
+
+    .summary-sections-grid .summary-section:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .booking-page .booking-type-selection {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-page .room-option__thumb {
+        height: 160px;
+    }
+
+    .bottom-empty-inner {
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .booking-page .room-option__thumb {
+        height: 140px;
+    }
+
+    .booking-page .room-selection {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-action-bar {
+        padding: 16px;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   BOOKING PAGE COMPLETE REVAMP 2026
+   All rules scoped to .booking-page so they override earlier generic
+   rules without touching any other page that uses booking.css.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Break the monolithic card ──────────────────────────────── */
+.booking-page .booking-form-card {
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.booking-page .form-section {
+    background: #FFFFFF;
+    border-radius: 20px;
+    border: 1px solid rgba(139, 115, 85, 0.1) !important;
+    border-bottom: 1px solid rgba(139, 115, 85, 0.1) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 8px 28px rgba(139,115,85,0.06);
+    padding: clamp(28px, 4vw, 52px) clamp(24px, 4vw, 52px) !important;
+    transition: box-shadow 0.25s ease;
+    margin: 0 !important;
+}
+
+.booking-page .form-section:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06), 0 12px 40px rgba(139,115,85,0.1);
+    background: #FFFFFF;
+}
+
+.booking-page .form-section:last-of-type {
+    border-bottom: 1px solid rgba(139, 115, 85, 0.1) !important;
+}
+
+/* ── 2. Section titles — elegant serif, gold step circles ───────── */
+.booking-page .form-section-title {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    color: #1A1A1A;
+    margin-bottom: clamp(20px, 3vw, 32px);
+    padding-bottom: 0;
+    border-bottom: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    line-height: 1.2;
+}
+
+.booking-page .form-section-title i {
+    display: none;
+}
+
+.booking-page .form-section--step .form-section-title {
+    gap: 14px;
+}
+
+.booking-page .form-section--step .form-section-title::before {
+    counter-increment: booking-step;
+    content: counter(booking-step);
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-family: 'Jost', sans-serif;
+    background: linear-gradient(135deg, #8B7355, #C9A961);
+    box-shadow: 0 3px 10px rgba(139,115,85,0.35);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    letter-spacing: 0;
+    order: -1;
+}
+
+.booking-page .form-section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(139,115,85,0.2), transparent);
+    margin-left: 4px;
+    align-self: center;
+}
+
+/* ── 3. Form labels — uppercase, readable ───────────────────────── */
+.booking-page .form-group > label {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6B5740;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.booking-page .form-group > label.required::after {
+    content: ' *';
+    color: #C9A961;
+}
+
+/* ── 4. Form inputs — tall, spacious, clean ─────────────────────── */
+.booking-page .form-control {
+    padding: 14px 18px;
+    font-size: 0.9375rem;
+    border-radius: 12px;
+    border: 1.5px solid rgba(139,115,85,0.2);
+    background: #FAFAF9;
+    color: #1A1A1A;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    font-family: 'Jost', sans-serif;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.booking-page .form-control:focus {
+    border-color: #8B7355;
+    background: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(139,115,85,0.12);
+    outline: none;
+}
+
+.booking-page select.form-control {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238B7355' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-color: #FAFAF9;
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    padding-right: 44px;
+    cursor: pointer;
+}
+
+.booking-page textarea.form-control {
+    resize: vertical;
+    min-height: 100px;
+    line-height: 1.6;
+}
+
+.booking-page .form-hint {
+    font-size: 0.73rem;
+    color: #736149;
+    margin-top: 7px;
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    line-height: 1.5;
+}
+
+/* ── 5. Form grid — proper gap ───────────────────────────────────── */
+.booking-page .form-grid {
+    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* ── 6. form-sections-row — ONE unified card, two panels inside ─── */
+.booking-page .form-sections-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    align-items: start;
+    /* Card styling on the row itself */
+    background: #FFFFFF;
+    border-radius: 20px;
+    border: 1px solid rgba(139, 115, 85, 0.1) !important;
+    border-bottom: 1px solid rgba(139, 115, 85, 0.1) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 8px 28px rgba(139,115,85,0.06);
+    overflow: hidden;
+}
+
+.booking-page .form-sections-row::after {
+    display: none;
+}
+
+/* Strip individual card styling from children — they're panels, not cards */
+.booking-page .form-sections-row > .form-section {
+    background: transparent !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: clamp(28px, 4vw, 52px) clamp(24px, 4vw, 48px) !important;
+}
+
+/* Subtle divider between the two panels */
+.booking-page .form-sections-row > .form-section + .form-section {
+    border-left: 1px solid rgba(139, 115, 85, 0.1) !important;
+}
+
+/* ── 7. Room cards — spacious, image-led ────────────────────────── */
+.booking-page .room-selection {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.booking-page .room-option {
+    border-radius: 16px;
+    border: 1.5px solid rgba(139,115,85,0.12) !important;
+    overflow: hidden;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    cursor: pointer;
+}
+
+.booking-page .room-option:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(139,115,85,0.18);
+    border-color: rgba(139,115,85,0.3) !important;
+}
+
+.booking-page .room-option.selected {
+    border-color: #8B7355 !important;
+    box-shadow: 0 0 0 3px rgba(139,115,85,0.15), 0 8px 32px rgba(139,115,85,0.2);
+}
+
+.booking-page .room-option__thumb {
+    height: 210px;
+}
+
+.booking-page .room-info {
+    padding: 18px 20px 12px;
+}
+
+.booking-page .room-info h4 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #1A1A1A;
+    margin-bottom: 6px;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+}
+
+.booking-page .room-info > p {
+    font-size: 0.8rem;
+    color: #6B5740;
+    line-height: 1.5;
+    margin-bottom: 8px;
+}
+
+.booking-page .room-price {
+    padding: 12px 20px 16px;
+    border-top: 1px solid rgba(139,115,85,0.08);
+    background: rgba(250,248,245,0.5);
+}
+
+.booking-page .room-price-amount {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #8B7355;
+    font-family: 'Jost', sans-serif;
+}
+
+.booking-page .room-price-period {
+    font-size: 0.68rem;
+    color: #736149;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-family: 'Jost', sans-serif;
+}
+
+/* ── 8. Booking type cards ───────────────────────────────────────── */
+.booking-page .booking-type-option {
+    border: 1.5px solid rgba(139,115,85,0.15);
+    border-radius: 16px;
+    padding: 22px 20px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+}
+
+.booking-page .booking-type-option:hover {
+    border-color: rgba(139,115,85,0.35);
+    box-shadow: 0 4px 16px rgba(139,115,85,0.1);
+}
+
+.booking-page .booking-type-option:has(input:checked) {
+    border-color: #8B7355;
+    box-shadow: 0 0 0 3px rgba(139,115,85,0.12);
+    background: rgba(139,115,85,0.02);
+}
+
+.booking-page .booking-type-header h4 {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #1A1A1A;
+    margin: 0;
+}
+
+.booking-page .booking-type-description {
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: #6B5740;
+    margin-top: 10px;
+    margin-bottom: 0;
+}
+
+/* ── 9. Occupancy guide tiles ────────────────────────────────────── */
+.booking-page .occupancy-type-group {
+    gap: 10px;
+    display: flex;
+}
+
+.booking-page .occupancy-type-label {
+    border: 1.5px solid rgba(139,115,85,0.15);
+    border-radius: 12px;
+    padding: 14px 10px;
+    text-align: center;
+    transition: all 0.2s ease;
+    flex: 1;
+    cursor: default;
+}
+
+.booking-page .occupancy-type-label.selected {
+    border-color: #C9A961;
+    background: rgba(201,169,97,0.07);
+}
+
+/* ── 10. Booking bottom section ──────────────────────────────────── */
+.booking-page .booking-bottom-section {
+    margin-top: 20px;
+}
+
+.booking-page .booking-summary {
+    border-radius: 20px 20px 0 0;
+    border: 1px solid rgba(139,115,85,0.12) !important;
+    border-bottom: none !important;
+    background: #FFFFFF;
+}
+
+.booking-page .booking-action-bar {
+    border: 1px solid rgba(139,115,85,0.12);
+    border-top: none;
+    border-radius: 0 0 20px 20px;
+    background: #FFFFFF;
+    padding: 28px 40px;
+    gap: 18px;
+}
+
+.booking-page .booking-action-bar .btn-submit {
+    max-width: 520px;
+    padding: 18px 32px;
+    font-size: 1rem;
+    border-radius: 14px;
+    letter-spacing: 0.05em;
+}
+
+.booking-page .booking-bottom-empty {
+    border-radius: 20px;
+    border: 1px dashed rgba(139,115,85,0.25) !important;
+    background: rgba(250,248,245,0.6);
+    padding: 24px 32px;
+    box-shadow: none;
+}
+
+/* ── 11. Page header ─────────────────────────────────────────────── */
+.booking-page .booking-header {
+    text-align: center;
+    padding-bottom: 36px;
+    margin-bottom: 4px;
+}
+
+.booking-page .booking-header h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 300;
+    letter-spacing: 0.03em;
+    line-height: 1.1;
+    margin-bottom: 14px;
+}
+
+.booking-page .booking-header__sub {
+    font-size: 0.9375rem;
+    color: #6B5740;
+    max-width: 460px;
+    margin: 0 auto 16px;
+    line-height: 1.65;
+}
+
+/* ── 12. Room filter chips ───────────────────────────────────────── */
+.booking-page .rooms-filter {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+
+.booking-page .chip {
+    padding: 8px 18px;
+    border-radius: 100px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1.5px solid rgba(139,115,85,0.22);
+    color: #6B5740;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: 'Jost', sans-serif;
+}
+
+.booking-page .chip:hover {
+    border-color: #8B7355;
+    color: #8B7355;
+    background: rgba(139,115,85,0.05);
+}
+
+.booking-page .chip.active {
+    background: #8B7355;
+    color: #FFFFFF;
+    border-color: #8B7355;
+    box-shadow: 0 3px 10px rgba(139,115,85,0.3);
+}
+
+/* ── 13. Responsive ─────────────────────────────────────────────── */
+@media (max-width: 720px) {
+    .booking-page .form-sections-row {
+        grid-template-columns: 1fr;
+        /* stays one unified card, sections stack */
+    }
+
+    .booking-page .form-sections-row > .form-section + .form-section {
+        border-left: none !important;
+        border-top: 1px solid rgba(139, 115, 85, 0.1) !important;
+    }
+}
+
+@media (max-width: 680px) {
+    .booking-page .booking-form-card {
+        gap: 12px;
+    }
+
+    .booking-page .form-section {
+        border-radius: 16px;
+        padding: 24px 18px !important;
+    }
+
+    .booking-page .room-selection {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-page .booking-action-bar {
+        padding: 20px 18px;
+    }
+
+    .booking-page .booking-action-bar .btn-submit {
+        padding: 16px 20px;
+    }
+}
+}
+
+/* ── VISUAL FIXES ─────────────────────────────────────────────────────
+   Fix off-brand colours and refine booking type + occupancy cards
+   ──────────────────────────────────────────────────────────────────── */
+
+/* Badge: "No payment required yet" — was teal (confirmed-bg), now warm amber */
+.booking-page .booking-type-badge.info {
+    background: rgba(201, 169, 97, 0.12);
+    color: #7A5C2E;
+    border: 1px solid rgba(201, 169, 97, 0.3);
+}
+
+/* Badge: Recommended — slightly refined */
+.booking-page .booking-type-badge.recommended {
+    background: linear-gradient(135deg, #8B7355, #C9A961);
+    color: #fff;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    box-shadow: 0 2px 8px rgba(139,115,85,0.3);
+}
+
+/* Booking type cards — cleaner proportions */
+.booking-page .booking-type-option {
+    border-radius: 14px;
+    border: 1.5px solid rgba(139, 115, 85, 0.15);
+    padding: 18px 16px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    cursor: pointer;
+    background: #FDFCFA;
+    position: relative;
+    overflow: hidden;
+}
+
+.booking-page .booking-type-option:hover {
+    border-color: rgba(139, 115, 85, 0.4);
+    box-shadow: 0 4px 16px rgba(139, 115, 85, 0.12);
+    transform: translateY(-2px);
+}
+
+.booking-page .booking-type-option:has(input:checked),
+.booking-page .booking-type-option.selected {
+    border-color: #8B7355;
+    background: linear-gradient(145deg, rgba(139,115,85,0.05), rgba(201,169,97,0.04));
+    box-shadow: 0 0 0 3px rgba(139,115,85,0.1), 0 4px 16px rgba(139,115,85,0.12);
+    transform: none;
+}
+
+.booking-page .booking-type-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.booking-page .booking-type-header i {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(139, 115, 85, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8B7355;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.booking-page .booking-type-header h4 {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1A1A1A;
+    margin: 0;
+    letter-spacing: 0.01em;
+}
+
+.booking-page .booking-type-description {
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: #7A6A58;
+    margin: 0 0 12px;
+}
+
+/* Occupancy guide cards — tighter, more refined */
+.booking-page .occupancy-type-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.booking-page .occupancy-type-label {
+    border: 1.5px solid rgba(139, 115, 85, 0.15);
+    border-radius: 12px;
+    padding: 12px 8px;
+    text-align: center;
+    cursor: default;
+    transition: all 0.2s ease;
+    background: #FDFCFA;
+}
+
+.booking-page .occupancy-type-label strong {
+    display: block;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #1A1A1A;
+    margin-bottom: 2px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.booking-page .occupancy-type-label > span:not(.price-display) {
+    display: block;
+    font-size: 0.7rem;
+    color: #736149;
+    margin-bottom: 6px;
+}
+
+.booking-page .occupancy-type-label .price-display {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #8B7355;
+}
+
+.booking-page .occupancy-type-label.selected {
+    border-color: #C9A961;
+    background: linear-gradient(145deg, rgba(201,169,97,0.08), rgba(139,115,85,0.04));
+    box-shadow: 0 0 0 2px rgba(201,169,97,0.2);
+}
+
+/* ── ROOM CARD DEFINITIVE FIX ────────────────────────────────────────
+   Resolves overlapping info, badge positioning, and layout conflicts
+   from earlier rounds of styling. Uses specificity + !important where
+   earlier rules contain !important that would otherwise win.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* 1. Card container — clean vertical flex, no ambiguity */
+.booking-page .room-option {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    background: #FFFFFF !important;
+    border-radius: 16px !important;
+    border: 1.5px solid rgba(139,115,85,0.12) !important;
+    overflow: hidden !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04) !important;
+    cursor: pointer;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+}
+
+/* 2. Image — full width at top, fixed height, no border-radius (card clips) */
+.booking-page .room-option .room-option__thumb,
+.booking-page .room-option__thumb {
+    width: 100% !important;
+    height: 195px !important;
+    flex-shrink: 0 !important;
+    border-radius: 0 !important;
+    overflow: hidden;
+    position: relative;
+    background: linear-gradient(135deg, #EDE9E3, #E8E4DD);
+    margin: 0;
+}
+
+.booking-page .room-option .room-option__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.55s ease;
+}
+
+.booking-page .room-option:hover .room-option__thumb img {
+    transform: scale(1.06);
+}
+
+/* 3. Room info — normal block flow, flex column, NO position:absolute leakage */
+.booking-page .room-option .room-info {
+    flex: 1 1 auto !important;
+    padding: 14px 16px 10px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0;
+    position: static !important;
+    z-index: auto !important;
+    transform: none !important;
+    min-width: 0;
+}
+
+.booking-page .room-option.selected .room-info {
+    transform: none !important;
+}
+
+.booking-page .room-option .room-info h4 {
+    font-family: 'Cormorant Garamond', serif !important;
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    color: #1A1A1A !important;
+    margin: 0 0 5px !important;
+    letter-spacing: 0.01em;
+    line-height: 1.25;
+    white-space: normal;
+}
+
+.booking-page .room-option .room-info > p {
+    font-family: 'Jost', sans-serif !important;
+    font-size: 0.775rem !important;
+    color: #7A6A58 !important;
+    line-height: 1.5;
+    margin: 0 0 4px !important;
+    white-space: normal;
+}
+
+/* 4. Child badge — static flow inside room-info (NOT absolute-positioned)
+      This was the main culprit: absolute + top:10px put it over the image
+      from INSIDE room-info, causing double-badge-over-image overlap. */
+.booking-page .room-option .room-child-badge {
+    position: static !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px !important;
+    padding: 3px 9px !important;
+    border-radius: 20px;
+    font-size: 0.67rem !important;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    align-self: flex-start;
+    top: auto !important;
+    left: auto !important;
+    z-index: auto !important;
+}
+
+/* 5. Price strip — flex row: amount + "per night" on one line */
+.booking-page .room-option .room-price {
+    flex-shrink: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: baseline;
+    gap: 6px;
+    padding: 10px 16px 13px !important;
+    border-top: 1px solid rgba(139,115,85,0.09) !important;
+    background: rgba(250,248,245,0.6) !important;
+    text-align: left !important;
+    transform: none !important;
+    position: static !important;
+    z-index: auto !important;
+}
+
+.booking-page .room-option.selected .room-price {
+    background: rgba(139,115,85,0.06) !important;
+    transform: none !important;
+}
+
+.booking-page .room-option .room-price-amount {
+    font-family: 'Cormorant Garamond', serif !important;
+    font-size: 1.25rem !important;
+    font-weight: 700 !important;
+    color: #8B7355 !important;
+    line-height: 1;
+    display: inline !important;
+}
+
+.booking-page .room-option .room-price-period {
+    font-family: 'Jost', sans-serif !important;
+    font-size: 0.67rem !important;
+    color: #736149 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: inline !important;
+}
+
+/* 6. Selected checkmark — top-right corner over the image, never clipped */
+.booking-page .room-option.selected::after {
+    position: absolute !important;
+    top: 10px !important;
+    right: 10px !important;
+    bottom: auto !important;
+    left: auto !important;
+    z-index: 5 !important;
+    width: 26px !important;
+    height: 26px !important;
+    font-size: 13px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+}
+
+/* 7. Hover + selected card states */
+.booking-page .room-option:hover {
+    transform: translateY(-3px) !important;
+    box-shadow: 0 8px 28px rgba(139,115,85,0.18) !important;
+    border-color: rgba(139,115,85,0.3) !important;
+}
+
+.booking-page .room-option.selected {
+    border-color: #8B7355 !important;
+    box-shadow: 0 0 0 3px rgba(139,115,85,0.12), 0 6px 24px rgba(139,115,85,0.18) !important;
+    transform: none !important;
+}
+
+/* 8. Disabled */
+.booking-page .room-option.room-option-disabled {
+    transform: none !important;
+    box-shadow: none !important;
+    opacity: 0.55;
+}
+
+/* Section title consistency — Booking Type title same weight as others */
+.booking-page .form-section-title {
+    font-size: clamp(1.2rem, 2vw, 1.5rem);
+    font-weight: 400;
+    letter-spacing: 0.015em;
+}
+
+
+/* ── BOOKING SUMMARY COMPLETE REDESIGN ───────────────────────────────
+   Replaces the broken 4-column equal grid with a clean vertical layout.
+   All JS IDs preserved. Old .summary-sections-grid is hidden.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* Hide the old grid — new structure renders outside it */
+.summary-sections-grid { display: none !important; }
+
+/* Summary wrapper gets padding from its parent card */
+.booking-page #bookingSummary {
+    padding: 24px 28px 20px;
+}
+
+/* ── Top bar ── */
+.bsum-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(139,115,85,0.1);
+    flex-wrap: wrap;
+}
+
+.bsum-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #6B5740;
+}
+
+.bsum-title-icon {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #8B7355, #C9A961);
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 11px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(139,115,85,0.3);
+}
+
+.bsum-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 100px;
+    background: rgba(201,169,97,0.1);
+    border: 1px solid rgba(201,169,97,0.3);
+    color: #7A5C2E;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+/* ── Room hero ── */
+.bsum-room-hero {
+    margin-bottom: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(139,115,85,0.08);
+}
+
+.bsum-room-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.45rem;
+    font-weight: 500;
+    color: #1A1A1A;
+    line-height: 1.2;
+    margin-bottom: 6px;
+    letter-spacing: 0.01em;
+}
+
+.bsum-room-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.8rem;
+    color: #7A6A58;
+}
+
+.bsum-room-meta strong {
+    color: #8B7355;
+    font-weight: 700;
+}
+
+.bsum-per-night {
+    color: #736149;
+    font-size: 0.72rem;
+}
+
+.bsum-meta-dot {
+    color: rgba(139,115,85,0.25);
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+/* ── Dates row ── */
+.bsum-dates-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(139,115,85,0.08);
+    margin-bottom: 0;
+}
+
+.bsum-date-block {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.bsum-date-block--out {
+    align-items: flex-end;
+    text-align: right;
+}
+
+.bsum-date-label {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #736149;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.bsum-date-block--out .bsum-date-label {
+    justify-content: flex-end;
+}
+
+.bsum-date-val {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.0rem;
+    font-weight: 500;
+    color: #1A1A1A;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.bsum-nights-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, rgba(139,115,85,0.07), rgba(201,169,97,0.09));
+    border: 1px solid rgba(139,115,85,0.18);
+    border-radius: 12px;
+    padding: 10px 18px;
+    min-width: 68px;
+    text-align: center;
+}
+
+.bsum-nights-num {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: #8B7355;
+    line-height: 1;
+}
+
+.bsum-nights-lbl {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #736149;
+    margin-top: 2px;
+}
+
+/* ── Guests row ── */
+.bsum-guests-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.84rem;
+    color: #5E504A;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(139,115,85,0.08);
+}
+
+.bsum-guests-row > i {
+    color: #8B7355;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.bsum-child-charge {
+    color: #736149;
+    font-size: 0.78rem;
+}
+
+/* ── Detail rows (packages / rate plan) ── */
+.bsum-detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(139,115,85,0.07);
+    font-family: 'Jost', sans-serif;
+    font-size: 0.8rem;
+    color: #7A6A58;
+}
+
+/* ── Total block ── */
+.bsum-total-block {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 16px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.bsum-total-label {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.11em;
+    color: #6B5740;
+    margin-bottom: 5px;
+}
+
+.bsum-total-note {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.72rem;
+    color: #736149;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    line-height: 1.4;
+}
+
+.bsum-total-note--levy {
+    margin-top: 3px;
+}
+
+.bsum-total-amount {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: #8B7355;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+    .booking-page #bookingSummary {
+        padding: 18px 16px 16px;
+    }
+    .bsum-dates-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .bsum-date-block--out {
+        align-items: flex-start;
+        text-align: left;
+    }
+    .bsum-date-block--out .bsum-date-label {
+        justify-content: flex-start;
+    }
+    .bsum-nights-badge {
+        flex-direction: row;
+        gap: 6px;
+        padding: 8px 14px;
+        justify-content: flex-start;
+        width: fit-content;
+    }
+    .bsum-total-amount {
+        font-size: 1.65rem;
+    }
+    .bsum-total-block {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+}
+
+/* ── BOOKING TYPE CARD FIX ────────────────────────────────────────────
+   Fixes: wrapping title, double checkmark, oversized all-caps badge
+   ──────────────────────────────────────────────────────────────────── */
+
+/* Card layout — flex column, no padding on the label itself */
+.booking-page .booking-type-option {
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0 !important;
+    border: 1.5px solid rgba(139,115,85,0.15) !important;
+    border-radius: 14px !important;
+    overflow: hidden !important;
+    background: #FDFCFA !important;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+    position: relative;
+}
+
+.booking-page .booking-type-content {
+    padding: 18px 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    flex: 1;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--color-text-secondary, #6B5740);
+}
+
+/* Header: icon square on left, title right — no wrapping */
+.booking-page .booking-type-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.booking-page .booking-type-header i {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    border-radius: 8px;
+    background: rgba(139,115,85,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8B7355;
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.booking-page .booking-type-header h4 {
+    font-family: 'Jost', sans-serif !important;
+    font-size: 0.875rem !important;
+    font-weight: 700 !important;
+    color: #1A1A1A !important;
+    margin: 0 !important;
+    line-height: 1.3;
+    /* let it wrap gracefully if truly needed */
+    word-break: normal;
+}
+
+/* Description text */
+.booking-page .booking-type-description {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.775rem !important;
+    line-height: 1.6 !important;
+    color: #7A6A58 !important;
+    margin: 0 0 12px !important;
+}
+
+/* Badges — shared base: compact inline pill */
+.booking-page .booking-type-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    padding: 4px 11px !important;
+    border-radius: 100px !important;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.68rem !important;
+    font-weight: 700 !important;
+    text-transform: none !important;     /* kills the all-caps blowout */
+    letter-spacing: 0.04em !important;
+    width: auto !important;
+    align-self: flex-start !important;
+    white-space: nowrap;
+}
+
+/* Recommended badge */
+.booking-page .booking-type-badge.recommended {
+    background: linear-gradient(135deg, #8B7355, #C9A961) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(139,115,85,0.3) !important;
+}
+
+/* "No payment required yet" badge — warm amber, NOT teal */
+.booking-page .booking-type-badge.info {
+    background: rgba(201,169,97,0.12) !important;
+    color: #7A5C2E !important;
+    border: 1px solid rgba(201,169,97,0.35) !important;
+    box-shadow: none !important;
+    white-space: normal;
+}
+
+/* Hover + selected states */
+.booking-page .booking-type-option:hover {
+    border-color: rgba(139,115,85,0.4) !important;
+    box-shadow: 0 4px 16px rgba(139,115,85,0.1) !important;
+    transform: none !important;
+}
+
+.booking-page .booking-type-option.selected,
+.booking-page .booking-type-option:has(input:checked) {
+    border-color: #8B7355 !important;
+    background: linear-gradient(160deg, rgba(139,115,85,0.05), rgba(201,169,97,0.04)) !important;
+    box-shadow: 0 0 0 3px rgba(139,115,85,0.1) !important;
+}
+
+/* Selected icon tint */
+.booking-page .booking-type-option.selected .booking-type-header i,
+.booking-page .booking-type-option:has(input:checked) .booking-type-header i {
+    background: rgba(139,115,85,0.18);
+    color: #8B7355;
+}
+
+/* Kill the ::after checkmark — the header icon already signals selection;
+   the floating ✓ badge overlaps with it and looks like a bug */
+.booking-page .booking-type-option.selected::after,
+.booking-page .booking-type-option:has(input:checked)::after {
+    display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   TABLET FIX (481px – 1024px)
+   The form-sections-row was only stacking at 720px, leaving tablets
+   in a cramped 2-col layout (~270px per column). This block corrects
+   all layout, padding, and hidden-button issues for tablet sizes.
+   ══════════════════════════════════════════════════════════════════ */
+
+@media (min-width: 481px) and (max-width: 1024px) {
+
+    /* 1. Stack Guest Details + Booking Type into a single column */
+    .booking-page .form-sections-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    .booking-page .form-sections-row::after {
+        display: none !important;
+    }
+
+    .booking-page .form-sections-row > .form-section + .form-section {
+        border-left: none !important;
+        border-top: 1px solid rgba(139,115,85,0.1) !important;
+    }
+
+    /* 2. Reduce section padding so content breathes but doesn't cramp */
+    .booking-page .form-section {
+        padding-inline: clamp(20px, 4vw, 36px) !important;
+        padding-block: clamp(22px, 3vw, 36px) !important;
+    }
+
+    /* 3. Booking type cards: side-by-side is fine now that they're full-width */
+    .booking-page .booking-type-selection {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 14px;
+    }
+
+    /* 4. Occupancy guide tiles: always fit in a row with room to breathe */
+    .booking-page .occupancy-type-group {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 10px;
+    }
+
+    /* 5. Form grid: 2-col on tablet so inputs are readable */
+    .booking-page .form-grid {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+    }
+
+    /* 6. Action bar: comfortable padding, button always visible */
+    .booking-page .booking-action-bar {
+        padding: 22px 28px !important;
+    }
+
+    .booking-page .booking-action-bar .btn-submit {
+        max-width: 100% !important;
+        padding: 16px 24px !important;
+    }
+
+    /* 7. Summary padding */
+    .booking-page #bookingSummary {
+        padding: 20px 24px 18px !important;
+    }
+}
+
+/* Narrow tablets / large phones (481–767px): collapse booking type to 1-col */
+@media (min-width: 481px) and (max-width: 767px) {
+    .booking-page .booking-type-selection {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Tighter form-section padding at this range */
+    .booking-page .form-section {
+        padding-inline: 18px !important;
+        padding-block: 20px !important;
+    }
+
+    .booking-page .booking-action-bar {
+        padding: 18px !important;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SELECT YOUR ROOM — DEFINITIVE RESPONSIVE OVERHAUL
+   Explicit breakpoints for every device tier. All scoped to
+   .booking-page so nothing bleeds to other pages.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Base: the card is a vertical flex column ─────────────────── */
+.booking-page .room-option {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100%;
+}
+
+/* ── Filter chips row ─────────────────────────────────────────── */
+.booking-page .rooms-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+    align-items: center;
+}
+
+.booking-page .chip {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.booking-page .chip-count {
+    opacity: 0.65;
+    font-size: 0.85em;
+    font-weight: 400;
+}
+
+/* ── Grid: 3 columns on desktop ───────────────────────────────── */
+.booking-page .room-selection {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 18px !important;
+    margin-bottom: 0 !important;
+    align-items: stretch;
+}
+
+/* ── Thumbnail: fluid height ──────────────────────────────────── */
+.booking-page .room-option__thumb {
+    height: 190px !important;
+    flex-shrink: 0 !important;
+}
+
+/* ── Room info: readable at all sizes ─────────────────────────── */
+.booking-page .room-option .room-info h4 {
+    font-size: clamp(1rem, 1.5vw, 1.15rem) !important;
+}
+
+.booking-page .room-option .room-info > p {
+    font-size: 0.78rem !important;
+    line-height: 1.5;
+}
+
+/* ── Price strip always visible ───────────────────────────────── */
+.booking-page .room-option .room-price {
+    margin-top: auto;
+}
+
+/* ── Unavailable badge: full-width strip inside the price area ── */
+.booking-page .unavailable-badge {
+    position: static !important;
+    width: 100%;
+    border-radius: 0 !important;
+    text-align: center;
+    justify-content: center;
+    padding: 6px 12px !important;
+    margin: 0 !important;
+}
+
+/* ── Availability message spans full row ──────────────────────── */
+.booking-page .availability-message {
+    grid-column: 1 / -1 !important;
+    font-size: 0.875rem;
+}
+
+/* ══════════════════════════════════════
+   TABLET WIDE (769px – 1024px): 2 cols
+   ══════════════════════════════════════ */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .booking-page .room-selection {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 16px !important;
+    }
+
+    .booking-page .room-option__thumb {
+        height: 175px !important;
+    }
+
+    .booking-page .rooms-filter {
+        gap: 6px;
+        margin-bottom: 16px;
+    }
+}
+
+/* ══════════════════════════════════════
+   TABLET NARROW / PHABLET (481px – 768px): 2 cols then 1 col
+   ══════════════════════════════════════ */
+@media (min-width: 601px) and (max-width: 768px) {
+    .booking-page .room-selection {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 14px !important;
+    }
+
+    .booking-page .room-option__thumb {
+        height: 155px !important;
+    }
+
+    .booking-page .rooms-filter {
+        gap: 6px;
+        margin-bottom: 14px;
+    }
+
+    .booking-page .chip {
+        font-size: 0.67rem !important;
+        padding: 6px 14px !important;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 600px) {
+    .booking-page .room-selection {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+
+    .booking-page .room-option__thumb {
+        height: 170px !important;
+    }
+}
+
+/* ══════════════════════════════════════
+   MOBILE (≤480px): single column, horizontal card
+   ══════════════════════════════════════ */
+@media (max-width: 480px) {
+    .booking-page .room-selection {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+
+    /* Switch card to horizontal: thumb on left, info on right */
+    .booking-page .room-option {
+        flex-direction: row !important;
+        align-items: stretch !important;
+        min-height: 110px;
+    }
+
+    .booking-page .room-option .room-option__thumb {
+        width: 110px !important;
+        height: auto !important;
+        min-height: 110px !important;
+        flex-shrink: 0 !important;
+        border-radius: 16px 0 0 16px !important;
+    }
+
+    .booking-page .room-option .room-option__thumb img {
+        border-radius: 0 !important;
+    }
+
+    .booking-page .room-option .room-option__thumb--placeholder {
+        border-radius: 16px 0 0 16px !important;
+    }
+
+    /* Info + price stack vertically inside the right side */
+    .booking-page .room-option .room-info {
+        flex: 1 1 0 !important;
+        padding: 10px 12px 6px !important;
+        min-width: 0;
+    }
+
+    .booking-page .room-option .room-info h4 {
+        font-size: 0.9rem !important;
+        margin-bottom: 3px !important;
+    }
+
+    .booking-page .room-option .room-info > p {
+        font-size: 0.72rem !important;
+    }
+
+    .booking-page .room-option .room-child-badge {
+        font-size: 0.62rem !important;
+        padding: 2px 7px !important;
+        margin-top: 4px !important;
+    }
+
+    .booking-page .room-option .room-price {
+        padding: 6px 12px 10px !important;
+        border-top: 1px solid rgba(139,115,85,0.09) !important;
+        flex-direction: row !important;
+        align-items: baseline;
+        gap: 4px;
+        justify-content: flex-start;
+    }
+
+    .booking-page .room-option .room-price-amount {
+        font-size: 1rem !important;
+    }
+
+    .booking-page .room-option .room-price-period {
+        font-size: 0.6rem !important;
+    }
+
+    /* Selected checkmark: top-right corner */
+    .booking-page .room-option.selected::after {
+        top: 8px !important;
+        right: 8px !important;
+        width: 20px !important;
+        height: 20px !important;
+        font-size: 10px !important;
+    }
+
+    /* Filter chips: smaller on mobile */
+    .booking-page .chip {
+        font-size: 0.65rem !important;
+        padding: 5px 12px !important;
+        letter-spacing: 0.05em !important;
+    }
+
+    .booking-page .chip-count {
+        display: none; /* save space on mobile */
+    }
+
+    .booking-page .rooms-filter {
+        gap: 5px;
+        margin-bottom: 12px;
+    }
+}
+
+/* ══════════════════════════════════════
+   EXTRA SMALL (≤360px): tighter thumb
+   ══════════════════════════════════════ */
+@media (max-width: 360px) {
+    .booking-page .room-option .room-option__thumb {
+        width: 88px !important;
+        min-height: 88px !important;
+    }
+
+    .booking-page .room-option .room-info {
+        padding: 8px 10px 4px !important;
+    }
+}
+
+/* ══════════════════════════════════════
+   4K / ULTRA-WIDE (≥1600px): max 4 cols
+   ══════════════════════════════════════ */
+@media (min-width: 1600px) {
+    .booking-page .room-selection {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 20px !important;
+    }
+
+    .booking-page .room-option__thumb {
+        height: 210px !important;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   BOOKING SUMMARY — FONT OVERLAP FIXES + PACKAGE CLARITY
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Prevent long room names from overflowing ─────────────────── */
+.bsum-room-name {
+    font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    line-height: 1.25;
+}
+
+/* ── Occupancy meta: never let text overflow ──────────────────── */
+.bsum-room-meta {
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.bsum-rate-type,
+.bsum-rate-night {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bsum-rate-type {
+    flex-shrink: 1;
+}
+
+/* ── Date values: allow wrapping on narrow containers ─────────── */
+.bsum-date-val {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    font-size: clamp(0.82rem, 1.5vw, 1rem);
+    line-height: 1.3;
+}
+
+/* ── Nights badge: compact on narrow ─────────────────────────── */
+.bsum-nights-badge {
+    min-width: 56px;
+    padding: 8px 14px;
+}
+
+.bsum-nights-num {
+    font-size: clamp(1.2rem, 2vw, 1.6rem);
+}
+
+/* ── Total block: never overlap info vs amount ────────────────── */
+.bsum-total-block {
+    align-items: flex-start;
+    padding-top: 18px;
+    margin-top: 8px;
+    border-top: 2px solid rgba(139,115,85,0.12);
+    gap: 12px;
+}
+
+.bsum-total-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.bsum-total-amount {
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ── Rate plan detail row ─────────────────────────────────────── */
+.bsum-detail-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.bsum-detail-row > span:last-child {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-weight: 600;
+    color: #5E504A;
+}
+
+.summary-discount {
+    color: #1f7a42;
+    font-weight: 700;
+}
+
+/* ── Packages row — prominent block ──────────────────────────── */
+.bsum-detail-row--packages {
+    align-items: flex-start;
+    padding: 14px 0;
+    border-bottom: none;
+    margin-top: 4px;
+    background: rgba(201,169,97,0.05);
+    border-radius: 10px;
+    padding: 12px 14px;
+    border: 1px solid rgba(201,169,97,0.2);
+    gap: 10px;
+    flex-wrap: nowrap;
+}
+
+.bsum-pkg-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.bsum-pkg-label {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: #7A5C2E;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bsum-pkg-label i {
+    color: #C9A961;
+    font-size: 0.8rem;
+}
+
+.bsum-pkg-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.bsum-pkg-list li {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.8rem;
+    color: #5E504A;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    line-height: 1.4;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.bsum-pkg-list li i {
+    color: #8B7355;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.bsum-pkg-comp {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #1f7a42;
+    background: rgba(31,122,66,0.1);
+    border: 1px solid rgba(31,122,66,0.22);
+    padding: 1px 7px;
+    border-radius: 20px;
+    white-space: nowrap;
+    margin-left: 4px;
+}
+
+.bsum-pkg-total {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #8B7355;
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: flex-start;
+    padding-top: 1px;
+}
+
+/* ── Package section: subtitle proper class ───────────────────── */
+.booking-page #packagesSection .form-section-subtitle {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary, #6B5740);
+    margin-bottom: 20px;
+    line-height: 1.6;
+}
+
+/* ── Package cards: 2-col grid on desktop/tablet ─────────────── */
+.booking-page #packagesList {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.booking-page .package-option {
+    margin-bottom: 0;
+    background: #FFFFFF;
+    border-radius: 14px;
+    border: 1.5px solid rgba(139,115,85,0.18);
+    padding: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.booking-page .package-option:hover {
+    border-color: rgba(201,169,97,0.5);
+    box-shadow: 0 4px 16px rgba(139,115,85,0.12);
+    transform: translateY(-2px);
+}
+
+.booking-page .package-option.selected {
+    border-color: #C9A961;
+    background: linear-gradient(145deg, rgba(201,169,97,0.06), rgba(139,115,85,0.03));
+    box-shadow: 0 0 0 3px rgba(201,169,97,0.15), 0 4px 14px rgba(139,115,85,0.1);
+}
+
+.booking-page .package-option__name {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1A1A1A;
+    letter-spacing: 0.01em;
+}
+
+.booking-page .package-option__desc {
+    font-size: 0.775rem;
+    color: #7A6A58;
+    margin: 5px 0 8px;
+    line-height: 1.55;
+}
+
+.booking-page .package-option__inclusions li {
+    font-size: 0.72rem;
+    background: rgba(139,115,85,0.07);
+    color: #6B5740;
+    border-radius: 20px;
+    padding: 2px 9px;
+}
+
+/* ── Summary responsive ───────────────────────────────────────── */
+
+/* Tablet (481–1024px): slightly tighter summary padding */
+@media (min-width: 481px) and (max-width: 1024px) {
+    .booking-page #bookingSummary {
+        padding: 20px 22px 18px !important;
+    }
+
+    .bsum-room-name {
+        font-size: clamp(1rem, 2vw, 1.3rem);
+    }
+
+    .bsum-total-amount {
+        font-size: clamp(1.3rem, 2.5vw, 1.8rem);
+    }
+
+    /* Packages grid: 1-col on tablet to give descriptions room */
+    .booking-page #packagesList {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Mobile (≤600px) */
+@media (max-width: 600px) {
+    .booking-page #bookingSummary {
+        padding: 16px 16px 14px !important;
+    }
+
+    /* Dates row: stack cleanly */
+    .bsum-dates-row {
+        grid-template-columns: 1fr auto 1fr;
+        gap: 8px;
+    }
+
+    .bsum-date-val {
+        font-size: 0.8rem;
+    }
+
+    .bsum-nights-badge {
+        padding: 6px 10px;
+        min-width: 48px;
+    }
+
+    .bsum-nights-num {
+        font-size: 1.2rem;
+    }
+
+    .bsum-total-block {
+        flex-direction: row;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .bsum-total-amount {
+        font-size: clamp(1.3rem, 5vw, 1.65rem);
+    }
+
+    /* Package row on mobile: stack label + names above total */
+    .bsum-detail-row--packages {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .bsum-pkg-total {
+        align-self: flex-end;
+    }
+
+    /* Packages grid: always 1-col on mobile */
+    .booking-page #packagesList {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .booking-page .package-option {
+        padding: 14px;
+    }
+}
+
+/* Extra small (≤360px) */
+@media (max-width: 360px) {
+    /* Dates row: fully stack on very small screens */
+    .bsum-dates-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .bsum-date-block--out {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .bsum-date-block--out .bsum-date-label {
+        justify-content: flex-start;
+    }
+
+    .bsum-nights-badge {
+        flex-direction: row;
+        gap: 6px;
+        padding: 6px 12px;
+        justify-content: flex-start;
+        width: fit-content;
+    }
+
+    .bsum-topbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   BOOKING SUMMARY — COMPLETE ELEMENT COVERAGE
+   All bsum- elements + summary-badge scoped fixes + full responsive
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Fix summary-badge when JS swaps class from bsum-type-badge ── */
+.booking-page .summary-badge {
+    margin-bottom: 0 !important;
+    padding: 5px 14px !important;
+    font-size: 0.75rem !important;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: 100px !important;
+    white-space: nowrap;
+}
+
+.booking-page .summary-badge.badge-standard {
+    background: rgba(201,169,97,0.1) !important;
+    color: #7A5C2E !important;
+    border: 1px solid rgba(201,169,97,0.3) !important;
+}
+
+.booking-page .summary-badge.badge-tentative {
+    background: rgba(255,193,7,0.1) !important;
+    color: #7A5C2E !important;
+    border: 1px solid rgba(255,193,7,0.35) !important;
+}
+
+.booking-page .summary-badge i {
+    font-size: 0.75rem !important;
+}
+
+/* ── Top bar: always flex-wrap so badge never crushes title ───── */
+.booking-page .bsum-topbar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+}
+
+.booking-page .bsum-title {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* ── Room hero: spacing control ───────────────────────────────── */
+.booking-page .bsum-room-hero {
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+}
+
+/* ── Rate-night: allow wrapping so long "X rooms" text wraps ──── */
+.booking-page .bsum-rate-night {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    line-height: 1.4;
+}
+
+/* ── Dates row: label font fix ────────────────────────────────── */
+.booking-page .bsum-date-label {
+    font-size: 0.63rem;
+    letter-spacing: 0.08em;
+}
+
+.booking-page .bsum-nights-lbl {
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+}
+
+/* ── Guests row: main text + child charge always on its own line ── */
+.booking-page .bsum-guests-row {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px 8px;
+    padding: 12px 0;
+    font-size: 0.84rem;
+    line-height: 1.5;
+}
+
+.booking-page .bsum-guests-row > i {
+    align-self: center;
+    flex-shrink: 0;
+}
+
+/* Child charge: full-width so it sits on its own line, indented */
+.booking-page .bsum-child-charge {
+    flex-basis: 100%;
+    padding-left: 22px; /* aligns under guest text, past the fa-users icon */
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    font-size: 0.78rem;
+    color: #736149;
+    line-height: 1.4;
+}
+
+.booking-page .bsum-child-charge i {
+    color: #B89A6A;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+}
+
+/* ── Rate plan row: right value right-aligned ─────────────────── */
+.booking-page .bsum-detail-row {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+}
+
+.booking-page #summaryRatePlanRow .summary-discount {
+    font-weight: 700;
+    color: #1f7a42;
+    white-space: nowrap;
+}
+
+/* ── Total notes: prevent overflow ───────────────────────────── */
+.booking-page .bsum-total-note {
+    flex-wrap: wrap;
+    gap: 4px;
+    font-size: 0.7rem;
+    line-height: 1.45;
+}
+
+.booking-page .bsum-total-label {
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+}
+
+/* ══════════════════════════════════════
+   TABLET (481–1024px)
+   ══════════════════════════════════════ */
+@media (min-width: 481px) and (max-width: 1024px) {
+    .booking-page .bsum-room-hero {
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+    }
+
+    .booking-page .bsum-dates-row {
+        gap: 8px;
+        padding: 12px 0;
+    }
+
+    .booking-page .bsum-nights-badge {
+        padding: 8px 12px;
+        min-width: 56px;
+    }
+
+    .booking-page .bsum-guests-row {
+        padding: 10px 0;
+        font-size: 0.82rem;
+    }
+
+    .booking-page .bsum-total-block {
+        padding-top: 14px;
+        gap: 10px;
+    }
+
+    .booking-page .bsum-total-amount {
+        font-size: clamp(1.3rem, 2.5vw, 1.8rem);
+    }
+}
+
+/* ══════════════════════════════════════
+   MOBILE (≤600px)
+   ══════════════════════════════════════ */
+@media (max-width: 600px) {
+    /* Topbar: title + badge wrap to separate lines */
+    .booking-page .bsum-topbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 14px;
+        padding-bottom: 12px;
+    }
+
+    /* Room hero */
+    .booking-page .bsum-room-hero {
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+    }
+
+    .booking-page .bsum-room-name {
+        font-size: 1.05rem;
+    }
+
+    .booking-page .bsum-room-meta {
+        font-size: 0.75rem;
+        gap: 5px;
+        row-gap: 3px;
+    }
+
+    .booking-page .bsum-meta-dot {
+        display: none; /* bullet looks odd when wrapping */
+    }
+
+    .booking-page .bsum-rate-type,
+    .booking-page .bsum-rate-night {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    /* Dates: compact */
+    .booking-page .bsum-dates-row {
+        padding: 10px 0;
+        gap: 6px;
+    }
+
+    .booking-page .bsum-date-label {
+        font-size: 0.6rem;
+    }
+
+    .booking-page .bsum-date-val {
+        font-size: 0.78rem;
+    }
+
+    .booking-page .bsum-nights-badge {
+        padding: 6px 10px;
+        min-width: 44px;
+    }
+
+    .booking-page .bsum-nights-num {
+        font-size: 1.1rem;
+    }
+
+    .booking-page .bsum-nights-lbl {
+        font-size: 0.55rem;
+    }
+
+    /* Guests row: text + charge wrap cleanly */
+    .booking-page .bsum-guests-row {
+        font-size: 0.8rem;
+        padding: 10px 0;
+        gap: 3px 6px;
+    }
+
+    .booking-page .bsum-child-charge {
+        font-size: 0.73rem;
+    }
+
+    /* Detail rows */
+    .booking-page .bsum-detail-row {
+        padding: 8px 0;
+        font-size: 0.77rem;
+    }
+
+    /* Total block: label above, amount beside */
+    .booking-page .bsum-total-block {
+        flex-direction: row;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        padding-top: 12px;
+        gap: 8px;
+    }
+
+    .booking-page .bsum-total-label {
+        font-size: 0.63rem;
+    }
+
+    .booking-page .bsum-total-note {
+        font-size: 0.67rem;
+    }
+
+    .booking-page .bsum-total-amount {
+        font-size: clamp(1.25rem, 5.5vw, 1.6rem);
+    }
+}
+
+/* ══════════════════════════════════════
+   EXTRA SMALL (≤360px)
+   ══════════════════════════════════════ */
+@media (max-width: 360px) {
+    .booking-page #bookingSummary {
+        padding: 14px 14px 12px !important;
+    }
+
+    .booking-page .bsum-room-name {
+        font-size: 0.95rem;
+    }
+
+    /* Dates: fully stack on very small screens */
+    .booking-page .bsum-dates-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .booking-page .bsum-date-block--out {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .booking-page .bsum-date-block--out .bsum-date-label {
+        justify-content: flex-start;
+    }
+
+    .booking-page .bsum-nights-badge {
+        flex-direction: row;
+        gap: 5px;
+        width: fit-content;
+        justify-content: flex-start;
+        border-radius: 8px;
+    }
+
+    .booking-page .bsum-nights-num {
+        font-size: 1rem;
+    }
+
+    .booking-page .bsum-total-block {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .booking-page .bsum-total-amount {
+        font-size: 1.35rem;
+    }
+
+    /* Package list items: tighter */
+    .booking-page .bsum-pkg-list li {
+        font-size: 0.75rem;
+    }
+}

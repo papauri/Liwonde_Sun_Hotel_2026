@@ -121,9 +121,14 @@ try {
             ],
             'details' => [
                 'number_of_guests' => (int)$booking['number_of_guests'],
+                'adult_guests' => (int)($booking['adult_guests'] ?? max(1, ((int)$booking['number_of_guests']) - (int)($booking['child_guests'] ?? 0))),
+                'child_guests' => (int)($booking['child_guests'] ?? 0),
+                'occupancy_type' => $booking['occupancy_type'] ?? 'double',
                 'special_requests' => $booking['special_requests']
             ],
             'pricing' => [
+                'child_price_multiplier' => (float)($booking['child_price_multiplier'] ?? getSetting('booking_child_price_multiplier', getSetting('child_guest_price_multiplier', 50))),
+                'child_supplement_total' => (float)($booking['child_supplement_total'] ?? 0),
                 'total_amount' => (float)$booking['total_amount'],
                 'currency' => getSetting('currency_symbol'),
                 'currency_code' => getSetting('currency_code')
