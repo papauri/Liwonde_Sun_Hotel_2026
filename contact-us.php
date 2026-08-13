@@ -421,7 +421,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_form'])) {
 
                             <form method="POST" action="" class="contact-form" id="contactForm">
                                 <input type="hidden" name="contact_form" value="1">
-                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($contact_csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(pub_csrf_generate('contact'), ENT_QUOTES, 'UTF-8'); ?>">
 
                                 <div class="form-group">
                                     <label for="contact-name">Full Name *</label>
