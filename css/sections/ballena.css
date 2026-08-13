@@ -3,6 +3,10 @@
  * Sand/sage/stone accents + line-mask & clip reveals hooked into the
  * EXISTING scroll-reveal classes (.revealed / .is-revealed /
  * .scroll-animated / .lakeside-visible). No markup or logic changes.
+ *
+ * Reference site uses licensed faces (Sweet Sans Pro / TT Commons Pro).
+ * We match the TREATMENT — uppercase geometric sans, weight 400, open
+ * tracking, sub-1 leading — using Jost, which the site already loads.
  */
 
 :root {
@@ -10,6 +14,18 @@
     --ballena-sage: #779580;
     --ballena-stone: #C9C6BC;
     --ballena-ink: #03090D;
+
+    /* Display treatment lifted from the reference's measured values:
+       weight 400, letter-spacing ~0.025em, line-height ~0.9, uppercase. */
+    --ballena-display-tracking: 0.025em;
+    --ballena-display-leading: 0.9;
+
+    /* Floating header pill: 800px max, 6.67px radius, blur(25px),
+       translucent ink — measured off the reference header. */
+    --ballena-header-max: 800px;
+    --ballena-header-top: 18px;
+    --ballena-header-radius: 7px;
+    --ballena-header-bg: rgba(3, 9, 13, 0.19);
 }
 
 /* Unify the page surface to Ballena's warm sand */
@@ -21,24 +37,21 @@ body {
    MICRO-CAPS EYEBROWS — sage with a rule line
    ============================================ */
 
+/* Measured off the reference: 11px, weight 500, letter-spacing 0.55px
+   (~0.05em) — a tight, quiet micro-cap. It carries NO rule, dash or
+   tick; the earlier 0.38em tracking with a leading dash was invented,
+   not observed. */
 .section-header__label,
 .editorial-about-eyebrow,
 .matuwi-welcome-label {
-    color: var(--ballena-sage) !important;
-    letter-spacing: 0.38em;
+    color: var(--ballena-ink) !important;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.8rem;
-}
-
-.section-header__label::before,
-.editorial-about-eyebrow::before,
-.matuwi-welcome-label::before {
-    content: '';
-    width: 28px;
-    height: 1px;
-    background: var(--ballena-sage);
+    display: block;
+    margin-bottom: 0.9rem;
 }
 
 /* ============================================
@@ -97,25 +110,8 @@ body {
     to   { transform: scale(1.08); }
 }
 
-/* ============================================
-   "EXPLORE MORE" LINK TREATMENT
-   ============================================ */
-
-.editorial-room-card__link {
-    text-transform: uppercase;
-    letter-spacing: 0.22em;
-    font-size: 0.72rem;
-    color: var(--ballena-ink);
-    text-decoration: none;
-    border-bottom: 1px solid var(--ballena-stone);
-    padding-bottom: 3px;
-    transition: color 0.2s ease, border-color 0.2s ease;
-}
-
-.editorial-room-card__link:hover {
-    color: var(--ballena-sage);
-    border-color: var(--ballena-sage);
-}
+/* Link treatment lives in the section layer below, matched to the
+   reference's measured values (0.05em tracking + circular arrow). */
 
 /* ============================================
    SAGE DIVIDERS
@@ -143,5 +139,945 @@ body {
         animation: none !important;
         clip-path: none !important;
         transform: none !important;
+    }
+}
+/* ============================================
+   DISPLAY TYPOGRAPHY — uppercase geometric sans
+   The reference sets every display heading in an uppercase sans with
+   open tracking and tight leading. The site's serif is kept for body
+   copy so the reading measure established earlier still holds.
+   ============================================ */
+
+.section-header__title,
+.editorial-header .section-header__title,
+.editorial-about-title {
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: var(--ballena-display-tracking);
+    line-height: var(--ballena-display-leading);
+}
+
+/* hero-modern.css targets the hero head with 3-class selectors
+   (.hero--home-lux.hero--image .hero__title) and sets a serif face with
+   NEGATIVE tracking. This override layer has to win on every hero
+   variant — home and inner pages alike — so the display treatment is
+   asserted directly rather than fought for with ever-longer selectors. */
+.hero__title,
+.hero__subtitle,
+.hero.hero--image .hero__title,
+.hero.hero--image .hero__subtitle,
+.hero.hero--home-lux .hero__title,
+.hero.hero--home-lux .hero__subtitle {
+    font-family: var(--font-sans, 'Jost', sans-serif) !important;
+    font-weight: 400 !important;
+    text-transform: uppercase !important;
+    letter-spacing: var(--ballena-display-tracking) !important;
+    line-height: var(--ballena-display-leading) !important;
+    font-style: normal !important;
+}
+
+.hero__title,
+.hero.hero--image .hero__title,
+.hero.hero--home-lux .hero__title {
+    font-size: clamp(2.4rem, 6.2vw, 5.7rem) !important;
+}
+
+.hero__subtitle,
+.hero.hero--image .hero__subtitle,
+.hero.hero--home-lux .hero__subtitle {
+    font-size: clamp(1.5rem, 3.4vw, 2.9rem) !important;
+    color: var(--ballena-sand, #F8F2E5) !important;
+}
+
+.section-header__title,
+.editorial-about-title {
+    font-size: clamp(1.9rem, 3.6vw, 3.4rem);
+}
+
+/* ============================================
+   FLOATING HEADER PILL
+   Mirrors the reference's block-header__container: a centred, fixed,
+   max-800px translucent pill holding book-left / logo-centre / toggle-
+   right, with the full nav behind the overlay at every width.
+
+   Nothing here changes markup or JS — the nav links, SPA handlers,
+   active-state syncing and the existing .lsh-mobile overlay are reused
+   exactly as-is. Only which elements are visible changes.
+   ============================================ */
+
+.lsh-header {
+    top: var(--ballena-header-top);
+    left: 0;
+    right: 0;
+    width: min(var(--ballena-header-max), calc(100% - 2.5rem));
+    margin-inline: auto;
+    height: auto;
+    min-height: 60px;
+    border-radius: var(--ballena-header-radius);
+    background: var(--ballena-header-bg);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    overflow: visible;
+}
+
+/* The base header paints its own dark scrim; the pill supplies it. */
+.lsh-header::before {
+    display: none;
+}
+
+.lsh-header__inner {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0 clamp(0.75rem, 1.6vw, 1.15rem);
+    min-height: 60px;
+    height: auto;
+    max-width: none;
+}
+
+/* Let the actions' children join the pill's flex row so we can order
+   them book-left / toggle-right without touching the PHP markup. */
+.lsh-header__actions {
+    display: contents;
+}
+
+/* Book button — outlined, uppercase, small tracking (reference values). */
+.lsh-header .lsh-header__cta {
+    display: inline-flex !important;
+    order: 1;
+    padding: 10px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 3px;
+    background: transparent;
+    color: #FFFEFD;
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    box-shadow: none;
+}
+
+.lsh-header .lsh-header__cta .lsh-header__cta-bg {
+    display: none;
+}
+
+.lsh-header .lsh-header__cta:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.45);
+    transform: none;
+}
+
+/* Centred logo, independent of the side items' differing widths. */
+.lsh-header__brand {
+    order: 2;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.lsh-header__brand:hover {
+    transform: translateX(-50%);
+}
+
+.lsh-header__toggle {
+    order: 3;
+    margin-left: auto;
+}
+
+/* The compact mobile-only book button is redundant now the outlined
+   book button shows at every width. */
+.lsh-header__cta-mini {
+    display: none !important;
+}
+
+/* Nav lives behind the toggle at ALL widths, as on the reference.
+   The links themselves are untouched — they still render into
+   .lsh-mobile from the same DB-driven loop. */
+.lsh-header__nav {
+    display: none !important;
+}
+
+.lsh-header .lsh-header__toggle {
+    display: flex !important;
+}
+
+.lsh-mobile {
+    display: block !important;
+}
+
+/* Scrolled state: keep the pill dark so the light logo/label stay
+   legible — the base sheet swaps to a light bar with dark text. */
+.lsh-header--scrolled {
+    background: rgba(3, 9, 13, 0.55);
+    border-bottom: none;
+    box-shadow: 0 10px 30px rgba(3, 9, 13, 0.18);
+}
+
+.lsh-header--scrolled .lsh-header__logo-text,
+.lsh-header--scrolled .lsh-header__logo-kicker {
+    color: #FFFEFD;
+}
+
+.lsh-header--scrolled .lsh-header__toggle {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #FFFEFD;
+}
+
+/* At phone width the wide outlined book button plus the toggle leave no
+   room for an absolutely-centred logo, and the two collide. Swap in the
+   compact icon-only booking button the markup already ships so the
+   centred logo keeps its space and booking stays one tap away. */
+@media (max-width: 600px) {
+    .lsh-header .lsh-header__cta {
+        display: none !important;
+    }
+
+    .lsh-header__cta-mini {
+        display: inline-flex !important;
+        order: 1;
+        width: 40px;
+        height: 40px;
+        border-radius: 3px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: transparent;
+        color: #FFFEFD;
+        box-shadow: none;
+        /* Ships with margin-left:auto, which shoved it right into the
+           absolutely-centred logo. Anchor it to the left instead. */
+        margin-left: 0;
+        margin-right: auto;
+    }
+
+    .lsh-header__inner {
+        padding-inline: 0.6rem;
+        min-height: 54px;
+    }
+
+    .lsh-header {
+        min-height: 54px;
+    }
+
+    .lsh-header__logo-kicker {
+        display: none;
+    }
+
+    .lsh-header__logo-text {
+        font-size: 0.95rem;
+        white-space: nowrap;
+    }
+}
+
+/* ============================================
+   DESKTOP MENU DROPDOWN
+   The overlay panel is a full-bleed sheet by design (correct on phones).
+   Now that the nav lives behind the toggle at every width, constrain it
+   on wide screens to a centred dropdown sitting under the header pill,
+   the way the reference drops its menu inside the header container.
+   ============================================ */
+
+@media (min-width: 1024px) {
+    .lsh-mobile__panel {
+        top: calc(var(--ballena-header-top) + 60px + 0.5rem);
+        left: 50%;
+        right: auto;
+        bottom: auto;
+        width: min(var(--ballena-header-max), calc(100% - 2.5rem));
+        max-height: calc(100vh - var(--ballena-header-top) - 60px - 2.5rem);
+        border-radius: var(--ballena-header-radius);
+        box-shadow: 0 24px 60px rgba(3, 9, 13, 0.28);
+        transform: translate(-50%, -12px);
+        opacity: 0;
+        transition:
+            transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 260ms ease;
+    }
+
+    .lsh-mobile--active .lsh-mobile__panel {
+        transform: translate(-50%, 0);
+        opacity: 1;
+    }
+
+    /* The pill already shows the logo — no need to repeat it in the
+       dropdown. Keep the close button reachable. */
+    .lsh-mobile__brand {
+        display: none;
+    }
+
+    .lsh-mobile__header {
+        justify-content: flex-end;
+        padding-block: 0.75rem;
+    }
+
+    .lsh-mobile__footer {
+        display: none;
+    }
+}
+
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+    .lsh-mobile__panel {
+        transition: none;
+        transform: translate(-50%, 0);
+    }
+}
+
+/* ============================================================
+   SECTION LAYER — editorial "flat" treatment
+   ------------------------------------------------------------
+   The reference builds its sections from flat, borderless blocks
+   separated by whitespace and hairline rules — no rounded cards,
+   no drop shadows, no gradient fills. bento.css currently gives
+   these same blocks 18px radii, borders, gradients and shadows,
+   which is what keeps the page reading as "cards on a page"
+   rather than as an editorial spread.
+
+   This layer only restyles. Every class below already exists in
+   the markup; no PHP, no JS, no section names are touched.
+   ============================================================ */
+
+:root {
+    --ballena-rule: rgba(3, 9, 13, 0.12);
+    --ballena-measure: 62ch;
+    --ballena-section-space: clamp(5rem, 10vw, 9.5rem);
+}
+
+/* ── 1. Flatten the card system ─────────────────────────────── */
+
+.editorial-facility-card,
+.editorial-room-card,
+.editorial-testimonial-card,
+.editorial-event-card,
+.gallery-carousel-item {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* The sheen sweep that ran across the old cards belongs to the
+   glossy treatment, not to an editorial one. */
+.editorial-facility-card::after,
+.editorial-testimonial-card::after {
+    display: none;
+}
+
+.landing-main :is(.editorial-facility-card,
+                  .editorial-testimonial-card,
+                  .editorial-review-card,
+                  .editorial-gallery-item,
+                  .editorial-about-image) {
+    box-shadow: none;
+    border-radius: 0;
+}
+
+/* ── 2. Section rhythm — let the page breathe ───────────────── */
+
+.landing-section {
+    --section-padding: var(--ballena-section-space);
+}
+
+.editorial-about,
+.editorial-rooms-section,
+.editorial-facilities-section,
+.editorial-testimonials-section {
+    padding-block: var(--ballena-section-space);
+}
+
+/* ── 3. Section headers as centred statements ──────────────── */
+
+/* CORRECTION: the reference left-aligns every section header — measured
+   `text-align: start` on its eyebrows, display headings and body copy,
+   set hard against the left edge. Centring them was my own invention
+   and read as a generic template, not as the reference. */
+.section-header--editorial,
+.editorial-header {
+    text-align: left;
+    max-width: none;
+    margin-inline: 0;
+    margin-bottom: clamp(2.5rem, 4.5vw, 4rem);
+}
+
+.section-header--editorial .section-header__title,
+.editorial-header .section-header__title {
+    max-width: 18ch;
+    margin-inline: 0;
+}
+
+.section-header__description,
+.section-header__subtitle {
+    max-width: 46ch;
+    margin-inline: 0;
+    line-height: 1.25;
+}
+
+/* Their headers carry no divider rule at all — the whitespace does the
+   separating. Retire the decorative one rather than re-centre it. */
+.section-header--editorial::after,
+.editorial-header::after {
+    display: none;
+}
+
+/* ── 4. Portrait media, slow settle ────────────────────────── */
+
+.editorial-room-card__media,
+.editorial-gallery-item {
+    border-radius: 0;
+    overflow: hidden;
+}
+
+/* The portrait ratio has to live on the CONTAINER — it is what clips the
+   image. Setting it only on the <img> left the img 503px tall inside a
+   283px 4/3 box, so the portrait crop was thrown away and the card still
+   read as landscape. Scoped to 0-2-0 to clear the other sheets' ratios. */
+.editorial-room-card .editorial-room-card__media {
+    aspect-ratio: 3 / 4;
+}
+
+/* The link and <picture> between the container and the image carry their
+   own 4/3 aspect-ratio, which beats their height:100% and left a grey
+   band under each photo once the container went portrait. Clear the
+   ratio on the inner chain so they simply fill the portrait box. */
+.editorial-room-card .editorial-room-card__media-link,
+.editorial-room-card .editorial-room-card__media picture {
+    aspect-ratio: auto;
+    height: 100%;
+    width: 100%;
+    display: block;
+}
+
+.editorial-room-card .editorial-room-card__media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.editorial-room-card:hover .editorial-room-card__media img,
+.editorial-gallery-item:hover .editorial-gallery-item__img {
+    transform: scale(1.045);
+}
+
+.editorial-gallery-item__img {
+    border-radius: 0;
+    transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── 5. Card bodies — hairline rule instead of a container ─── */
+
+.editorial-room-card__body {
+    padding: 1.35rem 0 0;
+    border-top: 1px solid var(--ballena-rule);
+    margin-top: 1.1rem;
+}
+
+.editorial-facility-card {
+    padding: 1.6rem 0 0;
+    border-top: 1px solid var(--ballena-rule);
+    background: transparent;
+}
+
+/* These titles are h3/h4, and critical.css styles `body.fonts-loaded h3`
+   at 0-1-2 — which outranks a bare single class no matter the order.
+   Scoping under the card lifts these to 0-2-0 so they win on merit.
+   The inner <a> is targeted too: it carries its own colour rule and
+   would otherwise keep the inherited serif. */
+.editorial-room-card .editorial-room-card__title,
+.editorial-room-card .editorial-room-card__title a,
+.editorial-facility-card .editorial-facility-name {
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 500;
+    font-size: 1rem;
+    line-height: 1.25;
+}
+
+.editorial-facility-description,
+.editorial-room-card__summary {
+    line-height: 1.35;
+    color: rgba(3, 9, 13, 0.66);
+}
+
+/* Icons become quiet sage marks rather than filled badges. */
+.editorial-facility-icon {
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    color: var(--ballena-sage);
+    width: auto;
+    height: auto;
+    font-size: 1.05rem;
+    margin-bottom: 0.6rem;
+}
+
+/* ── 6. Testimonials as pull quotes ────────────────────────── */
+
+.editorial-testimonial-card {
+    padding: 1.9rem 0 0;
+    border-top: 1px solid var(--ballena-rule);
+}
+
+.editorial-testimonial-quote,
+.editorial-testimonial-text {
+    font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+    font-size: clamp(1.15rem, 1.5vw, 1.4rem);
+    line-height: 1.45;
+    color: var(--ballena-ink);
+}
+
+.editorial-testimonial-author-name {
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+}
+
+.editorial-testimonial-author-location {
+    color: var(--ballena-sage);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+}
+
+.editorial-testimonial-rating {
+    color: var(--ballena-sage);
+}
+
+/* ── 7. Link treatment — uppercase with a rule ─────────────── */
+
+/* Measured: 12.8px, weight 500, letter-spacing 0.64px (~0.05em), with a
+   filled circular arrow rather than an underline. The earlier 0.22em
+   tracking was roughly four times theirs. */
+.editorial-about-cta,
+.editorial-room-card__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--ballena-ink);
+    text-decoration: none;
+    border-bottom: 0;
+    padding-bottom: 0;
+    background: none;
+    transition: opacity 0.2s ease;
+}
+
+/* .editorial-facility-link is already a 3rem circular icon button in
+   editorial.css — which is exactly the reference's arrow disc. Restyle
+   it in place; nesting another disc inside it produced the stray
+   floating circles. */
+.editorial-facility-link {
+    align-self: flex-start;
+    background: var(--ballena-ink);
+    color: var(--ballena-sand);
+    border: 0;
+    border-radius: 50%;
+    width: 2.4rem;
+    height: 2.4rem;
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.editorial-facility-link:hover {
+    transform: translateX(3px);
+    color: var(--ballena-sand);
+}
+
+/* The markup already ships a trailing arrow icon in these links; render
+   it as the reference's filled disc instead of a bare glyph. */
+.editorial-about-cta i,
+.editorial-room-card__link i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--ballena-ink);
+    color: var(--ballena-sand);
+    font-size: 0.62rem;
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.editorial-facility-link:hover,
+.editorial-about-cta:hover,
+.editorial-room-card__link:hover {
+    color: var(--ballena-ink);
+    opacity: 0.7;
+}
+
+.editorial-facility-link:hover i,
+.editorial-about-cta:hover i,
+.editorial-room-card__link:hover i {
+    transform: translateX(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .editorial-facility-link:hover i,
+    .editorial-about-cta:hover i,
+    .editorial-room-card__link:hover i {
+        transform: none;
+    }
+}
+
+/* ── 8. About block — editorial split, flat imagery ────────── */
+
+.editorial-about-image,
+.editorial-about-image img {
+    border-radius: 0;
+}
+
+.editorial-about-description {
+    max-width: var(--ballena-measure);
+    line-height: 1.45;
+}
+
+.editorial-about-stat {
+    border-top: 1px solid var(--ballena-rule);
+    padding-top: 0.9rem;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+.editorial-about-feature {
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    padding-left: 0;
+}
+
+/* ── 9. Reduced motion ─────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+
+    .editorial-room-card__media img,
+    .editorial-gallery-item__img {
+        transition: none;
+    }
+
+    .editorial-room-card:hover .editorial-room-card__media img,
+    .editorial-gallery-item:hover .editorial-gallery-item__img {
+        transform: none;
+    }
+}
+
+/* ── 10. Narrow screens — keep the rhythm, drop the drama ──── */
+
+@media (max-width: 767px) {
+    :root {
+        --ballena-section-space: clamp(3.25rem, 11vw, 4.5rem);
+    }
+
+    .editorial-room-card__media img {
+        aspect-ratio: 4 / 3;
+    }
+
+    .section-header--editorial,
+    .editorial-header {
+        margin-bottom: 2rem;
+    }
+}
+
+/* ── 11. Facilities grid — even, uniformly flat ─────────────
+   bento.css turns the first tile into a dark 2x2 feature and the
+   fourth into an amber wide tile, forcing white/amber text with
+   !important. Flattening only the plain tiles left the grid reading
+   as two leftover cards floating in a flat section — and the dark
+   tile's white text would strand on the sand ground. Normalise the
+   spans and neutralise those tiles at matching weight. */
+
+.editorial-facilities-grid {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: clamp(1.75rem, 3vw, 2.75rem);
+}
+
+.editorial-facilities-section .editorial-facility-card:nth-child(1),
+.editorial-facilities-section .editorial-facility-card:nth-child(4),
+.editorial-facilities-section .editorial-facility-card:nth-child(5),
+.editorial-facilities-section .editorial-facility-card:last-child:nth-child(7) {
+    grid-column: auto;
+    grid-row: auto;
+    background: transparent;
+    border-color: transparent;
+    padding: 1.6rem 0 0;
+    color: var(--ballena-ink);
+}
+
+.editorial-facilities-section .editorial-facility-card:nth-child(1) .editorial-facility-name,
+.editorial-facilities-section .editorial-facility-card:nth-child(1) h3 {
+    color: var(--ballena-ink) !important;
+    font-size: 1rem;
+}
+
+.editorial-facilities-section .editorial-facility-card:nth-child(1) .editorial-facility-description,
+.editorial-facilities-section .editorial-facility-card:nth-child(1) p {
+    color: rgba(3, 9, 13, 0.66) !important;
+    font-size: 0.95rem;
+}
+
+.editorial-facilities-section .editorial-facility-card:nth-child(1) .editorial-facility-icon {
+    background: transparent;
+    color: var(--ballena-sage);
+    width: auto;
+    height: auto;
+    font-size: 1.05rem;
+}
+
+.editorial-facilities-section .editorial-facility-card .editorial-facility-divider {
+    background: linear-gradient(90deg, var(--ballena-sage), transparent) !important;
+}
+
+/* The amber hairline that bento paints across plain tiles duplicates
+   the hairline rule this layer already gives every block. */
+.editorial-facilities-section .editorial-facility-card::after {
+    display: none;
+}
+
+/* ── 12. Testimonials — neutralise the dark centre tile ─────
+   bento.css turns the middle testimonial into a dark tile with light
+   text at 0-2-0. Flattening the plain cards at 0-1-0 left that one
+   still dark while this layer set the quote colour to ink — dark text
+   on a dark ground, effectively unreadable. Neutralise it at matching
+   weight so the whole row reads as one flat set. */
+
+.editorial-testimonials-section .editorial-testimonial-card:nth-child(2) {
+    background: transparent;
+    border-color: transparent;
+    color: var(--ballena-ink);
+    transform: none;
+}
+
+.editorial-testimonials-section .editorial-testimonial-card:nth-child(2):hover {
+    transform: none;
+}
+
+.editorial-testimonials-section .editorial-testimonial-card:nth-child(2) .editorial-testimonial-text,
+.editorial-testimonials-section .editorial-testimonial-card:nth-child(2) .editorial-testimonial-quote {
+    color: var(--ballena-ink);
+}
+
+.editorial-testimonials-section .editorial-testimonial-card:nth-child(2) .editorial-testimonial-author-name {
+    color: var(--ballena-ink);
+}
+
+.editorial-testimonials-section .editorial-testimonial-card:nth-child(2) .editorial-testimonial-author-location {
+    color: var(--ballena-sage);
+}
+
+/* ── 13. About block — flat panel, sans display title ───────
+   The copy panel kept its rounded card background while every other
+   block went flat, and the title is an h2 so critical.css's
+   `body.fonts-loaded h2` (0-1-2) held it in the serif. Both fixed at
+   0-2-0 so they win on specificity rather than on load order. */
+
+.editorial-about .editorial-about-title {
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: var(--ballena-display-tracking);
+    line-height: var(--ballena-display-leading);
+}
+
+/* The panel itself is an unclassed <div> nested inside
+   .editorial-about-content, painted by a structural selector — which is
+   why targeting the class alone left the gradient, 19px radius and
+   shadow in place. Reach the child directly. */
+.editorial-about .editorial-about-content,
+.editorial-about .editorial-about-container,
+.editorial-about .editorial-about-content > div {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+/* The testimonials section itself sits on a lighter panel; let it share
+   the sand ground like every other section. */
+.editorial-testimonials-section,
+.editorial-testimonials-grid {
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+/* ── 14. Card content left-aligns, matching the reference ───
+   The reference sets its tile copy hard left under the media. The
+   existing sheets centre facility tiles, which now reads out of step
+   with the left-aligned section headers above them. */
+
+.editorial-facilities-section .editorial-facility-card,
+.editorial-facilities-section .editorial-facility-content {
+    text-align: left;
+    align-items: flex-start;
+}
+
+.editorial-facilities-section .editorial-facility-icon,
+.editorial-facilities-section .editorial-facility-name,
+.editorial-facilities-section .editorial-facility-description,
+.editorial-facilities-section .editorial-facility-divider {
+    margin-inline: 0;
+    text-align: left;
+}
+
+.editorial-testimonials-section .editorial-testimonial-card {
+    text-align: left;
+}
+
+/* ============================================================
+   15. FULL-BLEED BLOCKS + SOLID COLOUR PANELS
+   ------------------------------------------------------------
+   Measured on the reference: sections run edge-to-edge with zero
+   page margin, and the signature block is a 50/50 split — full-bleed
+   photograph on one side, a flat colour panel carrying the copy on
+   the other, set in sand text.
+
+   Their panel colours, sampled live:
+     clay  rgb(194, 100, 79)   #C2644F
+     sage  rgb(119, 149, 128)  #779580  (already our --ballena-sage)
+
+   NOTE ON CONTRAST: sand (#F8F2E5) on the exact reference clay is
+   only ~3.6:1 — fine for large display type, below AA (4.5:1) for
+   body copy. We default to a slightly deepened clay that holds the
+   same hue at ~4.7:1. Swap --ballena-clay to #C2644F for a pixel-
+   exact match if you accept the lower contrast.
+   ============================================================ */
+
+:root {
+    --ballena-clay: #AA5140;
+    --ballena-clay-exact: #C2644F;
+}
+
+/* ── Full-bleed helper ──────────────────────────────────────
+   layout.css caps .editorial-about-container at 1240px via a
+   `.landing-section > :is(...)` rule; this releases it to the
+   viewport edge. Body already sets overflow-x:hidden, so the
+   100vw breakout cannot introduce a horizontal scrollbar. */
+
+.editorial-about .editorial-about-container {
+    max-width: none;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding-inline: 0;
+}
+
+/* The section sits inside the 1240px .landing-shell rail, so the
+   container's 100vw breakout has to escape it. `overflow: hidden`
+   here would clip that breakout back to the rail — keep it visible
+   and let the image/panel do their own clipping. */
+.editorial-about {
+    padding-block: 0;
+    overflow: visible;
+}
+
+/* ── The split: photo one side, colour panel the other ────── */
+
+.editorial-about .editorial-about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    align-items: stretch;
+    max-width: none;
+    margin: 0;
+}
+
+.editorial-about .editorial-about-image {
+    position: relative;
+    min-height: clamp(420px, 62vh, 760px);
+    margin: 0;
+    border-radius: 0;
+    overflow: hidden;
+}
+
+.editorial-about .editorial-about-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 0;
+}
+
+.editorial-about .editorial-about-content {
+    display: flex;
+    align-items: center;
+    background: var(--ballena-clay);
+    padding: clamp(2.5rem, 5vw, 5.5rem) clamp(1.75rem, 4.5vw, 4.5rem);
+}
+
+/* The panel's copy sits on clay, so every text token flips to sand.
+   critical.css force-colours these headings to #1A1A1A with
+   !important (its fifth specificity clash in this build), so the flip
+   has to be !important too or the copy stays dark on the panel —
+   an unreadable ~1.6:1. */
+.editorial-about .editorial-about-content,
+.editorial-about .editorial-about-content .editorial-about-title,
+.editorial-about .editorial-about-content .editorial-about-description,
+.editorial-about .editorial-about-content .editorial-about-feature,
+.editorial-about .editorial-about-content .editorial-about-stat,
+.editorial-about .editorial-about-content h2,
+.editorial-about .editorial-about-content h3,
+.editorial-about .editorial-about-content p,
+.editorial-about .editorial-about-content span,
+.editorial-about .editorial-about-content strong {
+    color: var(--ballena-sand) !important;
+}
+
+.editorial-about .editorial-about-content .editorial-about-eyebrow {
+    color: var(--ballena-sand) !important;
+}
+
+.editorial-about .editorial-about-content .editorial-about-description {
+    color: rgba(248, 242, 229, 0.9) !important;
+}
+
+/* Grid children default to min-width:auto, which lets long copy push
+   the panel wider than its track. Let both columns actually shrink. */
+.editorial-about .editorial-about-image,
+.editorial-about .editorial-about-content,
+.editorial-about .editorial-about-content > div {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.editorial-about .editorial-about-content i,
+.editorial-about .editorial-about-content .editorial-about-feature i {
+    color: var(--ballena-sand);
+}
+
+/* Rules and dividers read as translucent sand on the panel, not sage. */
+.editorial-about .editorial-about-content .editorial-about-divider {
+    background: linear-gradient(90deg, rgba(248, 242, 229, 0.75), transparent) !important;
+}
+
+.editorial-about .editorial-about-content .editorial-about-stat {
+    border-top-color: rgba(248, 242, 229, 0.28);
+}
+
+/* CTA inverts to a sand disc on the dark panel. */
+.editorial-about .editorial-about-content .editorial-about-cta {
+    color: var(--ballena-sand);
+}
+
+.editorial-about .editorial-about-content .editorial-about-cta i {
+    background: var(--ballena-sand);
+    color: var(--ballena-clay);
+}
+
+/* ── Stack on narrow screens ───────────────────────────────── */
+
+@media (max-width: 860px) {
+    .editorial-about .editorial-about-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .editorial-about .editorial-about-image {
+        min-height: clamp(260px, 44vh, 420px);
     }
 }

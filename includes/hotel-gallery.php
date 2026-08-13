@@ -99,7 +99,7 @@ if (!function_exists('resolveImageUrl')) {
                             'style' => 'width: 100%; height: 100%; object-fit: cover;'
                         ]); ?>
                     </div>
-                <?php else: ?>
+                <?php elseif (trim((string)resolveImageUrl($image['image_url'])) !== ''): ?>
                     <img src="<?php echo htmlspecialchars(resolveImageUrl($image['image_url'])); ?>"
                          class="editorial-gallery-item__img"
                          alt="<?php echo htmlspecialchars($image['title']); ?>"

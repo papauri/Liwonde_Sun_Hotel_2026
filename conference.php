@@ -420,17 +420,13 @@ function resolveConferenceImage(?string $imagePath): string
                             $image_path = resolveConferenceImage($room['image_path'] ?? '');
                             ?>
                             <article class="editorial-event-card editorial-conference-card conference-showcase__card">
+                                <?php if (!empty($image_path)): ?>
                                 <div class="editorial-event-image-container editorial-conference-image-container conference-showcase__media">
-                                    <?php if (!empty($image_path)): ?>
-                                        <img src="<?php echo htmlspecialchars($image_path); ?>"
-                                            alt="<?php echo htmlspecialchars($room['name']); ?>"
-                                            class="editorial-event-image editorial-conference-image">
-                                    <?php else: ?>
-                                        <div class="editorial-event-image editorial-conference-image" style="background: linear-gradient(135deg, #e0e0e0 0%, #f5f5f5 100%); display: flex; align-items: center; justify-content: center; color: #999; min-height: 180px;">
-                                            <i class="fas fa-image"></i>
-                                        </div>
-                                    <?php endif; ?>
+                                    <img src="<?php echo htmlspecialchars($image_path); ?>"
+                                        alt="<?php echo htmlspecialchars($room['name']); ?>"
+                                        class="editorial-event-image editorial-conference-image">
                                 </div>
+                                <?php endif; ?>
                                 <div class="editorial-event-content editorial-conference-content conference-showcase__content">
                                     <div class="editorial-event-meta editorial-conference-meta">
                                         <div class="editorial-event-meta-item">
