@@ -1,0 +1,147 @@
+/**
+ * Ballena Cabo-inspired editorial layer — UI only.
+ * Sand/sage/stone accents + line-mask & clip reveals hooked into the
+ * EXISTING scroll-reveal classes (.revealed / .is-revealed /
+ * .scroll-animated / .lakeside-visible). No markup or logic changes.
+ */
+
+:root {
+    --ballena-sand: #F8F2E5;
+    --ballena-sage: #779580;
+    --ballena-stone: #C9C6BC;
+    --ballena-ink: #03090D;
+}
+
+/* Unify the page surface to Ballena's warm sand */
+body {
+    background: var(--ballena-sand);
+}
+
+/* ============================================
+   MICRO-CAPS EYEBROWS — sage with a rule line
+   ============================================ */
+
+.section-header__label,
+.editorial-about-eyebrow,
+.matuwi-welcome-label {
+    color: var(--ballena-sage) !important;
+    letter-spacing: 0.38em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.section-header__label::before,
+.editorial-about-eyebrow::before,
+.matuwi-welcome-label::before {
+    content: '';
+    width: 28px;
+    height: 1px;
+    background: var(--ballena-sage);
+}
+
+/* ============================================
+   LINE-MASK TITLE REVEALS (on scroll reveal)
+   ============================================ */
+
+.revealed .section-header__title,
+.is-revealed .section-header__title,
+.scroll-animated .section-header__title,
+.lakeside-visible .section-header__title,
+.revealed .editorial-about-title,
+.is-revealed .editorial-about-title,
+.scroll-animated .editorial-about-title {
+    animation: lsh-mask-up 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes lsh-mask-up {
+    from {
+        clip-path: inset(0 0 100% 0);
+        transform: translateY(26px);
+    }
+    to {
+        clip-path: inset(-10% 0 -10% 0);
+        transform: none;
+    }
+}
+
+/* ============================================
+   CLIP REVEALS + SLOW ZOOM ON EDITORIAL IMAGERY
+   ============================================ */
+
+.revealed .editorial-about-image img,
+.is-revealed .editorial-about-image img,
+.scroll-animated .editorial-about-image img,
+.lakeside-visible .editorial-about-image img {
+    animation:
+        lsh-clip-reveal 1.1s cubic-bezier(0.22, 1, 0.36, 1) both,
+        lsh-slow-zoom 16s ease-in-out 1.1s infinite alternate;
+}
+
+.revealed .editorial-room-card__media img,
+.is-revealed .editorial-room-card__media img,
+.scroll-animated .editorial-room-card__media img,
+.revealed .editorial-event-image,
+.is-revealed .editorial-event-image {
+    animation: lsh-clip-reveal 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes lsh-clip-reveal {
+    from { clip-path: inset(0 0 100% 0); }
+    to   { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes lsh-slow-zoom {
+    from { transform: scale(1); }
+    to   { transform: scale(1.08); }
+}
+
+/* ============================================
+   "EXPLORE MORE" LINK TREATMENT
+   ============================================ */
+
+.editorial-room-card__link {
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.72rem;
+    color: var(--ballena-ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ballena-stone);
+    padding-bottom: 3px;
+    transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.editorial-room-card__link:hover {
+    color: var(--ballena-sage);
+    border-color: var(--ballena-sage);
+}
+
+/* ============================================
+   SAGE DIVIDERS
+   ============================================ */
+
+.editorial-about-divider,
+.editorial-facility-divider,
+.editorial-experience-divider {
+    background: linear-gradient(90deg, var(--ballena-sage), transparent) !important;
+}
+
+/* ============================================
+   REDUCED MOTION
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+    .revealed .section-header__title,
+    .is-revealed .section-header__title,
+    .scroll-animated .section-header__title,
+    .revealed .editorial-about-title,
+    .revealed .editorial-about-image img,
+    .is-revealed .editorial-about-image img,
+    .revealed .editorial-room-card__media img,
+    .revealed .editorial-event-image {
+        animation: none !important;
+        clip-path: none !important;
+        transform: none !important;
+    }
+}

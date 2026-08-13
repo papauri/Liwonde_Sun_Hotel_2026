@@ -100,6 +100,9 @@ $heroImageMobile2x = buildHeroImageSrc((string)$heroImagePath, 'width=1920&forma
 
 $heroHasMedia = !empty($heroVideoPath) || !empty($heroImagePath);
 
+// Unified eyebrow label (UI only)
+$hero_site_name = function_exists('getSetting') ? (string) getSetting('site_name', 'Liwonde Sun Hotel') : 'Liwonde Sun Hotel';
+
 // Only render if hero data exists
 if ($pageHero):
 ?>
@@ -130,8 +133,11 @@ if ($pageHero):
             </picture>
         </div>
     <?php endif; ?>
-    
+
+    <div class="hero__scrim" aria-hidden="true"></div>
+
     <div class="hero__content"<?php echo $page_slug === 'index' ? ' data-hero-reveal="true"' : ''; ?>>
+        <span class="hero__eyebrow"><span class="hero__eyebrow-dot" aria-hidden="true"></span><?php echo htmlspecialchars($hero_site_name); ?></span>
         <h1 class="hero__title">
             <?php echo htmlspecialchars($pageHero['hero_title']); ?>
             <?php if (!empty($pageHero['hero_subtitle'])): ?>
@@ -171,6 +177,20 @@ if ($pageHero):
             <?php endif; ?>
         </div>
         <?php endif; ?>
+
+        <?php if ($page_slug === 'index'): ?>
+        <!-- Booking trust chips — home only. These make claims about the booking
+             flow, so they must not appear on Restaurant/Gym/Events/etc. heroes. -->
+        <div class="hero__chips">
+            <span class="hero__chip"><i class="fas fa-bolt" aria-hidden="true"></i> Instant confirmation</span>
+            <span class="hero__chip"><i class="fas fa-shield-halved" aria-hidden="true"></i> Secure booking</span>
+            <span class="hero__chip"><i class="fas fa-tag" aria-hidden="true"></i> Best rate direct</span>
+        </div>
+        <?php endif; ?>
     </div>
+
+    <?php if ($page_slug === 'index'): ?>
+    <div class="hero__scroll" aria-hidden="true"><span></span></div>
+    <?php endif; ?>
 </section>
 <?php endif; ?>

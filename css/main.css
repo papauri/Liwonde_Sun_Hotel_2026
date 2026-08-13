@@ -46,6 +46,9 @@
 @import url('./sections/confirmation.css');
 @import url('./sections/privacy.css');
 @import url('./sections/guest-services.css');
+@import url('./sections/bento.css');
+@import url('./sections/hero-modern.css');
+@import url('./sections/ballena.css');
 
 /* ============================================
    UTILITIES

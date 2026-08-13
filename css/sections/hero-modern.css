@@ -1,0 +1,479 @@
+/**
+ * Modern Hero — Markopolo.ai-inspired, but better.
+ * Loaded LAST so it unifies the hero look on every page, overriding the
+ * legacy Passalacqua panel styles. UI-only: all JS hooks kept intact
+ * (.hero, .hero__media, .hero__image, .hero__content, .hero__title...).
+ */
+
+/* ============================================
+   BASE — cinematic full-bleed stage
+   ============================================ */
+
+.hero {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    min-height: clamp(420px, 52vh, 580px);
+    background: #14100c;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+/* Home page gets the taller cinematic cut */
+.hero--home-lux {
+    min-height: clamp(500px, 74svh, 780px);
+}
+
+/* Media fill + slow Ken Burns breathe */
+.hero__media,
+.hero__media picture,
+.hero__media img,
+.hero__media video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.hero__media {
+    z-index: 0;
+}
+
+.hero__media img,
+.hero__media video {
+    object-fit: cover;
+    object-position: center 40%;
+    transform: scale(1.06);
+    animation: lsh-kenburns 22s ease-in-out infinite alternate;
+}
+
+@keyframes lsh-kenburns {
+    from { transform: scale(1.06) translateY(0); }
+    to   { transform: scale(1.14) translateY(-1.5%); }
+}
+
+/* Kill the legacy flat overlay; the scrim below does the work */
+.hero--image::before {
+    background: transparent !important;
+    opacity: 0 !important;
+}
+
+/* ============================================
+   SCRIM — layered cinematic gradient
+   ============================================ */
+
+.hero__scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+        radial-gradient(120% 90% at 85% 10%, rgba(10, 8, 6, 0) 40%, rgba(10, 8, 6, 0.42) 100%),
+        linear-gradient(180deg, rgba(10, 8, 6, 0.52) 0%, rgba(10, 8, 6, 0.10) 34%, rgba(10, 8, 6, 0.38) 62%, rgba(10, 8, 6, 0.86) 100%);
+}
+
+/* Soft fade into the page surface at the very bottom */
+.hero__scrim::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: clamp(60px, 10vh, 120px);
+    background: linear-gradient(180deg, transparent, rgba(251, 248, 244, 0.92) 96%);
+}
+
+/* ============================================
+   CONTENT — editorial left-aligned column
+   ============================================ */
+
+.hero__content,
+.hero--passalacqua .hero__content,
+.hero--image .hero__content,
+.hero--home-lux.hero--image .hero__content,
+body.home-page .hero--home-lux.hero--image .hero__content {
+    position: relative !important;
+    z-index: 2;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: auto !important;
+    width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: calc(var(--header-height, 92px) + clamp(2.5rem, 7vh, 5rem)) clamp(1.25rem, 4vw, 3rem) clamp(4.5rem, 9vh, 7rem) !important;
+    background: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    text-align: left;
+}
+
+/* Kill the legacy inner scrollbar on the hero content */
+.hero__content,
+.hero--image .hero__content,
+.hero--home-lux.hero--image .hero__content {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* ── Eyebrow pill ── */
+.hero__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem 1rem;
+    margin-bottom: clamp(1rem, 2.4vh, 1.6rem);
+    border-radius: 100px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: #fff !important;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.hero__eyebrow-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #F4A853;
+    box-shadow: 0 0 0 0 rgba(244, 168, 83, 0.6);
+    animation: lsh-pulse 2.4s ease-out infinite;
+}
+
+@keyframes lsh-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(244, 168, 83, 0.55); }
+    70%  { box-shadow: 0 0 0 9px rgba(244, 168, 83, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(244, 168, 83, 0); }
+}
+
+/* ── Headline: bold white + amber italic accent line ── */
+.hero__title,
+.hero--image .hero__title,
+.hero--home-lux.hero--image .hero__title {
+    color: #fff !important;
+    font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+    font-size: clamp(2.5rem, 6vw, 5rem) !important;
+    line-height: 1.05 !important;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    max-width: 24ch;
+    text-wrap: balance;
+    overflow-wrap: normal;
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+}
+
+.hero--image .hero__title::after {
+    display: none !important;
+}
+
+.hero__subtitle,
+.hero--image .hero__subtitle,
+.hero--home-lux.hero--image .hero__subtitle {
+    display: block;
+    margin-top: 0.35rem;
+    background: none !important;
+    padding: 0 !important;
+    border: none !important;
+    color: #F4A853 !important;
+    font-family: var(--font-serif, 'Cormorant Garamond', Georgia, serif);
+    font-style: italic;
+    font-weight: 500;
+    font-size: clamp(1.35rem, 3vw, 2.5rem) !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    line-height: 1.15 !important;
+}
+
+/* ── Description ── */
+.hero__description,
+.hero--image .hero__description,
+.hero--home-lux.hero--image .hero__description {
+    margin-top: clamp(0.9rem, 2vh, 1.4rem);
+    max-width: 56ch;
+    color: rgba(255, 255, 255, 0.85) !important;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: clamp(0.98rem, 1.25vw, 1.15rem) !important;
+    line-height: 1.65;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Actions: gradient pill + glass ghost ── */
+.hero__actions,
+.hero--image .hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-top: clamp(1.4rem, 3vh, 2rem) !important;
+    justify-content: flex-start !important;
+}
+
+.hero__actions .btn,
+.hero--image .hero__actions .btn,
+.hero--home-lux.hero--image .hero__actions .btn {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 52px;
+    padding: 0 1.9rem !important;
+    border-radius: 100px !important;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.85rem !important;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+/* Primary (first button / explore-rooms) */
+.hero__actions .btn--explore-rooms,
+.hero__actions .btn:first-child,
+.hero--image .hero__actions .btn--explore-rooms {
+    background: linear-gradient(135deg, #E8913A 0%, #C4701F 100%) !important;
+    color: #fff !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    box-shadow: 0 14px 34px rgba(232, 145, 58, 0.38) !important;
+}
+
+.hero__actions .btn--explore-rooms::before {
+    display: none !important;
+}
+
+.hero__actions .btn--explore-rooms:hover,
+.hero__actions .btn:first-child:hover,
+.hero--image .hero__actions .btn--explore-rooms:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 20px 44px rgba(232, 145, 58, 0.46) !important;
+}
+
+/* Secondary — frosted glass ghost */
+.hero__actions .btn--outline-on-light,
+.hero__actions .btn--explore-rooms + .btn--outline-on-light {
+    background: rgba(255, 255, 255, 0.12) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #fff !important;
+    border: 1px solid rgba(255, 255, 255, 0.35) !important;
+    box-shadow: none !important;
+}
+
+.hero__actions .btn--outline-on-light:hover {
+    background: rgba(255, 255, 255, 0.22) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* ── Trust chips row ── */
+.hero__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: clamp(1.6rem, 3.4vh, 2.4rem);
+}
+
+.hero__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.95rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(18, 15, 12, 0.35);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: rgba(255, 255, 255, 0.92) !important;
+    font-family: var(--font-sans, 'Jost', sans-serif);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+
+.hero__chip i {
+    color: #F4A853 !important;
+    font-size: 0.8rem;
+}
+
+/* ============================================
+   SCROLL CUE (home only)
+   ============================================ */
+
+.hero__scroll {
+    position: absolute;
+    left: 50%;
+    bottom: 1.4rem;
+    transform: translateX(-50%);
+    z-index: 2;
+    width: 26px;
+    height: 42px;
+    border: 2px solid rgba(255, 255, 255, 0.45);
+    border-radius: 100px;
+}
+
+.hero__scroll span {
+    position: absolute;
+    left: 50%;
+    top: 7px;
+    width: 4px;
+    height: 8px;
+    margin-left: -2px;
+    border-radius: 4px;
+    background: #F4A853;
+    animation: lsh-scrollcue 1.8s ease-in-out infinite;
+}
+
+@keyframes lsh-scrollcue {
+    0%   { opacity: 1; transform: translateY(0); }
+    70%  { opacity: 0; transform: translateY(14px); }
+    100% { opacity: 0; transform: translateY(0); }
+}
+
+/* ============================================
+   LEGACY HAMMER — un-zoom + kill 100vh heroes
+   ============================================ */
+
+/* Legacy fluid root type inflates every rem size on big monitors */
+@media (min-width: 1500px) {
+    html {
+        font-size: 17px !important;
+    }
+}
+
+@media (min-width: 1920px) {
+    html {
+        font-size: 16px !important;
+    }
+}
+
+/* Force hero media out of flow so the hero can't stretch to 100vh */
+body .hero .hero__media,
+body .hero--image .hero__media,
+body .hero--has-video .hero__media {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Kill legacy fixed/100vh hero heights */
+body .hero,
+body .hero.hero--passalacqua,
+body .hero.hero--image,
+body .hero.hero--fit-standard,
+body .hero.hero--home-lux,
+body .hero.hero--fullscreen {
+    height: auto !important;
+}
+
+/* ============================================
+   ULTRA-WIDE (1920px+) — tighten proportions,
+   use the extra width instead of scaling up
+   ============================================ */
+
+@media (min-width: 1920px) {
+    .hero {
+        min-height: clamp(440px, 44vh, 560px);
+    }
+
+    .hero--home-lux {
+        min-height: clamp(520px, 66vh, 760px);
+    }
+
+    .hero__content,
+    .hero--image .hero__content,
+    .hero--home-lux.hero--image .hero__content {
+        max-width: 1480px;
+        padding-top: calc(var(--header-height, 92px) + clamp(2rem, 4vh, 3.5rem)) !important;
+        padding-bottom: clamp(3.5rem, 6vh, 5.5rem) !important;
+    }
+
+    .hero__title,
+    .hero--image .hero__title,
+    .hero--home-lux.hero--image .hero__title {
+        font-size: clamp(2.75rem, 3vw, 4.25rem) !important;
+    }
+
+    .hero__subtitle,
+    .hero--image .hero__subtitle,
+    .hero--home-lux.hero--image .hero__subtitle {
+        font-size: clamp(1.35rem, 1.5vw, 2.1rem) !important;
+    }
+
+    .hero__description,
+    .hero--image .hero__description {
+        font-size: 1.05rem !important;
+    }
+}
+
+/* ============================================
+   MOBILE — keep the same language, centered-ish
+   ============================================ */
+
+@media (max-width: 767px) {
+    .hero {
+        min-height: clamp(480px, 78svh, 680px);
+    }
+
+    .hero--home-lux {
+        min-height: clamp(520px, 88svh, 760px);
+    }
+
+    .hero__content,
+    .hero--image .hero__content,
+    .hero--home-lux.hero--image .hero__content {
+        padding-top: calc(var(--header-height-mobile, 74px) + 2.5rem) !important;
+        padding-bottom: 4.5rem !important;
+    }
+
+    .hero__title,
+    .hero--image .hero__title {
+        max-width: 100%;
+        font-size: clamp(2.1rem, 9vw, 2.9rem) !important;
+    }
+
+    .hero__subtitle,
+    .hero--image .hero__subtitle {
+        font-size: clamp(1.15rem, 5vw, 1.5rem) !important;
+    }
+
+    .hero__actions .btn {
+        flex: 1 1 auto;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .hero__chips {
+        gap: 0.45rem;
+    }
+
+    .hero__chip {
+        font-size: 0.7rem;
+        padding: 0.45rem 0.75rem;
+    }
+
+    .hero__scroll {
+        display: none;
+    }
+}
+
+/* ============================================
+   REDUCED MOTION
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+    .hero__media img,
+    .hero__media video {
+        animation: none !important;
+        transform: none !important;
+    }
+
+    .hero__eyebrow-dot,
+    .hero__scroll span {
+        animation: none !important;
+    }
+}
