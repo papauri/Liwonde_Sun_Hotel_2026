@@ -31,15 +31,12 @@
         'rooms-gallery',
         'rooms-showcase',
         'room',
+        'restaurant',
+        'events',
+        'gym',
+        'conference',
     ];
 
-    // Pages that must load with a full page navigation rather than the SPA
-    // content-swap. The swap re-runs a page's inline <script> blocks wrapped in
-    // an IIFE (see _navigate), which turns page-level functions into locals — so
-    // any button wired with inline onclick="pageFn()" (conference's
-    // openInquiryModal, restaurant's fetchMenuData) or any inquiry form that
-    // sets up its handlers on load ends up dead until a hard refresh. Loading
-    // these normally keeps their scripts at global scope so their buttons work.
     const EXCLUDED_PAGES = [
         'admin',
         'booking',
@@ -52,10 +49,6 @@
         'menu-pdf',
         'generate-sitemap',
         'robots',
-        'conference',
-        'restaurant',
-        'gym',
-        'events',
     ];
 
     // ── Base path (supports subdirectory installs, e.g. /liwonde-sun-hotel/) ───

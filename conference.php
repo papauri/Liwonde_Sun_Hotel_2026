@@ -613,7 +613,12 @@ function resolveConferenceImage(?string $imagePath): string
             const inquiryModal = document.getElementById('inquiryModal');
             const inquiryModalBackdrop = inquiryModal?.querySelector('.modal__backdrop');
 
-            function openInquiryModal(roomId, roomName) {
+            // Exposed on window (not a bare declaration) so the inline
+            // onclick="openInquiryModal(...)" still resolves after SPA navigation
+            // re-runs this script inside an IIFE. A plain `function` declaration
+            // would be scoped to that IIFE, leaving the button dead until a full
+            // reload — which is exactly what "Send Inquiry not working" was.
+            window.openInquiryModal = function openInquiryModal(roomId, roomName) {
                 document.getElementById('selectedRoomId').value = roomId;
                 document.getElementById('selectedRoomName').value = roomName;
 
@@ -621,7 +626,7 @@ function resolveConferenceImage(?string $imagePath): string
                     inquiryModal.classList.add('modal--active');
                     document.body.classList.add('modal-open');
                 }
-            }
+            };
 
             function closeInquiryModal() {
                 if (inquiryModal) {
