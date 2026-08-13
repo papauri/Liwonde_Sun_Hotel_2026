@@ -326,8 +326,14 @@
             // Capture phase so we get the click before any other handler
             document.addEventListener('click', e => this._onLinkClick(e), true);
 
-            // Add non-SPA loader trigger for internal links
-            document.addEventListener('click', e => this._onNonSPALinkClick(e), true);
+            // NOTE: the former "non-SPA loader trigger" listener was removed.
+            // It flipped #page-loader active on the CURRENT page right before a
+            // full navigation to an excluded page (booking, conference, etc.).
+            // The destination page then shows its own server-rendered #page-loader
+            // on load, so the guest saw the loader twice — loader, page, loader
+            // again. The destination's own load loader is the single source of
+            // truth, so this pre-navigation flash is no longer shown.
+            // (_onNonSPALinkClick is retained but no longer wired.)
         }
 
         _onLinkClick(e) {
