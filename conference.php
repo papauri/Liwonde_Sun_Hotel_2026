@@ -469,7 +469,7 @@ function resolveConferenceImage(?string $imagePath): string
         $modalContent = '
         <form method="POST" action="" id="inquiryForm">
             <input type="hidden" name="conference_room_id" id="selectedRoomId">
-            <input type="hidden" name="csrf_token" value="' . htmlspecialchars($conference_csrf_token, ENT_QUOTES, 'UTF-8') . '">
+            <input type="hidden" name="csrf_token" value="' . htmlspecialchars(pub_csrf_generate('conference'), ENT_QUOTES, 'UTF-8') . '">
 
             <div class="form-group">
                 <label>Conference Room</label>

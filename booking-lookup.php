@@ -202,7 +202,7 @@ try {
             <div class="lookup-card" data-lazy-reveal>
                 <form method="POST">
                     <input type="hidden" name="lookup" value="1">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(pub_csrf_generate('lookup'), ENT_QUOTES, 'UTF-8'); ?>">
 
                     <div class="form-group">
                         <label for="booking_reference"><i class="fas fa-hashtag" style="color: var(--gold);"></i> Booking Reference</label>
@@ -305,7 +305,7 @@ try {
                             </p>
                             <form method="POST" id="cancel-form">
                                 <input type="hidden" name="cancel_booking" value="1">
-                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(pub_csrf_generate('lookup'), ENT_QUOTES, 'UTF-8'); ?>">
                                 <input type="hidden" name="booking_reference" value="<?php echo htmlspecialchars($booking['booking_reference']); ?>">
                                 <input type="hidden" name="guest_email" value="<?php echo htmlspecialchars($booking['guest_email']); ?>">
                                 <div class="form-group" style="margin-bottom: 12px;">

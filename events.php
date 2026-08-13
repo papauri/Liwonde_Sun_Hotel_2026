@@ -455,7 +455,7 @@ $site_logo = getSetting('site_logo');
                         <form method="POST" class="booking-form" novalidate>
                             <input type="hidden" name="event_booking_form" value="1">
                             <input type="hidden" name="event_id" id="eventBookingEventId" value="">
-                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($events_csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(pub_csrf_generate('events'), ENT_QUOTES, 'UTF-8'); ?>">
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label for="event_full_name">Full Name *</label>
