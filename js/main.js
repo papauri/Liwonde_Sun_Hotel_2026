@@ -202,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const supportsIntersectionObserver = 'IntersectionObserver' in window;
 
-    const mediaInHero = (el) => Boolean(el && el.closest('.hero, .rooms-hero, .header__logo'));
+    const mediaInHero = (el) => Boolean(el && el.closest('.hero, .rooms-hero, .lsh-header__brand'));
     const isMobileViewport = () => (window.innerWidth || document.documentElement.clientWidth || 0) <= 1023;
     const isLikelyAboveFold = (el) => {
         if (!el || !el.getBoundingClientRect) return false;
