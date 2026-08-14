@@ -103,6 +103,30 @@ $heroHasMedia = !empty($heroVideoPath) || !empty($heroImagePath);
 // Unified eyebrow label (UI only)
 $hero_site_name = function_exists('getSetting') ? (string) getSetting('site_name', 'Liwonde Sun Hotel') : 'Liwonde Sun Hotel';
 
+// Booking trust chips — home hero only, edited in admin → Section Headers → Page Hero Text.
+// They make claims about the booking flow, so they must never appear on other heroes.
+$heroChipDefaults = [
+    ['icon' => 'fa-bolt',           'text' => 'Instant confirmation'],
+    ['icon' => 'fa-shield-halved',  'text' => 'Secure booking'],
+    ['icon' => 'fa-tag',            'text' => 'Best rate direct'],
+];
+$heroChips = [];
+if ($page_slug === 'index') {
+    foreach ($heroChipDefaults as $i => $chipDefault) {
+        $slot = $i + 1;
+        $chipText = function_exists('getSetting')
+            ? trim((string) getSetting("hero_chip_{$slot}_text", $chipDefault['text']))
+            : $chipDefault['text'];
+        if ($chipText === '') {
+            continue; // Blanking the text removes the chip.
+        }
+        $chipIcon = function_exists('getSetting')
+            ? trim((string) getSetting("hero_chip_{$slot}_icon", $chipDefault['icon']))
+            : $chipDefault['icon'];
+        $heroChips[] = ['icon' => $chipIcon, 'text' => $chipText];
+    }
+}
+
 // Only render if hero data exists
 if ($pageHero):
 ?>
@@ -178,13 +202,11 @@ if ($pageHero):
         </div>
         <?php endif; ?>
 
-        <?php if ($page_slug === 'index'): ?>
-        <!-- Booking trust chips — home only. These make claims about the booking
-             flow, so they must not appear on Restaurant/Gym/Events/etc. heroes. -->
+        <?php if (!empty($heroChips)): ?>
         <div class="hero__chips">
-            <span class="hero__chip"><i class="fas fa-bolt" aria-hidden="true"></i> Instant confirmation</span>
-            <span class="hero__chip"><i class="fas fa-shield-halved" aria-hidden="true"></i> Secure booking</span>
-            <span class="hero__chip"><i class="fas fa-tag" aria-hidden="true"></i> Best rate direct</span>
+            <?php foreach ($heroChips as $heroChip): ?>
+            <span class="hero__chip"><?php if ($heroChip['icon'] !== ''): ?><i class="fas <?php echo htmlspecialchars($heroChip['icon']); ?>" aria-hidden="true"></i> <?php endif; ?><?php echo htmlspecialchars($heroChip['text']); ?></span>
+            <?php endforeach; ?>
         </div>
         <?php endif; ?>
     </div>

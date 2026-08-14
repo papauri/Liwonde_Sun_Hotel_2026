@@ -396,7 +396,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
 
                 <form id="reviewForm" method="POST" action="submit-review.php<?php echo $selected_room_id > 0 ? '?room_id=' . $selected_room_id : ''; ?>" novalidate>
-                    <input type="hidden" name="_csrf_review" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <input type="hidden" name="_csrf_review" value="<?php echo htmlspecialchars(pub_csrf_generate('review')); ?>">
                     <!-- Personal Information -->
                     <div class="form-section-title">
                         <i class="fas fa-user"></i>

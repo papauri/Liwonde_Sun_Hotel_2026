@@ -270,8 +270,8 @@ foreach ($footer_links_raw as $link) {
                     <div id="editorial-rooms-section-content">
                         <?php renderSectionHeader('home_rooms', 'index', [
                             'label' => 'Accommodations',
-                            'title' => 'Luxurious Rooms & Suites',
-                            'description' => 'Experience unmatched comfort in our meticulously designed rooms and suites'
+                            'title' => 'Rooms & Suites',
+                            'description' => 'Each room is composed for rest — warm textures, generous light, and the slow rhythm of the Shire never far from the window.'
                         ], 'editorial-header section-header--editorial'); ?>
                         <div class="editorial-rooms-row landing-grid landing-grid--three" id="editorial-rooms-row">
                             <?php
@@ -358,8 +358,8 @@ foreach ($footer_links_raw as $link) {
                     <div class="container">
                         <?php renderSectionHeader('home_facilities', 'index', [
                             'label' => 'Amenities',
-                            'title' => 'World-Class Facilities',
-                            'description' => 'Indulge in our premium facilities designed for your ultimate comfort'
+                            'title' => 'Space To Unwind',
+                            'description' => 'Pool, table and terrace — every corner of the hotel is turned toward the light and the water, and made to be lingered in.'
                         ], 'editorial-header section-header--editorial'); ?>
                         <div class="editorial-facilities-grid landing-grid landing-grid--three" id="editorial-facilities-grid">
                             <?php foreach ($facilities as $facility): ?>
@@ -399,9 +399,9 @@ foreach ($footer_links_raw as $link) {
                     <div class="container">
                         <div class="editorial-header-wrapper">
                             <?php renderSectionHeader('home_testimonials', 'index', [
-                                'label' => 'Reviews',
-                                'title' => 'What Our Guests Say',
-                                'description' => 'Hear from those who have experienced our exceptional hospitality'
+                                'label' => 'Guest Book',
+                                'title' => 'In Their Words',
+                                'description' => 'A few notes from the guests who have stayed, dined and slowed down with us beside the river.'
                             ], 'editorial-header section-header--editorial'); ?>
                         </div>
                         <div class="editorial-testimonials-grid landing-grid landing-grid--three" id="editorial-testimonials-grid">

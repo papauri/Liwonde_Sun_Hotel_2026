@@ -1135,7 +1135,17 @@ try {
                 }
                 ?>
                 <input type="hidden" name="client_uuid" value="<?php echo htmlspecialchars($_SESSION['booking_form_uuid']); ?>">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($booking_csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                <?php
+                // Emit a LIVE token at render time, not the value captured at the top of
+                // the request. pub_csrf_validate() rotates (consumes) the token on a
+                // successful check, so on a validation-error re-render the pre-rotation
+                // value is already dead — printing it would fail the guest's very next
+                // submit with "Security token invalid". Regenerating here is idempotent:
+                // it returns the existing session token, or mints a fresh one if it was
+                // just consumed, so the field always matches the session. Mirrors the
+                // per-render refresh already used for the idempotency token above.
+                ?>
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(pub_csrf_generate('booking'), ENT_QUOTES, 'UTF-8'); ?>">
 
                 <!-- Booking Details — date-first UX: pick dates before browsing rooms -->
                 <div class="form-section form-section--step" id="bookingDetailsSection">

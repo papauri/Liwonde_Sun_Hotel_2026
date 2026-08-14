@@ -15,9 +15,8 @@
     justify-content: center;
     visibility: visible;
     pointer-events: all;
-    transition:
-        transform 0.85s cubic-bezier(0.76, 0, 0.24, 1),
-        visibility 0s linear 0.85s;
+    transform: translateY(0);
+    transition: transform 0.8s cubic-bezier(0.76, 0, 0.24, 1);
 }
 
 /* Curtain exit — the whole sand panel lifts away */
@@ -26,9 +25,26 @@
     pointer-events: none;
 }
 
+/* Fully hidden. Critically, the curtain STAYS lifted here (transform kept at
+   -100%) and the transition is switched off, so committing this state can
+   never animate the panel back down over the page.
+
+   This is the structural fix for the "loader, page, loader again" double-flash
+   (most visible on mobile): the old rule set only `visibility: hidden` and let
+   transform fall back to its base 0, so removing --hiding replayed the curtain
+   sliding down from -100% to 0 — a full second reveal on every single hide. */
 .loader--hidden {
+    transform: translateY(-100%);
     visibility: hidden;
     pointer-events: none;
+    transition: none;
+}
+
+/* Snap state — lets the controller flip show/hide with no animation at all
+   (SPA show, bfcache restore). Removed again on the next frame so the ordinary
+   curtain transition returns for the following hide. */
+.loader--instant {
+    transition: none !important;
 }
 
 .loader__content {

@@ -18,27 +18,17 @@ if (function_exists('getPageLoader') && $page_slug) {
 }
 
 // Build page loader subtext mapping for client-side navigation
-// This allows the loader to show the destination page's subtext during navigation
+// This allows the loader to show the destination page's subtext during navigation.
+// Driven straight off page_loaders (admin → Section Headers → Loading Screens),
+// so a loader added in admin is picked up by SPA navigation without a code change.
 $loaderSubtextMap = [];
-if (function_exists('getPageLoader')) {
-    // Map of ALL page slugs to their loader subtext
-    // Include all possible destinations to prevent fallback to source page subtext
-    $commonPages = [
-        'index', 'home',
-        'rooms-gallery', 'rooms-showcase', 'room',
-        'restaurant',
-        'events',
-        'gym',
-        'conference',
-        'booking', 'check-availability', 'booking-confirmation', 'booking-lookup',
-        'submit-review', 'review-confirmation'
-    ];
-    foreach ($commonPages as $slug) {
-        $subtext = getPageLoader($slug);
-        // Include empty strings so destination is always tracked in map
-        // This prevents fallback to source page's subtext
-        $loaderSubtextMap[$slug] = $subtext !== false ? $subtext : '';
-    }
+if (function_exists('getAllPageLoaders')) {
+    $loaderSubtextMap = getAllPageLoaders();
+}
+// Always track the current page so navigating back to it never falls back to
+// the previous page's subtext.
+if ($page_slug !== '' && !array_key_exists($page_slug, $loaderSubtextMap)) {
+    $loaderSubtextMap[$page_slug] = (string)$loaderSubtext;
 }
 
 // Ballena-style split tagline for the loader (presentation only)
@@ -67,102 +57,156 @@ $loaderLineBottom = implode(' ', array_slice($loaderWords, $loaderHalf));
 <script>
 (function() {
     'use strict';
-    
-    // Page loader subtext mapping for client-side navigation
-    // This allows showing the destination page's subtext during navigation
+
+    /* ====================================================================
+       PAGE LOADER — single controller
+       --------------------------------------------------------------------
+       This inline script is the ONE owner of #page-loader for the whole
+       site. It runs a tiny state machine (visible → hiding → hidden) and
+       finalises the hide from the curtain's own `transitionend` event, with
+       a timer used only as a safety net — never as the primary trigger.
+
+       It replaces the previous setup where this file, page-transitions.js
+       AND navigation-unified.js each independently poked the same element on
+       hand-synced 850ms timers. That, combined with a CSS state that let the
+       curtain animate back down on finalise, produced the mobile double
+       flash. navigation-unified.js now simply calls window.LSHLoader.
+       ==================================================================== */
+
+    // ── SPA subtext map (unchanged behaviour) ────────────────────────────
+    // Lets client-side navigation show the DESTINATION page's caption while
+    // the curtain is up.
     window.PAGE_LOADER_SUBTEXTS = <?php echo json_encode($loaderSubtextMap); ?>;
-    
-    // Normalize page slug for consistent lookup
+
     function normalizePageSlug(pageSlug) {
         if (!pageSlug) return '';
-        // Remove .php extension, trailing slashes, and convert to lowercase
-        return pageSlug
-            .replace(/\.php$/, '')
-            .replace(/\/$/, '')
-            .toLowerCase();
+        return pageSlug.replace(/\.php$/, '').replace(/\/$/, '').toLowerCase();
     }
-    
-    // Get subtext for a page slug, with fallback
+
     function getLoaderSubtext(pageSlug) {
         if (!pageSlug) return null;
-        
-        const normalizedSlug = normalizePageSlug(pageSlug);
-        
-        // Direct match
-        if (window.PAGE_LOADER_SUBTEXTS && window.PAGE_LOADER_SUBTEXTS[normalizedSlug]) {
-            return window.PAGE_LOADER_SUBTEXTS[normalizedSlug];
+        var slug = normalizePageSlug(pageSlug);
+        if (window.PAGE_LOADER_SUBTEXTS && window.PAGE_LOADER_SUBTEXTS[slug]) {
+            return window.PAGE_LOADER_SUBTEXTS[slug];
         }
-        
-        // Handle home/index variations
-        if ((normalizedSlug === '' || normalizedSlug === 'home') && window.PAGE_LOADER_SUBTEXTS && window.PAGE_LOADER_SUBTEXTS['index']) {
+        if ((slug === '' || slug === 'home') &&
+            window.PAGE_LOADER_SUBTEXTS && window.PAGE_LOADER_SUBTEXTS['index']) {
             return window.PAGE_LOADER_SUBTEXTS['index'];
         }
-        
         return null;
     }
-    
-    // Update loader subtext to show destination page
+
     function updateLoaderSubtext(destinationPage) {
-        const subtitleEl = document.querySelector('.loader__subtitle');
+        var subtitleEl = document.querySelector('.loader__subtitle');
         if (!subtitleEl) return;
-        
-        const subtext = getLoaderSubtext(destinationPage);
-        if (subtext && subtext !== '') {
-            // Use destination page's subtext
-            subtitleEl.textContent = subtext;
-        } else {
-            // Use generic loading message instead of source page's subtext
-            // This prevents showing the wrong page's subtext during navigation
-            subtitleEl.textContent = 'Loading...';
-        }
+        var subtext = getLoaderSubtext(destinationPage);
+        subtitleEl.textContent = (subtext && subtext !== '') ? subtext : 'Loading...';
     }
-    
-    // Expose functions globally for navigation scripts
+
     window.getLoaderSubtext = getLoaderSubtext;
     window.updateLoaderSubtext = updateLoaderSubtext;
-    
-    // Hide loader when page is fully loaded
-    function hideLoader() {
-        const loader = document.getElementById('page-loader');
-        if (loader) {
-            // Use proper CSS transition sequence
-            loader.classList.add('loader--hiding');
-            loader.classList.remove('loader--active');
-            
-            setTimeout(function() {
-                loader.classList.add('loader--hidden');
-                loader.classList.remove('loader--hiding');
-            }, 500);
-        }
+
+    // ── Controller ───────────────────────────────────────────────────────
+    var loader = document.getElementById('page-loader');
+    if (!loader) return;
+
+    var state = 'visible';   // 'visible' | 'hiding' | 'hidden'
+    var safetyTimer = null;
+
+    function prefersReduced() {
+        return !!(window.matchMedia &&
+                  window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     }
-    
-    // Hide on window load (only if navigation has not started)
-    function hideLoaderOnPageLoad() {
+
+    function onTransitionEnd(e) {
+        // Only the curtain's own transform settles the hide — ignore bubbling
+        // transitions from child elements (content fade, etc.).
+        if (e.target !== loader) return;
+        if (e.propertyName && e.propertyName !== 'transform') return;
+        finalizeHide();
+    }
+
+    function finalizeHide() {
+        if (state !== 'hiding') return;   // guard against double-finalise
+        state = 'hidden';
+        clearTimeout(safetyTimer);
+        loader.removeEventListener('transitionend', onTransitionEnd);
+        // --hidden keeps transform at -100% and kills the transition, so this
+        // commit is visually inert: no reversal, no flash.
+        loader.classList.add('loader--hidden');
+        loader.classList.remove('loader--hiding', 'loader--active');
+        document.body.classList.add('page-loaded');
+    }
+
+    // Animated hide (initial page load, end of SPA navigation).
+    function hide() {
+        if (state !== 'visible') return;  // idempotent — never re-arm mid-hide
+        window._pageLoaderNavigating = false;
+        state = 'hiding';
+        loader.classList.add('loader--hiding');
+        loader.classList.remove('loader--active');
+        loader.addEventListener('transitionend', onTransitionEnd);
+        // Safety net only: transitionend can fail to fire on a backgrounded
+        // tab, under reduced motion (no transition), or if the animation is
+        // interrupted. Slightly longer than the CSS duration.
+        clearTimeout(safetyTimer);
+        safetyTimer = setTimeout(finalizeHide, prefersReduced() ? 80 : 950);
+    }
+
+    // Instant show (start of SPA navigation) — snap the curtain over the page
+    // with no slide, then restore the transition for the next hide.
+    function show(destinationPage) {
+        window._pageLoaderNavigating = true;
+        if (destinationPage) updateLoaderSubtext(destinationPage);
+        clearTimeout(safetyTimer);
+        loader.removeEventListener('transitionend', onTransitionEnd);
+        loader.classList.add('loader--instant');
+        loader.classList.remove('loader--hidden', 'loader--hiding');
+        loader.classList.add('loader--active');
+        void loader.offsetWidth;                 // force reflow while inert
+        loader.classList.remove('loader--instant');
+        state = 'visible';
+        document.body.classList.remove('page-loaded');
+    }
+
+    // Instant hide (bfcache restore) — no animation, just gone.
+    function hideInstant() {
+        state = 'hidden';
+        clearTimeout(safetyTimer);
+        loader.removeEventListener('transitionend', onTransitionEnd);
+        loader.classList.add('loader--instant', 'loader--hidden');
+        loader.classList.remove('loader--hiding', 'loader--active');
+        void loader.offsetWidth;
+        loader.classList.remove('loader--instant');
+        document.body.classList.add('page-loaded');
+    }
+
+    window.LSHLoader = { show: show, hide: hide, hideInstant: hideInstant };
+
+    // ── Initial-load hide ────────────────────────────────────────────────
+    function hideOnLoad() {
+        // Brief perceptible beat, but never hide while a client-side
+        // navigation is mid-flight (navigation owns the curtain then).
         setTimeout(function() {
-            if (!window._pageLoaderNavigating) {
-                hideLoader();
-            }
+            if (!window._pageLoaderNavigating) hide();
         }, 100);
     }
 
     if (document.readyState === 'complete') {
-        hideLoaderOnPageLoad();
+        hideOnLoad();
     } else {
-        window.addEventListener('load', hideLoaderOnPageLoad);
+        window.addEventListener('load', hideOnLoad);
     }
-    
-    // Fallback: hide after 3 seconds, but only if navigation is not in progress
+
+    // Hard safety: never leave the curtain stuck, even if `load` never fires.
     setTimeout(function() {
-        if (!window._pageLoaderNavigating) {
-            hideLoader();
-        }
+        if (!window._pageLoaderNavigating) hide();
     }, 3000);
-    
-    // Handle browser back/forward (bfcache)
+
+    // Browser back/forward (bfcache) — the page is restored fully rendered,
+    // so drop the curtain instantly rather than replaying the animation.
     window.addEventListener('pageshow', function(e) {
-        if (e.persisted) {
-            hideLoader();
-        }
+        if (e.persisted) hideInstant();
     });
 })();
 </script>

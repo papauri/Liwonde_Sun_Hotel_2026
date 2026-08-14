@@ -39,8 +39,13 @@
 <IfModule mod_expires.c>
     ExpiresActive on
     
-    # CSS & JavaScript - 1 year
-    ExpiresByType text/css "access plus 1 year"
+    # CSS - 1 hour. The guest site loads css/main.css, which pulls ~30 partials
+    # via @import; a query string on main.css is NOT inherited by those imports,
+    # so no cache-busting stamp can reach them. A short TTL is what makes a CSS
+    # deploy (e.g. a header or loader restyle) actually reach returning visitors.
+    ExpiresByType text/css "access plus 1 hour"
+
+    # JavaScript - 1 year (footer.php stamps js/*.js with ?v=filemtime)
     ExpiresByType application/x-javascript "access plus 1 year"
     ExpiresByType application/javascript "access plus 1 year"
     ExpiresByType text/javascript "access plus 1 year"
