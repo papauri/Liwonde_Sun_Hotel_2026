@@ -89,7 +89,8 @@
             this._attachLinkListeners();
 
             window.addEventListener('popstate', e => this._onPopState(e));
-            window.addEventListener('pageshow', e => { if (e.persisted) this._hideLoader(); });
+            // bfcache restore is owned by the loader controller in
+            // includes/loader.php (it snaps the curtain hidden instantly).
 
             history.replaceState({ page: this.currentPage }, '', window.location.href);
         }
@@ -669,46 +670,24 @@
            Loader helpers
         ================================================================ */
 
+        // The loader is owned by the single controller in includes/loader.php
+        // (exposed as window.LSHLoader). Navigation just drives it — it must
+        // NOT manipulate the loader's classes or timers itself, or it would
+        // reintroduce the competing-owner race that caused the double flash.
+
         _showLoader(destinationPage) {
-            // Signal that navigation is in progress — prevents loader.php fallback timer from hiding it
+            // Keep the flag set even if the controller isn't present yet, so
+            // the initial-load fallback timers don't hide it out from under us.
             window._pageLoaderNavigating = true;
-            const l = document.getElementById('page-loader');
-            if (l) {
-                // Update loader subtext to show destination page
-                if (destinationPage && typeof window.updateLoaderSubtext === 'function') {
-                    window.updateLoaderSubtext(destinationPage);
-                }
-                // Remove hidden state first
-                l.classList.remove('loader--hidden', 'loader--hiding');
-                // Add active state to trigger proper CSS transitions
-                l.classList.add('loader--active');
-                // Clear any inline styles that might interfere
-                l.style.opacity = '';
-                l.style.visibility = '';
+            if (window.LSHLoader) {
+                window.LSHLoader.show(destinationPage);
             }
         }
 
         _hideLoader() {
-            // Clear navigation flag so that page's fallback timer knows navigation ended
             window._pageLoaderNavigating = false;
-            const l = document.getElementById('page-loader');
-            if (l) {
-                // First add hiding state for smooth transition
-                l.classList.add('loader--hiding');
-                l.classList.remove('loader--active');
-                // Then add hidden after the transition completes. This MUST
-                // match .loader's transform transition duration in loader.css
-                // (0.85s), not just approximate it: finalizing loader--hidden
-                // before the curtain-lift transform finishes yanks its target
-                // back to the base (fully-covering) value while the property
-                // is still mid-transition, which replays the curtain sliding
-                // back down over the newly-swapped page before it can vanish
-                // — a visible "loader, page, loader again" flash on every
-                // single SPA navigation.
-                setTimeout(() => {
-                    l.classList.add('loader--hidden');
-                    l.classList.remove('loader--hiding');
-                }, 850);
+            if (window.LSHLoader) {
+                window.LSHLoader.hide();
             }
         }
 
