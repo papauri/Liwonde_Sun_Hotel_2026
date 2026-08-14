@@ -118,11 +118,18 @@ $loaderLineBottom = implode(' ', array_slice($loaderWords, $loaderHalf));
             // Use proper CSS transition sequence
             loader.classList.add('loader--hiding');
             loader.classList.remove('loader--active');
-            
+
+            // Must match .loader's transform transition duration in loader.css
+            // (0.85s). Finalizing loader--hidden before that transition
+            // finishes yanks the curtain's transform target back to its base
+            // value mid-flight, which - because .loader's transition applies
+            // to transform generally, not just the --hiding rule - replays
+            // the curtain sliding back down over the page before it can
+            // vanish: a visible "loader, page, loader again" flash.
             setTimeout(function() {
                 loader.classList.add('loader--hidden');
                 loader.classList.remove('loader--hiding');
-            }, 500);
+            }, 850);
         }
     }
     

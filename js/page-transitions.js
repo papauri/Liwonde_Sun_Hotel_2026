@@ -89,12 +89,16 @@
                 // Use proper CSS classes for smooth transition
                 this.loader.classList.add('loader--hiding');
                 this.loader.classList.remove('loader--active');
-                
+
+                // Must match .loader's transform transition duration in
+                // loader.css (0.85s) — see the matching comment in
+                // includes/loader.php's hideLoader() for why a shorter delay
+                // here makes the curtain visibly reverse mid-lift.
                 setTimeout(() => {
                     this.loader.classList.add('loader--hidden');
                     this.loader.classList.remove('loader--hiding');
-                }, 500);
-                
+                }, 850);
+
                 this.isLoaded = true;
                 
                 // Trigger page loaded event

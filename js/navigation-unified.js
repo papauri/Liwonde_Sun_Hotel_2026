@@ -696,11 +696,19 @@
                 // First add hiding state for smooth transition
                 l.classList.add('loader--hiding');
                 l.classList.remove('loader--active');
-                // Then add hidden after transition completes
+                // Then add hidden after the transition completes. This MUST
+                // match .loader's transform transition duration in loader.css
+                // (0.85s), not just approximate it: finalizing loader--hidden
+                // before the curtain-lift transform finishes yanks its target
+                // back to the base (fully-covering) value while the property
+                // is still mid-transition, which replays the curtain sliding
+                // back down over the newly-swapped page before it can vanish
+                // — a visible "loader, page, loader again" flash on every
+                // single SPA navigation.
                 setTimeout(() => {
                     l.classList.add('loader--hidden');
                     l.classList.remove('loader--hiding');
-                }, 500);
+                }, 850);
             }
         }
 
