@@ -364,9 +364,9 @@
     backface-visibility: hidden;
 }
 
+/* Zoom only — the colour no longer shifts on hover. */
 .editorial-room-card:hover .editorial-room-card__media img {
-    transform: scale(1.045) translateZ(0);
-    filter: saturate(1) contrast(1.06);
+    transform: scale(1.03);
 }
 
 .editorial-room-card__media::before {
@@ -790,10 +790,11 @@
     pointer-events: none;
 }
 
+/* Nudge only. The scale-up plus its own drop shadow made a text link behave
+   like a second card sitting on the first. */
 .editorial-facility-link:hover,
 .editorial-facility-link:focus-visible {
-    transform: translateX(3px) scale(1.03);
-    box-shadow: 0 12px 26px rgba(46, 40, 33, 0.14), inset 0 1px 0 rgba(255,255,255,0.7);
+    transform: translateX(3px);
 }
 
 .editorial-facility-link:hover::after,
@@ -806,10 +807,10 @@
     transform: translateX(2px);
 }
 
-/* Elevate link prominence when card is hovered */
+/* Hovering the card gives the link the same small nudge — it no longer grows
+   and gains a shadow, which was two elements animating for one intent. */
 .editorial-facility-card:hover .editorial-facility-link {
-    transform: translateX(3px) scale(1.05);
-    box-shadow: 0 16px 34px rgba(46, 40, 33, 0.18);
+    transform: translateX(3px);
 }
 
 /* Premium reveal polish tied to scroll classes added by JS */

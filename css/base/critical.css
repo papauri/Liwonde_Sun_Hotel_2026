@@ -62,6 +62,28 @@ main>div>[class*="hero"]:first-child {
    curtain where the loader is now sand — so they were removed.
    ============================================ */
 
+.page-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Sand, matching .loader in css/components/loader.css. This is inlined
+       above the fold, so a dark value here flashed black before the real
+       loader sheet arrived. */
+    background: #F8F2E5;
+    transition: opacity 0.5s ease;
+}
+
+.page-loader.fade-out {
+    opacity: 0;
+}
+
+.page-loader.hidden {
+    display: none;
+}
+
 /* ============================================
    CRITICAL HEADER NOTE
    The fixed header is styled entirely in css/components/header.css
