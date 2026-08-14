@@ -89,7 +89,8 @@
             this._attachLinkListeners();
 
             window.addEventListener('popstate', e => this._onPopState(e));
-            window.addEventListener('pageshow', e => { if (e.persisted) this._hideLoader(); });
+            // bfcache restore is owned by the loader controller in
+            // includes/loader.php (it snaps the curtain hidden instantly).
 
             history.replaceState({ page: this.currentPage }, '', window.location.href);
         }
@@ -319,8 +320,14 @@
             // Capture phase so we get the click before any other handler
             document.addEventListener('click', e => this._onLinkClick(e), true);
 
-            // Add non-SPA loader trigger for internal links
-            document.addEventListener('click', e => this._onNonSPALinkClick(e), true);
+            // NOTE: the former "non-SPA loader trigger" listener was removed.
+            // It flipped #page-loader active on the CURRENT page right before a
+            // full navigation to an excluded page (booking, conference, etc.).
+            // The destination page then shows its own server-rendered #page-loader
+            // on load, so the guest saw the loader twice — loader, page, loader
+            // again. The destination's own load loader is the single source of
+            // truth, so this pre-navigation flash is no longer shown.
+            // (_onNonSPALinkClick is retained but no longer wired.)
         }
 
         _onLinkClick(e) {
@@ -663,38 +670,24 @@
            Loader helpers
         ================================================================ */
 
+        // The loader is owned by the single controller in includes/loader.php
+        // (exposed as window.LSHLoader). Navigation just drives it — it must
+        // NOT manipulate the loader's classes or timers itself, or it would
+        // reintroduce the competing-owner race that caused the double flash.
+
         _showLoader(destinationPage) {
-            // Signal that navigation is in progress — prevents loader.php fallback timer from hiding it
+            // Keep the flag set even if the controller isn't present yet, so
+            // the initial-load fallback timers don't hide it out from under us.
             window._pageLoaderNavigating = true;
-            const l = document.getElementById('page-loader');
-            if (l) {
-                // Update loader subtext to show destination page
-                if (destinationPage && typeof window.updateLoaderSubtext === 'function') {
-                    window.updateLoaderSubtext(destinationPage);
-                }
-                // Remove hidden state first
-                l.classList.remove('loader--hidden', 'loader--hiding');
-                // Add active state to trigger proper CSS transitions
-                l.classList.add('loader--active');
-                // Clear any inline styles that might interfere
-                l.style.opacity = '';
-                l.style.visibility = '';
+            if (window.LSHLoader) {
+                window.LSHLoader.show(destinationPage);
             }
         }
 
         _hideLoader() {
-            // Clear navigation flag so that page's fallback timer knows navigation ended
             window._pageLoaderNavigating = false;
-            const l = document.getElementById('page-loader');
-            if (l) {
-                // First add hiding state for smooth transition
-                l.classList.add('loader--hiding');
-                l.classList.remove('loader--active');
-                // Then add hidden after transition completes
-                setTimeout(() => {
-                    l.classList.add('loader--hidden');
-                    l.classList.remove('loader--hiding');
-                }, 500);
+            if (window.LSHLoader) {
+                window.LSHLoader.hide();
             }
         }
 

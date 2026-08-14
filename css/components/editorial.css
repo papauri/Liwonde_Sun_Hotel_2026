@@ -354,10 +354,14 @@
 
 .editorial-room-card__media img {
     object-fit: cover;
-    transform: scale(1.001);
+    transform: scale(1.001) translateZ(0);
     filter: saturate(0.94) contrast(1.03);
     transition: transform 960ms var(--landing-ease, cubic-bezier(0.22, 1, 0.36, 1)),
         filter 640ms var(--easing-out, ease-out);
+    /* Keep the scaling image on its own GPU compositing layer so the
+       hover zoom doesn't reveal a 1px antialiasing seam against the
+       rounded, overflow:hidden card underneath. */
+    backface-visibility: hidden;
 }
 
 /* Zoom only — the colour no longer shifts on hover. */
@@ -558,11 +562,16 @@
     height: 100%;
     object-fit: cover;
     transition: transform var(--transition-slow, 0.6s) var(--easing-out, ease-out);
+    /* Keep the scaling image on its own GPU compositing layer so the
+       hover zoom doesn't reveal a 1px antialiasing seam against the
+       rounded, overflow:hidden gallery item underneath. */
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .editorial-gallery-item:hover .editorial-gallery-item__img,
 .editorial-gallery-item:hover .editorial-gallery-item__video {
-    transform: scale(1.04);
+    transform: scale(1.04) translateZ(0);
 }
 
 /* Fallback for gallery markup that uses plain <img>/<video> without BEM element classes */
@@ -1053,10 +1062,15 @@
     height: 100%;
     object-fit: cover;
     transition: transform var(--motion-premium-duration, 520ms) var(--motion-premium-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    /* Keep the scaling image on its own GPU compositing layer so the
+       hover zoom doesn't reveal a 1px antialiasing seam against the
+       rounded, overflow:hidden card underneath. */
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .ue-card-modern:hover .ue-card-image img {
-    transform: scale(1.03);
+    transform: scale(1.03) translateZ(0);
 }
 
 .ue-price-tag {

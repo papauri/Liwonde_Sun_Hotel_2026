@@ -733,7 +733,7 @@ try {
                     <div class="modal__body">
                         <form method="POST" class="booking-form" novalidate>
                             <input type="hidden" name="gym_booking_form" value="1">
-                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($gym_csrf_token, ENT_QUOTES, 'UTF-8'); ?>">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(pub_csrf_generate('gym'), ENT_QUOTES, 'UTF-8'); ?>">
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label for="full_name">Full Name *</label>

@@ -26,6 +26,63 @@ $message = '';
 $error = '';
 $success = false;
 
+/**
+ * The loading-screen table is content-only and has no DDL anywhere else in the
+ * repo, so create (and seed) it on first visit — same approach Page Management
+ * takes for site_pages. Returns true when this call created the table.
+ */
+function ensurePageLoadersTable(PDO $pdo): bool
+{
+    $exists = $pdo->query("SHOW TABLES LIKE 'page_loaders'");
+    if ($exists && $exists->fetch()) {
+        return false;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS page_loaders (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            page_slug VARCHAR(50) NOT NULL COMMENT 'Page filename without .php, e.g. rooms-gallery',
+            subtext VARCHAR(255) DEFAULT NULL COMMENT 'Line shown under the site name while the page loads',
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            display_order INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY page_slug (page_slug)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    $seed = [
+        ['index',        'Where Comfort Meets Value',        1],
+        ['rooms-gallery','Preparing your room collection',   2],
+        ['room',         'Preparing your room',              3],
+        ['restaurant',   'Setting the table',                4],
+        ['gym',          'Warming up',                       5],
+        ['conference',   'Preparing the boardroom',          6],
+        ['events',       'Gathering what\'s on',             7],
+        ['booking',      'Opening the reservation desk',     8],
+    ];
+    $ins = $pdo->prepare("
+        INSERT INTO page_loaders (page_slug, subtext, is_active, display_order)
+        VALUES (?, ?, 1, ?)
+        ON DUPLICATE KEY UPDATE page_slug = page_slug
+    ");
+    foreach ($seed as $row) {
+        $ins->execute($row);
+    }
+
+    return true;
+}
+
+$page_loaders_available = true;
+try {
+    if (ensurePageLoadersTable($pdo)) {
+        rh_log_event('section_headers', 'info', 'page_loaders table created and seeded');
+    }
+} catch (PDOException $e) {
+    $page_loaders_available = false;
+    rh_log_event('section_headers', 'error', 'Failed to initialize page_loaders table', ['error' => $e->getMessage()]);
+}
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
@@ -210,6 +267,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $message = "Hero entry created for '{$page_slug_new}'. You can now edit it below.";
             $success = true;
+        } elseif ($action === 'update_hero_chips') {
+            // Booking trust chips shown under the home page hero (includes/hero.php).
+            // Stored as site_settings so the locked page_heroes schema stays untouched.
+            for ($slot = 1; $slot <= 3; $slot++) {
+                $chipText = trim($_POST["hero_chip_{$slot}_text"] ?? '');
+                $chipIcon = trim($_POST["hero_chip_{$slot}_icon"] ?? '');
+
+                if ($chipIcon !== '' && !preg_match('/^[a-z0-9\- ]+$/i', $chipIcon)) {
+                    throw new Exception("Badge {$slot}: icon must be a Font Awesome class such as fa-bolt.");
+                }
+                if (mb_strlen($chipText) > 40) {
+                    throw new Exception("Badge {$slot}: keep the label under 40 characters so it fits on mobile.");
+                }
+
+                updateSetting("hero_chip_{$slot}_text", $chipText);
+                updateSetting("hero_chip_{$slot}_icon", $chipIcon);
+            }
+
+            require_once __DIR__ . '/../config/cache.php';
+            clearCache();
+
+            $message = 'Home hero badges updated!';
+            $success = true;
+        } elseif ($action === 'update_loader') {
+            $loader_id      = (int)($_POST['loader_id'] ?? 0);
+            $loader_subtext = trim($_POST['loader_subtext'] ?? '');
+            $loader_active  = isset($_POST['loader_is_active']) ? 1 : 0;
+
+            if ($loader_id <= 0) {
+                throw new Exception('Invalid loading screen.');
+            }
+            if (mb_strlen($loader_subtext) > 255) {
+                throw new Exception('Loading message must be 255 characters or fewer.');
+            }
+
+            $stmt = $pdo->prepare("
+                UPDATE page_loaders
+                SET subtext = ?, is_active = ?, updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmt->execute([$loader_subtext ?: null, $loader_active, $loader_id]);
+
+            require_once __DIR__ . '/../config/cache.php';
+            clearCache();
+
+            $message = 'Loading screen updated!';
+            $success = true;
+        } elseif ($action === 'create_loader') {
+            $loader_slug_new    = trim(preg_replace('/[^a-z0-9\-]/', '', strtolower($_POST['new_loader_slug'] ?? '')));
+            $loader_subtext_new = trim($_POST['new_loader_subtext'] ?? '');
+
+            if ($loader_slug_new === '') {
+                throw new Exception('Page slug is required.');
+            }
+            if (mb_strlen($loader_subtext_new) > 255) {
+                throw new Exception('Loading message must be 255 characters or fewer.');
+            }
+
+            $chk = $pdo->prepare("SELECT id FROM page_loaders WHERE page_slug = ? LIMIT 1");
+            $chk->execute([$loader_slug_new]);
+            if ($chk->fetchColumn()) {
+                throw new Exception("A loading screen for '{$loader_slug_new}' already exists. Edit it in the list below.");
+            }
+
+            $maxOrder = (int)$pdo->query("SELECT COALESCE(MAX(display_order), 0) FROM page_loaders")->fetchColumn();
+            $ins = $pdo->prepare("
+                INSERT INTO page_loaders (page_slug, subtext, is_active, display_order)
+                VALUES (?, ?, 1, ?)
+            ");
+            $ins->execute([$loader_slug_new, $loader_subtext_new ?: null, $maxOrder + 1]);
+
+            require_once __DIR__ . '/../config/cache.php';
+            clearCache();
+
+            $message = "Loading screen created for '{$loader_slug_new}'.";
+            $success = true;
         } elseif ($action === 'reset_single') {
             $section_key = $_POST['section_key'] ?? '';
             $page = $_POST['page'] ?? '';
@@ -288,7 +421,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // PRG — preserve flash message through redirect to avoid form re-submit on refresh
-    $tab = in_array($action, ['update_hero', 'create_hero'], true) ? '#tab-heroes' : '#tab-sections';
+    if (in_array($action, ['update_loader', 'create_loader'], true)) {
+        $tab = '#tab-loaders';
+    } elseif (in_array($action, ['update_hero', 'create_hero', 'update_hero_chips'], true)) {
+        $tab = '#tab-heroes';
+    } else {
+        $tab = '#tab-sections';
+    }
     $flash_key = $success ? 'flash_success' : 'flash_error';
     $_SESSION[$flash_key] = $success ? $message : $error;
     header('Location: section-headers-management.php' . $tab);
@@ -346,6 +485,34 @@ try {
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $page_heroes_rows = [];
+}
+
+// Fetch loading screens (page_loaders) for the loaders tab
+$page_loaders_rows = [];
+if ($page_loaders_available) {
+    try {
+        $page_loaders_rows = $pdo->query("
+            SELECT id, page_slug, subtext, is_active
+            FROM page_loaders
+            ORDER BY display_order ASC, page_slug ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        $page_loaders_rows = [];
+    }
+}
+
+// Home hero badges (site_settings) — defaults mirror includes/hero.php
+$hero_chip_defaults = [
+    1 => ['icon' => 'fa-bolt',          'text' => 'Instant confirmation'],
+    2 => ['icon' => 'fa-shield-halved', 'text' => 'Secure booking'],
+    3 => ['icon' => 'fa-tag',           'text' => 'Best rate direct'],
+];
+$hero_chips = [];
+foreach ($hero_chip_defaults as $slot => $chip_default) {
+    $hero_chips[$slot] = [
+        'text' => (string) getSetting("hero_chip_{$slot}_text", $chip_default['text']),
+        'icon' => (string) getSetting("hero_chip_{$slot}_icon", $chip_default['icon']),
+    ];
 }
 
 $current_page = 'section-headers-management.php';
@@ -413,6 +580,10 @@ $page_title = 'Section Headers Management';
                 style="padding:12px 28px;font-size:14px;font-weight:700;border:none;background:#f0ede8;color:var(--navy);cursor:pointer;border-radius:6px 6px 0 0;letter-spacing:.04em;margin-left:4px;">
                 <i class="fas fa-heading"></i> Section Headers
             </button>
+            <button type="button" class="sh-tab" data-tab="loaders"
+                style="padding:12px 28px;font-size:14px;font-weight:700;border:none;background:#f0ede8;color:var(--navy);cursor:pointer;border-radius:6px 6px 0 0;letter-spacing:.04em;margin-left:4px;">
+                <i class="fas fa-spinner"></i> Loading Screens
+            </button>
         </div>
 
         <!-- ===== TAB: PAGE HEROES ===== -->
@@ -442,9 +613,56 @@ $page_title = 'Section Headers Management';
                 </div>
             </div>
 
+            <!-- Home hero badges -->
+            <div class="card" style="margin-bottom:20px;border-left:4px solid var(--navy);">
+                <button type="button" onclick="toggleEdit('hero-chips-form')"
+                    style="background:var(--navy);color:white;border:none;padding:9px 18px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;display:inline-flex;align-items:center;gap:8px;margin-bottom:0;">
+                    <i class="fas fa-certificate"></i> Home Hero Badges
+                </button>
+                <span style="margin-left:10px;color:#777;font-size:13px;">
+                    <?php
+                    $chip_preview = array_values(array_filter(array_map(static fn($c) => trim($c['text']), $hero_chips), static fn($t) => $t !== ''));
+                    echo $chip_preview ? htmlspecialchars(implode('  ·  ', $chip_preview)) : 'No badges shown';
+                    ?>
+                </span>
+                <form method="POST" id="edit_hero-chips-form" style="display:none;margin-top:16px;">
+                    <input type="hidden" name="action" value="update_hero_chips">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES) ?>">
+                    <p class="text-muted" style="margin:0 0 14px;font-size:13px;">
+                        The three small badges under the home page hero. They advertise the booking flow, so they appear on the home hero only.
+                        Clear a label to remove that badge. Icons use <a href="https://fontawesome.com/search?o=r&m=free" target="_blank" rel="noopener" style="color:var(--gold);">Font Awesome</a> class names, e.g. <code>fa-bolt</code>.
+                    </p>
+                    <?php foreach ($hero_chips as $slot => $chip): ?>
+                    <div style="display:grid;grid-template-columns:200px 1fr;gap:12px;margin-bottom:12px;">
+                        <div>
+                            <label style="display:block;font-weight:700;margin-bottom:6px;color:var(--navy);">Badge <?= (int)$slot ?> icon</label>
+                            <input type="text" name="hero_chip_<?= (int)$slot ?>_icon" value="<?= htmlspecialchars($chip['icon']) ?>"
+                                placeholder="fa-bolt" pattern="[A-Za-z0-9\- ]*" title="Font Awesome class, e.g. fa-bolt"
+                                style="width:100%;padding:10px;border:2px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block;font-weight:700;margin-bottom:6px;color:var(--navy);">Badge <?= (int)$slot ?> label</label>
+                            <input type="text" name="hero_chip_<?= (int)$slot ?>_text" value="<?= htmlspecialchars($chip['text']) ?>"
+                                maxlength="40" placeholder="e.g. Instant confirmation"
+                                style="width:100%;padding:10px;border:2px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                    <div style="display:flex;gap:10px;">
+                        <button type="submit" style="background:var(--gold);color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;">
+                            <i class="fas fa-save"></i> Save Badges
+                        </button>
+                        <button type="button" onclick="toggleEdit('hero-chips-form')"
+                            style="background:#6c757d;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+
             <!-- Add new hero entry -->
             <div class="card" style="margin-bottom:20px;border-left:4px solid var(--gold);">
-                <button type="button" class="sh-tab" onclick="toggleEdit('new-hero-form')"
+                <button type="button" onclick="toggleEdit('new-hero-form')"
                     style="background:var(--gold);color:white;border:none;padding:9px 18px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;display:inline-flex;align-items:center;gap:8px;margin-bottom:0;">
                     <i class="fas fa-plus"></i> Add Hero for New Page
                 </button>
@@ -763,6 +981,95 @@ $page_title = 'Section Headers Management';
 
         </div><!-- /tab-sections -->
 
+        <!-- ===== TAB: LOADING SCREENS ===== -->
+        <div id="tab-loaders" class="sh-tab-panel" style="display:none;">
+            <p class="text-muted" style="margin-bottom:16px;">
+                The loading screen shows the site name between the two halves of your tagline, with a short message underneath that changes per page.
+                The tagline and site name come from <a href="footer-management.php?tab=settings" style="color:var(--gold);">Site Identity</a>; the per-page message is edited here.
+            </p>
+
+            <?php if (!$page_loaders_available): ?>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    The <code>page_loaders</code> table could not be created or read. Loading screens fall back to no message.
+                </div>
+            <?php else: ?>
+
+            <!-- Add new loading screen -->
+            <div class="card" style="margin-bottom:20px;border-left:4px solid var(--gold);">
+                <button type="button" onclick="toggleEdit('new-loader-form')"
+                    style="background:var(--gold);color:white;border:none;padding:9px 18px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;display:inline-flex;align-items:center;gap:8px;margin-bottom:0;">
+                    <i class="fas fa-plus"></i> Add Loading Screen
+                </button>
+                <form method="POST" id="edit_new-loader-form" style="display:none;margin-top:16px;">
+                    <input type="hidden" name="action" value="create_loader">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES) ?>">
+                    <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:12px;">
+                        <div>
+                            <label style="display:block;font-weight:700;margin-bottom:6px;color:var(--navy);">
+                                Page Slug <span style="color:#dc3545;">*</span>
+                                <span style="color:#999;font-weight:400;font-size:12px;"> — filename without <code>.php</code></span>
+                            </label>
+                            <input type="text" name="new_loader_slug" required placeholder="guest-services"
+                                pattern="[a-z0-9\-]+" title="Lowercase letters, numbers and hyphens only"
+                                style="width:100%;padding:10px;border:2px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block;font-weight:700;margin-bottom:6px;color:var(--navy);">Loading Message</label>
+                            <input type="text" name="new_loader_subtext" maxlength="255" placeholder="e.g. Preparing your stay"
+                                style="width:100%;padding:10px;border:2px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;">
+                        <button type="submit" style="background:var(--gold);color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;">
+                            <i class="fas fa-save"></i> Create Loading Screen
+                        </button>
+                        <button type="button" onclick="toggleEdit('new-loader-form')"
+                            style="background:#6c757d;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <?php if (empty($page_loaders_rows)): ?>
+                <div class="card"><p class="text-muted" style="margin:0;">No loading screens yet. Add one above.</p></div>
+            <?php else: ?>
+            <div style="display:grid;gap:16px;">
+                <?php foreach ($page_loaders_rows as $pl): ?>
+                <div style="background:white;border-radius:8px;padding:20px;box-shadow:0 2px 4px rgba(0,0,0,.1);border-left:4px solid <?php echo $pl['is_active'] ? 'var(--gold)' : '#ccc'; ?>;">
+                    <form method="POST">
+                        <input type="hidden" name="action" value="update_loader">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES) ?>">
+                        <input type="hidden" name="loader_id" value="<?php echo (int)$pl['id']; ?>">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                            <h3 style="margin:0;color:var(--navy);font-size:16px;"><?php echo htmlspecialchars($pl['page_slug']); ?></h3>
+                            <?php if (!$pl['is_active']): ?>
+                                <span style="padding:3px 10px;background:#ccc;color:#444;border-radius:10px;font-size:11px;font-weight:700;text-transform:uppercase;">Hidden</span>
+                            <?php endif; ?>
+                        </div>
+                        <label style="display:block;font-weight:700;margin-bottom:6px;color:var(--navy);">Loading Message</label>
+                        <input type="text" name="loader_subtext" maxlength="255"
+                            value="<?php echo htmlspecialchars($pl['subtext'] ?? ''); ?>"
+                            placeholder="Shown under the site name while this page loads"
+                            style="width:100%;padding:10px;border:2px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:12px;">
+                        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                            <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--navy);">
+                                <input type="checkbox" name="loader_is_active" value="1" <?php echo $pl['is_active'] ? 'checked' : ''; ?>>
+                                Show this message
+                            </label>
+                            <button type="submit" style="background:var(--gold);color:white;border:none;padding:9px 18px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;">
+                                <i class="fas fa-save"></i> Save
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <?php endif; ?>
+        </div><!-- /tab-loaders -->
+
         <!-- Style Guide -->
         <div class="card sh-style-guide">
             <h2 class="page-title sh-style-guide__heading"><i class="fas fa-info-circle"></i> Section Header Style Guide</h2>
@@ -824,6 +1131,9 @@ $page_title = 'Section Headers Management';
         document.querySelectorAll('.sh-tab').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var target = this.dataset.tab;
+                // Some in-panel buttons reuse the .sh-tab look without being tabs;
+                // without this guard they would hide every panel.
+                if (!target) return;
                 document.querySelectorAll('.sh-tab').forEach(function(t) {
                     var isActive = t.dataset.tab === target;
                     t.style.background = isActive ? 'var(--gold)' : '#f0ede8';
@@ -841,8 +1151,8 @@ $page_title = 'Section Headers Management';
         // Restore tab from URL hash on load
         (function() {
             var hash = location.hash.replace('#', '');
-            if (hash === 'tab-sections') {
-                var btn = document.querySelector('[data-tab="sections"]');
+            if (hash === 'tab-sections' || hash === 'tab-loaders') {
+                var btn = document.querySelector('[data-tab="' + hash.replace('tab-', '') + '"]');
                 if (btn) btn.click();
             } else {
                 // heroes is default — clean the hash out of the URL bar
