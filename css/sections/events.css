@@ -208,11 +208,15 @@
     transition:
         transform 720ms cubic-bezier(0.22, 1, 0.36, 1),
         filter 500ms ease;
+    /* Keep the scaling image on its own GPU compositing layer so the
+       hover zoom doesn't reveal a 1px antialiasing seam against the
+       rounded, overflow:hidden card underneath. */
+    backface-visibility: hidden;
 }
 
 .events-showcase__card:hover .editorial-event-image,
 .conference-showcase__card:hover .editorial-conference-image {
-    transform: scale(1.058);
+    transform: scale(1.058) translateZ(0);
     filter: saturate(1.02) contrast(1.06);
 }
 
