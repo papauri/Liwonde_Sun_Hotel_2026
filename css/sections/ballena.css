@@ -1188,13 +1188,45 @@ body {
     color: rgba(3, 9, 13, 0.82) !important;
 }
 
-/* The tiles keep the flat treatment section 11 already gave them.
-   Only the marks that were SAGE — and would vanish against a sage
-   ground — move to ink. 0-4-0 + !important, appended last, clears
-   section 11's and bento's same-weight rules by load order. */
+/* The tiles keep the flat treatment section 11 already gave them,
+   but a bare glyph with no container read as unfinished against the
+   sage panel — nothing anchors the eye at the top of each tile, and
+   it's the one thing on this section that isn't holding its own
+   weight. Give it a proper mark: a soft sand medallion (the site's
+   third palette token, otherwise unused on this panel) so it reads
+   as sage → sand → ink, the same three-tier contrast the About
+   block's clay panel already relies on. Flat fill, no border/shadow,
+   so it still fits the borderless language the rest of the section
+   uses — this is a mark, not a card. clamp() scales it smoothly from
+   mobile to desktop instead of jumping at a breakpoint, so it holds
+   up "even on mobile" without a separate media rule.
+   0-4-0 + !important, appended last, clears section 11's and
+   bento's same-weight rules by load order. */
 .landing-section.editorial-facilities-section .editorial-facility-card .editorial-facility-icon {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: clamp(2.75rem, 2.35rem + 1.5vw, 3.25rem) !important;
+    height: clamp(2.75rem, 2.35rem + 1.5vw, 3.25rem) !important;
+    border-radius: 50% !important;
     color: var(--ballena-ink) !important;
-    background: transparent !important;
+    background: color-mix(in srgb, var(--ballena-sand) 65%, transparent) !important;
+    font-size: 1.05rem !important;
+    margin-bottom: 1rem !important;
+    transition: background-color 0.3s ease, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Quiet hover polish — desktop only by nature (no hover on touch),
+   so mobile simply keeps the resting medallion above with no loss. */
+.landing-section.editorial-facilities-section .editorial-facility-card:hover .editorial-facility-icon {
+    background: var(--ballena-sand) !important;
+    transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .landing-section.editorial-facilities-section .editorial-facility-card:hover .editorial-facility-icon {
+        transform: none;
+    }
 }
 
 .landing-section.editorial-facilities-section .editorial-facility-card .editorial-facility-divider {
