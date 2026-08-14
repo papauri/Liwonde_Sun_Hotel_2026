@@ -59,65 +59,46 @@
     // PAGE LOADER SYSTEM
     // ============================================
     
+    // NOTE: This object intentionally does NOT touch #page-loader's classes.
+    // includes/loader.php's inline script is the single source of truth for
+    // hiding the loader on initial page load (and bfcache restores), and
+    // navigation-unified.js owns showing/hiding it for SPA navigation. This
+    // used to run its own independent hide-on-load timer against the same
+    // element and classes, racing loader.php's timer — two competing timer
+    // chains animating the same curtain is exactly what produced the
+    // "loader, page, loader again" double-flash, since real-world timer
+    // jitter (background-tab throttling, slow devices) can desync
+    // "matching" delays across separate files. This now only tracks the
+    // page-loaded milestone for other systems (e.g. ScrollAnimations) that
+    // listen for it.
     const PageLoader = {
-        loader: null,
         isLoaded: false,
-        
+
         init() {
-            this.loader = document.getElementById('page-loader');
-            if (!this.loader) return;
-            
-            // Hide loader when page is ready
+            if (!document.getElementById('page-loader')) return;
+
             if (document.readyState === 'complete') {
-                this.hide();
+                this.markLoaded();
             } else {
-                window.addEventListener('load', () => this.hide());
+                window.addEventListener('load', () => this.markLoaded());
             }
-            
+
             // Handle pageshow for bfcache
             window.addEventListener('pageshow', (e) => {
                 if (e.persisted) {
-                    this.hide();
+                    this.markLoaded();
                 }
             });
         },
-        
-        hide() {
-            if (this.isLoaded || !this.loader) return;
-            
+
+        markLoaded() {
+            if (this.isLoaded) return;
+            this.isLoaded = true;
+
             setTimeout(() => {
-                // Use proper CSS classes for smooth transition
-                this.loader.classList.add('loader--hiding');
-                this.loader.classList.remove('loader--active');
-
-                // Must match .loader's transform transition duration in
-                // loader.css (0.85s) — see the matching comment in
-                // includes/loader.php's hideLoader() for why a shorter delay
-                // here makes the curtain visibly reverse mid-lift.
-                setTimeout(() => {
-                    this.loader.classList.add('loader--hidden');
-                    this.loader.classList.remove('loader--hiding');
-                }, 850);
-
-                this.isLoaded = true;
-                
-                // Trigger page loaded event
                 document.body.classList.add('page-loaded');
                 window.dispatchEvent(new CustomEvent('page:loaded'));
             }, CONFIG.pageLoadDelay);
-        },
-        
-        show(destinationPage) {
-            if (!this.loader) return;
-            this.isLoaded = false;
-            // Update loader subtext to show destination page
-            if (destinationPage && typeof window.updateLoaderSubtext === 'function') {
-                window.updateLoaderSubtext(destinationPage);
-            }
-            // Use proper CSS classes
-            this.loader.classList.remove('loader--hidden', 'loader--hiding');
-            this.loader.classList.add('loader--active');
-            document.body.classList.remove('page-loaded');
         }
     };
 
@@ -863,14 +844,15 @@
         CardHover.init();
 
         // Expose to global scope for external access
+        // (Loader show/hide intentionally isn't exposed here — the loader
+        // element is owned by includes/loader.php and navigation-unified.js;
+        // see the note on PageLoader above.)
         window.PageTransitions = {
             refresh: () => {
                 ScrollAnimations.refresh();
                 HeaderScroll.refresh();
                 ScrollToTop.refresh();
             },
-            showLoader: (destinationPage) => PageLoader.show(destinationPage),
-            hideLoader: () => PageLoader.hide(),
             onNavigationStart: () => PageTransitions.onNavigationStart(),
             onNavigationEnd: () => PageTransitions.onNavigationEnd()
         };
