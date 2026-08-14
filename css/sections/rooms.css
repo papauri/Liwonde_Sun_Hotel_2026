@@ -11,7 +11,9 @@
 .rooms-hero {
     position: relative;
     min-height: clamp(520px, 66vh, 820px);
-    background: #0e1319;
+    /* Warm ink from the Japandi palette. Was #0e1319, a cold blue-black that
+       read as a different brand to the rest of the site. */
+    background: var(--color-lux-ink, #231F1C);
     color: #fff;
     isolation: isolate;
     overflow: hidden;
@@ -500,7 +502,9 @@
     position: relative;
     width: 100%;
     height: 500px;
-    background: #1a1a1a;
+    /* Light stone rather than near-black: the gallery frame sits inside a
+       light page, so a dark box read as a hole in the layout. */
+    background: var(--color-surface-stone, #EEE6DC);
 }
 
 @media (max-width: 768px) {
@@ -706,7 +710,8 @@
 
 /* Video Slide Styling */
 .room-gallery-slide--video .room-gallery-media {
-    background: #000;
+    /* Warm ink, not pure black — video still letterboxes cleanly. */
+    background: var(--color-lux-ink, #231F1C);
 }
 
 .room-gallery-slide--video .room-gallery-media iframe,

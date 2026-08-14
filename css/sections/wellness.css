@@ -98,7 +98,8 @@
     align-items: center;
     gap: var(--spacing-sm, 8px);
     padding: 10px 20px;
-    background: rgba(26, 26, 26, 0.85);
+    /* Warm, lighter scrim — still clears 4.5:1 for the white label on top. */
+    background: rgba(35, 31, 28, 0.68);
     backdrop-filter: blur(8px);
     border-radius: var(--radius-full, 999px);
     color: white;
