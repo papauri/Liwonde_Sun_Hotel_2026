@@ -520,6 +520,11 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    /* Force each slide onto its own GPU compositing layer so the fade
+       crossfade doesn't reveal a hairline seam of the slide underneath
+       (a well-known Swiper fade-effect rendering artifact). */
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .room-gallery-media {
@@ -649,6 +654,9 @@
     transition: all 0.3s ease;
     border: 2px solid transparent;
     position: relative;
+    /* Avoid subpixel translate rounding in the freeMode thumb strip
+       leaving a thin gap/line between adjacent thumbnails. */
+    transform: translateZ(0);
 }
 
 @media (max-width: 768px) {

@@ -230,12 +230,13 @@ try {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 
+    <!-- Swiper CSS for Modern Carousel - must load before our overrides so
+         site-specific .room-gallery-* rules reliably win the cascade -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+
     <!-- Main CSS - Loads all stylesheets in correct order -->
     <link rel="stylesheet" href="css/base/critical.css">
     <link rel="stylesheet" href="css/main.css">
-
-    <!-- Swiper CSS for Modern Carousel -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
 
 </head>
 
@@ -570,7 +571,8 @@ try {
                     watchSlidesProgress: true,
                     centerInsufficientSlides: true,
                     slideToClickedSlide: true,
-                    watchOverflow: true
+                    watchOverflow: true,
+                    roundLengths: true
                 });
             }
 
@@ -592,6 +594,7 @@ try {
                 loop: false,
                 grabCursor: true,
                 watchOverflow: true,
+                roundLengths: true,
                 keyboard: {
                     enabled: true,
                     onlyInViewport: true
