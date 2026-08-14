@@ -94,9 +94,11 @@
     position: relative;
 }
 
+/* Same 4px lift as every other card — an 8px jump on one card type made
+   the grid feel inconsistent as the cursor moved across it. */
 .room-card:hover {
-    transform: translateY(-8px);
-    box-shadow: var(--shadow-xl);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
 }
 
 .room-card__image {
@@ -481,14 +483,16 @@
     .card,
     .room-card,
     .event-card,
-    .menu-item {
+    .menu-item,
+    .facility-card {
         transition: none;
     }
-    
+
     .card:hover,
     .room-card:hover,
     .event-card:hover,
-    .menu-item:hover {
+    .menu-item:hover,
+    .facility-card:hover {
         transform: none;
     }
 }
@@ -597,18 +601,18 @@
     pointer-events: none;
 }
 
-.card.room-card:hover::before {
-    opacity: 1;
-}
-
+/* Hover is deliberately quiet: a small lift and a slightly deeper shadow,
+   nothing else. It previously changed six things at once (lift, gold bar
+   opacity, border tint, a four-layer shadow, image scale and image filter),
+   which read as busy on what is a simple room listing. Keep it to one idea:
+   "this card is the one under your cursor". */
 .card.room-card:hover {
-    transform: translateY(-7px);
-    border-color: color-mix(in srgb, var(--color-primary, #8B7355) 38%, var(--color-border, #DCCFC2) 62%);
+    transform: translateY(-4px);
+    border-color: color-mix(in srgb, var(--color-primary, #8B7355) 26%, var(--color-border, #DCCFC2) 74%);
     box-shadow:
-        0 4px 8px rgba(46, 40, 33, 0.05),
-        0 18px 42px rgba(46, 40, 33, 0.12),
-        0 36px 68px rgba(46, 40, 33, 0.09),
-        inset 0 1px 0 rgba(255, 255, 255, 0.82);
+        0 2px 4px rgba(46, 40, 33, 0.05),
+        0 12px 28px rgba(46, 40, 33, 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
 /* Featured card has a stronger gold tint border */
@@ -635,7 +639,9 @@
     text-decoration: none;
 }
 
-/* Cinematic gradient overlay */
+/* Light gradient to seat the image against the card edge. Was a heavy
+   "cinematic" scrim (0.60 at the base) that dulled every room photo — no
+   text sits on top of it, so the darkness bought nothing. */
 .room-card-image::after {
     content: '';
     position: absolute;
@@ -644,17 +650,9 @@
     pointer-events: none;
     background:
         linear-gradient(to top,
-            rgba(18, 15, 12, 0.60) 0%,
-            rgba(18, 15, 12, 0.18) 38%,
-            rgba(18, 15, 12, 0) 62%),
-        linear-gradient(to bottom,
-            rgba(18, 15, 12, 0.08) 0%,
-            transparent 24%);
-    transition: opacity 360ms ease;
-}
-
-.card.room-card:hover .room-card-image::after {
-    opacity: 0.88;
+            rgba(18, 15, 12, 0.26) 0%,
+            rgba(18, 15, 12, 0.07) 38%,
+            rgba(18, 15, 12, 0) 62%);
 }
 
 .room-card-image-img {
@@ -663,15 +661,13 @@
     object-fit: cover;
     display: block;
     transform: scale(1.001);
-    filter: saturate(0.9) contrast(1.04);
-    transition:
-        transform 720ms cubic-bezier(0.22, 1, 0.36, 1),
-        filter 500ms ease;
+    transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* A hint of zoom, no colour shift. The old pass also swung saturation and
+   contrast on hover, which made the photo look like it changed image. */
 .card.room-card:hover .room-card-image-img {
-    transform: scale(1.06);
-    filter: saturate(1.02) contrast(1.06);
+    transform: scale(1.03);
 }
 
 /* ── Badge (featured label) ─────────────────────────────────── */

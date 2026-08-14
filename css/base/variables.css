@@ -232,8 +232,11 @@
    --landing-card-radius: clamp(0.8rem, 1.1vw, 1.35rem);
    --landing-card-border: color-mix(in srgb, var(--color-border) 84%, transparent 16%);
    --landing-card-shadow: 0 14px 34px rgba(46, 40, 33, 0.08);
-   --landing-card-shadow-hover: 0 20px 42px rgba(46, 40, 33, 0.12);
-   --landing-lift-y: -6px;
+   --landing-card-shadow-hover: 0 16px 32px rgba(46, 40, 33, 0.10);
+   /* One lift value for every card on the site. Was -6px here and -7/-8px in
+      cards.css, so the amount of movement changed as the cursor crossed the
+      grid. Kept small deliberately — this is a hotel site, not a showreel. */
+   --landing-lift-y: -4px;
    --landing-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
    /* Premium section framework (DDD-inspired calm luxury) */

@@ -64,7 +64,10 @@ main>div>[class*="hero"]:first-child {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #1A1A1A;
+    /* Sand, matching .loader in css/components/loader.css. This is inlined
+       above the fold, so a dark value here flashed black before the real
+       loader sheet arrived. */
+    background: #F8F2E5;
     transition: opacity 0.5s ease;
 }
 
