@@ -311,9 +311,11 @@ body {
 /* Scrolled state: keep the pill dark so the light logo/label stay
    legible — the base sheet swaps to a light bar with dark text. */
 .lsh-header--scrolled {
-    background: rgba(3, 9, 13, 0.55);
+    /* Warm ink rather than the cold blue-black it was (rgba(3,9,13,…)) —
+       same legibility for the white logo, but it now belongs to the palette. */
+    background: rgba(35, 31, 28, 0.52);
     border-bottom: none;
-    box-shadow: 0 10px 30px rgba(3, 9, 13, 0.18);
+    box-shadow: 0 10px 30px rgba(46, 40, 33, 0.14);
 }
 
 .lsh-header--scrolled .lsh-header__logo-text,

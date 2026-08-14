@@ -688,7 +688,9 @@
 
 .footer__newsletter-button {
     padding: 14px 24px;
-    background: #1A1A1A;
+    /* Warm brand primary instead of near-black — the footer itself is light,
+       so a black button was the only hard-dark element on the page. */
+    background: var(--color-primary, #8A775F);
     color: #fff;
     border: none;
     border-left: 1px solid var(--footer-border);
