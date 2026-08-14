@@ -431,27 +431,29 @@
     border-color: rgba(232, 145, 58, 0.3);
 }
 
-/* Featured / popular cards get the amber treatment */
+/* Featured / popular cards get the amber treatment.
+   NOTE: room cards (.card.room-card.featured-card) are deliberately excluded.
+   The dark brown fill read as heavy/unprofessional on the rooms pages, so a
+   featured/popular room now keeps the same light card as the rest of the
+   collection and is distinguished only by the subtle gold accent border
+   defined in components/cards.css. */
 .package-card.featured,
 .menu-item.featured,
-.editorial-event-card.featured,
-.card.room-card.featured-card {
+.editorial-event-card.featured {
     background: linear-gradient(150deg, #221a13 0%, #33241a 100%);
     border-color: rgba(244, 168, 83, 0.3);
 }
 
 .package-card.featured h3,
 .package-card.featured .package-name,
-.menu-item.featured .menu-item-name,
-.card.room-card.featured-card .room-card-title {
+.menu-item.featured .menu-item-name {
     color: #ffffff !important;
 }
 
 .package-card.featured p,
 .package-card.featured li,
 .package-card.featured .package-duration,
-.menu-item.featured .menu-item-description,
-.card.room-card.featured-card .room-card-description {
+.menu-item.featured .menu-item-description {
     color: rgba(247, 241, 232, 0.78) !important;
 }
 
