@@ -157,7 +157,7 @@ foreach ($footer_links_raw as $link) {
     <script src="js/spring-physics.js" defer></script>
     <script src="js/intersection-observer.js" defer></script>
     <script src="js/parallax-cards.js" defer></script>
-    <script src="js/editorial-rooms-animations.js" defer></script>
+    <script src="js/bellhop-sections.js" defer></script>
 
     <!-- Scroll Reveal Animation System - Unified scroll-triggered animations -->
     <script src="js/scroll-reveal.js" defer></script>
@@ -265,90 +265,110 @@ foreach ($footer_links_raw as $link) {
                 </section>
 
 
-                <!-- Passalacqua-Inspired Rooms Section: Section07 Style -->
-                <section class="editorial-rooms-section landing-section" id="rooms" data-lazy-reveal>
-                    <div id="editorial-rooms-section-content">
-                        <?php renderSectionHeader('home_rooms', 'index', [
-                            'label' => 'Accommodations',
-                            'title' => 'Rooms & Suites',
-                            'description' => 'Each room is composed for rest — warm textures, generous light, and the slow rhythm of the Shire never far from the window.'
-                        ], 'editorial-header section-header--editorial'); ?>
-                        <div class="editorial-rooms-row landing-grid landing-grid--three" id="editorial-rooms-row">
-                            <?php
-                            $roomIndex = 0;
-                            // Limit to 3 items to match Section 07 layout (3 columns)
-                            foreach ($featured_rooms as $room):
-                                if ($roomIndex >= 3) break;
-                                $roomUrl = "room.php?room=" . urlencode($room['slug']);
-                                $imageUrl = htmlspecialchars(resolveImageUrl($room['image_url']));
-                                $roomName = htmlspecialchars($room['name']);
-                                $roomPrice = (float)($room['price_per_night'] ?? 0);
-                                $roomSize = (int)($room['size_sqm'] ?? 0);
-                                $roomGuests = (int)($room['max_guests'] ?? 0);
-                                $roomAmenitiesRaw = trim((string)($room['amenities'] ?? ''));
-                                $roomAmenities = array_values(array_filter(array_map('trim', preg_split('/[,\n]+/', $roomAmenitiesRaw ?: ''))));
-                                $roomAmenities = array_slice($roomAmenities, 0, 3);
-                                $roomSummary = trim((string)($room['short_description'] ?? '')) ?: trim((string)($room['description'] ?? ''));
-                                // Delay calculation: 0, 0.3s, 0.6s
-                                $delay = $roomIndex * 0.3;
-                            ?>
-                                <?php $priceBadge = htmlspecialchars($currency_symbol) . ' ' . number_format($roomPrice, 0) . ' <span>/ night</span>'; ?>
-                                <div class="editorial-room-card" data-animation="a1" data-animation-delay="<?php echo $delay; ?>s">
-                                    <?php if ($imageUrl !== ''): ?>
-                                    <div class="editorial-room-card__media">
-                                        <a href="<?php echo $roomUrl; ?>" target="_self" class="editorial-room-card__media-link">
-                                            <picture>
+                <!-- Rooms — horizontal showcase rail (Bellhop-inspired editorial treatment) -->
+                <section class="editorial-rooms-section bellhop-section landing-section" id="rooms" data-lazy-reveal>
+                    <div id="editorial-rooms-section-content" class="bellhop-rooms">
+                        <div class="bellhop-section__head">
+                            <?php renderSectionHeader('home_rooms', 'index', [
+                                'label' => 'Accommodations',
+                                'title' => 'Rooms & Suites',
+                                'description' => 'Each room is composed for rest — warm textures, generous light, and the slow rhythm of the Shire never far from the window.'
+                            ], 'editorial-header section-header--editorial bellhop-header'); ?>
+                            <div class="bellhop-rail__nav" data-bh-rail-nav hidden>
+                                <button type="button" class="bellhop-rail__arrow" data-bh-rail-prev aria-label="Show previous rooms">
+                                    <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" class="bellhop-rail__arrow" data-bh-rail-next aria-label="Show next rooms">
+                                    <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bellhop-rail" data-bh-rail>
+                            <div class="bellhop-rail__track" data-bh-rail-track tabindex="0" role="group"
+                                 aria-label="Featured rooms — scroll sideways to browse">
+                                <?php
+                                $roomIndex = 0;
+                                foreach ($featured_rooms as $room):
+                                    $roomUrl = "room.php?room=" . urlencode($room['slug']);
+                                    $imageUrl = htmlspecialchars(resolveImageUrl($room['image_url']));
+                                    $roomName = htmlspecialchars($room['name']);
+                                    $roomPrice = (float)($room['price_per_night'] ?? 0);
+                                    $roomSize = (int)($room['size_sqm'] ?? 0);
+                                    $roomGuests = (int)($room['max_guests'] ?? 0);
+                                    $roomAmenitiesRaw = trim((string)($room['amenities'] ?? ''));
+                                    $roomAmenities = array_values(array_filter(array_map('trim', preg_split('/[,\n]+/', $roomAmenitiesRaw ?: ''))));
+                                    $roomAmenities = array_slice($roomAmenities, 0, 3);
+                                    $roomSummary = trim((string)($room['short_description'] ?? '')) ?: trim((string)($room['description'] ?? ''));
+                                    $roomIndex++;
+                                ?>
+                                    <article class="bellhop-room-card" data-bh-anim="fade-up">
+                                        <div class="bellhop-room-card__media">
+                                            <?php if ($imageUrl !== ''): ?>
                                                 <img src="<?php echo $imageUrl; ?>"
-                                                    alt="<?php echo $roomName; ?> - Luxury accommodation"
-                                                    width="800" height="1000"
-                                                    loading="lazy"
-                                                    decoding="async">
-                                            </picture>
-                                        </a>
-                                        <div class="editorial-room-card__badge"><?php echo $priceBadge; ?></div>
-                                    </div>
-                                    <?php endif; ?>
-
-                                    <div class="editorial-room-card__body">
-                                        <?php if ($imageUrl === ''): ?>
-                                        <!-- No photo for this room: skip the media block entirely rather than
-                                             render an empty <img src="">, and keep the price inline so the
-                                             card loses nothing but the picture. -->
-                                        <div class="editorial-room-card__badge editorial-room-card__badge--inline"><?php echo $priceBadge; ?></div>
-                                        <?php endif; ?>
-                                        <h3 class="link editorial-room-card__title">
-                                            <a href="<?php echo $roomUrl; ?>" data-anchor="#<?php echo htmlspecialchars($room['slug']); ?>"><?php echo $roomName; ?></a>
-                                        </h3>
-
-                                        <?php if (!empty($roomSummary)): ?>
-                                            <p class="editorial-room-card__summary"><?php echo htmlspecialchars($roomSummary); ?></p>
-                                        <?php endif; ?>
-
-                                        <div class="editorial-room-card__meta">
-                                            <?php if ($roomSize > 0): ?>
-                                                <span><i class="fas fa-expand-arrows-alt" aria-hidden="true"></i> <?php echo $roomSize; ?> sqm</span>
+                                                     alt="<?php echo $roomName; ?> at <?php echo htmlspecialchars($site_name); ?>"
+                                                     width="1200" height="900"
+                                                     loading="lazy"
+                                                     decoding="async">
+                                            <?php else: ?>
+                                                <!-- No photo on record: the frame stays, rather than rendering an
+                                                     empty <img src=""> that browsers report as a broken image. -->
+                                                <span class="bellhop-room-card__media-empty" aria-hidden="true"></span>
                                             <?php endif; ?>
-                                            <?php if ($roomGuests > 0): ?>
-                                                <span><i class="fas fa-users" aria-hidden="true"></i> <?php echo $roomGuests; ?> Guests</span>
-                                            <?php endif; ?>
+                                            <span class="bellhop-room-card__index" aria-hidden="true"><?php echo str_pad((string)$roomIndex, 2, '0', STR_PAD_LEFT); ?></span>
                                         </div>
 
-                                        <?php if (!empty($roomAmenities)): ?>
-                                            <ul class="editorial-room-card__amenities" aria-label="Room amenities">
+                                        <div class="bellhop-room-card__bar">
+                                            <h3 class="bellhop-room-card__title"><?php echo $roomName; ?></h3>
+                                            <p class="bellhop-room-card__price">
+                                                <?php echo htmlspecialchars($currency_symbol) . ' ' . number_format($roomPrice, 0); ?>
+                                                <span>/ night</span>
+                                            </p>
+                                        </div>
+
+                                        <div class="bellhop-room-card__foot">
+                                            <?php if (!empty($roomSummary)): ?>
+                                                <p class="bellhop-room-card__summary"><?php echo htmlspecialchars($roomSummary); ?></p>
+                                            <?php endif; ?>
+
+                                            <ul class="bellhop-room-card__specs">
+                                                <?php if ($roomSize > 0): ?>
+                                                    <li><?php echo $roomSize; ?> sqm</li>
+                                                <?php endif; ?>
+                                                <?php if ($roomGuests > 0): ?>
+                                                    <li><?php echo $roomGuests; ?> guests</li>
+                                                <?php endif; ?>
                                                 <?php foreach ($roomAmenities as $amenity): ?>
                                                     <li><?php echo htmlspecialchars($amenity); ?></li>
                                                 <?php endforeach; ?>
                                             </ul>
-                                        <?php endif; ?>
 
-                                        <a href="<?php echo $roomUrl; ?>" class="editorial-room-card__link">Discover Room <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                                            <span class="bellhop-room-card__cue" aria-hidden="true">
+                                                View room <i class="fas fa-arrow-right"></i>
+                                            </span>
+                                        </div>
+
+                                        <!-- One overlay link for the whole card: keeps the tap target large and
+                                             avoids three competing links to the same room for screen readers. -->
+                                        <a class="bellhop-room-card__link"
+                                           href="<?php echo $roomUrl; ?>"
+                                           data-anchor="#<?php echo htmlspecialchars($room['slug']); ?>">
+                                            <span class="sr-only">View <?php echo $roomName; ?></span>
+                                        </a>
+                                    </article>
+                                <?php endforeach; ?>
+
+                                <?php if ($roomIndex > 0): ?>
+                                    <div class="bellhop-rail__action">
+                                        <a href="rooms-gallery.php" class="bellhop-circle">
+                                            <span>View all rooms</span>
+                                        </a>
                                     </div>
-                                </div>
-                            <?php
-                                $roomIndex++;
-                            endforeach;
-                            ?>
+                                <?php endif; ?>
+                            </div>
                         </div>
+
+                        <div class="bellhop-rail__bar" aria-hidden="true"><span data-bh-rail-progress></span></div>
                     </div>
                 </section>
 

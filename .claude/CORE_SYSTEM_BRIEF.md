@@ -84,10 +84,12 @@ active design work. Read tokens before writing any CSS value:
   inlined above-the-fold CSS.
 - Structure: `css/base/` · `css/components/` · `css/sections/` · `css/utilities/`.
   BEM naming (`.block__element--modifier`) throughout — see `css/README.md`.
-- **`css/sections/ballena.css` is the editorial design system** for the guest sections
-  (the current design direction, added by the `ballena-sections` work), paired with
-  `css/components/editorial.css` and `js/editorial-rooms-animations.js`. Guest-page visual
-  work belongs in that vocabulary — do not introduce a competing one.
+- **`css/sections/ballena.css` + `css/sections/bellhop.css` are the editorial design
+  system** for the guest sections (the current design direction, added by the
+  `ballena-sections` work), paired with `css/components/editorial.css` and
+  `js/bellhop-sections.js`. Bellhop loads last in `css/main.css` and restyles the
+  ballena blocks (rooms rail, facilities rows) — it is the newest layer.
+  Guest-page visual work belongs in that vocabulary — do not introduce a competing one.
 - Admin styling is separate: `admin/css/admin-styles.css` (shared components + badges),
   `admin/css/admin-responsive.css`, plus a per-page stylesheet.
 - Largest pages (use targeted offsets, never whole-file reads): `booking.php` ≈86 KB,
