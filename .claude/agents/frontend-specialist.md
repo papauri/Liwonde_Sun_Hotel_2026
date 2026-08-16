@@ -60,7 +60,7 @@ Largest pages — read with targeted offsets, never whole-file: `booking.php` �
   prevent overflow.
 - Respect `prefers-reduced-motion` — the guest site leans heavily on scroll/reveal animation
   (`js/scroll-reveal.js`, `js/parallax-cards.js`, `js/spring-physics.js`,
-  `js/editorial-rooms-animations.js`), so every new motion needs the same guard.
+  `js/bellhop-sections.js`), so every new motion needs the same guard.
 - No emojis in UI text unless already present in that file.
 - Beware known traps: `admin-components.js` double-load and DOMContentLoaded races;
   admin deep-links use row ids `type-<id>`.

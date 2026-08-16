@@ -49,6 +49,8 @@
 @import url('./sections/bento.css');
 @import url('./sections/hero-modern.css');
 @import url('./sections/ballena.css');
+/* Bellhop layer restyles the ballena blocks — must stay last in this group. */
+@import url('./sections/bellhop.css');
 
 /* ============================================
    UTILITIES
