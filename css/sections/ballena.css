@@ -1072,6 +1072,24 @@ body {
     color: var(--ballena-clay);
 }
 
+/* Buttons inside the CTA sit on the clay panel, so their text and
+   borders must flip to sand for contrast. The global force-colour
+   rule above targets headings/paragraphs/spans but not .btn / <a>,
+   leaving .btn-outline's dark ink invisible on the red ground. */
+.editorial-about .editorial-about-content .editorial-about-cta .btn {
+    color: var(--ballena-sand) !important;
+}
+
+.editorial-about .editorial-about-content .editorial-about-cta .btn-outline {
+    border-color: var(--ballena-sand) !important;
+}
+
+.editorial-about .editorial-about-content .editorial-about-cta .btn-outline:hover:not(:disabled) {
+    background: rgba(248, 242, 229, 0.12);
+    border-color: var(--ballena-sand) !important;
+    color: var(--ballena-sand) !important;
+}
+
 /* ── Stack on narrow screens ───────────────────────────────── */
 
 @media (max-width: 860px) {
