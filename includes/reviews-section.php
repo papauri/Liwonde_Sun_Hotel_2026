@@ -10,6 +10,10 @@
 
 // Load section headers helper (if needed)
 require_once __DIR__ . '/section-headers.php';
+// rh_public_review_text() lives here. Required unconditionally: the fallback fetch
+// below only runs when $hotel_reviews is empty, so relying on that branch to load
+// it would fatal whenever the caller already supplied reviews.
+require_once __DIR__ . '/reviews-display.php';
 
 // If hotel_reviews is not available, try to fetch it
 if (!isset($hotel_reviews) || empty($hotel_reviews)) {
@@ -27,6 +31,14 @@ if (!isset($hotel_reviews) || empty($hotel_reviews)) {
         $hotel_reviews = [];
         error_log("Error fetching hotel reviews: " . $e->getMessage());
     }
+}
+
+// Owner rule (2026-09-02): if there are no reviews, the section must not exist —
+// not render as an empty shell or a "be the first" placeholder. A guest-facing
+// section with nothing in it reads as a broken page, and an empty testimonial
+// block is worse for trust than no block at all.
+if (empty($hotel_reviews)) {
+    return;
 }
 ?>
 
@@ -53,7 +65,7 @@ if (!isset($hotel_reviews) || empty($hotel_reviews)) {
                 </div>
                 
                 <blockquote class="editorial-review-card__quote">
-                    <?php echo htmlspecialchars($review['comment']); ?>
+                    <?php echo htmlspecialchars(rh_public_review_text($review['comment'] ?? '')); ?>
                 </blockquote>
                 
                 <div class="editorial-review-card__author">
@@ -69,11 +81,6 @@ if (!isset($hotel_reviews) || empty($hotel_reviews)) {
             </a>
         </div>
         
-        <?php else: ?>
-        <div class="no-reviews-message text-center">
-            <p>Be the first to share your experience with us.</p>
-            <a href="submit-review.php" class="editorial-btn-primary mt-3">Write a Review</a>
-        </div>
         <?php endif; ?>
     </div>
 </section>

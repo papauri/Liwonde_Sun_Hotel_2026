@@ -456,7 +456,7 @@ $pending_count = $pending_stmt->fetch(PDO::FETCH_ASSOC)['count'];
                 method: 'POST',
                 body: formData,
                 credentials: 'same-origin',
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': _pageCsrf }
             })
             .then(response => {
                 if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -507,7 +507,8 @@ $pending_count = $pending_stmt->fetch(PDO::FETCH_ASSOC)['count'];
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-Token': _pageCsrf
                 },
                 credentials: 'same-origin',
                 body: JSON.stringify(data)
@@ -543,7 +544,7 @@ $pending_count = $pending_stmt->fetch(PDO::FETCH_ASSOC)['count'];
             fetch('api/reviews.php?review_id=' + encodeURIComponent(reviewId), {
                 method: 'DELETE',
                 credentials: 'same-origin',
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': _pageCsrf }
             })
             .then(response => {
                 if (!response.ok) throw new Error('HTTP ' + response.status);
