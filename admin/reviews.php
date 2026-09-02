@@ -703,8 +703,7 @@ $pending_count = $pending_stmt->fetch(PDO::FETCH_ASSOC)['count'];
                             '</label>' +
                         '</div>' +
                         '<div class="scraper-card__actions">' +
-                            '<button type="button" class="btn btn-secondary btn-sm" onclick="importScrapedFeedback(' + idx + ', \'pending\', this)"><i class="fas fa-hourglass-half"></i> Import Pending</button>' +
-                            '<button type="button" class="btn btn-success btn-sm" onclick="importScrapedFeedback(' + idx + ', \'approved\', this)"><i class="fas fa-check"></i> Import & Approve</button>' +
+                            '<button type="button" class="btn btn-secondary btn-sm" onclick="importScrapedFeedback(' + idx + ', this)"><i class="fas fa-hourglass-half"></i> Import for Review</button>' +
                         '</div>' +
                     '</article>';
             });
@@ -715,7 +714,10 @@ $pending_count = $pending_stmt->fetch(PDO::FETCH_ASSOC)['count'];
             wrap.innerHTML = html;
         }
 
-        function importScrapedFeedback(index, status, btnEl) {
+        // Imports always land as 'pending' — the server ignores any status the client sends,
+        // so there is no "Import & Approve" shortcut. Approve in the list below after
+        // checking the text, rating and attribution.
+        function importScrapedFeedback(index, btnEl) {
             const wrap = document.getElementById('scraper-results');
             let candidates = [];
 
@@ -760,7 +762,6 @@ $pending_count = $pending_stmt->fetch(PDO::FETCH_ASSOC)['count'];
 
             const payload = {
                 action: 'import',
-                status: status,
                 rating: rating,
                 username: username,
                 email: email,

@@ -865,16 +865,21 @@ if ($action === 'import') {
     $username = trim((string)($input['username'] ?? ''));
     $emailInput = trim((string)($input['email'] ?? ''));
     $sourceDateInput = trim((string)($input['source_date'] ?? ''));
-    $status = trim((string)($input['status'] ?? 'pending'));
+    // Imported feedback ALWAYS lands as 'pending' — the caller cannot request
+    // 'approved'. This scraper imports **web-search snippets**, not verified
+    // reviews: it queries DuckDuckGo/Bing/r.jina.ai, so a candidate is whatever
+    // text a search engine returned. In practice that has meant Facebook page
+    // posts and even a news item ("Hon. Dr. Michael Usi officially opening a
+    // revamped 42 room Liwonde Sun Hotel") stored as a 5-star guest review, with
+    // the rating chosen at import rather than derived from anything.
+    // Nothing scraped reaches the public site until a human approves it in
+    // admin/reviews.php. Owner decision, 2026-09-02.
+    $status = 'pending';
     $rating = (int)($input['rating'] ?? 5);
     $candidateSentiment = normalize_sentiment((string)($candidate['sentiment'] ?? ($input['sentiment'] ?? 'positive')));
 
     if ($username === '') {
         json_error('Username is required for imported feedback', 400);
-    }
-
-    if (!in_array($status, ['pending', 'approved'], true)) {
-        json_error('Status must be pending or approved', 400);
     }
 
     $rating = max(1, min(5, $rating));
