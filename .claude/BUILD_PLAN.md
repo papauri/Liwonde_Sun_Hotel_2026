@@ -448,6 +448,40 @@ suffix. The provenance leak is fixed, but the classification problem is editoria
 · recommend: **(b) now** — a one-line safety net — then (a) as policy. Note the three current rows
   are already `approved` and live; re-check them against option (a) before the next import.
 
+`BLOCKED: 1/6 — the public booking flow applies NO VAT; the admin path does.`
+Found 2026-09-02 while checking the booking engine. `booking.php` computes
+`base + child supplement + tourism levy + packages` and then binds that **same net figure
+to all three of `total_amount`, `amount_due` AND `total_with_vat`** (`booking.php:690-692`).
+It never reads `vat_enabled`, `vat_rate` or `vat_pricing_mode` — a grep for those in
+`booking.php`, `check-availability.php` and `includes/pricing.php` returns **zero** hits, and the
+INSERT column list omits `vat_rate` and `vat_amount` entirely, so both default to `0.00`.
+`admin/create-booking.php` **does** apply VAT correctly (25 references; computes `$vat_amt`,
+`$twv` and stores all three columns).
+Live settings: `vat_enabled=1`, `vat_rate=16.5`, `vat_pricing_mode=exclusive` — and the mode was
+last written **2026-08-13 11:04:30**, over nine hours *before* the only live booking was created
+at 20:41:45. So this is not a stale-setting artefact. That booking (#109) stores
+`vat_rate=0.00`, `vat_amount=0.00`, `total_with_vat=165000.00` = its net total.
+**Consequence: a guest booking online is billed 16.5% less than the identical booking entered by
+reception.** On booking #109 that is 27,225 MWK. `tourism_levy_enabled=0`, so the levy is
+correctly zero and is not part of this.
+· options: (a) apply VAT in the public flow to match admin — correct, but it **raises what guests
+are charged**, so prices shown on the site must be reviewed at the same time; (b) treat displayed
+room prices as VAT-inclusive and set `vat_pricing_mode=inclusive`, back-computing the net —
+changes no guest-facing price but changes the accounting split; (c) leave the public flow net and
+add VAT at invoice time — means the guest's confirmation total and their invoice total differ.
+· recommend: **owner decision, not an agent one.** This is money semantics and a guest-visible
+price change — explicitly ESCALATE-class under CORE_SYSTEM_BRIEF. Whichever way it goes, note
+booking #109 was quoted 165,000 and would need a decision of its own.
+
+`BLOCKED: 1 — guests cannot book more than 22 days ahead.` `max_advance_booking_days = 22` in
+`site_settings`, enforced on the guest path in four places: `booking.php:1003`,
+`check-availability.php:442`, `includes/booking-functions.php:318` and `api/availability.php:96`.
+The code defaults are 30/365, so 22 is a value someone set. For a hotel this silently blocks all
+seasonal and advance booking — a guest planning a trip two months out is told there is no
+availability. Likely a leftover test value rather than policy.
+· options: (a) raise it to a normal horizon (180–365 days); (b) confirm 22 days is deliberate.
+· recommend: (a), but it is an operational setting, so the owner sets the number.
+
 ### OWNER DECISIONS from this review — RESOLVED 2026-09-02
 
 `RESOLVED — per-request DDL in config/database.php.` Owner chose **flag it AND migrate it to
