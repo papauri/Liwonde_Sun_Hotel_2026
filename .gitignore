@@ -18,6 +18,11 @@ Database/*.sql.gz
 Database/*.json
 Database/*.manifest.json
 
+# Generated backups from scripts/backup_database.php — same contents, same rule.
+# The script writes a deny-all .htaccess into backups/, but that only stops web
+# access; without this rule a dump could still be committed to the repo.
+backups/
+
 # IDE and Editor files
 .vscode/
 .idea/

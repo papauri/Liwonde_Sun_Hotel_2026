@@ -347,13 +347,13 @@ try {
     $seo_data = [
         'title' => 'Fine Dining Restaurant - ' . $site_name . ' | Gourmet Cuisine',
         'description' => "Experience exquisite fine dining at {$site_name}. Fresh local cuisine, international dishes, craft cocktails, and premium bar service in an elegant setting.",
-        'image' => '/images/restaurant/hero.jpg',
+        'image' => '/images/restaurant/image.png',
         'type' => 'restaurant',
         'structured_data' => [
             "@context" => "https://schema.org",
             "@type" => "Restaurant",
             "name" => $site_name . " Restaurant",
-            "image" => "https://" . $_SERVER['HTTP_HOST'] . "/images/restaurant/hero.jpg",
+            "image" => "https://" . $_SERVER['HTTP_HOST'] . "/images/restaurant/image.png",
             "description" => "Fine dining restaurant offering fresh local cuisine, international dishes, and premium bar service",
             "servesCuisine" => ["International", "African", "Continental"],
             "priceRange" => getSetting('price_range_indicator', '$$$'),
@@ -612,7 +612,7 @@ try {
                                     <img src="<?php echo htmlspecialchars($image['image_path']); ?>"
                                         alt="<?php echo htmlspecialchars($image['caption']); ?>"
                                         loading="lazy"
-                                        onerror="this.onerror=null;this.src='images/restaurant/bar-area.jpg';this.alt='Restaurant Image';">
+                                        onerror="this.onerror=null;this.src='images/restaurant/image.png';this.alt='Restaurant Image';">
                                 <?php endif; ?>
                                 <div class="editorial-gallery-caption"><?php echo htmlspecialchars($image['caption']); ?></div>
                             </div>

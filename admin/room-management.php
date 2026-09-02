@@ -238,8 +238,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
                 $size = (int)($_FILES['room_image']['size'] ?? 0);
 
-                if ($size > 20 * 1024 * 1024) {
-                    $error = 'File too large. Max size is 20MB.';
+                // Shared size cap (config/security.php) — was a local 20MB literal.
+                if ($rm_sizeError = rh_check_image_upload_size($_FILES['room_image'], $rm_sizeWarning)) {
+                    $error = $rm_sizeError;
                     if (is_ajax_request()) {
                         header('Content-Type: application/json');
                         echo json_encode(['success' => false, 'message' => $error]);

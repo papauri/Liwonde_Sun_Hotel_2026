@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shell scripts must always check out with LF. A CRLF line ending makes Linux
+# fail the shebang ("bad interpreter: /usr/bin/env bash^M"), which would silently
+# break scripts/setup-cron.sh on the cPanel server.
+*.sh text eol=lf

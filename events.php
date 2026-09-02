@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['event_booking_form'])
 function resolveEventImagePath(?string $imagePath): string
 {
     if (empty($imagePath)) {
-        return 'images/hero/slide1.jpeg';
+        return 'images/hero/slide1.jpg';
     }
 
     if (preg_match('/^https?:\/\//i', $imagePath) === 1) {
@@ -150,7 +150,7 @@ function resolveEventImagePath(?string $imagePath): string
         return $normalized;
     }
 
-    return 'images/hero/slide1.jpeg';
+    return 'images/hero/slide1.jpg';
 }
 
 
@@ -210,7 +210,7 @@ $site_logo = getSetting('site_logo');
     $seo_data = [
         'title' => 'Upcoming Events - ' . $site_name,
         'description' => "Join us for memorable celebrations and special gatherings at {$site_name}. Check out our upcoming events, live music, and special occasions.",
-        'image' => '/images/hero/slide1.jpeg',
+        'image' => '/images/hero/slide1.jpg',
         'type' => 'website'
     ];
     require_once 'includes/seo-meta.php';
@@ -288,7 +288,7 @@ $site_logo = getSetting('site_logo');
                                             class="editorial-event-image"
                                             loading="lazy"
                                             width="600" height="375"
-                                            onerror="this.src='images/hero/slide1.jpeg'">
+                                            onerror="this.src='images/hero/slide1.jpg'">
                                     <?php endif; ?>
                                     <div class="editorial-event-date-badge">
                                         <span class="editorial-event-date-day"><?php echo $day; ?></span>
@@ -385,7 +385,7 @@ $site_logo = getSetting('site_logo');
                                                 class="editorial-event-image"
                                                 loading="lazy"
                                                 width="600" height="375"
-                                                onerror="this.src='images/hero/slide1.jpeg'">
+                                                onerror="this.src='images/hero/slide1.jpg'">
                                         <?php endif; ?>
                                         <div class="editorial-event-date-badge">
                                             <span class="editorial-event-date-day"><?php echo $day; ?></span>
