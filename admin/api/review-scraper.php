@@ -878,8 +878,13 @@ if ($action === 'import') {
     $rating = (int)($input['rating'] ?? 5);
     $candidateSentiment = normalize_sentiment((string)($candidate['sentiment'] ?? ($input['sentiment'] ?? 'positive')));
 
+    // Username is optional (owner decision, 2026-09-02). A search snippet often has
+    // no attributable author — a page post, a listing, a news item — and forcing the
+    // admin to invent one produced worse data than leaving it unattributed.
+    // `reviews.guest_name` is NOT NULL, so fall back to a neutral label rather than
+    // writing an empty string that renders as a blank byline.
     if ($username === '') {
-        json_error('Username is required for imported feedback', 400);
+        $username = 'Guest';
     }
 
     $rating = max(1, min(5, $rating));

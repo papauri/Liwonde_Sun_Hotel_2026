@@ -686,7 +686,7 @@ $pending_count = $pending_stmt->fetch(PDO::FETCH_ASSOC)['count'];
                         '<a class="scraper-card__source" href="' + safeSource + '" target="_blank" rel="noopener">' + safeSource + '</a>' +
                         '<div class="scraper-card__inputs">' +
                             '<label>Username' +
-                                '<input type="text" class="scraper-username" value="' + safeUser + '" placeholder="Enter source username" maxlength="120">' +
+                                '<input type="text" class="scraper-username" value="' + safeUser + '" placeholder="Source username (optional)" maxlength="120">' +
                             '</label>' +
                             '<label>Rating' +
                                 '<select class="scraper-rating">' +
@@ -749,11 +749,6 @@ $pending_count = $pending_stmt->fetch(PDO::FETCH_ASSOC)['count'];
             const rating = ratingSelect ? parseInt(ratingSelect.value || String(ratingFallback), 10) : ratingFallback;
             const email = emailInput ? emailInput.value.trim() : '';
             const sourceDate = sourceDateInput ? sourceDateInput.value.trim() : '';
-
-            if (!username) {
-                Alert.show('Username is required. Please provide the genuine source username.', 'error');
-                return;
-            }
 
             if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                 Alert.show('Please enter a valid email format, or leave email blank.', 'error');
