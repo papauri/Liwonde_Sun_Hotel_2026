@@ -483,6 +483,40 @@ availability. Likely a leftover test value rather than policy.
 · options: (a) raise it to a normal horizon (180–365 days); (b) confirm 22 days is deliberate.
 · recommend: (a), but it is an operational setting, so the owner sets the number.
 
+`BLOCKED: 4 — the POS till has ZERO sellable items.` Checked 2026-09-02. `admin/pos.php` builds
+its catalogue from **`menu_items` JOIN `menu_categories`** in all 5 of its menu queries, and
+`menu_items` has **0 rows** — the POS would list nothing, so no order can be rung up.
+Liwonde's real menu (71 food + 116 drink = 187 items) lives in **`food_menu` / `drink_menu`**,
+which only the *public website* reads (`restaurant.php`, `menu-pdf.php`). `admin/menu-management.php`
+edits those same website tables. **Nothing in the codebase copies one into the other** — a grep for
+writers of `menu_items` finds only `product-management-mode.php` (the non-restaurant editor,
+shown *instead of* the Food/Drinks editor), `pos.php` and `stock-barcode-receive.php`.
+Notably `menu_categories` **is** populated with 13 active `food_service` categories matching the
+real menu (Breakfast, Starter, Chicken Corner … Liwonde Sun Specialities), all stationed to
+`kitchen` — so the POS category structure was set up and the items step was never done.
+· options: (a) import `food_menu`+`drink_menu` into `menu_items` mapped onto the existing
+categories — one-off script, keeps the website menu as the source of truth; (b) enter the POS
+catalogue by hand via Product Management; (c) point `pos.php` at `food_menu`/`drink_menu`
+directly — rejected: they carry no station, barcode, recipe link or `show_pos` flag, all of
+which the till and KDS depend on.
+· recommend: (a). Note it is a **data** decision (which items are sellable, at what till price,
+on which station), so the mapping needs owner input rather than an agent guess.
+
+`BLOCKED: 4/6 — POS refunds reverse more than the sale recorded, by the tip.` The sale path
+(`pos_syncPayment` → `rh_sync_restaurant_payment`) passes **`total_amount` only**, so the tip
+never enters the `payments` ledger. The refund path (`admin/pos.php:937-968`) writes
+`payment_amount = net + tip` and `total_amount = total + tip`. Simulated at the live VAT rate:
+a 10,000 sale with a 1,000 tip records 10,000 gross, and refunding it reverses 11,000 — leaving
+the ledger **-1,000** on a transaction that netted zero. Separately, `admin/pos-accounting.php`
+counts `total_amount + tip_amount` for till reconciliation, so expected-cash already includes
+tips while ledger revenue does not — the two disagree even without a refund.
+· options: (a) make the refund reverse `total_amount` only, matching the sale — smallest change,
+treats tips as outside revenue (the usual treatment, and consistent with the sale path);
+(b) include the tip on both sale and refund — makes tips revenue, which changes VAT and EOD
+figures; (c) leave.
+· recommend: **(a)**, but it is money semantics and therefore an owner decision. **No damage
+to date: `stock_orders` is empty, so no POS sale or refund has ever been recorded.**
+
 ### OWNER DECISIONS from this review — RESOLVED 2026-09-02
 
 `RESOLVED — per-request DDL in config/database.php.` Owner chose **flag it AND migrate it to
