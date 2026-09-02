@@ -521,6 +521,37 @@ figures; (c) leave.
 · recommend: **(a)**, but it is money semantics and therefore an owner decision. **No damage
 to date: `stock_orders` is empty, so no POS sale or refund has ever been recorded.**
 
+`BLOCKED: 13 — NONE of today's code is deployed to the live site; the database changes ARE.`
+Found 2026-09-02 by driving a browser against `https://promanaged-it.com/liwondesunhotel/`.
+**Hard evidence (read from the live DOM, not inferred):** the homepage renders
+`<section id="testimonials">` containing the heading "What Our Guests Say" over a grid with
+`children.length === 0` and `innerHTML.length === 0` — that is precisely the empty-shell state the
+`if (!empty($testimonials))` guard in `index.php` removes, so that guard is not on the server. All
+three review quotes still end in `Source: https://www.facebook.com/...`, so
+`rh_public_review_text()` is not there either.
+**Correction to an inference made minutes earlier:** 403s on `/.env` and `/composer.json` were
+taken as proof the new `.htaccess` was live. They are not — cPanel blocks both by default. The
+`.htaccess` rules are almost certainly not deployed either.
+**The consequence is a split state, and one half of it is mine.** Every DB change took effect
+immediately (VAT mode inclusive, 365-day window, email recipients, deleted seed testimonials,
+187 menu items, POS test data) because they were written straight to the database. Every code
+change — VAT recording in `booking.php`, the POS refund symmetry fix, CSRF on the review
+endpoints, the source-URL stripper, both empty-section guards, upload size caps, the 7 module
+gates, the booking palette, the 5 repointed image paths, `.htaccess`, `.user.ini` — exists only
+in GitHub.
+**I made the homepage visibly worse in the meantime.** Deleting the three seed testimonials was
+correct, but the guard that hides the now-empty section is not deployed, so the live homepage
+currently shows a "What Our Guests Say" heading above nothing. Changing data ahead of the code
+that depends on it was the wrong order, and this is the visible cost.
+· options: (a) deploy (cPanel → Git Version Control → Update from Remote, or however this install
+pulls) — fixes everything at once, including the empty heading; (b) if deployment is manual,
+upload the changed files; (c) roll the testimonials back from the snapshot in the scratchpad if a
+deploy is not imminent.
+· recommend: **(a), soon.** Until then the site runs old code against a database that has moved on.
+Nothing is broken by the mismatch — under `inclusive` a guest still pays the advertised price,
+the old code simply records `vat_amount = 0` — but none of today's fixes are actually protecting
+anyone yet.
+
 ### OWNER DECISIONS from this review — RESOLVED 2026-09-02
 
 `RESOLVED — per-request DDL in config/database.php.` Owner chose **flag it AND migrate it to
