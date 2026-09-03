@@ -3,9 +3,66 @@
 Owned by `build-planner`. Application-code agents never edit this file.
 Read `.claude/PROJECT_CONTEXT.md` and `.claude/CORE_SYSTEM_BRIEF.md` before touching it.
 
-**Status: seeded, not yet started.** No build-loop cycle has run against this repo. The
-checklist below is the *proposed* first round — the owner approves rounds, the planner does
-not self-approve them (see `OPEN OWNER DECISIONS`, which gates most of Phase 2 onward).
+**Status: three rounds run (2026-08-15, 2026-09-02 ×2). Phase 0 complete; Phases 1–3 open.**
+Round 1 (Learn), Round 2 (repo-wide review) and Round 3 (live-database verification) are all
+done and recorded below. Every owner decision raised in Rounds 1–3 has been answered except
+three (SMTP credentials, `sql_mode`, `stock_payments`/`room_features`). What is *not* done is
+the thing the checklists actually measure: **nothing has been exercised through the HTTP layer,
+and the live site is running code from 2026-09-02 morning.**
+
+---
+
+## PRODUCTION READINESS — assessed 2026-09-03
+
+**Verdict: not ready.** Three blockers, in order of severity.
+
+1. ~~The live site is 12 commits behind `main`.~~ **WITHDRAWN 2026-09-03 — I was auditing a
+   stale copy.** The owner supplied the real host (temp cPanel domain, see `BLOCKED: 13`); the
+   deployment there is **current**. Verified: the empty-testimonials shell is **gone**
+   (`id="testimonials"` absent — the guard is live), **zero** `Source: https://…` leaks in the
+   review quotes, `booking.css` is **5349 lines** matching the tree, and booking #121 carries
+   `vat_rate=16.50`. The `.htaccess` hardening is live too — the first time it has been
+   testable: `/.gitignore`, `/composer.lock`, `/.env`, `/logs/`, `/backups/`, `/.git/config`
+   all **403**, and `/config/database.local.php` returns **200 with 0 bytes** (PHP executes it,
+   emits nothing — exactly as P1.8 predicted, no credential leak).
+   **Replaced by a smaller, real blocker: the admin login redirect.** `/admin/` on the live
+   host returns `Location: login.php?redirect=admin`, so logging in from the panel root lands
+   on `/admin/admin` (404). Fixed in the working tree (`admin/admin-init.php` +
+   `admin/login.php`), **uncommitted and undeployed.**
+2. **Nothing has ever been exercised through a web server.** The 2026-09-02 end-to-end run
+   (17 checks, all passed) called the app's own SQL directly with no HTTP involved. Form
+   validation, CSRF round-trip, session handling, page rendering, **confirmation email
+   delivery** and the KDS ticket flow are all still unexercised. Phase 2's headline criterion
+   — guest booking → confirmation email → admin visibility — has never been run once.
+3. **No email sends AT ALL — root-caused 2026-09-03.** Worse than `BLOCKED: 9` (which is about
+   *which address* mail comes from). **`decrypt_setting()` and `encrypt_setting()` are broken**:
+   both MySQL stored functions carry `DEFINER = <db-user>@<stale-definer-host>` from the
+   Rosalyn dump, and that user@host does not exist on this server, so **every call errors**.
+   `smtp_password` is the one setting with `is_encrypted=1`, so `getEmailSetting()` hits the
+   dead function, and its catch block (`config/database.php:1315-1322`) falls back to returning
+   the **raw ciphertext** — a comment there claims this "keeps SMTP credentials usable"; it does
+   the exact opposite. PHPMailer then authenticates with ciphertext. **Verified against the live
+   relay:** `<smtp-host>:465` answers and offers `AUTH LOGIN`, and the stored value
+   is rejected with **`535 Incorrect authentication data`**. Booking #121 (2026-09-03 02:01:50,
+   public flow) therefore sent neither guest confirmation nor admin notification; `booking.php`
+   writes the failure to `error_log` and the guest still sees success.
+   **Fix is an owner action needing no code and no DDL:** Admin → Booking Settings → Email,
+   re-type the SMTP password, Save. `updateEmailSetting()` tries `encrypt_setting()`, catches the
+   same definer error, and stores the value **plaintext with `is_encrypted=0`**
+   (`config/database.php:1423-1429`) — after which `getEmailSetting()` returns it directly and
+   never calls the dead function. It also clears the file cache itself.
+   · Recreating the two functions with a valid definer is the alternative — but it is DDL against
+   the locked schema, and buys little: the key lives in the same database as the ciphertext, so
+   it is obfuscation, not security. **`BLOCKED: 9` is unchanged and still applies afterwards** —
+   once mail flows it will flow *from `info@promanaged-it.com`*.
+
+Behind those, and cheaper: `sql_mode` has no `STRICT_TRANS_TABLES` (silent truncation of real
+guest data), there is no CI and no deployed-state check, and Events + Guest Services are live
+pages with zero rows behind them.
+
+**Shortest path to ready:** deploy → stand up a staging copy → run one real booking through a
+browser end to end → settle SMTP. Everything else is polish or can follow the property into
+service.
 
 ---
 
@@ -65,23 +122,51 @@ Phase 0 — Learn (no code changes; safe to run before any owner decision)
 
 Phase 1 — Stabilise (unblocked by Phase 0; no schema, no module changes)
 
-- [ ] Both smoke tests exit 0
-- [ ] Every `BLOCKED:` and `ASSUMPTION:` raised in Phase 0 is recorded below
-- [ ] No PHP notice or warning on any guest page load
-- [ ] No page references a table dropped by the migration
+- [~] Both smoke tests exit 0 — **green once (2026-08-15: booking 54/54, finance 21/21), then
+      invalidated.** `booking.php`'s INSERT went 30→32 columns on 2026-09-02 (VAT recording) and
+      the POS refund path changed, so neither suite has run against the current code. They
+      **cannot** be re-run from this workstation: the only credentials here point at production,
+      and both suites write bookings. Needs a staging copy or a local MySQL restored from
+      `scripts/backup_database.php`. Owner action.
+- [x] Every `BLOCKED:` and `ASSUMPTION:` raised in Phase 0 is recorded below — done; Round 2 and
+      Round 3 added their own and each is either RESOLVED or still carried as `BLOCKED:`.
+- [ ] No PHP notice or warning on any guest page load — **never checked.** No web server has been
+      involved in any verification to date. `.user.ini` now sets `display_errors=Off` +
+      `log_errors=On`, so the check is "load every guest page, then read `logs/`" — and that is
+      only possible after a deploy.
+- [x] No page references a table dropped by the migration — clean, verified three times
+      (2026-08-15 grep, Round 2 re-confirm, Round 3 tokenizer sweep against the live schema).
+      The only absent tables are the three inherited Rosalyn defects, not migration damage.
 
-Phase 2 — Complete · **gated on OWNER DECISION 2 (module enablement)**
+Phase 2 — Complete · ~~gated on OWNER DECISION 2 (module enablement)~~ **UNGATED** — Round 3
+resolved it: all 12 modules are enabled on live, so the scope is the full admin surface.
 
-- [ ] Enabled modules each pass an end-to-end pass at their acceptance criteria
-- [ ] Disabled modules are unreachable by direct URL and absent from the sidebar
-- [ ] Guest booking → confirmation email → admin visibility verified end-to-end
+- [ ] Enabled modules each pass an end-to-end pass at their acceptance criteria — **1 of 12.**
+      The 2026-09-02 run exercised booking → POS → stock → finance (17 checks, all passed) at
+      the **database layer only**. Untouched by any test: housekeeping · conference · gym ·
+      station_kds / bds / cds / room_service · website_cms.
+- [x] Disabled modules are unreachable by direct URL and absent from the sidebar — **moot, and
+      the mechanism is correct.** Nothing is disabled (Round 3), and P1.3 closed the 7 gate-map
+      holes so `rh_module_key_enabled()` would hide a module properly if one were switched off.
+      Re-open if the owner ever disables a module. **Caveat carried from Round 2: the module gate
+      is bypassed for `role=admin`** — untested because no module is off.
+- [ ] Guest booking → confirmation email → admin visibility verified end-to-end — **not started,
+      and the headline gap.** Blocked twice over: no HTTP-layer test has ever run, and the
+      confirmation would arrive from `info@promanaged-it.com` (`BLOCKED: 9`).
 
 Phase 3 — Polish
 
-- [ ] Ballena editorial treatment consistent across all guest pages
-- [ ] No horizontal scroll 320–2560px on any guest or staff page
-- [ ] 44×44px touch targets on all staff screens for enabled modules
-- [ ] Admin list views remain data tables at ≥1024px
+- [ ] Ballena editorial treatment consistent across all guest pages — **partial.** `booking.css`
+      is now on the softened palette (P2.1, 149 of 338 hardcoded colours swapped; 189 remain by
+      design). The *editorial-class* restructure was explicitly superseded, so the metric for
+      this line needs restating before it can be ticked: 8 guest pages still carry zero
+      `ballena`/`bellhop`/`editorial` references, but P2.1 established that count is not itself
+      a defect. **Needs a real definition, not a grep.**
+- [ ] No horizontal scroll 320–2560px on any guest or staff page — **never tested.** Requires a
+      browser; the one browser session run so far only read the live DOM.
+- [ ] 44×44px touch targets on all staff screens for enabled modules — **never tested**, and now
+      spans all 12 modules rather than a reduced set.
+- [ ] Admin list views remain data tables at ≥1024px — **never tested.**
 
 ---
 
@@ -150,6 +235,10 @@ regenerated rather than carried across. Unverified.
 
 | Date | Task | Outcome |
 |---|---|---|
+| 2026-09-03 | Live host identified — `BLOCKED: 13` withdrawn entirely | Owner supplied the current URL: **`https://<temp-cpanel-domain>/`** (cPanel temp domain — it changes when the real domain is pointed). Everything I had been calling "live" for two rounds was a **stale copy** at `promanaged-it.com/liwondesunhotel/`. Re-measured against the correct host: testimonials guard live (`id="testimonials"` absent), **0** `Source: https://…` leaks, `booking.css` 5349 lines matching the tree, booking #121 carrying `vat_rate=16.50`. **The deployment is current; there is no deploy gap and no split state.** Bonus — P1.8's `.htaccess` became testable for the first time and **passes**: `/.gitignore`, `/composer.lock`, `/.env`, `/logs/`, `/backups/`, `/.git/config` all 403, while `/config/database.local.php` returns **200 with 0 bytes** (PHP executes it and emits nothing — the deliberate non-denial reasoned about in P1.8, now proven safe rather than argued). Two probe artifacts, not defects: `/data/menu.json` 403 (orphan file nothing references) and `/manifest.json` 404 (the manifest is served by `manifest.php`; I guessed the wrong filename). **The real lesson: two rounds of findings rested on an unverified assumption about which host was live.** Confirm the host before any future deploy audit — and it is a temp domain, so it will move again. |
+| 2026-09-03 | Admin login redirect — `/admin/` lands on `/admin/admin` after login | Owner-reported. `admin/admin-init.php:39` derived the post-login target with `basename($requestPath)`, which on a **directory URL** (`/admin/`, `/admin`) returns the directory name — storing `admin` as the destination. `admin_sanitize_redirect()` in `admin/login.php` then failed to catch it because its strip matched `admin/` **only with a trailing slash**, so bare `admin` passed the character whitelist and was emitted as a *relative* `Location: admin`, which the browser resolved against `/admin/` into a 404. Only bites when entering the panel at its root, which is why deep links always worked. **Reproduced against the live host** (`/admin/` → `Location: login.php?redirect=admin`), so this is confirmed on the real install, not just inferred. Fixed at both ends: `admin-init.php` now stores a destination only when the request names a real `.php` page (directory URLs fall through to the role default), and the sanitizer strips a leading `admin` segment with or without the slash **and** requires the target to end in `.php` — the second half matters because an existing session already holds the stale `admin` value and would otherwise bounce once more. Verified by extracting the patched function and executing it rather than testing a copy: deep links and query strings survive, and absolute URLs, protocol-relative `//host`, `../` traversal and `login.php` self-redirects are all still rejected. Confirmed the pattern occurs nowhere else — it is the only `basename()`-of-request-path redirect in the codebase, and every read of `admin_redirect_after_login` routes through the sanitizer. Both files `php -l` clean. **Uncommitted.** |
+| 2026-09-03 | ROOT CAUSE — why no booking confirmation email has ever arrived | Owner reported booking #121 produced no confirmation. Traced end to end, read-only. **The migration carried `decrypt_setting()`/`encrypt_setting()` across with `DEFINER = <db-user>@<stale-definer-host>`, a user@host that does not exist here** (the live connection is the same *username* from a different host, which is why nothing else broke). Every call fails. `smtp_password` is the only `is_encrypted=1` row, so `getEmailSetting()` falls into the catch at `config/database.php:1315-1322` and returns **raw ciphertext**. Proved the consequence rather than inferring it: connected to `<smtp-host>:465`, which offers `AUTH LOGIN`, and the stored value is rejected **`535 Incorrect authentication data`** (no `MAIL FROM` issued — nothing was sent). **Two near-misses worth recording.** (1) I nearly reported that 535 as the finding before noticing `email_settings.is_encrypted` — the first test authenticated with ciphertext by accident, which happens to be exactly what the app does, but the reasoning would have been wrong. (2) The fallback comments in both `getEmailSetting()` and `updateEmailSetting()` claim they "preserve operability" / "keep SMTP credentials usable"; they are why a hard failure presents as silent non-delivery. **Fix is owner-side, no code, no DDL:** re-save the SMTP password in Admin → Booking Settings → Email — `updateEmailSetting()` catches the same definer error and stores it plaintext with `is_encrypted=0` (`config/database.php:1423-1429`), bypassing the dead function permanently. **Also found: the live site has MOVED.** `system_event_log` shows admin logins at `request_uri=/admin/login.php` (2026-09-03 02:02:47) where every earlier one was `/liwondesunhotel/admin/login.php`, and booking #121 carries `vat_rate=16.50 / vat_amount=46738.20` — the VAT fix yesterday's audit called undeployed. **So the "12 commits behind" figure was measured against a stale copy at `promanaged-it.com/liwondesunhotel/`; the real deployment is elsewhere and is newer. `BLOCKED: 13` needs re-measuring against the correct host — owner to confirm the URL.** |
+| 2026-09-03 | Production-readiness audit — plan reconciled against repo + live | Owner asked "are we ready for prod". Checked the plan's open claims against reality rather than trusting the text. **Three corrections.** (1) `BLOCKED: 13` was **stale and had been overstated**: a partial deploy landed after it was written. Established the deployed HEAD as **`6781081`** by diffing live assets against the tree — P1.1's image repoints and P2.1's palette swap are live, but live `booking.css` is 5350 lines to the tree's 5349 (the stray `}` from `6a44aff` is still served), the homepage still emits an empty `editorial-testimonials-grid`, and the review quotes still leak `Source: https://www.facebook.com/…`. **12 commits undeployed, including two money-path fixes and a CSRF hole.** (2) The `RESOLVED — image asset re-encoding` block was **stale**: it authorised a re-encode pass that the owner redirected hours later. Confirmed the redirect is what happened — `images/` still 39 MB / 0 WebP / no `_originals/` — and marked the block SUPERSEDED so nobody actions it. (3) **Phase 1's "both smoke tests exit 0" was silently invalidated**: they were green 2026-08-15, but `booking.php`'s INSERT went 30→32 columns and the POS refund path changed since, so the green is against code that no longer exists. Downgraded to `[~]`. Also re-confirmed the 403 caveat — `/.env`, `/composer.json`, `/.gitignore`, `/logs/` all 403, but cPanel does that by default, so P1.8's `.htaccess` remains **untested in production either way**. Phase 1/2/3 checkboxes rewritten with evidence per line; P2.4 closed as scrapped; `PRODUCTION READINESS` section added at the top; `REMAINING WORK` queue added below. **No application code touched.** |
 | 2026-08-15 | P0 — dropped-table sweep | Clean; zero references in `*.php`/`*.js` |
 | 2026-08-15 | P0 — schema parity check | 1 break found and fixed (`room_types` in `admin/end-of-day-report.php`) |
 | 2026-08-15 | P0 — smoke tests | Booking 54/54, finance 21/21; fixed a varchar(20) truncation defect in the booking fixture |
@@ -393,7 +482,8 @@ code, not inferred from `MIGRATION_PLAN.md`.
       documents in its own header docblock. Installing the crontab on the live server stays an
       owner action.
 
-- [ ] **P2.4 — CI. SCRAPPED 2026-09-02 by owner decision** (blocked on the `workflow` token scope; see Completed). Re-open only if the scope is granted. `.github/` holds Copilot agent prompts only; there is no `workflows/`
+- [-] **P2.4 — CI. SCRAPPED 2026-09-02 by owner decision** (closed, not outstanding — verified
+      2026-09-03 that `.github/` holds only `agents/` and `prompts/`, no `workflows/`) (blocked on the `workflow` token scope; see Completed). Re-open only if the scope is granted. `.github/` holds Copilot agent prompts only; there is no `workflows/`
       directory, so nothing runs `php -l` or the smoke tests on push. Add a minimal workflow that
       lints changed PHP/JS. Agent: `backend-specialist`. No new dependencies.
 
@@ -521,6 +611,42 @@ figures; (c) leave.
 · recommend: **(a)**, but it is money semantics and therefore an owner decision. **No damage
 to date: `stock_orders` is empty, so no POS sale or refund has ever been recorded.**
 
+> **RESOLVED 2026-09-03 — the whole blocker was an artifact of probing the wrong host.**
+> The live site is **not** `promanaged-it.com/liwondesunhotel/` (a stale copy left at the old
+> path). The owner supplied the current temp domain:
+> **`https://<temp-cpanel-domain>/`** — a cPanel temp hostname, so
+> it will change again when the real domain is pointed; **re-confirm the host before trusting
+> any future deploy audit.** Admin is at `/admin/`, matching the `request_uri=/admin/login.php`
+> entries in `system_event_log`. Measured against the correct host, the deployment is current:
+> the testimonials guard, the review source-URL stripper, the `booking.css` brace fix, the VAT
+> recording and the `.htaccess` hardening are all live. **No deploy gap and no split state.**
+> Everything below is superseded and kept only as the record of how the error was made — the
+> lesson being that **"the live site" was never verified as the live site**, and two rounds of
+> findings were built on that assumption.
+
+> ~~**RE-VERIFIED 2026-09-03 — corrected, and still blocking. A partial deploy has since landed.**~~
+> The 2026-09-02 claim "NONE of today's code is deployed" is **no longer true and was already
+> too broad**. Re-checked today by fetching live pages and assets directly and diffing them
+> against the working tree:
+> · **Deployed** — `gym.php` → `images/gym/fitness-center.jpg`, `restaurant.php` →
+>   `images/restaurant/image.png`, `events.php` → `images/hero/slide1.jpg` (all P1.1), and
+>   `css/sections/booking.css` with **zero `#8B7355`** (P2.1's palette swap).
+> · **Not deployed** — live `booking.css` is **5350 lines to the tree's 5349**: the stray `}`
+>   removed in `6a44aff` is still there. The homepage still emits
+>   `<div class="editorial-testimonials-grid" …>` **empty**, and all three review quotes still
+>   carry `Source: https://www.facebook.com/…`.
+> **Deployed HEAD is therefore `6781081`** ("Stop app-code schema migration; harden uploads,
+> access and email routing"). **Twelve commits are undeployed**, and these five matter:
+> `6a44aff` (stray brace) · `f32b72c` (**CSRF on review moderation endpoints**, source-URL
+> stripper, both empty-section guards) · `23bdbd4` (scraped imports forced to pending) ·
+> `5e40181` (**booking VAT recording**) · `72400a5` (**POS refund symmetry** + menu import).
+> Two are money paths and one is a live CSRF hole.
+> **Also note the 403 correction still stands and was re-confirmed today:** `/.env`,
+> `/composer.json`, `/.gitignore` and `/logs/` all return 403 — but cPanel blocks those by
+> default, so this is *not* evidence that P1.8's `.htaccess` is live. It is untested either way.
+> **Confirmed unchanged:** the footer `mailto:` is `bookings@liwondesunhotel.com`, so the
+> database half of the split state is live exactly as described below.
+
 `BLOCKED: 13 — NONE of today's code is deployed to the live site; the database changes ARE.`
 Found 2026-09-02 by driving a browser against `https://promanaged-it.com/liwondesunhotel/`.
 **Hard evidence (read from the live DOM, not inferred):** the homepage renders
@@ -586,7 +712,17 @@ the live database now** (both options, not either/or). Splits into two tasks:
 > migration files, and the owner runs the runner on the server. Back up first
 > (`scripts/backup_database.php`), which P2.3 is separately trying to get onto a schedule.
 
-`RESOLVED — image asset re-encoding (P2.2).` Owner authorised **a one-off agent pass over
+`SUPERSEDED 2026-09-02, re-confirmed 2026-09-03 — image asset re-encoding (P2.2).` The
+authorisation below was **overtaken the same day** by the owner's redirect: cap uploads, do not
+re-encode, leave `images/` alone (see the P2.2 Completed row). Verified today that the redirect
+is what actually happened — `images/` is still **39 MB**, **0 `.webp` files**, no
+`images/_originals/`, and `gym/personal-training.jpg` is still **8.1 MB**. The rail against
+writing under `images/` is back in force. **PROJECT_CONTEXT gap 7 (page weight) therefore stays
+open by decision, not by oversight** — the cap stops it getting worse; it does not fix the
+existing hero payload on a Malawian mobile connection. Kept verbatim below in case the owner
+revisits.
+
+~~`RESOLVED — image asset re-encoding (P2.2).`~~ Owner authorised **a one-off agent pass over
 `images/`**, lifting the standing rail against writing under `images/` for this task only.
 Scope: resize to max 2560px on the long edge · re-encode at ~q80 · emit `.webp` siblings ·
 **preserve every original under `images/_originals/` before overwriting** · then repoint the
@@ -722,9 +858,83 @@ audits, content counts) using a hand-built PDO connection. It must **not** run t
 there: both write bookings, and `config/database.php` fires DDL on include. Until a staging copy
 exists, the gate is `php -l` + `node --check` + read-only schema assertions.
 
+## REMAINING WORK — queued 2026-09-03
+
+Ordered by what blocks production. Owner actions are marked; everything else is dispatchable.
+
+### Gate A — must clear before the property takes real bookings
+
+- [x] **A1 — Deploy `main` to live.** ~~12 commits behind~~ — **already current.** The gap was
+      an artifact of auditing a stale copy at the old path; against the real host
+      (`<temp-cpanel-domain>`) every marker matches the tree.
+      Live URL confirmed by the owner 2026-09-03.
+- [ ] **A1b — Deploy the admin login-redirect fix. NEW 2026-09-03.** `/admin/` sends
+      `login.php?redirect=admin`, and logging in from the panel root then lands on `/admin/admin`
+      (404). Reproduced against the live host. Cause: `basename()` on a directory URL returns the
+      directory name, and the sanitizer only stripped `admin/` **with** a trailing slash. Fixed in
+      `admin/admin-init.php` and `admin/login.php` (both `php -l` clean, deep links and every
+      redirect-injection rejection re-verified). **Uncommitted — owner triggers commit + deploy.**
+- [ ] **A2 — Stand up a staging database. OWNER ACTION.** The single largest capability gap in
+      this project. Restore `scripts/backup_database.php` output into a local or staging MySQL
+      and point a second local config at it. Unblocks: re-greening both smoke tests (Phase 1),
+      every HTTP-layer test (Phase 2), and lifts the QA gate above lint-only for the first time.
+      **Do not solve this by whitelisting another IP against production.**
+- [ ] **A3 — One real guest booking, through a browser, end to end.** Phase 2's headline
+      criterion and the one thing that has never been done. Form → validation → CSRF round-trip →
+      confirmation email → row visible in admin. Needs A1 and A2. Agent: manual/browser session.
+- [ ] **A4 — Liwonde SMTP. OWNER ACTION** (`BLOCKED: 9`). Guests currently receive confirmation
+      from `info@promanaged-it.com`. `email_from_email` and `smtp_*` must move together or
+      deliverability gets worse, not better.
+- [ ] **A5 — Install the crontab on the server. OWNER ACTION.** `scripts/setup-cron.sh` is
+      written and dry-run-verified (5 jobs) but nothing is scheduled on live yet, so there are
+      **still no automated backups**, no tentative-hold expiry and no lifecycle email.
+
+### Gate B — should clear before the property relies on the numbers
+
+- [ ] **B1 — `sql_mode` has no `STRICT_TRANS_TABLES`. OWNER DECISION, standing since Round 1.**
+      Re-confirmed against live in Round 3. Over-length guest names, emails and special requests
+      are silently truncated rather than rejected. Recommended: enable on the staging copy from
+      A2, measure the fallout, then enable on live.
+- [ ] **B2 — Replace the seeded POS recipes with real ones.** `scripts/seed_pos_test_data.php`
+      loaded 187 demo recipes whose quantities are indicative, not costed. Food-cost and
+      stock-value figures are fiction until an operator redoes them in Admin → Stock → Recipes.
+      Owner/operator task. The seeder's `--purge` removes exactly what it added if preferred.
+- [ ] **B3 — Create the restaurant tables.** `restaurant_tables` seeded with 14 demo rows;
+      confirm or replace them with the property's real floor plan. Until then **dine-in orders
+      are the demo layout**. Walk-in and takeaway are unaffected.
+- [ ] **B4 — Editorial pass on the 3 live reviews.** All three are Facebook page content, not
+      guest reviews — one is a news item — each stored as a 5-star review with a
+      " - Facebook" suffix in the title. Already `approved` and public. Owner call per the
+      option-(a) policy agreed 2026-09-02.
+- [ ] **B5 — Two `BLOCKED:` schema questions, still unanswered.** `stock_payments` (F&B payment
+      panel reads as "no payments" because the table does not exist) and `room_features`
+      (`api/spatial-loading.php`, unrouted, likely dead). Both are owner decisions because both
+      touch the locked schema. Recommended: repoint `stock_payments` at `payments` filtered to
+      POS/F&B; confirm `room_features`' caller dead and remove it.
+
+### Gate C — polish, safe to follow the property into service
+
+- [ ] **C1 — Content for Events and Guest Services.** Both are live guest pages with **0 rows**
+      behind them. Content entry is an owner task; a proper empty state is a build task and
+      should be built regardless, so the pages never render bare again.
+- [ ] **C2 — Restate the "ballena consistent across all guest pages" criterion.** P2.1 proved
+      the class-count metric was wrong. Define what consistency actually means here before any
+      more pages are dispatched against it, or the work cannot be judged done.
+- [ ] **C3 — Responsive + touch-target sweep.** Phase 3's last three lines: no horizontal scroll
+      320–2560px, 44×44px staff touch targets across all 12 enabled modules, admin list views
+      still data tables at ≥1024px. All three need a browser. None has ever been run.
+- [ ] **C4 — Exercise the 11 untested modules.** Housekeeping · conference · gym · KDS/BDS/CDS ·
+      room service · website_cms. Only the booking→POS→stock→finance chain has been run, and
+      that at the database layer. Needs A2.
+- [ ] **C5 — Image payload stays open by decision** (superseded P2.2). 39 MB, 0 WebP, an 8.1 MB
+      JPEG. Re-open only if the owner reverses the redirect.
+
 ## Parked / failed-twice
 
-_(none yet)_
+- **P2.4 — CI.** Scrapped by the owner 2026-09-02 after the GitHub token's `workflow` scope
+  could not be granted across three attempts. Not a failure to retry blind; re-open only if the
+  scope is granted. Consequence to keep visible: **nothing gates a push to this public repo** —
+  no syntax check, and no guard against a credential file being committed.
 
 ## ASSUMPTIONS log
 
