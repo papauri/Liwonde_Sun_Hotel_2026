@@ -6,6 +6,7 @@
 
 # Database configuration with credentials - NEVER commit this!
 config/database.local.php
+config/database.local.php.*
 
 # Email configuration with credentials - NEVER commit this!
 config/email.local.php
