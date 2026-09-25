@@ -22,6 +22,7 @@ require_once __DIR__ . '/../includes/finance-sequences.php';
 require_once __DIR__ . '/../includes/station-hours.php';
 require_once __DIR__ . '/../includes/restaurant-location-locks.php';
 require_once __DIR__ . '/includes/restaurant-payment-sync.php';
+require_once __DIR__ . '/includes/restaurant-order-serve.php';
 
 $user = [
     'id'        => $_SESSION['admin_user_id'],
@@ -323,41 +324,72 @@ function pos_appendCartItemsToOrder(PDO $pdo, int $orderId, string $orderType): 
 }
 
 /**
- * Auto-serve bar / coffee-bar items on a tab at settlement time. Drinks are handed
- * to the customer immediately, so they should not block settling the tab the way
- * food does. This mirrors the KDS bump: deduct stock for any not-yet-deducted
- * drink line, then mark the lines served. Returns the number of lines served.
+ * Auto-serve bar / coffee-bar items on a tab at settlement time. Thin wrapper kept so the
+ * existing call sites read unchanged; the logic now lives in admin/includes/restaurant-order-serve.php
+ * so admin/restaurant-tables.php settles drinks identically instead of skipping this entirely.
  */
 function pos_autoServeBarItems(PDO $pdo, int $orderId, array $user): int
 {
-    $sel = $pdo->prepare("SELECT id, menu_item_id, menu_type, quantity, stock_deducted FROM stock_order_items WHERE order_id = ? AND station IN ('bar','coffee_bar') AND kds_status NOT IN ('served','void')");
+    return rh_auto_serve_bar_items($pdo, $orderId, $user);
+}
+
+/**
+ * Manager-authorised force-serve for stranded kitchen (food) items — the last-resort
+ * unblock for a tab whose food was never bumped through the KDS (e.g. fired before a
+ * business window boundary, or simply missed). Never called automatically: the caller
+ * must already hold pos_force_serve or have obtained a manager auth token for it.
+ * Deducts stock for any undeducted line exactly as a normal KDS bump would, then marks
+ * the lines served and logs who authorised it. Returns the number of lines force-served.
+ */
+function pos_forceServeKitchenItems(PDO $pdo, int $orderId, array $actor, ?int $authorisedById, ?string $authorisedByName): int
+{
+    $sel = $pdo->prepare("SELECT id, menu_item_id, menu_type, quantity, stock_deducted FROM stock_order_items WHERE order_id = ? AND station = 'kitchen' AND kds_status NOT IN ('served','void')");
     $sel->execute([$orderId]);
     $rows = $sel->fetchAll(PDO::FETCH_ASSOC);
     if (!$rows) return 0;
 
-    // Deduct stock for any drink lines that never went through the KDS bump.
+    /* Same pre-check the KDS bump does. Without it, force-serving a tab whose ingredients are
+     * exhausted drove stock negative, and the resulting "went negative" warning called
+     * rh_log_event() — which used to run CREATE TABLE IF NOT EXISTS and implicitly COMMIT this
+     * transaction mid-settlement, so the payment persisted while the caller reported failure.
+     * An override for un-bumped tickets must not double as an override for absent stock. */
+    $undeducted = array_values(array_filter($rows, static fn(array $r): bool => (int)$r['stock_deducted'] === 0));
+    if ($undeducted) {
+        $shortages = rh_stock_shortages_for_items($pdo, $undeducted);
+        if ($shortages) {
+            throw new RuntimeException(rh_stock_shortage_message(
+                $shortages,
+                'Receive stock or adjust the recipe before force-serving this tab.'
+            ));
+        }
+    }
+
     foreach ($rows as $r) {
         if ((int)$r['stock_deducted'] === 0) {
-            $ok = deductStockForMenuItem((int)$r['menu_item_id'], (string)$r['menu_type'], (float)$r['quantity'], 'pos_order', (int)$r['id'], (int)$user['id']);
+            $ok = deductStockForMenuItem((int)$r['menu_item_id'], (string)$r['menu_type'], (float)$r['quantity'], 'pos_order', (int)$r['id'], (int)$actor['id']);
             if ($ok) {
                 $pdo->prepare("UPDATE stock_order_items SET stock_deducted = 1 WHERE id = ?")->execute([(int)$r['id']]);
             } else {
-                error_log("pos_autoServeBarItems: stock deduction failed for item #{$r['id']} on order #{$orderId}");
+                error_log("pos_forceServeKitchenItems: stock deduction failed for item #{$r['id']} on order #{$orderId}");
             }
         }
     }
 
-    $pdo->prepare("UPDATE stock_order_items SET kds_status='served', started_at=COALESCE(started_at,NOW()), ready_at=COALESCE(ready_at,NOW()), served_at=NOW(), bumped_by=? WHERE order_id = ? AND station IN ('bar','coffee_bar') AND kds_status NOT IN ('served','void')")
-        ->execute([(int)$user['id'], $orderId]);
+    $pdo->prepare("UPDATE stock_order_items SET kds_status='served', started_at=COALESCE(started_at,NOW()), ready_at=COALESCE(ready_at,NOW()), served_at=NOW(), bumped_by=? WHERE order_id = ? AND station = 'kitchen' AND kds_status NOT IN ('served','void')")
+        ->execute([(int)$actor['id'], $orderId]);
 
-    // If everything on the order is now served, mark the order served too.
     $remain = $pdo->prepare("SELECT COUNT(*) FROM stock_order_items WHERE order_id = ? AND kds_status NOT IN ('served','void')");
     $remain->execute([$orderId]);
     if ((int)$remain->fetchColumn() === 0) {
         $pdo->prepare("UPDATE stock_orders SET kitchen_status='served', served_at=COALESCE(served_at,NOW()) WHERE id = ?")->execute([$orderId]);
     }
 
-    pos_logAudit($pdo, $orderId, $user['id'], $user['full_name'], 'bar_items_auto_served', json_encode(['count' => count($rows), 'reason' => 'auto-served on tab settlement']));
+    $auditDetails = ['count' => count($rows), 'reason' => 'manager force-serve at till settlement'];
+    if ($authorisedById) {
+        $auditDetails['authorised_by_id'] = $authorisedById;
+        $auditDetails['authorised_by_name'] = $authorisedByName;
+    }
+    pos_logAudit($pdo, $orderId, $actor['id'], $actor['full_name'], 'kitchen_items_force_served', json_encode($auditDetails));
     return count($rows);
 }
 
@@ -409,20 +441,20 @@ function pos_applyPaymentToOrder(PDO $pdo, array $user, int $orderId, string $re
             // Last split: close the order; use last leg's method for the ledger
             $pdo->prepare("UPDATE stock_orders SET status='paid', paid_at=NOW(), payment_method=? WHERE id=?")
                 ->execute([$paymentMethod, $orderId]);
-            $tipsRow = $pdo->prepare("SELECT COALESCE(SUM(tip_amount),0) FROM stock_order_splits WHERE order_id = ?");
-            $tipsRow->execute([$orderId]);
-            $totalTips = (float)$tipsRow->fetchColumn();
+            // Tips are cash movement, not revenue: the ledger books totalAmount only.
+            // pos-accounting.php reconciles tips separately via stock_order_splits/tip_amount.
             $cnStmt = $pdo->prepare("SELECT customer_name FROM stock_orders WHERE id = ?");
             $cnStmt->execute([$orderId]);
-            pos_syncPayment($pdo, ['id' => $orderId, 'reference' => $reference, 'total_amount' => $totalAmount + $totalTips, 'customer_name' => (string)($cnStmt->fetchColumn() ?: ''), 'status' => 'paid'], $user['id'], $paymentMethod);
+            pos_syncPayment($pdo, ['id' => $orderId, 'reference' => $reference, 'total_amount' => $totalAmount, 'customer_name' => (string)($cnStmt->fetchColumn() ?: ''), 'status' => 'paid'], $user['id'], $paymentMethod);
         }
     } else {
         // Single payment — store tip on the order row along with payment details
         $pdo->prepare("UPDATE stock_orders SET status='paid', paid_at=NOW(), payment_method=?, tendered_amount=?, change_due=?, mobile_wallet_provider=?, mobile_wallet_reference=?, card_last4=?, card_auth_code=?, tip_amount=? WHERE id=?")
             ->execute([$paymentMethod, $extras['tendered'], $extras['change'], $extras['mp'], $extras['mr'], $extras['l4'], $extras['auth'], $tipAmount, $orderId]);
+        // Tips are cash movement, not revenue: the ledger books totalAmount only.
         $cnStmt = $pdo->prepare("SELECT customer_name FROM stock_orders WHERE id = ?");
         $cnStmt->execute([$orderId]);
-        pos_syncPayment($pdo, ['id' => $orderId, 'reference' => $reference, 'total_amount' => $totalAmount + $tipAmount, 'customer_name' => (string)($cnStmt->fetchColumn() ?: ''), 'status' => 'paid'], $user['id'], $paymentMethod);
+        pos_syncPayment($pdo, ['id' => $orderId, 'reference' => $reference, 'total_amount' => $totalAmount, 'customer_name' => (string)($cnStmt->fetchColumn() ?: ''), 'status' => 'paid'], $user['id'], $paymentMethod);
     }
 
     return $extras;
@@ -659,7 +691,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pendingItemsStmt->execute([$orderId]);
                 $pendingItems = (int)$pendingItemsStmt->fetchColumn();
                 if ($pendingItems > 0) {
-                    throw new RuntimeException('This tab still has ' . $pendingItems . ' food item' . ($pendingItems === 1 ? '' : 's') . ' not yet served — complete kitchen service before settling food tabs.');
+                    // Stranded food (fired before a business window boundary, or simply never
+                    // bumped) can never reach 'served' on its own. A manager can force-serve it
+                    // — explicit, attributed, audited — rather than the tab being stuck forever.
+                    $forceServeOk = false;
+                    $forceActorId = null;
+                    $forceActorName = null;
+                    if (!empty($_POST['force_serve_kitchen'])) {
+                        if (hasPermission($user['id'], 'pos_force_serve')) {
+                            $forceServeOk = true;
+                        } else {
+                            $forceServeToken = trim($_POST['mgr_auth_token'] ?? '');
+                            $mgrAuth = $_SESSION['pos_mgr_auth'] ?? null;
+                            if ($mgrAuth
+                                && $mgrAuth['token'] === $forceServeToken
+                                && $mgrAuth['expires'] >= time()
+                                && in_array('pos_force_serve', $mgrAuth['permissions'], true)
+                            ) {
+                                $forceServeOk = true;
+                                $forceActorId = $mgrAuth['manager_id'];
+                                $forceActorName = $mgrAuth['manager_name'];
+                                unset($_SESSION['pos_mgr_auth']);
+                            }
+                        }
+                    }
+                    if (!$forceServeOk) {
+                        throw new RuntimeException('This tab still has ' . $pendingItems . ' food item' . ($pendingItems === 1 ? '' : 's') . ' not yet served — complete kitchen service, or ask a manager to force-serve it before settling.');
+                    }
+                    pos_forceServeKitchenItems($pdo, $orderId, $user, $forceActorId, $forceActorName);
                 }
 
                 // Apply discounts on first payment leg only (before any split payments)
@@ -784,13 +843,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($action === 'close_shift') {
                 /* === Z-report: cashier declares cash, system records variance === */
                 /* HARD BLOCK: a cashier (and the admin closing on their behalf) MUST settle or
-                 * cancel every open tab they opened today before closing. This stops the
-                 * "leave a tab unpaid, close the shift, pocket the cash later" loophole. */
-                $openTabsCheck = $pdo->prepare("SELECT COUNT(*) FROM stock_orders WHERE created_by = ? AND status = 'placed'");
-                $openTabsCheck->execute([$user['id']]);
-                $openTabsRemaining = (int)$openTabsCheck->fetchColumn();
-                if ($openTabsRemaining > 0) {
-                    throw new RuntimeException('Cannot close shift: ' . $openTabsRemaining . ' open tab(s) still need to be settled or cancelled. Open the Tabs tray, take payment, or cancel them first.');
+                 * cancel every open tab they opened THIS BUSINESS WINDOW before closing. This
+                 * stops the "leave a tab unpaid, close the shift, pocket the cash later"
+                 * loophole, without letting one stranded tab from an earlier shift block every
+                 * close from then on (that tab stays visible in the tray and is still reported).
+                 * room_service orders are excluded: they are settled via the guest folio at
+                 * check-out, never at the till, so they must never block a cashier's close. */
+                $openTabsCheck = $pdo->prepare("SELECT reference FROM stock_orders WHERE created_by = ? AND status = 'placed' AND order_type != 'room_service' AND created_at >= ? ORDER BY created_at ASC LIMIT 20");
+                $openTabsCheck->execute([$user['id'], $restaurantWindow['start_sql']]);
+                $openTabRefs = $openTabsCheck->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($openTabRefs)) {
+                    $refsLabel = implode(', ', $openTabRefs);
+                    throw new RuntimeException('Cannot close shift: ' . count($openTabRefs) . ' open tab(s) from this shift still need to be settled or cancelled — ' . $refsLabel . '. Open the Tabs tray, take payment, or cancel them first.');
                 }
                 $declCash   = round((float)($_POST['declared_cash']   ?? 0), 2);
                 $declMobile = round((float)($_POST['declared_mobile'] ?? 0), 2);
@@ -802,12 +866,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Uses paid_at so tabs created earlier but settled now are included.
                 $windowStart = $restaurantWindow['start_sql'];
                 $windowEnd = $restaurantWindow['end_sql'];
-                // Expected totals include tips; split orders are grouped under their final payment_method
-                $exp = $pdo->prepare("
+                // Split-order legs book to the tender each leg actually took
+                // (stock_order_splits.payment_method); stock_orders.payment_method only ever
+                // holds the LAST leg's method, so reading it for a mixed-tender split reported
+                // the whole tab under one tender and made the drawer impossible to balance.
+                // Non-split orders still read straight off stock_orders.
+                $expNonSplitStmt = $pdo->prepare("
                     SELECT COALESCE(SUM(CASE WHEN payment_method='cash' THEN total_amount + COALESCE(tip_amount,0) ELSE 0 END),0) AS cash,
                            COALESCE(SUM(CASE WHEN payment_method='mobile_money' THEN total_amount + COALESCE(tip_amount,0) ELSE 0 END),0) AS mobile,
-                           COALESCE(SUM(CASE WHEN payment_method IN ('card_manual','card_pos') THEN total_amount + COALESCE(tip_amount,0) ELSE 0 END),0) AS card,
-                           COALESCE(SUM(COALESCE(tip_amount,0)),0) AS tips_total,
+                           COALESCE(SUM(CASE WHEN payment_method IN ('card_manual','card_pos') THEN total_amount + COALESCE(tip_amount,0) ELSE 0 END),0) AS card
+                    FROM stock_orders
+                    WHERE created_by = ?
+                      AND status = 'paid'
+                      AND COALESCE(split_count,1) <= 1
+                      AND (
+                              (paid_at IS NOT NULL AND paid_at >= ? AND paid_at < ?)
+                          OR  (paid_at IS NULL AND created_at >= ? AND created_at < ?)
+                      )
+                ");
+                $expNonSplitStmt->execute([$user['id'], $windowStart, $windowEnd, $windowStart, $windowEnd]);
+                $expNonSplit = $expNonSplitStmt->fetch(PDO::FETCH_ASSOC) ?: ['cash' => 0, 'mobile' => 0, 'card' => 0];
+
+                $expSplitStmt = $pdo->prepare("
+                    SELECT COALESCE(SUM(CASE WHEN s.payment_method='cash' THEN s.split_amount + COALESCE(s.tip_amount,0) ELSE 0 END),0) AS cash,
+                           COALESCE(SUM(CASE WHEN s.payment_method='mobile_money' THEN s.split_amount + COALESCE(s.tip_amount,0) ELSE 0 END),0) AS mobile,
+                           COALESCE(SUM(CASE WHEN s.payment_method IN ('card_manual','card_pos') THEN s.split_amount + COALESCE(s.tip_amount,0) ELSE 0 END),0) AS card
+                    FROM stock_order_splits s
+                    INNER JOIN stock_orders o ON o.id = s.order_id
+                    WHERE o.created_by = ?
+                      AND o.status = 'paid'
+                      AND COALESCE(o.split_count,1) > 1
+                      AND (
+                              (o.paid_at IS NOT NULL AND o.paid_at >= ? AND o.paid_at < ?)
+                          OR  (o.paid_at IS NULL AND o.created_at >= ? AND o.created_at < ?)
+                      )
+                ");
+                $expSplitStmt->execute([$user['id'], $windowStart, $windowEnd, $windowStart, $windowEnd]);
+                $expSplit = $expSplitStmt->fetch(PDO::FETCH_ASSOC) ?: ['cash' => 0, 'mobile' => 0, 'card' => 0];
+
+                // Order-level metrics (tips, counts, stale-tab tracking) don't depend on which
+                // tender a split leg used, so these still read straight off the order row.
+                $expOrdersStmt = $pdo->prepare("
+                    SELECT COALESCE(SUM(COALESCE(tip_amount,0)),0) AS tips_total,
                            COUNT(*) AS orders_count,
                            COALESCE(SUM(CASE WHEN created_at < ? THEN 1 ELSE 0 END),0) AS settled_from_tabs_count,
                            COALESCE(SUM(CASE WHEN created_at < ? THEN total_amount + COALESCE(tip_amount,0) ELSE 0 END),0) AS settled_from_tabs_amount
@@ -819,8 +919,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           OR  (paid_at IS NULL AND created_at >= ? AND created_at < ?)
                       )
                 ");
-                $exp->execute([$windowStart, $windowStart, $user['id'], $windowStart, $windowEnd, $windowStart, $windowEnd]);
-                $E = $exp->fetch(PDO::FETCH_ASSOC) ?: ['cash' => 0, 'mobile' => 0, 'card' => 0, 'orders_count' => 0, 'settled_from_tabs_count' => 0, 'settled_from_tabs_amount' => 0];
+                $expOrdersStmt->execute([$windowStart, $windowStart, $user['id'], $windowStart, $windowEnd, $windowStart, $windowEnd]);
+                $expOrders = $expOrdersStmt->fetch(PDO::FETCH_ASSOC) ?: ['tips_total' => 0, 'orders_count' => 0, 'settled_from_tabs_count' => 0, 'settled_from_tabs_amount' => 0];
+
+                $E = [
+                    'cash'   => round((float)$expNonSplit['cash']   + (float)$expSplit['cash'], 2),
+                    'mobile' => round((float)$expNonSplit['mobile'] + (float)$expSplit['mobile'], 2),
+                    'card'   => round((float)$expNonSplit['card']   + (float)$expSplit['card'], 2),
+                    'tips_total' => (float)$expOrders['tips_total'],
+                    'orders_count' => (int)$expOrders['orders_count'],
+                    'settled_from_tabs_count' => (int)$expOrders['settled_from_tabs_count'],
+                    'settled_from_tabs_amount' => (float)$expOrders['settled_from_tabs_amount'],
+                ];
 
                 // Voids reporting follows voided_at (fallback to created_at for legacy rows).
                 $voidsStmt = $pdo->prepare("
@@ -937,11 +1047,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $refundTotal = (float)$refRow['total_amount'] + (float)($refRow['tip_amount'] ?? 0);
                 $pdo->prepare("UPDATE stock_orders SET status='refunded', refunded_at=NOW(), refund_reason=? WHERE id=?")
                     ->execute([$refundReason, $refundOrderId]);
-                // Create refund record for ledger reversal (canonical columns so refund reports pick it up)
-                try {
+                // Create refund record for ledger reversal (canonical columns so refund reports pick it up).
+                // Deliberately NOT wrapped in a try/catch: if this insert fails, the whole
+                // refund must roll back (see outer catch) rather than leave the order marked
+                // 'refunded' with cash out of the drawer and no ledger entry to show for it.
+                {
                     // POS menu prices are gross — extract VAT from within (same as the sale sync)
                     $refVat = pos_calculateRestaurantVatParts((float)$refRow['total_amount']);
-                    $refTip = (float)($refRow['tip_amount'] ?? 0);
+
+                    // The ledger reverses exactly what the sale recorded, and the sale
+                    // (pos_syncPayment -> rh_sync_restaurant_payment) passes total_amount
+                    // ONLY — the tip never enters `payments`. This previously wrote
+                    // payment_amount = net + tip and total_amount = total + tip, so
+                    // refunding a tipped order reversed more than was ever booked and left
+                    // revenue negative by the tip. Tips are not revenue; they are cash
+                    // movement, and admin/pos-accounting.php already counts them separately
+                    // for till reconciliation via total_amount + tip_amount.
+                    // $refundTotal below still includes the tip: that is what is physically
+                    // handed back and what the audit trail and staff message should show.
                     $origPayStmt = $pdo->prepare("SELECT id FROM payments WHERE booking_type='restaurant' AND COALESCE(payment_type,'') != 'refund' AND deleted_at IS NULL AND (payment_reference = ? OR booking_id = ?) ORDER BY id DESC LIMIT 1");
                     $origPayStmt->execute(['POS-' . $refRow['reference'], $refundOrderId]);
                     $origPaymentId = (int)$origPayStmt->fetchColumn() ?: null;
@@ -951,24 +1074,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             payment_method, payment_type, payment_status, status,
                             original_payment_id, refund_reason, refund_status, refund_amount,
                             notes, recorded_by, created_at
-                        ) VALUES (?, 'restaurant', ?, ?, CURDATE(), ?, ?, ?, ?, ?, 'refund', 'completed', 'completed', ?, ?, 'completed', ?, ?, ?, NOW())")
+                        ) VALUES (?, 'restaurant', ?, ?, ?, ?, ?, ?, ?, ?, 'refund', 'completed', 'completed', ?, ?, 'completed', ?, ?, ?, NOW())")
                         ->execute([
                             'REF-POS-' . $refRow['reference'],
                             $refundOrderId,
                             $refRow['reference'],
-                            $refVat['net'] + $refTip,
+                            rh_station_union_business_window()['business_date'] ?? date('Y-m-d'),
+                            $refVat['net'],
                             $refVat['vat_rate'],
                             $refVat['vat'],
-                            $refundTotal,
+                            $refVat['gross'],
                             pos_mapMethod($refRow['payment_method'] ?? 'cash'),
                             $origPaymentId,
-                            $refundReason,
-                            $refundTotal,
+                            /* payments.refund_reason is an ENUM
+                             * ('early_checkout','late_checkout_charge','cancellation',
+                             * 'service_issue','overpayment','other') — NOT free text. Binding the
+                             * cashier's typed reason here made MySQL reject the row with
+                             * "Data truncated for column 'refund_reason'", and because the insert
+                             * used to sit in a swallow-and-log try/catch, every POS refund since
+                             * this code was written silently failed to reach the ledger. The
+                             * operator's wording is preserved in `notes` (TEXT) just below. */
+                            'other',
+                            $refVat['gross'],
                             'Refund: ' . $refundReason,
                             $user['id'],
                         ]);
-                } catch (Throwable $payEx) {
-                    error_log('refund_order payment insert: ' . $payEx->getMessage());
                 }
                 $auditDetails = ['reason' => $refundReason, 'total' => $refundTotal, 'original_method' => $refRow['payment_method']];
                 if ($mgrActorId) {
@@ -1069,7 +1199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = $e->getMessage();
             // Return JSON error for XHR requests so the JS can show inline messages
             $isXhrErr = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
-            if ($isXhrErr && in_array(($_POST['action'] ?? ''), ['park', 'pay_existing', 'add_to_tab'], true)) {
+            if ($isXhrErr && in_array(($_POST['action'] ?? ''), ['park', 'pay_existing', 'add_to_tab', 'refund_order'], true)) {
                 header('Content-Type: application/json; charset=utf-8');
                 echo json_encode(['ok' => false, 'error' => $error]);
                 exit;
@@ -1089,6 +1219,7 @@ $posCanRefund   = hasPermission($user['id'], 'pos_refund');
 $posCanDiscount = hasPermission($user['id'], 'pos_discount');
 $posCanToggle86 = hasPermission($user['id'], 'pos_86');
 $posCanFloat    = hasPermission($user['id'], 'pos_float');
+$posCanForceServe = hasPermission($user['id'], 'pos_force_serve');
 $menuAvailFilter = $posCanToggle86 ? '' : 'AND mi.is_available = 1';
 // Catalog scoping per business preset: food-service installations sell from
 // food_service categories (Food, Drinks); everyone else (supermarket, gym,
@@ -1240,9 +1371,21 @@ function pos_fetch_shift_summary(PDO $pdo, array $restaurantWindow, int $userId)
     $myShift = $pdo->prepare("
         SELECT COUNT(*) AS orders_today,
             COALESCE(SUM(total_amount),0) AS revenue_today,
-            COALESCE(SUM(CASE WHEN payment_method='cash' THEN total_amount ELSE 0 END),0) AS cash_today,
-            COALESCE(SUM(CASE WHEN payment_method='mobile_money' THEN total_amount ELSE 0 END),0) AS mobile_today,
-            COALESCE(SUM(CASE WHEN payment_method IN ('card_manual','card_pos') THEN total_amount ELSE 0 END),0) AS card_today,
+            /* Split orders book per-leg from stock_order_splits — the order row's
+             * payment_method only holds the LAST leg's tender, which would show a
+             * mixed cash+card split entirely under card in the till's live header. */
+            COALESCE(SUM(CASE
+                WHEN COALESCE(split_count,1) <= 1 AND payment_method='cash' THEN total_amount
+                WHEN COALESCE(split_count,1) > 1 THEN COALESCE((SELECT SUM(CASE WHEN s.payment_method='cash' THEN s.split_amount ELSE 0 END) FROM stock_order_splits s WHERE s.order_id = stock_orders.id),0)
+                ELSE 0 END),0) AS cash_today,
+            COALESCE(SUM(CASE
+                WHEN COALESCE(split_count,1) <= 1 AND payment_method='mobile_money' THEN total_amount
+                WHEN COALESCE(split_count,1) > 1 THEN COALESCE((SELECT SUM(CASE WHEN s.payment_method='mobile_money' THEN s.split_amount ELSE 0 END) FROM stock_order_splits s WHERE s.order_id = stock_orders.id),0)
+                ELSE 0 END),0) AS mobile_today,
+            COALESCE(SUM(CASE
+                WHEN COALESCE(split_count,1) <= 1 AND payment_method IN ('card_manual','card_pos') THEN total_amount
+                WHEN COALESCE(split_count,1) > 1 THEN COALESCE((SELECT SUM(CASE WHEN s.payment_method IN ('card_manual','card_pos') THEN s.split_amount ELSE 0 END) FROM stock_order_splits s WHERE s.order_id = stock_orders.id),0)
+                ELSE 0 END),0) AS card_today,
             COALESCE(SUM(CASE WHEN created_at < ? THEN 1 ELSE 0 END),0) AS settled_from_tabs_count,
             COALESCE(SUM(CASE WHEN created_at < ? THEN total_amount ELSE 0 END),0) AS settled_from_tabs_amount
         FROM stock_orders
@@ -1447,9 +1590,10 @@ $restaurantTables = rh_restaurant_active_tables($pdo);
 $checkedInRooms = rh_restaurant_checked_in_rooms($pdo);
 $activeLocationLocks = rh_restaurant_active_location_locks($pdo);
 
-/* Open tabs (placed but not yet paid) — scoped to the last 48 hours so stale
- * previous-shift tabs are visible and cannot be left behind. Admins/managers
- * see all tabs; restaurant_staff only see their own. */
+/* Open tabs (placed but not yet paid). No time bound — a stale previous-shift
+ * tab must stay visible and cannot be left behind, however old. Excludes
+ * room_service (settled via the guest folio, never a till obligation).
+ * Admins/managers see all tabs; restaurant_staff only see their own. */
 $tabsCoversSelect = $posHasCoversCol ? 'COALESCE(o.covers, 0) AS covers,' : '0 AS covers,';
 $tabsSql = "SELECT o.id, o.reference, o.total_amount, o.table_number, o.customer_name, o.created_at, o.created_by,
                    {$tabsCoversSelect}
@@ -1463,7 +1607,7 @@ $tabsSql = "SELECT o.id, o.reference, o.total_amount, o.table_number, o.customer
                    (SELECT COUNT(*) FROM stock_order_items WHERE order_id = o.id AND kds_status = 'served')                    AS served_count
             FROM stock_orders o
             LEFT JOIN admin_users u ON u.id = o.created_by
-            WHERE o.status = 'placed' ";
+            WHERE o.status = 'placed' AND o.order_type != 'room_service' ";
 $tabsArgs = [];
 if (($user['role'] ?? '') === 'restaurant_staff') {
     $tabsSql .= " AND o.created_by = ? ";
@@ -1561,11 +1705,11 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'stations') {
             $tickets[$st] = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
-        // Open-tabs count system-wide and current business-window totals.
-        $openAll = (int)$pdo->query("SELECT COUNT(*) FROM stock_orders WHERE status='placed'")->fetchColumn();
-        $openVisibleStmt = $pdo->prepare("SELECT COUNT(*) FROM stock_orders WHERE status='placed'");
-        $openVisibleStmt->execute();
-        $openVisible = (int)$openVisibleStmt->fetchColumn();
+        // Open-tabs count system-wide and current business-window totals. This endpoint is
+        // admin/manager-only (checked above), so there is no separate "visible to me" subset —
+        // open_tabs_visible mirrors open_tabs_all and exists only because the JS badge reads
+        // whichever one is present.
+        $openAll = (int)$pdo->query("SELECT COUNT(*) FROM stock_orders WHERE status='placed' AND order_type != 'room_service'")->fetchColumn();
         $todayTotalsStmt = $pdo->prepare("
             SELECT COUNT(*) AS orders_count,
                    COALESCE(SUM(CASE WHEN status='paid' THEN total_amount ELSE 0 END),0) AS revenue
@@ -1579,7 +1723,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'stations') {
             'counts'         => $counts,
             'tickets'        => $tickets,
             'open_tabs_all'  => $openAll,
-            'open_tabs_visible' => $openVisible,
+            'open_tabs_visible' => $openAll,
             'orders_today'   => (int)$todayTotals['orders_count'],
             'revenue_today'  => (float)$todayTotals['revenue'],
         ]);
@@ -1688,7 +1832,7 @@ if (in_array($user['role'] ?? '', ['admin', 'manager'], true)) {
                 'open_total'  => (int)($r['open_total']  ?? 0),
             ];
         }
-        $adminStationsInit['open_tabs_all'] = (int)$pdo->query("SELECT COUNT(*) FROM stock_orders WHERE status='placed'")->fetchColumn();
+        $adminStationsInit['open_tabs_all'] = (int)$pdo->query("SELECT COUNT(*) FROM stock_orders WHERE status='placed' AND order_type != 'room_service'")->fetchColumn();
     } catch (Throwable $e) {
         // Silent — JS poller will retry.
     }
@@ -2061,38 +2205,43 @@ if (in_array($user['role'] ?? '', ['admin', 'manager'], true)) {
                     <button class="recent-toggle" onclick="toggleRecent()" data-help="Recent orders|Last 10 orders you rang up."><i class="fas fa-receipt"></i> Recent</button>
                     <button class="recent-toggle" onclick="openTabsTray()" data-help="Open tabs|Unpaid kitchen orders."><i class="fas fa-utensils"></i> Tabs <span id="tabBadge" <?php echo empty($openTabs) ? ' style="display:none;"' : ''; ?>><?php echo count($openTabs); ?></span></button>
                     <button class="recent-toggle" onclick="openStationNoteModal()" data-help="Station note|Quick note to Kitchen/Bar/Coffee."><i class="fas fa-paper-plane"></i> Note</button>
-                    <?php if ($posCanFloat): ?>
-                    <button class="recent-toggle" onclick="openFloatModal()" data-help="Opening float|Record the opening cash float for your shift."><i class="fas fa-coins"></i> Float</button>
-                    <?php endif; ?>
                     <button class="recent-toggle" onclick="openCloseShift()" data-help="Close shift (Z-report)|End-of-shift cash count."><i class="fas fa-cash-register"></i> Close Shift</button>
 
                     <?php if ($isManagerOrAdmin): ?>
                         <div class="tb-sep"></div>
-                        <!-- Live screens (manager/admin only) -->
-                        <?php if (moduleEnabled('station_kds')): ?>
-                        <a class="recent-toggle" href="kds.php" target="_blank" style="text-decoration:none;"><i class="fas fa-utensils"></i> Kitchen<span id="kitchenBadge" style="<?php echo ($adminStationsInit['counts']['kitchen']['open_total'] ?? 0) > 0 ? '' : 'display:none;'; ?>"><?php echo (int)($adminStationsInit['counts']['kitchen']['open_total'] ?? 0); ?></span></a>
-                        <?php endif; ?>
-                        <?php if (moduleEnabled('station_bds')): ?>
-                        <a class="recent-toggle" href="bds.php" target="_blank" style="text-decoration:none;"><i class="fas fa-wine-glass"></i> Bar<span id="barBadge" style="<?php echo ($adminStationsInit['counts']['bar']['open_total'] ?? 0) > 0 ? '' : 'display:none;'; ?>"><?php echo (int)($adminStationsInit['counts']['bar']['open_total'] ?? 0); ?></span></a>
-                        <?php endif; ?>
-                        <?php if (moduleEnabled('station_cds')): ?>
-                        <a class="recent-toggle" href="cds.php" target="_blank" style="text-decoration:none;"><i class="fas fa-mug-hot"></i> Coffee<span id="coffeeBadge" style="<?php echo ($adminStationsInit['counts']['coffee_bar']['open_total'] ?? 0) > 0 ? '' : 'display:none;'; ?>"><?php echo (int)($adminStationsInit['counts']['coffee_bar']['open_total'] ?? 0); ?></span></a>
-                        <?php endif; ?>
-                        <button class="recent-toggle" onclick="openStationsTray()"><i class="fas fa-layer-group"></i> Stations<span id="stationsBadge" style="<?php $tot = ($adminStationsInit['counts']['kitchen']['open_total'] ?? 0) + ($adminStationsInit['counts']['bar']['open_total'] ?? 0) + ($adminStationsInit['counts']['coffee_bar']['open_total'] ?? 0);
+                        <?php /* The three per-station links (Kitchen/Bar/Coffee) collapsed into this
+                                  one control: the Stations tray it opens already shows each station's
+                                  live counts AND carries direct links to those boards, so four
+                                  toolbar buttons were showing what one plus a tray already covers.
+                                  The badge sums all stations so nothing is lost at a glance. */ ?>
+                        <button class="recent-toggle" onclick="openStationsTray()" data-help="Stations|Live Kitchen, Bar and Coffee boards with ticket counts, and links to open each screen."><i class="fas fa-layer-group"></i> Stations<span id="stationsBadge" style="<?php $tot = ($adminStationsInit['counts']['kitchen']['open_total'] ?? 0) + ($adminStationsInit['counts']['bar']['open_total'] ?? 0) + ($adminStationsInit['counts']['coffee_bar']['open_total'] ?? 0);
                                                                                                                                                                 echo $tot > 0 ? '' : 'display:none;'; ?>"><?php echo $tot; ?></span></button>
-                        <?php if (moduleEnabled('stock')): ?>
-                        <a class="recent-toggle" href="stock-orders.php"><i class="fas fa-list"></i> All Orders</a>
-                        <?php endif; ?>
+                        <?php /* Hidden badge targets kept so the live stations poller can keep
+                                  updating per-station counts without null checks. */ ?>
+                        <span id="kitchenBadge" hidden></span><span id="barBadge" hidden></span><span id="coffeeBadge" hidden></span>
                     <?php endif; ?>
                     <?php if ($posCanToggle86): ?>
                         <button class="recent-toggle" id="eightySixModeBtn" onclick="toggle86Mode()" data-help="86 Mode|Toggle item availability. When active, click any item to mark it as 86'd (unavailable) or to re-enable it. All sessions reload the menu."><i class="fas fa-ban"></i> 86</button>
                     <?php endif; ?>
+                    <button type="button" class="rh-help-toggle recent-toggle" data-inline="1" id="rhHelpToggle" aria-label="Toggle help tooltips" data-help="Help mode|Turn tooltip hints on or off for POS actions."><span class="dot"></span><i class="fas fa-question-circle"></i> <span id="rhHelpLabel">Help</span></button>
 
                     <div class="tb-sep"></div>
-                    <!-- Nav -->
-                    <a class="recent-toggle" href="../docs/guides/01-pos-till.html" target="_blank" rel="noopener" style="text-decoration:none;"><i class="fas fa-book-open"></i> POS Guide</a>
-                    <button type="button" class="rh-help-toggle recent-toggle" data-inline="1" id="rhHelpToggle" aria-label="Toggle help tooltips" data-help="Help mode|Turn tooltip hints on or off for POS actions."><span class="dot"></span><i class="fas fa-question-circle"></i> <span id="rhHelpLabel">Help</span></button>
-                    <button class="recent-toggle" onclick="RHSounds.openSettings()" title="Sound settings"><i class="fas fa-sliders"></i> Sounds</button> <?php if (!$isFullScreen): ?><a class="exit" href="dashboard.php"><i class="fas fa-arrow-left"></i> Admin</a><?php endif; ?>
+                    <?php /* Everything below is used once a shift or less. Kept one tap away rather
+                              than occupying the bar staff scan all service. */ ?>
+                    <div class="tb-more">
+                        <button type="button" class="recent-toggle tb-more__btn" id="posMoreBtn" onclick="togglePosMoreMenu(event)" aria-expanded="false" aria-haspopup="true"><i class="fas fa-ellipsis"></i> More</button>
+                        <div class="tb-more__menu" id="posMoreMenu" hidden>
+                            <?php if ($posCanFloat): ?>
+                            <button type="button" onclick="closePosMoreMenu(); openFloatModal();"><i class="fas fa-coins"></i> Opening float</button>
+                            <?php endif; ?>
+                            <?php if ($isManagerOrAdmin && moduleEnabled('stock')): ?>
+                            <a href="stock-orders.php"><i class="fas fa-list"></i> All orders</a>
+                            <?php endif; ?>
+                            <button type="button" onclick="closePosMoreMenu(); RHSounds.openSettings();"><i class="fas fa-sliders"></i> Sound settings</button>
+                            <a href="../docs/guides/01-pos-till.html" target="_blank" rel="noopener"><i class="fas fa-book-open"></i> POS guide</a>
+                            <?php if (!$isFullScreen): ?><a href="dashboard.php"><i class="fas fa-arrow-left"></i> Admin dashboard</a><?php endif; ?>
+                        </div>
+                    </div>
                     <a class="logout" href="logout.php"><i class="fas fa-sign-out-alt"></i> Sign out</a>
                 </div>
 
@@ -2528,7 +2677,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
 
     <!-- Open tabs tray -->
     <div class="overlay modal-overlay" data-modal id="tabsOverlay">
-        <div class="modal modal-content" style="width:760px;">
+        <div class="modal modal-content">
             <div class="modal-head modal-header" style="flex-wrap:wrap; gap:8px;">
                 <h3 id="openTabsTitle" style="flex:1; min-width:0;"><i class="fas fa-utensils"></i> Open tabs (<?php echo count($openTabs); ?>)</h3>
                 <div style="display:flex; align-items:center; gap:6px;">
@@ -2668,7 +2817,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                                         <span class="tc-total-label">Total</span>
                                         <div class="tc-total"><?php echo $currency_symbol . ' ' . number_format((float)$t['total_amount'], 2); ?></div>
                                     </div>
-                                    <?php if ($isStale): ?><div class="tc-stale-warn"><i class="fas fa-triangle-exclamation"></i> Previous shift</div><?php endif; ?>
+                                    <?php if ($isStale): ?><div class="tc-stale-warn" data-help="From an earlier shift|Settle it as normal — if kitchen items were never bumped, the Pay button will offer a manager force-serve override."><i class="fas fa-triangle-exclamation"></i> Previous shift</div><?php endif; ?>
                                 </div>
                                 <div class="tc-actions">
                                     <?php if ((int)($t['split_paid_count'] ?? 0) === 0): ?>
@@ -2683,36 +2832,40 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                                         data-help="Settle tab|Close this tab — take payment and mark the order as paid.">
                                         <i class="fas fa-credit-card"></i> Settle
                                     </button>
+                                    <button type="button" class="tc-btn tc-btn-more" onclick="toggleTabCardActions(this)" aria-expanded="false">
+                                        <i class="fas fa-ellipsis"></i> More
+                                    </button>
+                                </div>
+                                <?php /* Occasional and destructive actions live behind "More": a tab card showed
+                                          seven buttons at once, which is a lot to scan mid-service when only
+                                          "Add items" and "Settle" are used routinely. Keeping Cancel and Void
+                                          one tap further back is a safety gain too. */ ?>
+                                <div class="tc-actions tc-actions--secondary" hidden>
                                     <button type="button" onclick="openTabDetail(<?php echo (int)$t['id']; ?>)"
-                                        class="tc-btn tc-btn-detail"
-                                        data-help="View details|See all items, kitchen status, and the full audit trail for this tab.">
+                                        class="tc-btn tc-btn-detail">
                                         <i class="fas fa-receipt"></i> Details
                                     </button>
                                     <button type="button"
                                         onclick="openPosPageModal('stock-receipt.php?id=<?php echo (int)$t['id']; ?>&print=1&kot=1','Print KOT','fas fa-print')"
-                                        class="tc-btn tc-btn-kot"
-                                        data-help="Print KOT|Reprint the kitchen ticket for this open tab.">
+                                        class="tc-btn tc-btn-kot">
                                         <i class="fas fa-print"></i> KOT
                                     </button>
                                     <?php if ($canCancelBeforePrep): ?>
                                         <button type="button"
                                             onclick="cancelOpenOrder(<?php echo (int)$t['id']; ?>, <?php echo json_encode((string)$t['reference']); ?>)"
-                                            class="tc-btn tc-btn-cancel"
-                                            data-help="Cancel before prep|Cancels this order only while all items are still pending. Nothing has been cooked yet.">
+                                            class="tc-btn tc-btn-cancel">
                                             <i class="fas fa-circle-xmark"></i> Cancel
                                         </button>
                                     <?php endif; ?>
                                     <?php if (in_array($user['role'] ?? '', ['admin', 'manager'], true)): ?>
                                         <button type="button"
                                             onclick="openPosPageModal('order-lifecycle.php?id=<?php echo (int)$t['id']; ?>','Timeline','fas fa-stream')"
-                                            class="tc-btn tc-btn-log"
-                                            data-help="Lifecycle|See every event for this order with full timestamps and user info.">
+                                            class="tc-btn tc-btn-log">
                                             <i class="fas fa-stream"></i> Lifecycle
                                         </button>
                                         <button type="button"
                                             onclick="adminVoidTab(<?php echo (int)$t['id']; ?>, <?php echo json_encode((string)$t['reference']); ?>)"
-                                            class="tc-btn tc-btn-void"
-                                            data-help="Void order|Admin/manager only. Cancels the order, restores stock, clears station boards.">
+                                            class="tc-btn tc-btn-void">
                                             <i class="fas fa-ban"></i> Void
                                         </button>
                                     <?php endif; ?>
@@ -2916,6 +3069,8 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                 <input type="hidden" name="split_count" id="payTabSplitCount" value="1">
                 <input type="hidden" name="split_number" id="payTabSplitNumber" value="1">
                 <input type="hidden" name="tip_amount" id="payTabTipHidden" value="0">
+                <input type="hidden" name="force_serve_kitchen" id="payTabForceServeKitchen" value="0">
+                <input type="hidden" name="mgr_auth_token" id="payTabMgrAuthToken" value="">
                 <div class="modal-body" style="padding-bottom:10px;">
                     <!-- Reference + order total -->
                     <div style="font-size:13px;color:#6c757d;text-align:center;" id="payTabRef">—</div>
@@ -3165,7 +3320,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
 
     <!-- Station note modal -->
     <div class="overlay modal-overlay" data-modal id="stationNoteOverlay">
-        <div class="modal modal-content" style="width:480px;">
+        <div class="modal modal-content" style="width:480px;max-width:96vw;">
             <div class="modal-head modal-header">
                 <h3><i class="fas fa-paper-plane"></i> Station note</h3><button class="close modal-close" onclick="closeStationNoteModal()">&times;</button>
             </div>
@@ -3228,7 +3383,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
 
     <!-- Line note modal (per-item modifier) -->
     <div class="overlay modal-overlay" data-modal id="noteOverlay">
-        <div class="modal modal-content" style="width:420px;">
+        <div class="modal modal-content" style="width:420px;max-width:96vw;">
             <div class="modal-head modal-header">
                 <h3><i class="fas fa-comment-dots"></i> Item note</h3><button class="close modal-close" onclick="document.getElementById('noteOverlay').classList.remove('show');">&times;</button>
             </div>
@@ -3298,6 +3453,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
         const posCanRefund     = <?php echo $posCanRefund ? 'true' : 'false'; ?>;
         const posCanDiscount   = <?php echo $posCanDiscount ? 'true' : 'false'; ?>;
         const posCanToggle86   = <?php echo $posCanToggle86 ? 'true' : 'false'; ?>;
+        const posCanForceServe = <?php echo $posCanForceServe ? 'true' : 'false'; ?>;
         const posCanFloat      = <?php echo $posCanFloat ? 'true' : 'false'; ?>;
         const posCanAssignBarcode = <?php echo $posCanToggle86 ? 'true' : 'false'; ?>;
         const posVatEnabled = <?php echo in_array(getSetting('vat_enabled'), ['1', 1, true, 'true', 'on'], true) ? 'true' : 'false'; ?>;
@@ -4311,6 +4467,12 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                 const m = (o.payment_method || '').replace(/_/g, ' ');
                 return `<span style="display:inline-flex;align-items:center;gap:4px;background:#d1fae5;color:#065f46;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;"><i class="fas fa-check-circle"></i> Paid${m ? ' · ' + escHtml(m) : ''}</span>`;
             }
+            /* 'refunded' was missing, so a refunded order fell through to the opened_as_tab
+               branch below and was labelled "Open tab" — telling staff that money still needed
+               collecting on an order that had already been paid AND handed back. */
+            if (o.status === 'refunded') {
+                return `<span style="display:inline-flex;align-items:center;gap:4px;background:#ede9fe;color:#5b21b6;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;"><i class="fas fa-rotate-left"></i> Refunded</span>`;
+            }
             if (o.opened_as_tab == 1 || o.opened_as_tab === '1') {
                 return `<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;"><i class="fas fa-clock"></i> Open tab</span>`;
             }
@@ -4403,7 +4565,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
             ${isLive || o.kitchen_status === 'ready' ? `<div style="height:5px;background:#f3f4f6;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${progress}%;background:${ringClr};transition:width .4s ease;"></div></div>` : ''}
                 <div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-top:8px;">
                     <span style="display:inline-flex;align-items:center;gap:4px;background:#f8fafc;color:#334155;border:1px solid #e2e8f0;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:700;"><i class="fas fa-receipt"></i> Details</span>
-                    ${o.opened_as_tab == 1 || o.opened_as_tab === '1' ? '<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:700;"><i class="fas fa-credit-card"></i> Settle later</span>' : ''}
+                    ${(String(o.opened_as_tab) === '1' && String(o.status) === 'placed') ? '<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:700;"><i class="fas fa-credit-card"></i> Settle later</span>' : ''}
                 </div>
         </a>`;
             }).join('');
@@ -6578,6 +6740,79 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
         }
 
 
+        /* Toolbar overflow menu (Float, All orders, Sounds, Guide, Admin). */
+        function closePosMoreMenu() {
+            const menu = document.getElementById('posMoreMenu');
+            const btn = document.getElementById('posMoreBtn');
+            if (!menu) return;
+            menu.setAttribute('hidden', '');
+            if (btn) {
+                btn.setAttribute('aria-expanded', 'false');
+                btn.classList.remove('is-open');
+            }
+        }
+
+        function togglePosMoreMenu(e) {
+            if (e) e.stopPropagation();
+            const menu = document.getElementById('posMoreMenu');
+            const btn = document.getElementById('posMoreBtn');
+            if (!menu) return;
+            const opening = menu.hasAttribute('hidden');
+            if (opening) {
+                menu.removeAttribute('hidden');
+                positionPosMoreMenu();
+                btn.setAttribute('aria-expanded', 'true');
+                btn.classList.add('is-open');
+            } else {
+                closePosMoreMenu();
+            }
+        }
+
+        /* The menu is position:fixed (see pos-overrides.css) so the toolbar's overflow can't
+           clip it, which means its coordinates have to be set from the button each time. */
+        function positionPosMoreMenu() {
+            const menu = document.getElementById('posMoreMenu');
+            const btn = document.getElementById('posMoreBtn');
+            if (!menu || !btn || menu.hasAttribute('hidden')) return;
+            const b = btn.getBoundingClientRect();
+            const m = menu.getBoundingClientRect();
+            const pad = 8;
+            let left = b.right - m.width;
+            left = Math.max(pad, Math.min(left, window.innerWidth - m.width - pad));
+            let top = b.bottom + 6;
+            if (top + m.height > window.innerHeight - pad) {
+                top = Math.max(pad, b.top - m.height - 6); // flip above if it would overflow
+            }
+            menu.style.left = Math.round(left) + 'px';
+            menu.style.top = Math.round(top) + 'px';
+        }
+
+        window.addEventListener('resize', positionPosMoreMenu);
+        window.addEventListener('scroll', positionPosMoreMenu, true);
+
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('posMoreMenu');
+            if (!menu || menu.hasAttribute('hidden')) return;
+            if (!e.target.closest('.tb-more')) closePosMoreMenu();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closePosMoreMenu();
+        });
+
+        /* Show/hide a tab card's secondary actions (Details, KOT, Cancel, Lifecycle, Void).
+           Scoped to the card that was tapped so other open cards stay as they were. */
+        function toggleTabCardActions(btn) {
+            const card = btn.closest('.tab-card');
+            if (!card) return;
+            const panel = card.querySelector('.tc-actions--secondary');
+            if (!panel) return;
+            const open = panel.hasAttribute('hidden');
+            if (open) panel.removeAttribute('hidden');
+            else panel.setAttribute('hidden', '');
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            btn.classList.toggle('is-open', open);
+        }
+
         function openTabsTray() {
             const overlay = document.getElementById('tabsOverlay');
             if (!overlay) return;
@@ -6964,8 +7199,8 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                     byOther ? `<span class="tc-meta-pill"><i class="fas fa-user-tie"></i> ${escHtml(t.opened_by || 'staff')}</span>` : `<span class="tc-meta-pill"><i class="fas fa-user-check"></i> You</span>`
                 ].filter(Boolean).join('');
                 const managerTools = posCanManageTabs ? `
-                    <button type="button" onclick="openPosPageModal('order-lifecycle.php?id=${orderId}','Timeline','fas fa-stream')" class="tc-btn tc-btn-log" data-help="Lifecycle|See every event for this order with full timestamps and user info."><i class="fas fa-stream"></i> Lifecycle</button>
-                    <button type="button" onclick="adminVoidTab(${orderId}, ${actionRef})" class="tc-btn tc-btn-void" data-help="Void order|Admin/manager only. Cancels the order, restores stock, clears station boards."><i class="fas fa-ban"></i> Void</button>` : '';
+                    <button type="button" onclick="openPosPageModal('order-lifecycle.php?id=${orderId}','Timeline','fas fa-stream')" class="tc-btn tc-btn-log"><i class="fas fa-stream"></i> Lifecycle</button>
+                    <button type="button" onclick="adminVoidTab(${orderId}, ${actionRef})" class="tc-btn tc-btn-void"><i class="fas fa-ban"></i> Void</button>` : '';
                 return `<article class="tab-card${isStale ? ' stale' : ''}" data-order-id="${orderId}" data-is-stale="${isStale ? '1' : '0'}">
                     <div class="tc-row1">
                         <label class="tc-select-wrap" aria-label="Select ${ref}">
@@ -6985,14 +7220,17 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                         ${(parseInt(t.split_count||1) > 1 && parseInt(t.split_paid_count||0) > 0)
                             ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:600;color:#92400e;"><i class="fas fa-users" style="margin-right:3px;"></i>Split ${parseInt(t.split_paid_count||0)}/${parseInt(t.split_count||1)} paid</div>`
                             : (parseInt(t.split_count||1) > 1 ? `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:600;color:#0369a1;"><i class="fas fa-users" style="margin-right:3px;"></i>Split ×${parseInt(t.split_count||1)}</div>` : '')}
-                        ${isStale ? '<div class="tc-stale-warn"><i class="fas fa-triangle-exclamation"></i> Previous shift</div>' : ''}
+                        ${isStale ? '<div class="tc-stale-warn" data-help="From an earlier shift|Settle it as normal — if kitchen items were never bumped, the Pay button will offer a manager force-serve override."><i class="fas fa-triangle-exclamation"></i> Previous shift</div>' : ''}
                     </div>
                     <div class="tc-actions">
                         ${parseInt(t.split_paid_count||0) === 0 ? `<button type="button" onclick="startAddToTab(${orderId}, ${actionRef}, ${parseFloat(t.total_amount || 0) || 0})" class="tc-btn tc-btn-add" data-help="Add items|Add another round to this tab. Returns you to the menu; the next Fire adds to this tab."><i class="fas fa-plus"></i> Add items</button>` : ''}
                         <button type="button" onclick="openPayForTab(${orderId}, ${parseFloat(t.total_amount || 0) || 0}, ${actionRef}, ${canSettle ? 'true' : 'false'}, ${parseInt(t.split_count||1)||1}, ${parseInt(t.split_paid_count||0)||0})" class="tc-btn tc-btn-settle" data-help="Settle tab|Close this tab — take payment and mark the order as paid."><i class="fas fa-credit-card"></i> Settle</button>
-                        <button type="button" onclick="openTabDetail(${orderId})" class="tc-btn tc-btn-detail" data-help="View details|See all items, kitchen status, and the full audit trail for this tab."><i class="fas fa-receipt"></i> Details</button>
-                        <button type="button" onclick="openPosPageModal('stock-receipt.php?id=${orderId}&print=1&kot=1','Print KOT','fas fa-print')" class="tc-btn tc-btn-kot" data-help="Print KOT|Reprint the kitchen ticket for this open tab."><i class="fas fa-print"></i> KOT</button>
-                        ${canCancelBeforePrep ? `<button type="button" onclick="cancelOpenOrder(${orderId}, ${actionRef})" class="tc-btn tc-btn-cancel" data-help="Cancel before prep|Cancels this order only while all items are still pending. Nothing has been cooked yet."><i class="fas fa-circle-xmark"></i> Cancel</button>` : ''}
+                        <button type="button" class="tc-btn tc-btn-more" onclick="toggleTabCardActions(this)" aria-expanded="false"><i class="fas fa-ellipsis"></i> More</button>
+                    </div>
+                    <div class="tc-actions tc-actions--secondary" hidden>
+                        <button type="button" onclick="openTabDetail(${orderId})" class="tc-btn tc-btn-detail"><i class="fas fa-receipt"></i> Details</button>
+                        <button type="button" onclick="openPosPageModal('stock-receipt.php?id=${orderId}&print=1&kot=1','Print KOT','fas fa-print')" class="tc-btn tc-btn-kot"><i class="fas fa-print"></i> KOT</button>
+                        ${canCancelBeforePrep ? `<button type="button" onclick="cancelOpenOrder(${orderId}, ${actionRef})" class="tc-btn tc-btn-cancel"><i class="fas fa-circle-xmark"></i> Cancel</button>` : ''}
                         ${managerTools}
                     </div>
                 </article>`;
@@ -8295,6 +8533,8 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
             if (discSection) discSection.style.display = posCanDiscount ? '' : 'none';
 
             document.getElementById('payTabOrderId').value = orderId;
+            document.getElementById('payTabForceServeKitchen').value = '0';
+            document.getElementById('payTabMgrAuthToken').value = '';
             document.getElementById('payTabRef').textContent = ref;
             document.getElementById('payTabTotal').textContent = currencySymbol + ' ' + fmtMoney(total);
             document.getElementById('payTabTotal').dataset.total = total;
@@ -8355,6 +8595,26 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                 });
                 const j = await r.json();
                 if (!j.ok) {
+                    // Stranded food (fired before this business window, or never bumped)
+                    // blocks settlement. Offer the manager force-serve override right here
+                    // instead of leaving the cashier with a dead end.
+                    const foodBlocked = typeof j.error === 'string' && j.error.indexOf('not yet served') !== -1;
+                    if (foodBlocked) {
+                        btn.disabled = false;
+                        btn.innerHTML = origTxt;
+                        const form = this;
+                        const retry = (mgrToken) => {
+                            document.getElementById('payTabForceServeKitchen').value = '1';
+                            document.getElementById('payTabMgrAuthToken').value = mgrToken || '';
+                            form.requestSubmit();
+                        };
+                        if (posCanForceServe) {
+                            retry(null);
+                        } else {
+                            openMgrAuthOverlay('pos_force_serve', retry);
+                        }
+                        return;
+                    }
                     posToastReady(j.error || 'Payment failed.', true);
                     btn.disabled = false;
                     btn.innerHTML = origTxt;
@@ -8825,6 +9085,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                 pos_86: 'Quick-86 Items',
                 pos_float: 'Opening Float',
                 pos_discount: 'Apply Discounts',
+                pos_force_serve: 'Force-Serve Stranded Food',
             };
             document.getElementById('mgrAuthPermLabel').textContent = permLabels[requiredPermission] || requiredPermission;
             document.getElementById('mgrAuthOverlay').classList.add('show');
@@ -9301,21 +9562,35 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                 function constrainWidgetToViewport(el, storageKey) {
                     if (!el) return;
                     if (window.getComputedStyle(el).display === 'none') return;
+
+                    /* Only touch widgets the user has actually dragged. This used to run on every
+                     * load and resize regardless, and because applyAbsPos() strips the CSS
+                     * bottom/right anchoring in favour of hard left/top pixels — then SAVED them —
+                     * a widget that had never been moved got permanently pinned to wherever it
+                     * happened to be measured. That is how the inbox and My Orders pills ended up
+                     * parked in the middle of the order panel with no way back: the corner
+                     * defaults could never apply again. Undragged widgets now keep their CSS
+                     * anchoring and stay in their corners. */
+                    var hasUserPosition = false;
+                    try {
+                        hasUserPosition = !!(storageKey && localStorage.getItem(storageKey));
+                    } catch (_) {}
+                    if (!hasUserPosition) return;
+
                     var pad = 8;
                     var r = el.getBoundingClientRect();
                     var maxL = Math.max(pad, window.innerWidth - r.width - pad);
                     var maxT = Math.max(pad, window.innerHeight - r.height - pad);
                     var nextL = Math.max(pad, Math.min(maxL, r.left));
                     var nextT = Math.max(pad, Math.min(maxT, r.top));
+                    if (nextL === r.left && nextT === r.top) return;
                     applyAbsPos(el, nextL, nextT);
-                    if (storageKey) {
-                        try {
-                            localStorage.setItem(storageKey, JSON.stringify({
-                                left: nextL,
-                                top: nextT
-                            }));
-                        } catch (_) {}
-                    }
+                    try {
+                        localStorage.setItem(storageKey, JSON.stringify({
+                            left: nextL,
+                            top: nextT
+                        }));
+                    } catch (_) {}
                 }
 
                 function syncFloatingWidgetsToViewport() {
@@ -9377,7 +9652,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                 <i class="fas fa-inbox"></i>
                 <span id="posInboxBadge" style="display:none;position:absolute;top:-3px;right:-3px;background:#c82333;color:#fff;font-size:10px;font-weight:800;padding:2px 5px;border-radius:10px;min-width:18px;text-align:center;line-height:1.4;"></span>
             </button>
-            <div id="posInboxDragHandle" title="Drag to reposition" style="width:20px;height:52px;display:flex;align-items:center;justify-content:center;cursor:grab;color:rgba(134,239,172,0.5);font-size:13px;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:10px;background:rgba(29,74,46,0.55);border:1px solid rgba(134,239,172,0.15);transition:background 0.15s,color 0.15s;">
+            <div id="posInboxDragHandle" class="pos-drag-grip" title="Drag to reposition" style="width:20px;height:52px;display:flex;align-items:center;justify-content:center;cursor:grab;color:rgba(134,239,172,0.5);font-size:13px;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:10px;background:rgba(29,74,46,0.55);border:1px solid rgba(134,239,172,0.15);transition:background 0.15s,color 0.15s;">
                 <i class="fas fa-grip-vertical"></i>
             </div>
         </div>
@@ -9404,7 +9679,7 @@ Use for dine-in: staff can prepare while the customer is still seated."><span id
                 <span>My Orders</span>
                 <span id="myOrdersBadge" style="display:none;background:#fff;color:#8B7355;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:20px;text-align:center;line-height:1.4;">0</span>
             </button>
-            <div id="myOrdersDragHandle" title="Drag to reposition" style="width:20px;height:52px;display:flex;align-items:center;justify-content:center;cursor:grab;color:rgba(255,255,255,0.45);font-size:13px;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:10px;background:rgba(139,115,85,0.5);border:1px solid rgba(255,255,255,0.12);transition:background 0.15s,color 0.15s;">
+            <div id="myOrdersDragHandle" class="pos-drag-grip" title="Drag to reposition" style="width:20px;height:52px;display:flex;align-items:center;justify-content:center;cursor:grab;color:rgba(255,255,255,0.45);font-size:13px;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:10px;background:rgba(139,115,85,0.5);border:1px solid rgba(255,255,255,0.12);transition:background 0.15s,color 0.15s;">
                 <i class="fas fa-grip-vertical"></i>
             </div>
         </div>
