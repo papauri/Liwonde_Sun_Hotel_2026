@@ -96,7 +96,7 @@ $nextDate = ($viewObj < $maxDate) ? (clone $viewObj)->modify('+1 day')->format('
     $seo_data = [
         'title' => 'Gym Schedule & Slot Booking - ' . $site_name,
         'description' => "See how busy the gym is by the hour and reserve your workout slot at {$site_name}. Plan your visit and skip the crowds.",
-        'image' => '/images/gym/hero.jpg',
+        'image' => '/images/gym/fitness-center.jpg',
         'type' => 'website',
     ];
     require_once 'includes/seo-meta.php';

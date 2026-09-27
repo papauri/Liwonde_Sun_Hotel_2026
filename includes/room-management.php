@@ -338,24 +338,12 @@ function createRoomInspection(int $roomId, ?int $performedBy): array
     global $pdo;
 
     try {
-        // Check if inspections table exists
-        $tableCheck = $pdo->query("SHOW TABLES LIKE 'room_inspections'");
-        if ($tableCheck->rowCount() === 0) {
-            // Create inspections table
-            $pdo->exec("
-                CREATE TABLE room_inspections (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    individual_room_id INT NOT NULL,
-                    status ENUM('pending', 'passed', 'failed') DEFAULT 'pending',
-                    inspector_id INT,
-                    checklist JSON,
-                    notes TEXT,
-                    inspected_at DATETIME,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (individual_room_id) REFERENCES individual_rooms(id) ON DELETE CASCADE
-                )
-            ");
-        }
+        // `room_inspections` is provisioned by admin/migrations/001_create_room_inspections.php.
+        // The lazy CREATE TABLE that used to sit here was app-code DDL (which the
+        // locked-schema rail forbids) and was also broken: it declared
+        // `individual_room_id INT` against `individual_rooms.id INT UNSIGNED`, so
+        // MySQL 8 rejected the foreign key and the failure surfaced only as a
+        // generic "inspection could not be created".
 
         // Create inspection task
         $stmt = $pdo->prepare("

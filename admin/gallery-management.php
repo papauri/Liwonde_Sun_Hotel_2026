@@ -64,10 +64,13 @@ function uploadGalleryImage(?array $fileInput)
     if (!$fileInput || !isset($fileInput['tmp_name']) || $fileInput['error'] !== UPLOAD_ERR_OK) {
         return null;
     }
-    // Size cap: 8 MB
-    if (($fileInput['size'] ?? 0) > 8 * 1024 * 1024) {
-        error_log('Gallery upload rejected: file > 8MB');
+    // Shared size cap (config/security.php) — was a local 8 MB literal.
+    if ($gm_sizeError = rh_check_image_upload_size($fileInput, $gm_sizeWarning)) {
+        error_log('Gallery upload rejected: ' . $gm_sizeError);
         return null;
+    }
+    if (!empty($gm_sizeWarning)) {
+        error_log('Gallery upload warning: ' . $gm_sizeWarning);
     }
     // Extension whitelist
     $ext = strtolower(pathinfo($fileInput['name'], PATHINFO_EXTENSION));

@@ -522,11 +522,24 @@ try {
     $gm_counts['expiring'] = (int)$pdo->query("SELECT COUNT(*) FROM gym_members WHERE status='active' AND expiry_date IS NOT NULL AND expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)")->fetchColumn();
     $gm_counts['expired']  = (int)$pdo->query("SELECT COUNT(*) FROM gym_members WHERE status='expired' OR (expiry_date IS NOT NULL AND expiry_date < CURDATE())")->fetchColumn();
 
-    $where = '1=1';
-    if ($gm_filter === 'active')   { $where = "status='active'"; }
-    if ($gm_filter === 'expiring') { $where = "status='active' AND expiry_date IS NOT NULL AND expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"; }
-    if ($gm_filter === 'expired')  { $where = "(status='expired' OR (expiry_date IS NOT NULL AND expiry_date < CURDATE()))"; }
-    $gm_members = $pdo->query("SELECT * FROM gym_members WHERE $where ORDER BY status='active' DESC, expiry_date IS NULL ASC, expiry_date ASC, full_name ASC LIMIT 500")->fetchAll(PDO::FETCH_ASSOC);
+    // Filter clauses are selected from this fixed whitelist by key — the request
+    // value never reaches the SQL string, so an unexpected ?filter= falls back to
+    // '1=1' rather than being interpolated.
+    $gm_whereByFilter = [
+        'active'   => "status = 'active'",
+        'expiring' => "status = 'active' AND expiry_date IS NOT NULL AND expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)",
+        'expired'  => "(status = 'expired' OR (expiry_date IS NOT NULL AND expiry_date < CURDATE()))",
+    ];
+    $where = $gm_whereByFilter[$gm_filter] ?? '1=1';
+
+    $gm_stmt = $pdo->prepare(
+        "SELECT * FROM gym_members
+         WHERE {$where}
+         ORDER BY status = 'active' DESC, expiry_date IS NULL ASC, expiry_date ASC, full_name ASC
+         LIMIT 500"
+    );
+    $gm_stmt->execute();
+    $gm_members = $gm_stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $gm_table_missing = true;
 }

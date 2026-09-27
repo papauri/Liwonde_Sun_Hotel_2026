@@ -415,6 +415,16 @@ foreach ($footer_links_raw as $link) {
 
 
                 <!-- Passalacqua-Inspired Testimonials Section: Editorial, Borderless, Large Serif Quotes -->
+                <?php
+                // Reads the `testimonials` table via getCachedTestimonials(). NOTE: no admin
+                // page writes to that table — nothing in the codebase INSERTs, UPDATEs or
+                // DELETEs from it — so whatever it holds cannot be edited from the back office.
+                // See .claude/BUILD_PLAN.md (2026-09-02) for the open owner decision on
+                // consolidating this with the admin-managed `reviews` table.
+                //
+                // Owner rule (2026-09-02): render nothing rather than an empty shell.
+                if (!empty($testimonials)):
+                ?>
                 <section class="editorial-testimonials-section landing-section" id="testimonials" data-lazy-reveal>
                     <div class="container">
                         <div class="editorial-header-wrapper">
@@ -446,6 +456,7 @@ foreach ($footer_links_raw as $link) {
                         </div>
                     </div>
                 </section>
+                <?php endif; ?>
 
             </div>
         </div>

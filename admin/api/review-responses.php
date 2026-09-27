@@ -24,6 +24,7 @@ header('Content-Type: application/json');
 
 // Include database configuration (corrected relative path)
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/security.php'; // validateCsrfToken()
 require_once __DIR__ . '/../includes/permissions.php';
 
 // Include email configuration (corrected relative path)
@@ -116,6 +117,21 @@ if ($method === 'POST') {
     // Also merge with $_POST for form data
     if (!empty($_POST)) {
         $input = array_merge($input, $_POST);
+    }
+}
+
+// ---- CSRF ----------------------------------------------------------------
+// These endpoints mutate review data (INSERT / UPDATE status / DELETE) on nothing
+// more than a session cookie, and carried no CSRF check at all. PUT and DELETE are
+// shielded in practice by the CORS preflight, but the POST path is a classic
+// JSON-via-form-post target: an attacker's page can submit a body that
+// json_decode() accepts, and the browser attaches the admin's cookies.
+// Token accepted from the X-CSRF-Token header (so DELETE, which sends no body,
+// is covered too) or from `_csrf` in the payload.
+if (in_array($method, ['POST'], true)) {
+    $csrfToken = (string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? $input['_csrf'] ?? '');
+    if (!validateCsrfToken($csrfToken)) {
+        sendError('Invalid CSRF token', 403);
     }
 }
 

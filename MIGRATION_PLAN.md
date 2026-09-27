@@ -10,7 +10,7 @@ branding, content, images and guest-facing design.
 117 objects (115 tables + 2 views). **Zero additions, zero retained Liwonde-only tables.**
 Any Liwonde feature with no Rosalyn equivalent is removed, not ported.
 
-**Verified against:** live DB `p601229_hotels` @ `185.43.232.18` (MySQL 8.0.46, read-only
+**Verified against:** live DB `<db-name>` @ `<db-host>` (MySQL 8.0.46, read-only
 inspection, 2026-08-13) and Rosalyn dump `Database/db-20260622-154415.sql.gz`.
 
 ---
@@ -20,7 +20,7 @@ inspection, 2026-08-13) and Rosalyn dump `Database/db-20260622-154415.sql.gz`.
 | Fact / decision | Consequence |
 |---|---|
 | All Liwonde data is test data (3 bookings, 1 payment) | **No data migration.** Content-only port. |
-| **Rebuild `p601229_hotels` in place** | No parallel DB. Full backup first (Phase 0). |
+| **Rebuild `<db-name>` in place** | No parallel DB. Full backup first (Phase 0). |
 | **Schema identical to Rosalyn** | 115 tables + 2 views. No custom columns. |
 | **Restaurant reservations: removed** | Rosalyn has no equivalent — see §4.1. |
 | **Secondary hero CTA: removed** | Would require 2 non-Rosalyn columns — see §4.2. |
@@ -112,7 +112,7 @@ existing password hashes stay valid. Rosalyn adds the `permissions` +
 ## 3. Phases
 
 ### Phase 0 — Safety net
-- [ ] **Full `mysqldump` of `p601229_hotels` (structure + data) → `Database/`** — mandatory;
+- [ ] **Full `mysqldump` of `<db-name>` (structure + data) → `Database/`** — mandatory;
       the rebuild is destructive and in place
 - [ ] Second copy of that dump off-server
 - [ ] Tag repo: `git tag pre-rosalyn-migration`
@@ -133,7 +133,7 @@ existing password hashes stay valid. Rosalyn adds the `permissions` +
 
 ### Phase 2 — Schema rebuild (destructive)
 - [ ] Confirm Phase 0 backup verified
-- [ ] Drop all 58 tables + 2 views in `p601229_hotels`
+- [ ] Drop all 58 tables + 2 views in `<db-name>`
 - [ ] Load Rosalyn structure (no data) — all 115 tables + 2 views
 - [ ] Confirm `enabled_modules` self-provisions on first admin hit
 
@@ -199,7 +199,7 @@ direct URL.
 - [ ] Every guest page at mobile + desktop widths
 - [ ] Log in as each of the 2 admin users, confirm correct access
 - [ ] Deploy, tag `post-rosalyn-migration`
-- [ ] **Remove `109.78.91.146` from cPanel → Remote MySQL**
+- [ ] **Remove `<developer-ip>` from cPanel → Remote MySQL**
 
 ---
 

@@ -5,8 +5,45 @@
  */
 
 /**
+ * Strip the scraper's provenance block from a review before showing it to guests.
+ *
+ * `admin/api/review-scraper.php` appends its metadata into the comment body itself
+ * (there is no `source` column on `reviews`, and the schema is locked), producing:
+ *
+ *     <the snippet>
+ *
+ *     Source: https://www.facebook.com/...
+ *     Source Date: ...
+ *     User Email: ...
+ *
+ * Rendered verbatim, that puts a raw URL — and potentially a guest's email address —
+ * into the public quote. Admin screens keep the full text so provenance is auditable;
+ * only the guest-facing render is trimmed.
+ *
+ * @param string|null $comment Raw stored comment.
+ * @return string Comment with any trailing metadata block removed.
+ */
+function rh_public_review_text(?string $comment): string
+{
+    $text = (string)$comment;
+    if ($text === '') {
+        return '';
+    }
+
+    // Drop from the first metadata label onwards. Anchored to line start so a
+    // guest legitimately writing "source: ..." mid-sentence is not truncated.
+    $text = preg_replace(
+        '/\R+^(?:Source|Source Date|User Email)\s*:.*\z/ims',
+        '',
+        $text
+    ) ?? $text;
+
+    return trim($text);
+}
+
+/**
  * Display star rating (1-5 stars)
- * 
+ *
  * @param float $rating The rating value (1-5)
  * @param int $size Size of stars in pixels (default: 16)
  * @param bool $showEmpty Whether to show empty stars (default: true)
@@ -141,7 +178,7 @@ function displayReviewCard($review, $showRoom = false) {
     $guestName = htmlspecialchars($guestNameRaw);
     $rating = (int)($review['rating'] ?? 5);
     $title = htmlspecialchars(trim((string)($review['title'] ?? '')));
-    $comment = nl2br(htmlspecialchars($review['comment'] ?? ''));
+    $comment = nl2br(htmlspecialchars(rh_public_review_text($review['comment'] ?? '')));
     $reviewDate = isset($review['created_at']) ? date('M j, Y', strtotime($review['created_at'])) : '';
     $adminResponse = $review['latest_response'] ?? '';
     $adminResponseDate = $review['latest_response_date'] ?? null;

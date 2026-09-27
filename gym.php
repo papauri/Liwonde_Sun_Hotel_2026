@@ -283,13 +283,13 @@ try {
     $seo_data = [
         'title' => 'Fitness & Wellness Center - ' . $site_name . ' | Gym, Spa & Yoga',
         'description' => "State-of-the-art fitness center and wellness facilities at {$site_name}. Modern gym equipment, spa services, yoga classes, personal training, and holistic wellness programs.",
-        'image' => '/images/gym/hero.jpg',
+        'image' => '/images/gym/fitness-center.jpg',
         'type' => 'website',
         'structured_data' => [
             "@context" => "https://schema.org",
             "@type" => "SportsActivityLocation",
             "name" => $site_name . " Fitness & Wellness Center",
-            "image" => "https://" . $_SERVER['HTTP_HOST'] . "/images/gym/hero.jpg",
+            "image" => "https://" . $_SERVER['HTTP_HOST'] . "/images/gym/fitness-center.jpg",
             "description" => "State-of-the-art fitness center with modern equipment, spa, yoga, and personal training services",
             "url" => "https://" . $_SERVER['HTTP_HOST'] . "/gym.php"
         ]

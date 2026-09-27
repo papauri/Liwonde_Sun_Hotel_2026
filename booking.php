@@ -616,11 +616,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     booking_reference, room_id, guest_name, guest_email, guest_phone,
                     guest_country, guest_address, number_of_guests, adult_guests, child_guests,
                     child_price_multiplier, check_in_date, check_out_date, number_of_nights,
-                    total_amount, amount_due, total_with_vat, child_supplement_total, tourism_levy_amount, tourism_levy_percent,
+                    total_amount, amount_due, total_with_vat, vat_rate, vat_amount, child_supplement_total, tourism_levy_amount, tourism_levy_percent,
                     special_requests, status,
                     is_tentative, tentative_expires_at, occupancy_type, client_uuid,
                     rate_plan_id, rate_plan_label, rate_plan_discount, package_total
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             // Build per-row idempotency tag. The first row uses the client uuid verbatim;
             // split-bookings get a deterministic suffix so each row stays unique while
@@ -656,6 +656,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $totalThisBooking = $baseThisBooking + $childSupplementThisBooking + $tourismLevyThisBooking + $pkgTotalThisBooking;
 
+                // Record the VAT split. This flow previously stored the net figure in
+                // total_amount, amount_due AND total_with_vat and left vat_rate/vat_amount
+                // at their 0.00 defaults, so web bookings carried no tax breakdown at all
+                // while admin-created ones did. vat_components() is the same shared helper
+                // admin/create-booking.php uses, so both paths now agree.
+                // Under the installation's 'inclusive' mode $vatThisBooking['total'] equals
+                // $totalThisBooking, so what the guest is charged does not change.
+                $vatThisBooking = vat_components($totalThisBooking);
+
                 $refForBooking = ($i === 0) ? $booking_reference : ($booking_reference . '-' . ($i + 1));
                 if ($i > 0) {
                     $uniqueCheck = $pdo->prepare("SELECT COUNT(*) FROM bookings WHERE booking_reference = ?");
@@ -690,8 +699,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $check_out_date,
                     $number_of_nights,
                     $totalThisBooking,
-                    $totalThisBooking,
-                    $totalThisBooking,
+                    $vatThisBooking['total'],
+                    $vatThisBooking['total'],
+                    $vatThisBooking['rate'],
+                    $vatThisBooking['vat'],
                     $childSupplementThisBooking,
                     $tourismLevyThisBooking,
                     $tourism_levy_percent,

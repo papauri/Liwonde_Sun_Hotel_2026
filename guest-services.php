@@ -154,7 +154,7 @@ if (empty($unifiedServices)) {
             'title'       => 'Conference & Meeting Rooms',
             'description' => 'Host your corporate events, meetings, and conferences in our state-of-the-art venues. Full AV equipment, catering, and dedicated event coordination.',
             'icon'        => 'fas fa-briefcase',
-            'image'       => 'images/conference/conference_room.jpeg',
+            'image'       => 'images/conference/Conference_Room1.jpeg',
             'link'        => 'conference.php',
             'cta'         => 'Book Conference',
             'order'       => 30
@@ -168,7 +168,7 @@ if (empty($unifiedServices)) {
             'title'       => 'Events & Entertainment',
             'description' => 'Discover upcoming events, live entertainment, and special occasions at our hotel. From business breakfasts to gala dinners, there is always something happening.',
             'icon'        => 'fas fa-calendar-alt',
-            'image'       => 'images/hero/slide1.jpeg',
+            'image'       => 'images/hero/slide1.jpg',
             'link'        => 'events.php',
             'cta'         => 'View Events',
             'order'       => 40
@@ -221,7 +221,7 @@ $whatsapp      = getSetting('whatsapp_number');
     $seo_data = [
         'title' => 'Guest Services - ' . $site_name,
         'description' => "Explore all guest services at {$site_name}. Restaurant, gym, conference rooms, events, concierge, and more.",
-        'image' => '/images/hero/slide1.jpeg',
+        'image' => '/images/hero/slide1.jpg',
         'type' => 'website'
     ];
     require_once 'includes/seo-meta.php';

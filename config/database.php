@@ -63,6 +63,29 @@ if (!defined('BALANCE_TOLERANCE')) {
 // troubleshooting. Connection FAILURES are always logged below regardless.
 $dbDebug = in_array(strtolower((string)getenv('DB_DEBUG')), ['1', 'true', 'on', 'yes'], true);
 
+/**
+ * Is app-code schema auto-migration enabled?
+ *
+ * Default FALSE. The application must not alter its own schema during a normal
+ * request — schema parity is locked and any DDL is an owner decision. Enable
+ * only to bootstrap a brand-new empty database; the maintained path for schema
+ * changes is admin/migrations/migrate.php.
+ */
+if (!function_exists('rh_auto_migrate_enabled')) {
+    function rh_auto_migrate_enabled(): bool
+    {
+        static $enabled = null;
+        if ($enabled === null) {
+            $enabled = in_array(
+                strtolower((string)getenv('RH_ALLOW_AUTO_MIGRATE')),
+                ['1', 'true', 'on', 'yes'],
+                true
+            );
+        }
+        return $enabled;
+    }
+}
+
 // Create PDO connection with performance optimizations
 try {
     // Diagnostic logging (opt-in only)
@@ -90,30 +113,48 @@ try {
     // Set timezone after connection
     $pdo->exec("SET time_zone = '+00:00'");
 
-    // Ensure child-pricing columns exist for backward-compatible deployments
-    ensureChildPricingColumns($pdo);
+    // ---- Schema auto-migration: OFF unless explicitly enabled ----------------
+    // These ensure*() helpers used to run on EVERY request. Between them they
+    // issued ~23 information_schema probes and held ~54 CREATE TABLE / ADD COLUMN
+    // statements armed against the live database, and ensureChildPricingColumns()
+    // additionally ran three unconditional full-table UPDATE backfills on
+    // `bookings` — so every guest page view was a write transaction.
+    //
+    // Schema changes are an owner decision in this project (schema parity with the
+    // Rosalyn platform is locked — see .claude/CORE_SYSTEM_BRIEF.md), so the app
+    // must never reshape the database on its own. The canonical path for schema
+    // work is now:
+    //
+    //     php admin/migrations/migrate.php
+    //
+    // Set RH_ALLOW_AUTO_MIGRATE=1 only to reproduce the legacy self-provisioning
+    // behaviour (e.g. bootstrapping a brand-new empty database).
+    if (rh_auto_migrate_enabled()) {
+        // Ensure child-pricing columns exist for backward-compatible deployments
+        ensureChildPricingColumns($pdo);
 
-    // Ensure housekeeping + maintenance operational tables/columns exist
-    ensureOperationsSupportTables($pdo);
+        // Ensure housekeeping + maintenance operational tables/columns exist
+        ensureOperationsSupportTables($pdo);
 
-    // Ensure occupancy/children policy columns exist for room type + individual room overrides
-    ensureOccupancyPolicyColumns($pdo);
+        // Ensure occupancy/children policy columns exist for room type + individual room overrides
+        ensureOccupancyPolicyColumns($pdo);
 
-    // Ensure per-room capacity overrides and joined-room booking ledger exist
-    ensureRoomCombinationSchema($pdo);
+        // Ensure per-room capacity overrides and joined-room booking ledger exist
+        ensureRoomCombinationSchema($pdo);
 
-    // Ensure external API key tables exist and have retrievable storage support
-    ensureApiTables($pdo);
-    ensureApiKeyRetrievableColumn($pdo);
+        // Ensure external API key tables exist and have retrievable storage support
+        ensureApiTables($pdo);
+        ensureApiKeyRetrievableColumn($pdo);
 
-    // Ensure individual room blocked dates table exists
-    ensureIndividualRoomBlockedDatesTable($pdo);
+        // Ensure individual room blocked dates table exists
+        ensureIndividualRoomBlockedDatesTable($pdo);
 
-    // Ensure housekeeping enhancements columns exist (migration 004)
-    ensureHousekeepingEnhancementsColumns($pdo);
+        // Ensure housekeeping enhancements columns exist (migration 004)
+        ensureHousekeepingEnhancementsColumns($pdo);
 
-    // Ensure audit log tables exist for housekeeping and maintenance (migration 006)
-    ensureAuditLogTables($pdo);
+        // Ensure audit log tables exist for housekeeping and maintenance (migration 006)
+        ensureAuditLogTables($pdo);
+    }
 
     // Auto-expire stale tentative bookings on every request so that:
     // (a) the availability check inside checkRoomAvailability's WHERE clause
@@ -6087,8 +6128,11 @@ function ensureBookingChargesTable(PDO $pdo): void
     }
 }
 
-// Initialize booking charges table on connection
-ensureBookingChargesTable($pdo);
+// Initialize booking charges table on connection.
+// Gated: see rh_auto_migrate_enabled() — schema work belongs in admin/migrations/.
+if (rh_auto_migrate_enabled()) {
+    ensureBookingChargesTable($pdo);
+}
 
 /**
  * Add a charge to a booking folio
@@ -6672,8 +6716,11 @@ function ensureBookingDateAdjustmentsSupport(PDO $pdo): void
     }
 }
 
-// Initialize booking date adjustments support on connection
-ensureBookingDateAdjustmentsSupport($pdo);
+// Initialize booking date adjustments support on connection.
+// Gated: see rh_auto_migrate_enabled() — schema work belongs in admin/migrations/.
+if (rh_auto_migrate_enabled()) {
+    ensureBookingDateAdjustmentsSupport($pdo);
+}
 
 /**
  * Validate if a booking is eligible for date adjustment

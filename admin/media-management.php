@@ -45,6 +45,19 @@ function mm_store_uploaded_media(array $fileInput, string $mediaType): array
         throw new RuntimeException('Uploaded file does not match selected media type.');
     }
 
+    // Shared image size cap (config/security.php). This handler previously had NO
+    // size limit of any kind, which is how oversized originals reached images/.
+    // Videos keep their own, much larger allowance and are not capped here.
+    if ($mediaType === 'image') {
+        $mm_sizeWarning = null;
+        if ($mm_sizeError = rh_check_image_upload_size($fileInput, $mm_sizeWarning)) {
+            throw new RuntimeException($mm_sizeError);
+        }
+        if (!empty($mm_sizeWarning)) {
+            error_log('Media upload warning: ' . $mm_sizeWarning);
+        }
+    }
+
     $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
     if ($ext === '') {
         $ext = ($mediaType === 'video') ? 'mp4' : 'jpg';

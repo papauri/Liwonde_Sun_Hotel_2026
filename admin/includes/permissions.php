@@ -94,6 +94,7 @@ function getAllRoles()
                 'pos_discount',
                 'pos_86',
                 'pos_refund',
+                'pos_force_serve',
                 'restaurant_table_settle',
                 'kds_view',
                 'stock_count',
@@ -626,6 +627,14 @@ function getAllPermissions()
             'label' => 'POS Refunds',
             'description' => 'Process refunds on paid POS orders from the Recent panel',
             'icon' => 'fa-rotate-left',
+            'category' => 'Stations',
+            'page' => 'pos.php',
+            'group' => 'stations'
+        ],
+        'pos_force_serve' => [
+            'label' => 'POS Force-Serve Tab',
+            'description' => 'Settle a tab whose kitchen items were never bumped (e.g. stranded from an earlier shift), forcing them to served so the tab can be paid',
+            'icon' => 'fa-triangle-exclamation',
             'category' => 'Stations',
             'page' => 'pos.php',
             'group' => 'stations'
@@ -1366,6 +1375,7 @@ function getPermissionForPage(string $page)
         'visitor-analytics.php' => 'visitor_analytics',
         'pos-accounting.php' => 'pos_accounting',
         'shift-close-report.php' => 'pos_accounting',
+        'pos-drift-report.php' => 'pos_accounting',
         'quotations.php' => 'create_booking',
         'gym-members.php' => 'gym',
         'gym-checkin.php' => 'gym_checkin',
@@ -1455,6 +1465,7 @@ function getModuleForPage(string $page)
         'accounting-dashboard.php' => 'finance',
         'pos-accounting.php' => ['finance', 'pos'],
         'shift-close-report.php' => ['finance', 'pos'],
+        'pos-drift-report.php' => ['finance', 'pos'],
         'payments.php' => 'finance',
         'payment-details.php' => 'finance',
         'payment-refund.php' => 'finance',
@@ -1469,6 +1480,33 @@ function getModuleForPage(string $page)
         'gym-reports.php' => 'gym',
         'reports.php' => 'finance',
         'end-of-day-report.php' => 'finance',
+
+        // ── Gaps closed 2026-09-02 ────────────────────────────────────────
+        // These pages belong to a gated module but were absent from the map,
+        // so they stayed reachable by direct URL when that module was off —
+        // the nav link disappeared but the page did not. Every other page of
+        // each module was already mapped; these were simply missed.
+        'gym-classes.php' => 'gym',
+        'purchase-orders.php' => 'stock',
+        'stock-reorder.php' => 'stock',
+        'stock-suppliers.php' => 'stock',
+        // enabled_modules describes website_cms as "Gallery, pages, deals,
+        // reviews, social settings" — the social integrations and site
+        // analytics belong to it on the module's own definition.
+        'facebook-settings.php' => 'website_cms',
+        'whatsapp-settings.php' => 'website_cms',
+        'visitor-analytics.php' => 'website_cms',
+
+        // DELIBERATELY NOT MAPPED — do not "complete" this list without a decision:
+        //   booking-settings.php — looks like a 'bookings' page, but it is also the
+        //     ONLY page that edits SMTP/email settings (updateEmailSetting is called
+        //     nowhere else). Gating it behind 'bookings' would lock an operator out
+        //     of all email configuration whenever bookings is disabled.
+        //   dashboard, login, logout, index, admin-init, manifest, change/forgot/
+        //     reset-password, module-settings, system-logs, api-keys, user-management,
+        //     backup-management, cache-management, ajax-receipt, video-upload-handler
+        //     — platform pages that must stay reachable regardless of module state
+        //     (module-settings especially: it is how a disabled module gets re-enabled).
     ];
 
     return $map[$page] ?? null;

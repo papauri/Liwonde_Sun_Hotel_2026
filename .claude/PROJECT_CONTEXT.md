@@ -33,7 +33,7 @@ Confirmed from the repo as of 2026-08-14:
 - **Phases 5, 6, 7 — still unknown.** Branding/SMTP values live in `site_settings` /
   `email_settings` (the code reads them via `getSetting()`, so this is an admin-panel
   question, not a code one); module enablement is undecided; and cutover verification —
-  including removing `109.78.91.146` from cPanel → Remote MySQL — cannot be checked from here.
+  including removing `<developer-ip>` from cPanel → Remote MySQL — cannot be checked from here.
 - **`admin/migrations/` is empty.** The convention "write a migration and run it" has no
   precedent in this repo yet.
 - **`sql_mode` is `NO_ENGINE_SUBSTITUTION`** — no `STRICT_TRANS_TABLES`, so over-length
@@ -83,7 +83,7 @@ self-hosted system with **no per-booking commission** (vs OTAs) and no SaaS fees
 
 1. **Migration completion is unverified.** Six of seven migration phases have unknown
    status, including the destructive schema rebuild and the post-cutover security step
-   ("remove `109.78.91.146` from cPanel → Remote MySQL"). Until an owner confirms, every
+   ("remove `<developer-ip>` from cPanel → Remote MySQL"). Until an owner confirms, every
    plan that assumes a working live database is built on sand. **This is the first thing to
    resolve, and it is an owner question, not a build task.**
 2. **The inherited platform is unproven against Liwonde's data.** The admin half of this

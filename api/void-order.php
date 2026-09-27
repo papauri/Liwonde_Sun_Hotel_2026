@@ -19,6 +19,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/security.php';
 require_once __DIR__ . '/../admin/includes/permissions.php';
 require_once __DIR__ . '/../admin/includes/offline-log.php';
+require_once __DIR__ . '/../includes/station-hours.php';
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
 function vjerr(string $m, int $code = 400): void { http_response_code($code); echo json_encode(['ok'=>false,'error'=>$m]); exit; }
@@ -49,7 +50,15 @@ $details = $reason . ($notes !== '' ? "\nNotes: " . $notes : '');
 // Reuse helper directly (inlined below).
 function v_restoreFromPosOrder(PDO $pdo, int $orderId, ?int $doneBy): void {
     $byBatch = []; $byIngredient = [];
-    $sel = $pdo->prepare("SELECT sa.id AS adjustment_id, sa.ingredient_id, sa.quantity_change, sbd.batch_id, sbd.quantity_deducted FROM stock_adjustments sa LEFT JOIN stock_batch_deductions sbd ON sbd.adjustment_id = sa.id WHERE sa.source_type = 'pos_order' AND sa.source_id = ?");
+    /* source_id on a 'pos_order' adjustment is the stock_order_items.id, NOT the order id —
+     * every deduction path passes the ITEM id (kds-action.php bump/ready, and
+     * rh_auto_serve_bar_items) so that two lines sharing an ingredient don't collide on the
+     * idempotency check. Looking these up by order id therefore matched nothing and silently
+     * restored NO stock on void, while still reporting "Stock restored." to the user.
+     * Matching on item ids only (not `OR source_id = orderId`) is deliberate: order ids and
+     * order-item ids come from different sequences, so an order-id match could collide with
+     * an unrelated order's line and credit back stock that was never sold. */
+    $sel = $pdo->prepare("SELECT sa.id AS adjustment_id, sa.ingredient_id, sa.quantity_change, sbd.batch_id, sbd.quantity_deducted FROM stock_adjustments sa LEFT JOIN stock_batch_deductions sbd ON sbd.adjustment_id = sa.id WHERE sa.source_type = 'pos_order' AND sa.source_id IN (SELECT id FROM stock_order_items WHERE order_id = ?)");
     $sel->execute([$orderId]);
     $seen = [];
     foreach ($sel->fetchAll(PDO::FETCH_ASSOC) as $h) {
@@ -93,7 +102,11 @@ function v_voidRoomServiceFolioCharges(PDO $pdo, int $orderId, string $reason, i
     // If stock was already deducted via the POS order path (source_type='pos_order'),
     // v_restoreFromPosOrder() has already restored it. Only call restoreStockForMenuItem()
     // for deductions recorded under source_type='room_service' to avoid double-restoration.
-    $posAdjStmt = $pdo->prepare("SELECT COUNT(*) FROM stock_adjustments WHERE source_type = 'pos_order' AND source_id = ?");
+    /* Same item-id keying as v_restoreFromPosOrder above. This guard MUST agree with it:
+     * it decides whether the folio path should also restore, so an order-id lookup here
+     * (always 0 rows) would let both paths credit the same stock back twice now that the
+     * POS restore actually finds its rows. */
+    $posAdjStmt = $pdo->prepare("SELECT COUNT(*) FROM stock_adjustments WHERE source_type = 'pos_order' AND source_id IN (SELECT id FROM stock_order_items WHERE order_id = ?)");
     $posAdjStmt->execute([$orderId]);
     $stockAlreadyRestoredViaPosPath = (int)$posAdjStmt->fetchColumn() > 0;
 
@@ -134,8 +147,60 @@ try {
          ->execute([(int)$user['id'], mb_substr($details, 0, 500), $orderId]);
     $pdo->prepare("UPDATE stock_order_items SET kds_status='void', served_at=COALESCE(served_at, NOW()), bumped_by=? WHERE order_id=? AND kds_status NOT IN ('served','void')")
          ->execute([(int)$user['id'], $orderId]);
-    $pdo->prepare("UPDATE payments SET payment_status='cancelled', status='failed', notes=CONCAT(COALESCE(notes,''), '\nVOID: ', ?), updated_at=NOW() WHERE booking_type='restaurant' AND booking_id=? AND payment_type<>'refund' AND deleted_at IS NULL")
-         ->execute([$details, $orderId]);
+
+    // Reverse the original sale with a contra row (payment_type='refund' — the same category
+    // every other report already nets out), the same way admin/pos.php's refund_order does.
+    // This USED TO overwrite the original payment row to status='cancelled'/'failed' in place,
+    // which erased the original sale figure and left nothing in `payments` explaining why a
+    // report summing payment_status='completed' and a report summing stock_orders.status would
+    // disagree. The original row now stays untouched as the historical record of what was
+    // charged; only a paid order gets (or needs) a reversal.
+    $origVoidPayStmt = $pdo->prepare("SELECT id, payment_amount, vat_rate, vat_amount, total_amount, payment_method, receipt_number FROM payments WHERE booking_type='restaurant' AND booking_id=? AND COALESCE(payment_type,'') != 'refund' AND deleted_at IS NULL ORDER BY id DESC LIMIT 1");
+    $origVoidPayStmt->execute([$orderId]);
+    $origVoidPay = $origVoidPayStmt->fetch(PDO::FETCH_ASSOC);
+    if ($origVoidPay) {
+        $voidBusinessDate = function_exists('rh_station_union_business_window')
+            ? (rh_station_union_business_window()['business_date'] ?? date('Y-m-d'))
+            : date('Y-m-d');
+        $pdo->prepare("INSERT INTO payments (
+                payment_reference, booking_type, booking_id, booking_reference,
+                payment_date, payment_amount, vat_rate, vat_amount, total_amount,
+                payment_method, payment_type, payment_status, status,
+                original_payment_id, refund_reason, refund_status, refund_amount,
+                notes, recorded_by, created_at
+            ) VALUES (?, 'restaurant', ?, ?, ?, ?, ?, ?, ?, ?, 'refund', 'completed', 'completed', ?, ?, 'completed', ?, ?, ?, NOW())")
+            ->execute([
+                'VOID-' . ($order['reference'] ?? ('ORD' . $orderId)),
+                $orderId,
+                $order['reference'] ?? null,
+                $voidBusinessDate,
+                (float)$origVoidPay['payment_amount'],
+                (float)$origVoidPay['vat_rate'],
+                (float)$origVoidPay['vat_amount'],
+                (float)$origVoidPay['total_amount'],
+                $origVoidPay['payment_method'],
+                (int)$origVoidPay['id'],
+                /* refund_reason is an ENUM, not free text — see the matching note in
+                 * admin/pos.php's refund_order. 'cancellation' is the closest listed member
+                 * for a void; the operator's wording goes to `notes` below. */
+                'cancellation',
+                (float)$origVoidPay['total_amount'],
+                'Void: ' . $details,
+                (int)$user['id'],
+            ]);
+    }
+
+    /* Retract any outstanding "ready for collection" ping and unacknowledged station note for
+     * this order. The POS poll only suppresses a notification while items are still in
+     * progress — once every item is 'void' that check passes, so a voided order would keep
+     * telling a waiter to go and collect food that no longer exists. */
+    try {
+        $pdo->prepare("DELETE FROM pos_ready_notifications WHERE order_id = ?")->execute([$orderId]);
+        $pdo->prepare("UPDATE station_messages SET pos_acknowledged = 1, pos_acknowledged_at = NOW(), pos_acknowledged_by = ? WHERE order_id = ? AND source = 'station' AND COALESCE(pos_acknowledged, 0) = 0")
+             ->execute([(int)$user['id'], $orderId]);
+    } catch (Throwable $e) {
+        error_log('void-order notification cleanup: ' . $e->getMessage());
+    }
 
     $actorName = $user['full_name'] ?? $user['username'] ?? 'admin';
     $pdo->prepare("INSERT INTO stock_order_audit (order_id, actor_id, actor_name, event, details, ip_address) VALUES (?, ?, ?, 'voided', ?, ?)")

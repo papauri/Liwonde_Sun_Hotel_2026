@@ -90,8 +90,25 @@ define('RH_HELP_TOOLTIPS_RENDERED', true);
             toggle = createFloatingFallbackToggle();
         }
 
-        let enabled = (localStorage.getItem(KEY) ?? '1') === '1';
-        if (!toggle) enabled = true;
+        /* Help badges default ON for back-office pages (occasional users, lots of unfamiliar
+         * screens) but OFF for the till and the station displays. Those are used all shift by
+         * staff who already know them, and turning every action into a button wearing a yellow
+         * "?" put 30-odd markers on one screen — they overlapped the labels underneath
+         * ("Settle" reading as "Settl") and made a busy service screen busier. Anyone who wants
+         * them can still hit the Help toggle, and the choice persists per device. */
+        const isFrontOfHouseScreen = document.body.classList.contains('pos-screen')
+            || document.body.classList.contains('station-screen');
+        const storedHelpPref = localStorage.getItem(KEY);
+        let enabled = storedHelpPref !== null
+            ? storedHelpPref === '1'
+            : !isFrontOfHouseScreen;
+        /* "No visible toggle, so force help on" exists so back-office pages can't end up with
+         * badges permanently unavailable. It must NOT apply to the till: below 1280px the
+         * toolbar (and the inline toggle inside it) is display:none, pickPrimaryToggle() only
+         * returns VISIBLE toggles, so every tablet and phone till hit this branch and forced
+         * badges back on — on exactly the screens with least room for them. Those screens do
+         * have a reachable control: "Help Tooltips" in the hamburger menu. */
+        if (!toggle && !isFrontOfHouseScreen) enabled = true;
         let hoverTimer = null;
         let pressTimer = null;
         let activeEl = null;

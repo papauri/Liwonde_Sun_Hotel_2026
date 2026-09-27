@@ -28,6 +28,9 @@ if (function_exists('moduleEnabled') && !moduleEnabled('website_cms')) {
 
 // Include alert system
 require_once 'includes/alert.php';
+// rh_public_review_text() — strips the scraper's "Source: <url>" provenance block
+// out of the community-feedback quotes further down this page.
+require_once 'includes/reviews-display.php';
 
 // Include validation library
 require_once 'includes/validation.php';
@@ -640,7 +643,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </header>
 
                                 <h3 class="community-feedback__review-title"><?php echo htmlspecialchars($r['title']); ?></h3>
-                                <p class="community-feedback__review-comment"><?php echo nl2br(htmlspecialchars(mb_strimwidth($r['comment'] ?? '', 0, 320, '…'))); ?></p>
+                                <p class="community-feedback__review-comment"><?php echo nl2br(htmlspecialchars(mb_strimwidth(rh_public_review_text($r['comment'] ?? ''), 0, 320, '…'))); ?></p>
 
                                 <?php if (!empty($r['latest_response'])): ?>
                                     <div class="community-feedback__response">
