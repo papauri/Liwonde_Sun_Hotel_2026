@@ -41,7 +41,7 @@ until the module-enablement decision is answered.
    - FAIL → send the FIX LIST to the same specialist for ONE retry, re-gate.
      Second FAIL → mark `failed-twice`, record why, continue with the next task.
 5. **Ticker** — print exactly ONE line per task to the terminal, nothing else:
-   `<task id> · <domain> · <PASS|FAIL|PARKED> · <≤8-word outcome>`
+   `<task id> · <domain> · <PASS|FAIL|PARKED> · <outcome, one short phrase>`
 6. **Advance immediately** — pull the next task in the batch; when the batch empties, run
    step 1 again. Never end a run just because a task finished.
 
