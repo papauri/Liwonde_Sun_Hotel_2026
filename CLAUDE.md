@@ -41,9 +41,14 @@ do not re-derive plans or re-scan the repo ad hoc.
   lint, sonnet for build execution; Fable 5/Opus only for setup and planning, never routine
   execution; max 2 concurrent specialists; /cost checkpoint after every loop cycle; every
   subagent brief carries exact file paths — no open-ended "explore".
-- **Safety**: never commit or push (only the owner triggers that explicitly); never
-  destructive SQL; never edit `.env`; park owner decisions as `blocked:` in BUILD_PLAN.md
+- **Safety**: commit and push completed work to `main` (see Git below); never destructive
+  SQL; never edit `.env`; park owner decisions as `blocked:` in BUILD_PLAN.md
   and continue with the next task.
+- **Git**: commit and push to `origin/main` directly — no feature branches, no waiting for
+  the owner to trigger it. Commit only work that has passed its QA gate (`php -l` on every
+  changed file, plus the relevant smoke test). One commit per completed task, message
+  stating what changed and why. Check the diff for secrets and stray files before staging;
+  `.env` is untracked and stays that way. Never force-push, never rewrite pushed history.
 - **Schema parity is LOCKED.** The database was rebuilt object-identical to Rosalyn's
   (115 tables + 2 views, zero additions). **Any DDL — additive columns included — is an
   owner decision, not an agent one.** `admin/migrations/` is empty; do not start filling it

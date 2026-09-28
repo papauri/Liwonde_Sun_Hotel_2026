@@ -98,9 +98,11 @@ active design work. Read tokens before writing any CSS value:
 
 ## Hard safety rails (all agents, no exceptions)
 
-Never commit or push. Never `DROP`/`TRUNCATE`/`DELETE`-without-`WHERE`. Never edit `.env`
-or `config/*local*`. Never print credentials. Never delete files. Never create README or
-documentation files unless the brief explicitly says so.
+Specialists never run git; the build loop commits each QA-passed task itself (see Git in
+CLAUDE.md). Never force-push or rewrite pushed history. Never `DROP`/`TRUNCATE`/
+`DELETE`-without-`WHERE`. Never edit `.env` or `config/*local*`. Never print credentials.
+Never delete files. Never create README or documentation files unless the brief explicitly
+says so.
 
 **Schema parity with Rosalyn is LOCKED (Liwonde-specific, from `MIGRATION_PLAN.md`).** The
 database was rebuilt to be object-identical to Rosalyn's — 115 tables + 2 views, zero

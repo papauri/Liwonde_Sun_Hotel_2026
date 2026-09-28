@@ -78,8 +78,10 @@ it; agents don't log their own cost.
 - Model tiers: haiku read-only/lint/mapping · sonnet build/polish/logic-QA · opus planner
   only · never opus/Fable for routine execution.
 - Max 2 specialists concurrent.
-- NEVER commit or push. NEVER destructive SQL. **NEVER any DDL — schema parity with Rosalyn
-  is locked.** NEVER edit `.env`. NEVER delete files.
+- Commit and push each QA-passed task to `origin/main`, one commit per task, after the gate
+  passes — never force-push, never rewrite pushed history.
+- NEVER destructive SQL. **NEVER any DDL — schema parity with Rosalyn is locked.**
+  NEVER edit `.env`. NEVER delete files.
 - Non-blocking ambiguity → best assumption, logged as `ASSUMPTION:` in BUILD_PLAN.md.
 
 ## Escalation — the one thing you DO ask about
