@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock &amp; Orders Guide — Liwonde Sun Hotel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Jost:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="assets/guide-theme.css">
+  <script src="assets/guide-init.js" defer></script>
+</head>
+
+<body>
+
+  <nav class="top">
+    <a href="index.html" class="brand">LIWONDE SUN HOTEL</a>
+    <div class="nav-links">
+      <a href="index.html">All Guides</a>
+      <a href="owner-handover.php">Owner</a>
+      <a href="07-reception-bookings.html">← Prev</a>
+      <a href="99-admin-dashboard-full-guide.html">Admin Bible →</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="deck">
+      <div class="eyebrow">Guide 08 &middot; Stock manager</div>
+      <h1>Stock &amp; Stock Orders</h1>
+      <p class="lead">Every drink, ingredient, and consumable is tracked here. The KDS, BDS, CDS and Room Service
+        stations automatically deduct stock when they mark each item prepared.</p>
+      <div class="meta">
+        <span>URL <strong>/admin/stock-orders.php</strong></span>
+        <span>Role <strong>stock_manager · manager · admin</strong></span>
+        <span>Read time <strong>5 min</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="content">
+    <div class="deck">
+
+      <section>
+        <h2>Pages you'll use</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Page</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Stock Orders</strong> <code>stock-orders.php</code></td>
+              <td>All restaurant / bar / coffee / room-service orders, voids, reconciliation.</td>
+            </tr>
+            <tr>
+              <td><strong>Stock Ingredients</strong> <code>stock-ingredients.php</code></td>
+              <td>Master list of every item: name, unit, current count, cost, <strong>reorder point</strong>, <strong>par level</strong>, preferred supplier &amp; lead time.</td>
+            </tr>
+            <tr>
+              <td><strong>Suppliers</strong> <code>stock-suppliers.php</code></td>
+              <td>Supplier master — contact, lead time, payment terms, total purchased. Replaces typing supplier names free-hand.</td>
+            </tr>
+            <tr>
+              <td><strong>Reorder / Buying</strong> <code>stock-reorder.php</code></td>
+              <td>Everything at or below its reorder point, with a suggested order quantity, grouped by supplier. One click turns a group into a draft purchase order.</td>
+            </tr>
+            <tr>
+              <td><strong>Purchase Orders</strong> <code>purchase-orders.php</code></td>
+              <td>Raise, send and receive purchase orders. Receiving posts stock straight into the batch/FIFO ledger with full supplier traceability.</td>
+            </tr>
+            <tr>
+              <td><strong>Stock Receipts</strong></td>
+              <td>Goods-in (delivery from supplier) &mdash; restocks ingredients. Now lets you pick a supplier from the master list.</td>
+            </tr>
+            <tr>
+              <td><strong>Stock Variance</strong></td>
+              <td>Daily / weekly variance between <em>system count</em> and <em>physical count</em>.</td>
+            </tr>
+            <tr>
+              <td><strong>Barcode Receive</strong> <code>stock-barcode-receive.php</code></td>
+              <td>Scan delivery barcodes with phone camera — registers new products and fills stock receipts hands-free.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Procurement — suppliers, reordering &amp; purchase orders</h2>
+        <p>Buying stock now follows a proper retail flow so nothing runs out unnoticed and every delivery is traceable to a supplier.</p>
+
+        <h3>1. Set up your suppliers</h3>
+        <ol class="steps">
+          <li>Go to <strong>Stock → Suppliers</strong> and add each supplier: contact, phone/email, <strong>lead time</strong> (days from order to delivery) and payment terms.</li>
+          <li>Existing suppliers were created automatically from the names already on your past deliveries — check the list and tidy any duplicates.</li>
+        </ol>
+
+        <h3>2. Tell each item when to reorder</h3>
+        <ol class="steps">
+          <li>Open <strong>Stock → Ingredients</strong>, edit an item.</li>
+          <li>Set the <strong>reorder point</strong> (the level that triggers a top-up — usually enough to cover the supplier's lead time) and the <strong>par level</strong> (the level you want to order back up to).</li>
+          <li>Pick the item's <strong>preferred supplier</strong> so it groups correctly on the buying report.</li>
+        </ol>
+        <div class="callout note">If you leave reorder point at 0, the item falls back to its old <em>min quantity</em> for low-stock alerts — nothing breaks, you just don't get a purchase suggestion for it.</div>
+
+        <h3>3. Reorder / Buying report</h3>
+        <ol class="steps">
+          <li>Open <strong>Stock → Reorder / Buying</strong> (also reachable from the "Running low" tile on the Stock Dashboard).</li>
+          <li>It lists everything at or below its reorder point, with a <strong>suggested quantity</strong> = par level − what's on hand − what's already on order, grouped by supplier.</li>
+          <li>Click <strong>Create draft PO</strong> on a supplier group to turn those lines into a purchase order in one step.</li>
+        </ol>
+
+        <h3>4. Purchase orders</h3>
+        <ol class="steps">
+          <li>On <strong>Stock → Purchase Orders</strong> a PO moves through <span class="pill blue">draft</span> → <span class="pill amber">sent</span> → <span class="pill amber">partial</span> / <span class="pill green">received</span> → <span class="pill">closed</span>.</li>
+          <li>Add or edit lines while it is <strong>draft</strong>, then <strong>Mark as sent</strong> when you place it with the supplier.</li>
+          <li>When the delivery arrives, open the PO and enter the <strong>Receive now</strong> quantity (and expiry, if any) per line, then <strong>Receive stock</strong>. Partial deliveries are supported — the PO stays <em>partial</em> until every line is fully received.</li>
+        </ol>
+        <div class="callout note">Receiving against a PO creates the batch, updates the weighted-average cost and links the batch to the supplier automatically — exactly the same engine as a manual stock receipt, so costs stay consistent.</div>
+      </section>
+
+      <section>
+        <h2>A typical day</h2>
+
+        <h3>1. Morning — receive deliveries</h3>
+        <ol class="steps">
+          <li>If the delivery is against a purchase order, open it on <strong>Stock → Purchase Orders</strong> and use
+            <strong>Receive stock</strong> — this reconciles what you ordered against what arrived.</li>
+          <li>For an ad-hoc delivery, go to <strong>Stock Receipts → New Receipt</strong> — or use <strong>Stock → Barcode Receive</strong> on
+            mobile to scan deliveries with your phone camera (faster for large deliveries).</li>
+          <li>Pick the supplier from the master list.</li>
+          <li>Add each item delivered with <strong>quantity</strong> and <strong>unit cost</strong>.</li>
+          <li>Save. Stock is added to the relevant ingredients automatically.</li>
+        </ol>
+
+        <h3>2. During service — automatic deduction</h3>
+        <ul class="checklist">
+          <li>Stock is <strong>not deducted when the till fires an order</strong>. It deducts when the
+            kitchen/bar/coffee station marks each item <strong>Ready</strong> (tap the Ready button on the station
+            screen).</li>
+          <li>This means orders cancelled before any item is marked Ready cost no stock — nothing has been used yet.
+          </li>
+          <li>Voids on partially-prepared orders restore only the stock that was deducted at the Ready step for items
+            that were prepared.</li>
+          <li>The <strong>Bump</strong> action catches any items that were never individually marked Ready and deducts
+            their stock at that point.</li>
+        </ul>
+
+        <h3>3. End of day — variance check</h3>
+        <ol class="steps">
+          <li>Go to <strong>Stock Variance</strong>.</li>
+          <li>The page lists every ingredient with <strong>system count</strong> vs <strong>counted count</strong>.</li>
+          <li>Walk the bar / kitchen, count physically, type counts in.</li>
+          <li>Save. The variance % is logged. Anything over 5% is flagged red.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Cancelling an order (before prep)</h2>
+        <p>Cashiers can cancel an order themselves if preparation has not started yet.</p>
+        <ol class="steps">
+          <li>Open the order (or use the Cancel Before Prep button on the POS Tabs tray).</li>
+          <li>Tap <strong>Cancel</strong>, enter a reason ≥ 8 characters.</li>
+          <li>The order is removed from all station boards. No stock is restored because nothing was deducted yet.</li>
+        </ol>
+        <div class="callout warn">Cancel is blocked once any item reaches <em>preparing</em>, <em>ready</em>,
+          <em>collection</em>, or <em>served</em> status on any station. Use <strong>Void</strong> (admin/manager) in
+          those cases.</div>
+      </section>
+
+      <section>
+        <h2>Voiding a stock order</h2>
+        <ol class="steps">
+          <li>Open the order on <strong>Stock Orders</strong>.</li>
+          <li>Tap <strong>Void</strong>.</li>
+          <li>Reason ≥ 8 characters required.</li>
+          <li>Stock is restored for any items that had been marked Ready (deducted at KDS), the folio is reversed (if
+            the order was charged to a room), and KDS/BDS/CDS stations are cleared.</li>
+        </ol>
+        <div class="callout note">Void works at <strong>any stage</strong> of an order, regardless of whether prep has
+          started. Only admin and manager roles can void.</div>
+      </section>
+
+      <section>
+        <h2>Order Lifecycle Viewer <code>/admin/order-lifecycle.php</code></h2>
+        <p>Every stock order has a dedicated full-page audit trail at <code>/admin/order-lifecycle.php?id=&lt;order_id&gt;</code>. Open it from:</p>
+        <ul class="checklist">
+          <li><strong>Stock Orders</strong> list → click the order reference.</li>
+          <li><strong>KDS / BDS / CDS</strong> ticket footer → <em>Log</em> button (opens in new tab).</li>
+          <li><strong>POS → Tabs tray → Details → Lifecycle</strong> link (admin/manager only).</li>
+        </ul>
+        <h3>What the page shows</h3>
+        <table>
+          <thead>
+            <tr><th>Section</th><th>Content</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Order header</strong></td>
+              <td>Reference, status badge, order type, table/room, cashier, total.</td>
+            </tr>
+            <tr>
+              <td><strong>Metrics bar</strong></td>
+              <td>Placed time → Fired → Ready → Served → Paid + Total cycle elapsed.</td>
+            </tr>
+            <tr>
+              <td><strong>Items table</strong></td>
+              <td>Every line item with qty, price, kitchen status, station, and timestamps for started/ready/served.</td>
+            </tr>
+            <tr>
+              <td><strong>Activity timeline</strong></td>
+              <td>Chronological log of every audit event and KDS event: placement, stock deductions (ingredient · qty · cost), bumps, voids — with actor name, timestamp and IP.</td>
+            </tr>
+            <tr>
+              <td><strong>Linked payment</strong></td>
+              <td>Payment reference, method, amount and recorded timestamp (if paid).</td>
+            </tr>
+            <tr>
+              <td><strong>Void banner</strong></td>
+              <td>For voided/cancelled orders: reason, who voided, and when.</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>Actions available on the lifecycle page</h3>
+        <table>
+          <thead>
+            <tr><th>Action</th><th>Role</th><th>Conditions</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pill amber">Cancel order</span></td>
+              <td>admin · manager</td>
+              <td>Status is <em>placed / new</em> and kitchen has not started any item (all still <em>pending</em>).</td>
+            </tr>
+            <tr>
+              <td><span class="pill red">Void order</span></td>
+              <td>admin only</td>
+              <td>Status is <em>paid</em> or <em>completed</em>. Restores stock for all previously Ready items, cancels payment row, clears station boards.</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout note">The lifecycle page is <strong>read-only</strong> for restaurant_staff. Cancel and Void are gated by role and order state — the buttons only appear when the action is permitted.</div>
+      </section>
+
+      <section>
+        <h2>Order item lifecycle</h2>
+        <p>Each item on an order passes through these statuses on the station display:</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Meaning</th>
+              <th>Stock effect</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pill blue">pending</span></td>
+              <td>Order fired, not yet started in the kitchen/bar.</td>
+              <td>None.</td>
+            </tr>
+            <tr>
+              <td><span class="pill amber">preparing</span></td>
+              <td>Station tapped Start on this item.</td>
+              <td>None.</td>
+            </tr>
+            <tr>
+              <td><span class="pill green">ready</span></td>
+              <td>Item prepared, at the pass.</td>
+              <td><strong>Deducted here.</strong></td>
+            </tr>
+            <tr>
+              <td><span class="pill amber">collection</span></td>
+              <td>Runner has taken the item for delivery.</td>
+              <td>Already deducted at ready.</td>
+            </tr>
+            <tr>
+              <td><span class="pill green">served</span></td>
+              <td>Delivered to guest. Ticket bumped.</td>
+              <td>Already deducted.</td>
+            </tr>
+            <tr>
+              <td><span class="pill red">void</span></td>
+              <td>Voided. Stock restored if it had been deducted.</td>
+              <td>Restored (if was ready/collection/served).</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Order types</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Source</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>restaurant</code></td>
+              <td>POS Till dine-in</td>
+              <td>Charged at till.</td>
+            </tr>
+            <tr>
+              <td><code>room_service</code></td>
+              <td>Room Service Dashboard</td>
+              <td>Charged to guest folio.</td>
+            </tr>
+            <tr>
+              <td><code>staff_meal</code></td>
+              <td>Manual (manager)</td>
+              <td>Stock deducts but no charge.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="barcode-receiving">
+        <h2>Barcode stock receiving <span class="badge">Camera scanner</span></h2>
+        <p>When a delivery arrives, instead of typing each item manually you can scan product barcodes with your phone
+          camera. The system matches the barcode to an existing ingredient (or offers to register a new one) and fills
+          in the receipt line automatically.</p>
+
+        <h3>Opening the scanner</h3>
+        <ol class="steps">
+          <li>Go to <strong>Stock → Barcode Receive</strong> (<code>/admin/stock-barcode-receive.php</code>).</li>
+          <li>Tap <strong>Start Scanner</strong> — your phone camera activates and shows a viewfinder.</li>
+          <li>Point the camera at a product barcode. A beep and vibration confirm a successful read.</li>
+          <li>The matched item is added to the receipt list. Scan the next product immediately.</li>
+        </ol>
+
+        <h3>First-time scan of an unregistered product</h3>
+        <p>If the barcode hasn't been seen before, a registration dialog appears:</p>
+        <ol class="steps">
+          <li>Choose whether this product is an <strong>Ingredient</strong> (kitchen/bar stock, e.g. a beer keg) or a
+            <strong>POS Item</strong> (retail product sold directly from the till, e.g. a can of Coca-Cola).</li>
+          <li>Fill in the name, unit, and unit cost.</li>
+          <li>Save — the barcode is linked to the new record and the scanner continues immediately.</li>
+        </ol>
+        <div class="callout info">POS Items registered here appear on the <strong>Retail Items</strong> category on the
+          POS grid straight away and can be scanned at the till using the camera barcode scanner on mobile.</div>
+
+        <h3>Quick reference</h3>
+        <table class="guide-table">
+          <thead>
+            <tr><th>Situation</th><th>What to do</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Camera permission denied</td><td>Open browser site settings and allow camera for this site, then refresh.</td></tr>
+            <tr><td>Barcode not scanning</td><td>Ensure good lighting or toggle the <strong>Torch</strong> button. Hold the camera 10–20 cm from the barcode.</td></tr>
+            <tr><td>Wrong quantity received</td><td>Tap the quantity field on the receipt line and correct it before saving.</td></tr>
+            <tr><td>Duplicate scan</td><td>A 2-second cooldown prevents double-counting. Quantity increments automatically if you scan the same barcode twice.</td></tr>
+            <tr><td>Scanner keeps closing</td><td>Enable <strong>Keep open</strong> in the scanner footer — the camera stays on between scans.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Tips</h2>
+        <div class="callout warn">Always <strong>void</strong>, never edit and re-save. The audit trail depends on it.
+        </div>
+        <ul class="checklist">
+          <li>Set <strong>par levels</strong> on every ingredient &mdash; the system will warn when stock falls below
+            the par.</li>
+          <li>Print the <strong>Variance Report</strong> at month-end and file it.</li>
+        </ul>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="guide-footer">
+    <div class="deck">
+      <div class="crest">— L S —</div>
+      <p><a href="07-reception-bookings.html">← Reception</a> &middot; <a href="index.html">All guides</a> &middot; <a
+          href="owner-handover.php">Owner handover</a> &middot; <a href="99-admin-dashboard-full-guide.html">Admin Bible
+          →</a></p>
+    </div>
+  </footer>
+
+</body>
+
+</html>

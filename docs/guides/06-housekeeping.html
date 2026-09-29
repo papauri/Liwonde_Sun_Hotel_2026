@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Housekeeping Guide — Liwonde Sun Hotel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Jost:wght@300;400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="assets/guide-theme.css">
+  <script src="assets/guide-init.js" defer></script>
+</head>
+
+<body>
+
+  <nav class="top">
+    <a href="index.html" class="brand">LIWONDE SUN HOTEL</a>
+    <div class="nav-links">
+      <a href="index.html">All Guides</a>
+      <a href="99-admin-dashboard-full-guide.html">Admin Bible</a>
+      <a href="owner-handover.php">Owner</a>
+      <a href="05-room-service.html">← Prev</a>
+      <a href="07-reception-bookings.html">Next →</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="deck">
+      <div class="eyebrow">Guide 06 &middot; Housekeeping</div>
+      <h1>Housekeeping</h1>
+      <p class="lead">Track every individual room's Pending / In Progress / Completed / Verified / Blocked status. Every change is logged with old →
+        new state and timestamp.</p>
+      <div class="meta">
+        <span>URL <strong>/admin/housekeeping.php</strong></span>
+        <span>Role <strong>housekeeping · manager · admin</strong></span>
+        <span>Read time <strong>5 min</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="content">
+    <div class="deck">
+
+      <section>
+        <h2>Assignment statuses</h2>
+        <p>Housekeeping work is tracked as <strong>assignments</strong> against a room (not a single room-wide
+          status flag). Each assignment moves through:</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pill amber">Pending</span></td>
+              <td>Task created, not yet started.</td>
+            </tr>
+            <tr>
+              <td><span class="pill blue">In Progress</span></td>
+              <td>Housekeeper has tapped Start — currently cleaning.</td>
+            </tr>
+            <tr>
+              <td><span class="pill green">Completed</span></td>
+              <td>Housekeeper marked the task done.</td>
+            </tr>
+            <tr>
+              <td><span class="pill purple">Verified</span></td>
+              <td>Supervisor confirmed the completed task — locked, cannot be edited further.</td>
+            </tr>
+            <tr>
+              <td><span class="pill red">Blocked</span></td>
+              <td>Task cannot proceed (e.g. maintenance issue) — set via the assignment's status field.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>A typical morning</h2>
+        <ol class="steps">
+          <li>Sign in. The <strong>All Assignments</strong> table lists every task, filterable by status and
+            searchable by room or staff name.</li>
+          <li>On a <strong>Pending</strong> row, tap <strong>Start</strong> → status moves to <em>In Progress</em>.
+          </li>
+          <li>When done, tap <strong>Mark Done</strong> → status moves to <em>Completed</em>.</li>
+          <li>The supervisor reviews completed rows and taps <strong>Verify</strong> to mark the task
+            <em>Verified</em> — this cannot be undone.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Maintenance issues</h2>
+        <ol class="steps">
+          <li>Set a task's status to <strong>Blocked</strong> if the room can't be cleaned due to a maintenance
+            issue, and add a note explaining why.</li>
+          <li>Serious out-of-order rooms (unbookable until fixed) are handled on the separate
+            <strong>Room Maintenance</strong> page, which removes the room from bookable inventory.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Audit history</h2>
+        <ul class="checklist">
+          <li>Every status change is saved to <code>housekeeping_audit_log</code>.</li>
+          <li>Tap <strong>View History</strong> on an assignment row to see who changed it, when, and what changed.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Tips</h2>
+        <div class="callout tip">If a guest reports an issue with a room, create or edit an assignment for it and
+          set the status appropriately &mdash; this keeps the room on staff's task list.</div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="guide-footer">
+    <div class="deck">
+      <div class="crest">— L S —</div>
+      <p><a href="05-room-service.html">← Room Service</a> &middot; <a href="index.html">All guides</a> &middot; <a
+          href="99-admin-dashboard-full-guide.html">Admin Bible</a> &middot; <a href="owner-handover.php">Owner
+          handover</a> &middot; <a href="07-reception-bookings.html">Reception →</a></p>
+    </div>
+  </footer>
+
+</body>
+
+</html>
