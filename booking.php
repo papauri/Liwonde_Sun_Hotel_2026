@@ -448,12 +448,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $room = $selected_room;
         $number_of_nights = $validation_result['availability']['nights'];
 
-        if (roomTypeHasActiveCombinations((int)$room['id'])) {
+        // Reserve one joined-room combination per split room up front, so each room is
+        // priced from the combination it will actually be assigned.
+        $usesCombinations   = roomTypeHasActiveCombinations((int)$room['id']);
+        $combinationQueue   = [];
+        if ($usesCombinations) {
             $availableCombinationsForPricing = getAvailableRoomCombinations((int)$room['id'], $check_in_date, $check_out_date);
             if (empty($availableCombinationsForPricing)) {
                 throw new Exception('All joined rooms for this room type are already reserved for those dates.');
             }
-            $pricingCombination = $availableCombinationsForPricing[0];
+            // Two combinations can list the same physical room, so the queue must be N
+            // combinations that share no physical room between them.
+            $claimedPhysicalRooms = [];
+            foreach ($availableCombinationsForPricing as $candidateCombination) {
+                if (count($combinationQueue) >= $roomsNeeded) {
+                    break;
+                }
+                $candidateRoomIds = [(int)$candidateCombination['room_a_id'], (int)$candidateCombination['room_b_id']];
+                if (array_intersect($candidateRoomIds, $claimedPhysicalRooms)) {
+                    continue;
+                }
+                $claimedPhysicalRooms = array_merge($claimedPhysicalRooms, $candidateRoomIds);
+                $combinationQueue[] = $candidateCombination;
+            }
+
+            if (count($combinationQueue) < $roomsNeeded) {
+                $availableJoined = count($combinationQueue);
+                throw new Exception("Only {$availableJoined} joined-room combination" . ($availableJoined === 1 ? '' : 's') . " available for {$check_in_date} to {$check_out_date}, but your group requires {$roomsNeeded}. Please adjust your guest count or dates.");
+            }
+
+            // Headline figures shown to the guest come from the first combination.
+            $pricingCombination = $combinationQueue[0];
             $combinedRate = $pricingCombination['price_override'] !== null && $pricingCombination['price_override'] !== ''
                 ? (float)$pricingCombination['price_override']
                 : (float)$room['price_per_night'];
@@ -632,6 +657,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $createdBookingTotals = [];
             $createdGuestCounts = [];
             $bookingGroupTotal = 0.0;
+            $bookingGroupVat = 0.0;
+            $bookingGroupTotalWithVat = 0.0;
             $bookingGroupChildSupplementTotal = 0.0;
             $bookingGroupTourismLevyTotal = 0.0;
 
@@ -642,7 +669,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $childrenThisBooking = (int)$allocationPart['children'];
                 $occThisBooking = $allocationPart['occupancy_type'];
 
-                $baseRateThisBooking = bookingPriceForOccupancy($room, $occThisBooking);
+                // Price this room off the combination it will actually be assigned.
+                $roomForThisBooking = $room;
+                if ($usesCombinations) {
+                    $comboThisBooking = $combinationQueue[$i];
+                    $comboRate = ($comboThisBooking['price_override'] !== null && $comboThisBooking['price_override'] !== '')
+                        ? (float)$comboThisBooking['price_override']
+                        : (float)$selected_room['price_per_night'];
+                    $roomForThisBooking['price_per_night']        = $comboRate;
+                    $roomForThisBooking['price_single_occupancy'] = $comboRate;
+                    $roomForThisBooking['price_double_occupancy'] = $comboRate;
+                    $roomForThisBooking['price_triple_occupancy'] = $comboRate;
+                }
+
+                $baseRateThisBooking = bookingPriceForOccupancy($roomForThisBooking, $occThisBooking);
                 $dynamicThisBooking = applyDynamicPricing($pdo, $room_id, $check_in_date, $check_out_date, $number_of_nights, $baseRateThisBooking);
                 $rateThisBooking = (float)$dynamicThisBooking['final_price'];
                 // Packages added to first booking only; subsequent splits get 0
@@ -650,20 +690,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $baseThisBooking = $rateThisBooking * $number_of_nights;
                 $childSupplementThisBooking = $childrenThisBooking > 0 ? (($rateThisBooking * ($child_price_multiplier / 100)) * $childrenThisBooking * $number_of_nights) : 0;
-                $tourismLevyThisBooking = 0.0;
-                if ($tourism_levy_enabled && $tourism_levy_percent > 0) {
-                    $tourismLevyThisBooking = ($baseThisBooking + $childSupplementThisBooking) * ($tourism_levy_percent / 100);
-                }
-                $totalThisBooking = $baseThisBooking + $childSupplementThisBooking + $tourismLevyThisBooking + $pkgTotalThisBooking;
-
-                // Record the VAT split. This flow previously stored the net figure in
-                // total_amount, amount_due AND total_with_vat and left vat_rate/vat_amount
-                // at their 0.00 defaults, so web bookings carried no tax breakdown at all
-                // while admin-created ones did. vat_components() is the same shared helper
-                // admin/create-booking.php uses, so both paths now agree.
-                // Under the installation's 'inclusive' mode $vatThisBooking['total'] equals
-                // $totalThisBooking, so what the guest is charged does not change.
-                $vatThisBooking = vat_components($totalThisBooking);
+                // Stay totals via the shared helper: the tourism levy is OUTSIDE the VAT
+                // base (levy = net * levy%, VAT = net * VAT%). Levy applies to room +
+                // child supplement only; packages carry VAT but no levy.
+                $stayTotals = rh_stay_totals($baseThisBooking + $childSupplementThisBooking, 'price');
+                $pkgTotals  = $pkgTotalThisBooking > 0
+                    ? rh_stay_totals($pkgTotalThisBooking, 'price', false)
+                    : ['net' => 0.0, 'vat' => 0.0, 'levy' => 0.0, 'total_with_vat' => 0.0];
+                $tourismLevyThisBooking = round($stayTotals['levy'], 2);
+                $vatRateThisBooking     = $stayTotals['vat_rate'];
+                $vatAmtThisBooking      = round($stayTotals['vat'] + $pkgTotals['vat'], 2);
+                $totalWithVatBooking    = round($stayTotals['total_with_vat'] + $pkgTotals['total_with_vat'], 2);
+                // total_amount convention: net of VAT, levy included (net + levy);
+                // total_with_vat = net + levy + VAT = everything the guest owes.
+                $totalThisBooking       = round($stayTotals['net'] + $pkgTotals['net'] + $tourismLevyThisBooking, 2);
+                $tourismLevyPctBooking  = $stayTotals['levy_rate'];
 
                 $refForBooking = ($i === 0) ? $booking_reference : ($booking_reference . '-' . ($i + 1));
                 if ($i > 0) {
@@ -698,14 +739,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $check_in_date,
                     $check_out_date,
                     $number_of_nights,
-                    $totalThisBooking,
-                    $vatThisBooking['total'],
-                    $vatThisBooking['total'],
-                    $vatThisBooking['rate'],
-                    $vatThisBooking['vat'],
+                    $totalThisBooking,      // total_amount: net + levy (ex-VAT)
+                    $totalWithVatBooking,   // amount_due
+                    $totalWithVatBooking,   // total_with_vat
+                    $vatRateThisBooking,
+                    $vatAmtThisBooking,
                     $childSupplementThisBooking,
                     $tourismLevyThisBooking,
-                    $tourism_levy_percent,
+                    $tourismLevyPctBooking,
                     $requestsForBooking,
                     $booking_status,
                     $is_tentative,
@@ -719,12 +760,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
 
                 $newBookingId = (int)$pdo->lastInsertId();
-                if (roomTypeHasActiveCombinations($room_id)) {
-                    $availableCombinations = getAvailableRoomCombinations($room_id, $check_in_date, $check_out_date, $newBookingId);
-                    if (empty($availableCombinations)) {
-                        throw new Exception('Joined rooms are no longer available for those dates. Please choose another date or room type.');
-                    }
-                    $assignment = assignRoomCombinationToBooking($newBookingId, (int)$availableCombinations[0]['id']);
+                if ($usesCombinations) {
+                    // Assign the exact combination this room was priced from; the assign
+                    // call re-validates availability under the transaction's lock.
+                    $assignment = assignRoomCombinationToBooking($newBookingId, (int)$combinationQueue[$i]['id']);
                     if (empty($assignment['success'])) {
                         throw new Exception($assignment['message'] ?: 'Failed to reserve joined rooms for this booking.');
                     }
@@ -735,6 +774,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $createdBookingTotals[] = $totalThisBooking;
                 $createdGuestCounts[] = $guestsThisBooking;
                 $bookingGroupTotal += $totalThisBooking;
+                $bookingGroupVat += $vatAmtThisBooking;
+                $bookingGroupTotalWithVat += $totalWithVatBooking;
                 $bookingGroupChildSupplementTotal += $childSupplementThisBooking;
                 $bookingGroupTourismLevyTotal += $tourismLevyThisBooking;
             }
@@ -798,6 +839,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'tourism_levy_amount' => $bookingGroupTourismLevyTotal,
                 'tourism_levy_percent' => $tourism_levy_percent,
                 'total_amount' => $bookingGroupTotal,
+                'vat_amount' => round($bookingGroupVat, 2),
+                'total_with_vat' => round($bookingGroupTotalWithVat, 2),
+                'amount_due' => round($bookingGroupTotalWithVat, 2),
                 'special_requests' => $special_requests,
                 'status' => $booking_status,
                 'is_tentative' => $is_tentative,
@@ -860,7 +904,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'check_in' => $check_in_date,
                 'check_out' => $check_out_date,
                 'nights' => $number_of_nights,
-                'total' => $bookingGroupTotal,
+                'total' => round($bookingGroupTotalWithVat, 2),   // what the guest owes
+                'vat_amount' => round($bookingGroupVat, 2),
+                'levy_amount' => round($bookingGroupTourismLevyTotal, 2),
                 'email_sent' => $email_result['success'],
                 'is_tentative' => $is_tentative,
                 'tentative_expires_at' => $tentative_expires_at,
@@ -1616,6 +1662,9 @@ try {
         // Tourism levy settings
         const tourismLevyEnabled = <?php echo json_encode((bool)getSetting('tourism_levy_enabled', false)); ?>;
         const tourismLevyPercent = <?php echo json_encode((float)getSetting('tourism_levy_percent', 0)); ?>;
+        // VAT settings (levy sits outside the VAT base; see rh_stay_totals in includes/pricing.php)
+        const siteVatMode = <?php echo json_encode(vat_mode()); ?>;
+        const siteVatRate = <?php echo json_encode(vat_mode() === 'off' ? 0.0 : (float)getSetting('vat_rate', 0)); ?>;
 
         // Blocked dates from server (global + per room)
         const globalBlockedDates = <?php echo json_encode(array_values($global_blocked_dates)); ?>;

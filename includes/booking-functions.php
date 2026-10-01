@@ -562,70 +562,122 @@ function checkAvailability(int $roomId, string $checkIn, string $checkOut): arra
  */
 function createNoShowRefund(array $booking, int $adminUserId, PDO $pdo): array
 {
-    $amountPaid = (float)($booking['amount_paid'] ?? 0);
-    if ($amountPaid <= 0) {
-        return ['created' => false, 'refund_ref' => '', 'refund_amount' => 0.0, 'policy' => 'none'];
+    $none = ['created' => false, 'refund_ref' => '', 'refund_amount' => 0.0, 'policy' => 'none', 'error' => ''];
+    if ((float)($booking['amount_paid'] ?? 0) <= 0 || empty($booking['id'])) {
+        return $none;
     }
 
     $policy = getSetting('no_show_refund_policy', 'none');
-
-    $refundAmount = 0.0;
-    if ($policy === 'full') {
-        $refundAmount = $amountPaid;
-    } elseif ($policy === 'first_night') {
-        $nights      = max(1, (int)($booking['number_of_nights'] ?? 1));
-        $nightlyRate = (float)($booking['total_amount'] ?? 0) / $nights;
-        $refundAmount = max(0.0, round($amountPaid - $nightlyRate, 2));
+    $none['policy'] = $policy;
+    if ($policy !== 'full' && $policy !== 'first_night') {
+        return $none;
     }
 
-    if ($refundAmount <= 0) {
-        return ['created' => false, 'refund_ref' => '', 'refund_amount' => 0.0, 'policy' => $policy];
+    // Own transaction when the caller has none; the booking row is locked so the
+    // refund is sized from the live net paid and cannot race another payment/refund.
+    $ownTx = !$pdo->inTransaction();
+    try {
+        if ($ownTx) {
+            $pdo->beginTransaction();
+        }
+        $lock = $pdo->prepare("SELECT * FROM bookings WHERE id = ? FOR UPDATE");
+        $lock->execute([(int)$booking['id']]);
+        $fresh = $lock->fetch(PDO::FETCH_ASSOC);
+        if (!$fresh) {
+            throw new RuntimeException('Booking not found.');
+        }
+        if (!recalculateBookingFinancials((int)$booking['id'])) {
+            throw new RuntimeException('Could not recalculate the booking balance.');
+        }
+        $bal = $pdo->prepare("SELECT amount_paid FROM bookings WHERE id = ?");
+        $bal->execute([(int)$booking['id']]);
+        $amountPaid = round((float)$bal->fetchColumn(), 2);
+        if ($amountPaid <= BALANCE_TOLERANCE) {
+            if ($ownTx) {
+                $pdo->commit();
+            }
+            return $none;
+        }
+
+        $refundAmount = 0.0;
+        if ($policy === 'full') {
+            $refundAmount = $amountPaid;
+        } else {
+            $nights      = max(1, (int)($fresh['number_of_nights'] ?? 1));
+            $nightlyRate = (float)($fresh['total_amount'] ?? 0) / $nights;
+            $refundAmount = max(0.0, round($amountPaid - $nightlyRate, 2));
+        }
+        if ($refundAmount <= BALANCE_TOLERANCE) {
+            if ($ownTx) {
+                $pdo->commit();
+            }
+            return $none;
+        }
+
+        // Split across the room payments that still have a refundable balance (locked).
+        // The helper caps the total at what is actually refundable and never
+        // over-refunds any single payment; one refund row per payment.
+        $allocations = allocateBookingRefunds($pdo, (int)$booking['id'], $refundAmount, true);
+        if (!$allocations) {
+            if ($ownTx) {
+                $pdo->commit();
+            }
+            return $none;
+        }
+
+        $insertRefund = $pdo->prepare("
+            INSERT INTO payments (
+                payment_reference, booking_type, booking_id, booking_reference,
+                payment_date, payment_amount, vat_rate, vat_amount, total_amount,
+                payment_method, payment_type, payment_status,
+                original_payment_id, refund_reason, refund_status, refund_amount, refund_notes,
+                recorded_by, created_at
+            ) VALUES (
+                ?, 'room', ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, 'refund', 'pending',
+                ?, 'cancellation', 'pending', ?, ?,
+                ?, NOW()
+            )
+        ");
+
+        $refundRef = '';
+        $refundAmount = 0.0;
+        foreach ($allocations as $alloc) {
+            $orig      = $alloc['payment'];
+            $legAmount = (float)$alloc['amount'];
+            $vatRate   = (float)($orig['vat_rate'] ?? 0);
+            $vatAmount = round($legAmount * ($vatRate / (100 + $vatRate)), 2);
+            $payAmount = round($legAmount - $vatAmount, 2);
+            $legRef    = allocateBookingRefundReference($pdo);
+            $refundRef = $refundRef === '' ? $legRef : $refundRef . ', ' . $legRef;
+
+            $insertRefund->execute([
+                $legRef,
+                (int)$booking['id'],
+                $fresh['booking_reference'],
+                date('Y-m-d'),
+                $payAmount, $vatRate, $vatAmount, $legAmount,
+                $orig['payment_method'] ?? 'other',
+                (int)$orig['id'],
+                $legAmount,
+                'No-show auto-refund (' . $policy . ' policy) — pending admin review and processing.',
+                $adminUserId,
+            ]);
+            $refundAmount = round($refundAmount + $legAmount, 2);
+        }
+
+        if ($ownTx) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($ownTx && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('createNoShowRefund failed for booking ' . ($booking['id'] ?? '?') . ': ' . $e->getMessage());
+        $none['error'] = $e->getMessage();
+        return $none;
     }
-
-    // Find the most recent completed payment for this booking
-    $payStmt = $pdo->prepare("
-        SELECT id, payment_method, booking_type, booking_reference, vat_rate
-        FROM payments
-        WHERE booking_id = ? AND COALESCE(payment_type, '') != 'refund'
-          AND payment_status IN ('completed','paid')
-        ORDER BY payment_date DESC, id DESC
-        LIMIT 1
-    ");
-    $payStmt->execute([(int)$booking['id']]);
-    $originalPayment = $payStmt->fetch(PDO::FETCH_ASSOC);
-
-    $vatRate   = (float)($originalPayment['vat_rate'] ?? 0);
-    $vatAmount = round($refundAmount * ($vatRate / (100 + $vatRate)), 2);
-    $payAmount = $refundAmount - $vatAmount;
-    $refundRef = 'REF-' . date('Y') . '-' . str_pad((string)rand(1, 999999), 6, '0', STR_PAD_LEFT);
-
-    $pdo->prepare("
-        INSERT INTO payments (
-            payment_reference, booking_type, booking_id, booking_reference,
-            payment_date, payment_amount, vat_rate, vat_amount, total_amount,
-            payment_method, payment_type, payment_status,
-            original_payment_id, refund_reason, refund_status, refund_amount, refund_notes,
-            recorded_by, created_at
-        ) VALUES (
-            ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, 'refund', 'pending',
-            ?, 'cancellation', 'pending', ?, ?,
-            ?, NOW()
-        )
-    ")->execute([
-        $refundRef,
-        $originalPayment['booking_type'] ?? 'room',
-        (int)$booking['id'],
-        $booking['booking_reference'],
-        date('Y-m-d'),
-        $payAmount, $vatRate, $vatAmount, $refundAmount,
-        $originalPayment['payment_method'] ?? 'other',
-        $originalPayment['id'] ?? null,
-        $refundAmount,
-        'No-show auto-refund (' . $policy . ' policy) — pending admin review and processing.',
-        $adminUserId,
-    ]);
 
     if (function_exists('rh_log_event')) {
         rh_log_event('noshow-refund', 'info', 'Pending refund created for no-show booking', [
@@ -643,5 +695,6 @@ function createNoShowRefund(array $booking, int $adminUserId, PDO $pdo): array
         'refund_ref'    => $refundRef,
         'refund_amount' => $refundAmount,
         'policy'        => $policy,
+        'error'         => '',
     ];
 }
