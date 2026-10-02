@@ -48,7 +48,8 @@ live server is the owner's job** (owner, 2026-10-02) — `main` being ahead of l
   guests-first booking page; individual-room/blocking/assignment overhaul; date-change re-checks; assignment never reprices;
   joined rooms hold member rooms (search + calendar); scripts/ locked to CLI (was web-executable on live); lint 0 errors, smoke all green.
 - Owner actions: set the live URL/hosting (site_url 404s); enter events + guest services; replace the 3 Facebook-post reviews; real restaurant tables/recipes; add staff accounts and at least one manager; own sender address; deploy.
-- Open decision both hotels: MySQL sql_mode lacks STRICT_TRANS_TABLES (silent truncation) - test on staging first.
+- [x] 2026-10-03: strict SQL on for every connection (commit 87cb876 / 6748ff7; HOTEL_SQL_STRICT=0 to disable); 4 INSERTs that relied on silent defaults fixed; all suites green under strict.
+- [x] 2026-10-03 (Rosalyn's): test accounts rosalyns_uat + jptest and the 2 POS test orders/payments deleted. Rosalyn's now has NO manager account - create one.
 
 **Still open — owner / hotel staff**
 - [ ] **Email sender:** sends as `info@promanaged-it.com`; move `email_from_email` and `smtp_*` together to a Liwonde address (A4).
