@@ -43,6 +43,13 @@ live server is the owner's job** (owner, 2026-10-02) — `main` being ahead of l
 - [x] Cleanup: superseded cron scripts removed; `error_log` files ignored;
       leftover Copilot config removed (7036f6b). (dad56a9)
 
+**Readiness check 2026-10-03 (code: READY; go-live gated by owner actions below)**
+- Done since: booking-reference prefix setting; getSetting default-cache fix; one guests->rooms rule (site/widget/admin/API);
+  guests-first booking page; individual-room/blocking/assignment overhaul; date-change re-checks; assignment never reprices;
+  joined rooms hold member rooms (search + calendar); scripts/ locked to CLI (was web-executable on live); lint 0 errors, smoke all green.
+- Owner actions: set the live URL/hosting (site_url 404s); enter events + guest services; replace the 3 Facebook-post reviews; real restaurant tables/recipes; add staff accounts and at least one manager; own sender address; deploy.
+- Open decision both hotels: MySQL sql_mode lacks STRICT_TRANS_TABLES (silent truncation) - test on staging first.
+
 **Still open — owner / hotel staff**
 - [ ] **Email sender:** sends as `info@promanaged-it.com`; move `email_from_email` and `smtp_*` together to a Liwonde address (A4).
 - [ ] Grant **Check-in to Room Not Clean** / **Check-out With Balance** to any non-manager who needs them (User Management → Guest Services).
