@@ -42,9 +42,7 @@ mkdir -p "${LOG_DIR}"
 # Format: "<cron schedule>|<script + flags>|<log file>|<description>"
 JOBS=(
   "0 2 * * *|scripts/backup_database.php --quiet|backup.log|Database backup (retention: 14 daily / 8 weekly / 12 monthly)"
-  "*/15 * * * *|scripts/expire_tentative_bookings.php|tentative-expiry.log|Release expired tentative holds back to inventory"
-  "10 8 * * *|scripts/guest_lifecycle_emails.php --quiet|guest-lifecycle.log|Pre-arrival and post-stay guest emails"
-  "15 8 * * *|scripts/gym_membership_reminders.php --quiet|gym-reminders.log|Gym membership expiry reminders"
+  "*/15 * * * *|scripts/auto-scheduler-run.php --quiet|auto-scheduler.log|Automated emails + backups (optional: they also run on page loads)"
   "* * * * *|scripts/scheduled-cache-clear.php --quiet|cache-clear.log|Cache clear (honours the schedule set in admin/cache-management.php)"
 )
 
