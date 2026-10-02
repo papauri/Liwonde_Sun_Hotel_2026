@@ -12,6 +12,50 @@ and the live site is running code from 2026-09-02 morning.**
 
 ---
 
+## Go-live round — 2026-10-02 (owner-requested; done jointly in Rosalyn's and Liwonde)
+
+Every item below was built in both repos with the same targeted edits, `php -l` clean,
+booking/finance/POS-KDS smoke tests green, and pushed to `origin/main`. **Deploying to the
+live server is the owner's job** (owner, 2026-10-02) — `main` being ahead of live is expected.
+
+**Done**
+- [x] Branded PDF/email document templates + automated emails without cron — web-triggered
+      scheduler (`includes/auto-scheduler.php`, jobs in `includes/auto-email-jobs.php`, Admin →
+      Automated Emails, migration 040). Overdue reminders 1/3/7 days (stop at 30), quotation
+      expiry, tentative-hold reminder + expired notice (the expiry email had never been sent:
+      the page-load sweep expired holds before the cron script looked), pre-arrival, post-stay,
+      gym renewal. Idempotent via `automated_email_log`. (ba49e5f)
+- [x] Hotel timezone: PHP + MySQL session on Africa/Blantyre (`RH_TIMEZONE`, `HOTEL_TIMEZONE`
+      override); station hours, KDS recall/ticket clocks and POS/KDS timestamps use it.
+      Rows stored before this are UTC (2 h early); dates unaffected. (bc5db60)
+- [x] Admin/POS/KDS sign-out after 8 idle hours (`includes/admin-session.php`); polling does
+      not count as activity; session GC raised in `.user.ini`. (bc5db60)
+- [x] Check-in blocked while a room is not marked clean; `checkin_room_not_ready` permission
+      (managers by default, grantable per user) confirms and is logged to the timeline. Also
+      fixed: checkout-with-balance overrides never reached the timeline (invalid action_type).
+      (ad65730 + c7bd4ad)
+- [x] Events: capacity enforced, extra RSVPs `waitlisted`, staff "Promote from waitlist";
+      status dropdown can no longer bypass Cancel. No schema change. (a3cd0d2)
+- [x] Nightly database backup as a scheduler job (server only, after 01:00, >20 h since the
+      last one). (f7de08d)
+- [x] Admin date pickers no longer go through UTC (`rhYmd()`/`rhYmdHm()`): Reports period
+      shortcuts, gym expiry, create-booking min check-out, maintenance times. (8e11dd2)
+- [x] Cleanup: superseded cron scripts removed; `error_log` files ignored;
+      leftover Copilot config removed (7036f6b). (dad56a9)
+
+**Still open — owner / hotel staff**
+- [ ] **Email sender:** sends as `info@promanaged-it.com`; move `email_from_email` and `smtp_*` together to a Liwonde address (A4).
+- [ ] Grant **Check-in to Room Not Clean** / **Check-out With Balance** to any non-manager who needs them (User Management → Guest Services).
+- [ ] Enter events and guest services (both empty); real restaurant floor plan (14 demo tables) and costed recipes; replace the 3 Facebook-post "reviews"; add staff accounts (2 users).
+- [ ] `sql_mode` without `STRICT_TRANS_TABLES` (X-02 / B1) — test on a staging copy first.
+- [ ] `stock_payments` (POS payment split panel always empty) and `room_features`
+      (`api/spatial-loading.php`, called from `restaurant.php`) — recommended: repoint the panel
+      at `payments`; check whether the restaurant page really uses the endpoint before removing.
+- [ ] Staging database; then one real booking end to end in a browser (never done — both live
+      databases have 0 bookings), check-in, POS on a tablet.
+
+---
+
 ## PRODUCTION READINESS — assessed 2026-09-03
 
 **Verdict: not ready.** Three blockers, in order of severity.
@@ -868,7 +912,7 @@ Ordered by what blocks production. Owner actions are marked; everything else is 
       an artifact of auditing a stale copy at the old path; against the real host
       (`<temp-cpanel-domain>`) every marker matches the tree.
       Live URL confirmed by the owner 2026-09-03.
-- [ ] **A1b — Deploy the admin login-redirect fix. NEW 2026-09-03.** `/admin/` sends
+- [x] **A1b — Deploy the admin login-redirect fix. NEW 2026-09-03.** _Committed as d251eee; deploy is the owner's._ `/admin/` sends
       `login.php?redirect=admin`, and logging in from the panel root then lands on `/admin/admin`
       (404). Reproduced against the live host. Cause: `basename()` on a directory URL returns the
       directory name, and the sanitizer only stripped `admin/` **with** a trailing slash. Fixed in
@@ -885,7 +929,7 @@ Ordered by what blocks production. Owner actions are marked; everything else is 
 - [ ] **A4 — Liwonde SMTP. OWNER ACTION** (`BLOCKED: 9`). Guests currently receive confirmation
       from `info@promanaged-it.com`. `email_from_email` and `smtp_*` must move together or
       deliverability gets worse, not better.
-- [ ] **A5 — Install the crontab on the server. OWNER ACTION.** `scripts/setup-cron.sh` is
+- [x] **A5 — Install the crontab on the server.** _Superseded 2026-10-02: emails and the nightly backup now run from the web scheduler; cron is optional (`scripts/auto-scheduler-run.php`)._ Original note: `scripts/setup-cron.sh` is
       written and dry-run-verified (5 jobs) but nothing is scheduled on live yet, so there are
       **still no automated backups**, no tentative-hold expiry and no lifecycle email.
 
