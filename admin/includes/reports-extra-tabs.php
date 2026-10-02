@@ -61,10 +61,18 @@ $fnb = [
         $st->execute([$rp_from, $rp_to]);
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }),
+    // POS money by method, from `payments` (booking_type='restaurant', written by
+    // rh_sync_restaurant_payment()). `stock_payments` never existed, and rp_safe() hid the
+    // error as "no payments". Canonical net-paid rule: a sale counts while its payment_status
+    // is completed/paid/refunded/partially_refunded (refunds are their own rows, listed below).
     'payment_split' => rp_safe(function() use ($pdo, $rp_from, $rp_to) {
-        $st = $pdo->prepare("SELECT payment_method, COUNT(*) AS n, SUM(amount) AS total
-            FROM stock_payments
-            WHERE created_at BETWEEN ? AND ? AND status='completed'
+        $st = $pdo->prepare("SELECT payment_method, COUNT(*) AS n, SUM(total_amount) AS total
+            FROM payments
+            WHERE booking_type='restaurant'
+              AND deleted_at IS NULL
+              AND COALESCE(payment_type,'') <> 'refund'
+              AND payment_status IN ('completed','paid','refunded','partially_refunded')
+              AND created_at BETWEEN ? AND ?
             GROUP BY payment_method ORDER BY total DESC");
         $st->execute([$rp_from, $rp_to]);
         return $st->fetchAll(PDO::FETCH_ASSOC);
@@ -201,11 +209,19 @@ $voids = [
         $st->execute([$rp_from, $rp_to]);
         return $st->fetch(PDO::FETCH_ASSOC) ?: [];
     }, []),
+    // Refunds are their own `payments` rows (payment_type='refund'); created_at / recorded_by
+    // stand in for the refunded_at / refunded_by names the view renders. Only refunds that
+    // went (or are going) out: refund_status completed or processing.
     'refunds' => rp_safe(function() use ($pdo, $rp_from, $rp_to) {
-        $st = $pdo->prepare("SELECT id, payment_reference, amount, refund_reason, refunded_at, refunded_by
-            FROM stock_payments
-            WHERE status='refunded' AND refunded_at BETWEEN ? AND ?
-            ORDER BY refunded_at DESC LIMIT 100");
+        $st = $pdo->prepare("SELECT id, payment_reference, ABS(total_amount) AS amount, refund_reason,
+                   created_at AS refunded_at, recorded_by AS refunded_by
+            FROM payments
+            WHERE booking_type='restaurant'
+              AND payment_type='refund'
+              AND deleted_at IS NULL
+              AND COALESCE(refund_status,'completed') IN ('completed','processing')
+              AND created_at BETWEEN ? AND ?
+            ORDER BY created_at DESC LIMIT 100");
         $st->execute([$rp_from, $rp_to]);
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }),
