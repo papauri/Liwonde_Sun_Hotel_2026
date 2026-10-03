@@ -308,7 +308,7 @@ $fs = [
     'footer_design_credit' => getSetting('footer_design_credit', ''),
 ];
 
-$site_name = getSetting('site_name', 'Admin');
+$site_name = getSetting('site_name', 'Hotel');
 $active_tab = $_GET['tab'] ?? 'links';
 ?>
 <!DOCTYPE html>

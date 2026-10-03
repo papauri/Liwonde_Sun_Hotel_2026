@@ -101,7 +101,7 @@ $heroImageMobile2x = buildHeroImageSrc((string)$heroImagePath, 'width=1920&forma
 $heroHasMedia = !empty($heroVideoPath) || !empty($heroImagePath);
 
 // Unified eyebrow label (UI only)
-$hero_site_name = function_exists('getSetting') ? (string) getSetting('site_name', 'Liwonde Sun Hotel') : 'Liwonde Sun Hotel';
+$hero_site_name = function_exists('getSetting') ? (string) getSetting('site_name', 'Hotel') : 'Liwonde Sun Hotel';
 
 // Booking trust chips — home hero only, edited in admin → Section Headers → Page Hero Text.
 // They make claims about the booking flow, so they must never appear on other heroes.
