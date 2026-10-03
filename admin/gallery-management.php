@@ -120,10 +120,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'add') {
             $imagePath = uploadGalleryImage($_FILES['image'] ?? null);
-            $imageUrl = $imagePath ?: ($_POST['image_url_external'] ?? '');
+            $imageUrl = $imagePath ?: galleryCleanImageUrl($_POST['image_url_external'] ?? '');
 
-            if (empty($imageUrl)) {
-                $error = 'Please provide an image (upload or URL).';
+            if (trim((string)($_POST['title'] ?? '')) === '') {
+                $imageUrl = '';
+                $error = 'Title is required.';
+                if ($imagePath) {
+                    galleryUnlinkLocal($imagePath);
+                }
+                if ($isAjax) {
+                    header('Content-Type: application/json; charset=utf-8');
+                    echo json_encode(['success' => false, 'message' => $error]);
+                    exit;
+                }
+            } elseif (empty($imageUrl)) {
+                $error = galleryFileSubmitted('image')
+                    ? 'The image was rejected: use a JPG, PNG, WebP or GIF under 8 MB.'
+                    : 'Please provide an image (upload or URL).';
                 if ($isAjax) {
                     header('Content-Type: application/json; charset=utf-8');
                     echo json_encode(['success' => false, 'message' => $error]);
@@ -146,14 +159,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([
-                    $_POST['title'],
+                    trim((string)$_POST['title']),
                     $_POST['description'] ?? '',
                     $imageUrl,
                     $videoPath,
                     $videoType,
                     $_POST['category'] ?? 'general',
-                    isset($_POST['is_active']) ? 1 : 1,
-                    $_POST['display_order'] ?? 0
+                    1,
+                    (int)($_POST['display_order'] ?? 0)
                 ]);
 
                 $newId = (int)$pdo->lastInsertId();
@@ -191,20 +204,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $videoType = $videoUpload['type'] ?? null;
             }
 
+            if (trim((string)($_POST['title'] ?? '')) === '' || (int)($_POST['id'] ?? 0) <= 0) {
+                throw new RuntimeException('Title and a valid item are required.');
+            }
+            if (!$imagePath && galleryFileSubmitted('image')) {
+                throw new RuntimeException('The image was rejected: use a JPG, PNG, WebP or GIF under 8 MB.');
+            }
             $updateFields = ['title = ?', 'description = ?', 'category = ?', 'display_order = ?'];
             $updateValues = [
-                $_POST['title'],
+                trim((string)$_POST['title']),
                 $_POST['description'] ?? '',
                 $_POST['category'] ?? 'general',
-                $_POST['display_order'] ?? 0
+                (int)($_POST['display_order'] ?? 0)
             ];
 
-            if ($imagePath) {
+            $oldImageToRemove = null;
+            $externalImage = galleryCleanImageUrl($_POST['image_url_external'] ?? '');
+            if ($imagePath || $externalImage !== '') {
+                $oldImg = $pdo->prepare('SELECT image_url FROM hotel_gallery WHERE id = ?');
+                $oldImg->execute([(int)$_POST['id']]);
+                $oldImageToRemove = (string)$oldImg->fetchColumn();
                 $updateFields[] = 'image_url = ?';
-                $updateValues[] = $imagePath;
-            } elseif (!empty($_POST['image_url_external'])) {
-                $updateFields[] = 'image_url = ?';
-                $updateValues[] = $_POST['image_url_external'];
+                $updateValues[] = $imagePath ?: $externalImage;
+                if ($oldImageToRemove === ($imagePath ?: $externalImage)) {
+                    $oldImageToRemove = null;
+                }
             }
 
             if ($videoPath) {
@@ -222,11 +246,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updateValues[] = null;
             }
 
-            $updateValues[] = $_POST['id'];
+            $updateValues[] = (int)$_POST['id'];
 
             $sql = "UPDATE hotel_gallery SET " . implode(', ', $updateFields) . " WHERE id = ?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($updateValues);
+            if ($oldImageToRemove) {
+                galleryUnlinkLocal($oldImageToRemove); // replaced image no longer referenced
+            }
 
             $itemId = (int)($_POST['id'] ?? 0);
             if ($itemId > 0) {
@@ -254,30 +281,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Get image path before deleting
             $stmt = $pdo->prepare("SELECT image_url, video_path FROM hotel_gallery WHERE id = ?");
-            $stmt->execute([$_POST['id']]);
+            $stmt->execute([$itemId]);
             $item = $stmt->fetch(PDO::FETCH_ASSOC);
 
             $stmt = $pdo->prepare("DELETE FROM hotel_gallery WHERE id = ?");
-            $stmt->execute([$_POST['id']]);
+            $stmt->execute([$itemId]);
 
-            // Delete local files
+            // Delete local files (only inside images/ or videos/)
             if ($item) {
-                if ($item['image_url'] && !preg_match('#^https?://#i', $item['image_url'])) {
-                    $path = '../' . $item['image_url'];
-                    if (file_exists($path)) @unlink($path);
-                }
-                if ($item['video_path'] && !preg_match('#^https?://#i', $item['video_path'])) {
-                    $path = '../' . $item['video_path'];
-                    if (file_exists($path)) @unlink($path);
-                }
+                galleryUnlinkLocal($item['image_url']);
+                galleryUnlinkLocal($item['video_path']);
             }
             $message = 'Gallery item deleted successfully!';
         } elseif ($action === 'toggle_active') {
             $stmt = $pdo->prepare("UPDATE hotel_gallery SET is_active = NOT is_active WHERE id = ?");
-            $stmt->execute([$_POST['id']]);
+            $stmt->execute([(int)($_POST['id'] ?? 0)]);
             $message = 'Gallery item status updated!';
         }
-    } catch (PDOException $e) {
+    } catch (Throwable $e) {
         $error = 'Error: ' . $e->getMessage();
         if ($isAjax) {
             header('Content-Type: application/json; charset=utf-8');
