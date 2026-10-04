@@ -432,8 +432,8 @@ try {
         <?php endif; ?>
 
         <!-- Preset awareness note -->
-        <div class="security-note" style="border-left-color:#8B7355;background:#fdf8f0;">
-            <i class="fas fa-puzzle-piece" style="color:#8B7355;"></i>
+        <div class="security-note" style="border-left-color:#7E684B;background:#fdf8f0;">
+            <i class="fas fa-puzzle-piece" style="color:#7E684B;"></i>
             <div>
                 <strong>Modules &amp; presets:</strong>
                 A page only goes live when <em>both</em> its status here is <strong>Enabled</strong> <em>and</em> its business module is switched on for the active preset.
@@ -499,7 +499,7 @@ try {
                                                     <div style="font-size:12px;color:#888;margin-top:2px;"><?php echo htmlspecialchars($page['description']); ?></div>
                                                 <?php endif; ?>
                                                 <?php if (($page['page_key'] ?? '') === 'booking'): ?>
-                                                    <div style="font-size:12px;color:#8B7355;margin-top:2px;">
+                                                    <div style="font-size:12px;color:#7E684B;margin-top:2px;">
                                                         <i class="fas fa-info-circle"></i> Renders as the Book Now button, not a menu item — its position is ignored, and hiding it removes the button from the whole site.
                                                     </div>
                                                 <?php endif; ?>
@@ -741,7 +741,7 @@ try {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'move';
                     if (dragging && dragging !== this) {
-                        this.style.borderTop = '3px solid var(--gold, #8B7355)';
+                        this.style.borderTop = '3px solid var(--gold, #7E684B)';
                     }
                 });
 
