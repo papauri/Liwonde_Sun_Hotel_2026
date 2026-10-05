@@ -2476,12 +2476,18 @@ $bootstrap['fingerprint'] = md5(
         function closeModal() {
             if (Date.now() - _modalOpenedAt < 250) return; // guard against phantom touch clicks
             document.getElementById('rhModal').style.display = 'none';
+            /* Drop the frame so a closed log stops polling and the next open starts
+               clean rather than flashing the previous order. */
+            const body = document.getElementById('rhModalBody');
+            if (body && body.firstElementChild && body.firstElementChild.tagName === 'IFRAME') {
+                body.innerHTML = '';
+            }
         }
 
-        /* The station screen runs fullscreen on a wall or a counter tablet, so a
-           new tab takes the board off the pass with no browser chrome to get back
-           with. Render the log over the board instead and leave the board intact
-           behind it. */
+        /* The order log opens over the board, not in a new tab. A station screen
+           runs fullscreen on a wall or a counter tablet: a new tab takes the board
+           off the pass entirely, and there is often no visible browser chrome to
+           get back with. */
         function openOrderLog(orderId) {
             openModal('Order log');
             const body = document.getElementById('rhModalBody');

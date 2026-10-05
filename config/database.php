@@ -4538,13 +4538,24 @@ function validateBookingWithAvailability(array $data, ?int $exclude_booking_id =
             }
         }
     } else {
-        // Then check room availability
+        // Then check room availability.
+        // child_rooms_needed must reflect how many rooms of the allocation actually
+        // carry children — a party auto-split across several rooms can need more than
+        // one child-friendly room, and defaulting to 1 lets children be placed in rooms
+        // whose policy forbids them. Callers that have already built an allocation pass
+        // the real count; otherwise fall back to 1 when children are present.
+        $childGuests = (int)($data['child_guests'] ?? 0);
+        $childRoomsNeeded = isset($data['child_rooms_needed'])
+            ? max(1, (int)$data['child_rooms_needed'])
+            : ($childGuests > 0 ? 1 : 0);
+
         $availability = checkRoomAvailability(
             $data['room_id'],
             $data['check_in_date'],
             $data['check_out_date'],
             $exclude_booking_id,
-            (int)($data['child_guests'] ?? 0)
+            $childGuests,
+            max(1, $childRoomsNeeded)
         );
     }
 
@@ -7720,8 +7731,11 @@ function recalculateBookingFinancials(int $bookingId): bool
         if ($baseTotalWithVat <= 0) {
             $baseTotalWithVat = $baseAmount + (float)($booking['vat_amount'] ?? 0);
         }
-        $totalAmount = $baseAmount + $chargesSubtotal;
-        $totalVat = (float)$booking['vat_amount'] + $chargesVat;
+        // NOTE: bookings.total_amount and bookings.vat_amount deliberately stay as the
+        // ROOM-only figures — folio charges are tracked separately in
+        // folio_charges_total, and adjustBookingDates() relies on that split. Do not be
+        // tempted to fold $chargesSubtotal / $chargesVat back into those columns; the
+        // balance below is what reflects the full bill.
         // Cancelled bookings: the room bill is whatever was retained on cancellation
         // (cancellation_retained_amount; NULL = bill voided = 0). The original
         // total_amount / total_with_vat stay untouched as history. Folio charges already
@@ -7830,20 +7844,6 @@ function allocateBookingRefunds(PDO $pdo, int $bookingId, float $amount, bool $l
 }
 
 /**
- * Unique refund reference (REF-YYYY-NNNNNN), re-checked against payments.
- * (Liwonde has no sequence allocator for refunds, unlike the canonical repo.)
- */
-function allocateBookingRefundReference(PDO $pdo): string
-{
-    $check = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE payment_reference = ?");
-    do {
-        $ref = 'REF-' . date('Y') . '-' . str_pad((string)random_int(1, 999999), 6, '0', STR_PAD_LEFT);
-        $check->execute([$ref]);
-    } while ((int)$check->fetchColumn() > 0);
-    return $ref;
-}
-
-/**
  * Active cancellation handling mode (booking setting, admin/booking-settings.php).
  *   void_refund_all  — bill voided, full net paid refunded (default)
  *   void_keep_credit — bill voided, no auto refund; paid money stays as the booking's
@@ -7918,6 +7918,7 @@ function cancelRoomBookingSettled(PDO $pdo, int $bookingId, int $adminUserId, st
     $ownTx = !$pdo->inTransaction();
 
     try {
+        require_once __DIR__ . '/../includes/finance-sequences.php';
         if (!function_exists('logBookingEvent')) {
             require_once __DIR__ . '/../includes/booking-timeline.php';
         }
@@ -8004,7 +8005,7 @@ function cancelRoomBookingSettled(PDO $pdo, int $bookingId, int $adminUserId, st
                 $leg = (float)$alloc['amount'];
                 $vr = (float)($orig['vat_rate'] ?? 0);
                 $va = $vr > 0 ? round($leg * ($vr / (100 + $vr)), 2) : 0.0;
-                $legRef = allocateBookingRefundReference($pdo);
+                $legRef = finance_next_refund_reference($pdo, date('Y-m-d'));
                 $ins->execute([
                     $legRef, $bookingId, $ref,
                     round($leg - $va, 2), $vr, $va, $leg,

@@ -185,7 +185,7 @@ $_nav_groups = [
         // Messaging & integrations
         ['booking-settings.php?section=email-templates#email-templates', 'fas fa-envelope-open-text', 'Email Previewer', 'booking_settings', '', null],
         ['automated-emails.php',           'fas fa-paper-plane',    'Automated Emails',  'booking_settings',  '', null],
-        ['whatsapp-settings.php',          'fab fa-whatsapp',       'WhatsApp Settings', 'whatsapp_settings', 'color:#25D366;', null],
+        ['whatsapp-settings.php',          'fab fa-whatsapp',      'WhatsApp Settings', 'whatsapp_settings', 'color:#25D366;', null],
         ['facebook-settings.php',          'fab fa-facebook-f',     'Facebook Settings', 'facebook_settings', 'color:#1877F2;', null],
         ['api-keys.php',                   'fas fa-key',            'API Keys',          'api_keys',          '', null],
         // System

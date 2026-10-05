@@ -171,7 +171,7 @@ function processVideoUrl($url) {
     if (strpos($url, '..') !== false) {
         return null;
     }
-    
+
     // Detect video platform
     if (preg_match('/youtube\.com|youtu\.be/i', $url)) {
         return ['path' => $url, 'type' => 'youtube'];

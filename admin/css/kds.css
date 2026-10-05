@@ -3865,6 +3865,7 @@ body.kds-sidebar-collapsed .drawer-zoom {
     display: none;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MODAL SIZE — pop-ups follow the display size like the rest of the board
    Everything here is in rem so it scales with html.page-zoomed, and every

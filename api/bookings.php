@@ -302,6 +302,11 @@ try {
             $pdo->rollBack();
             ApiResponse::error($lockedAvailability['error'] ?? 'This room is no longer available for the selected dates. Please choose different dates.', 409);
         }
+        $lockedInventoryError = ga_inventory_error($lockedAvailability, 1, (string)$room['name'], $bookingData['check_in_date'], $bookingData['check_out_date']);
+        if ($lockedInventoryError !== '') {
+            $pdo->rollBack();
+            ApiResponse::error($lockedInventoryError, 409);
+        }
 
         // Insert booking
         $insertStmt = $pdo->prepare("

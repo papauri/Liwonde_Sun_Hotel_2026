@@ -1714,7 +1714,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $vr   = (float)($orig['vat_rate'] ?? 0);
                             $va   = $vr > 0 ? round($leg * ($vr / (100 + $vr)), 2) : 0.0;
                             $insRef->execute([
-                                allocateBookingRefundReference($pdo),
+                                finance_next_refund_reference($pdo, $todayStr_s),
                                 $booking_id,
                                 $sbk['booking_reference'],
                                 $todayStr_s,

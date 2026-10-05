@@ -72,19 +72,14 @@ function uploadGalleryImage(?array $fileInput)
     if (!empty($gm_sizeWarning)) {
         error_log('Gallery upload warning: ' . $gm_sizeWarning);
     }
-    // Extension whitelist
-    $ext = strtolower(pathinfo($fileInput['name'], PATHINFO_EXTENSION));
-    $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-    if (!in_array($ext, $allowedExt, true)) {
-        return null;
-    }
-    // MIME validation
+    // MIME validation; the stored extension comes from the verified MIME, never the client name.
     $finfo = new finfo(FILEINFO_MIME_TYPE);
     $mime = $finfo->file($fileInput['tmp_name']) ?: '';
-    $allowedMime = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!in_array($mime, $allowedMime, true)) {
+    $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+    if (!isset($mimeToExt[$mime])) {
         return null;
     }
+    $ext = $mimeToExt[$mime];
     // Confirm it really is an image
     if (!@getimagesize($fileInput['tmp_name'])) {
         return null;
@@ -102,8 +97,43 @@ function uploadGalleryImage(?array $fileInput)
     return null;
 }
 
+/** External image link: http(s) or site-relative only (no javascript:/data:/traversal); '' when unusable. */
+function galleryCleanImageUrl($value): string
+{
+    $v = trim((string)$value);
+    if ($v === '' || preg_match('#^https?://#i', $v)) {
+        return $v;
+    }
+    if (preg_match('/^[a-z][a-z0-9+.\-]*:/i', $v) || strpos($v, '..') !== false || strpos($v, '//') === 0) {
+        return '';
+    }
+    return ltrim(str_replace('\\', '/', $v), '/');
+}
+
+/** True when a file was submitted in $_FILES[$key] (so a silent validation failure can be reported). */
+function galleryFileSubmitted(string $key): bool
+{
+    return isset($_FILES[$key]) && (int)($_FILES[$key]['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+}
+
+/** Remove a local gallery file only when it lives under images/ or videos/ (never traverse). */
+function galleryUnlinkLocal(?string $rel): void
+{
+    $rel = trim((string)$rel);
+    if ($rel === '' || preg_match('#^https?://#i', $rel) || strpos($rel, '..') !== false) {
+        return;
+    }
+    if (!preg_match('#^(images|videos)/#', $rel)) {
+        return;
+    }
+    $path = __DIR__ . '/../' . $rel;
+    if (is_file($path)) {
+        @unlink($path);
+    }
+}
+
 // Handle POST actions
-$isAjax  = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+$isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
 $savedId = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {

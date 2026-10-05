@@ -1,148 +1,145 @@
 <?php
-/**
- * admin/migrations/migrate.php
- *
- * Schema migration runner — the ONLY sanctioned path for DDL in this project.
- *
- * Schema parity with the Rosalyn platform is locked, so the application must not
- * alter its own schema during a request (see config/database.php,
- * rh_auto_migrate_enabled()). Every schema change lands here instead: one
- * numbered file per change, applied once, recorded in the existing
- * `migration_log` table.
- *
- * Usage (CLI only):
- *   php admin/migrations/migrate.php --status    Show applied / pending
- *   php admin/migrations/migrate.php --dry-run   Print what would run
- *   php admin/migrations/migrate.php --run       Apply pending migrations
- *
- * Migration file format — admin/migrations/NNN_snake_name.php returning:
- *   return [
- *       'name' => 'create_room_inspections',
- *       'up'   => function (PDO $pdo): string { ...; return 'what happened'; },
- *   ];
- *
- * Each 'up' must be idempotent: check before it creates or alters, and return a
- * short human-readable summary. Never write destructive DDL here.
- */
 
-declare(strict_types=1);
+/**
+ * Migration runner (CLI only).
+ *
+ * Replaces the lazy `CREATE TABLE` statements that used to sit inside application
+ * code. Those ran on a normal page request, inside a try/catch, so a failure was
+ * invisible — which is exactly how `room_inspections` came to be missing while the
+ * code that needed it carried on silently returning empty results.
+ *
+ * Usage:
+ *   php admin/migrations/migrate.php            # dry run — lists what would apply
+ *   php admin/migrations/migrate.php --run      # applies pending migrations
+ *   php admin/migrations/migrate.php --status   # shows applied/pending only
+ *
+ * Each migration file returns an array:
+ *   ['name' => string, 'check' => fn(PDO): bool, 'up' => fn(PDO): void]
+ * `check` returns true when the migration is ALREADY applied, so re-running is safe.
+ */
 
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
-    header('Content-Type: text/plain');
-    echo "Forbidden: migrations are CLI-only.\n";
-    exit(1);
+    exit("migrate.php is CLI-only.\n");
 }
 
-$args    = array_slice($argv, 1);
-$doRun   = in_array('--run', $args, true);
-$dryRun  = in_array('--dry-run', $args, true);
-$status  = in_array('--status', $args, true) || (!$doRun && !$dryRun);
+$root = dirname(__DIR__, 2);
 
-// The runner connects through the app's own config so credentials resolve
-// identically. This is safe: the auto-migration bootstrap is gated off by
-// default, so including database.php performs no DDL.
-require_once __DIR__ . '/../../config/database.php';
-
-if (!isset($pdo) || !($pdo instanceof PDO)) {
-    fwrite(STDERR, "No database connection.\n");
-    exit(1);
-}
-
-/** Load migration definitions from this directory, in filename order. */
-function rh_load_migrations(): array
-{
-    $files = glob(__DIR__ . '/[0-9][0-9][0-9]_*.php') ?: [];
-    sort($files, SORT_STRING);
-
-    $out = [];
-    foreach ($files as $file) {
-        $def = require $file;
-        $base = basename($file, '.php');
-        if (!is_array($def) || !isset($def['up']) || !is_callable($def['up'])) {
-            fwrite(STDERR, "Skipping malformed migration: {$base}\n");
+/**
+ * Deliberately does NOT include config/database.php.
+ *
+ * That file runs eleven ensure*() schema functions at connection time, so merely
+ * including it issues information_schema probes and DDL against whatever database
+ * it resolves. A migration runner must be the only thing changing the schema when
+ * it runs, so it builds its own connection from the same credentials instead.
+ */
+$dbCfg = ['host' => '', 'name' => '', 'user' => '', 'pass' => '', 'port' => '3306'];
+$envFile = $root . '/.env';
+if (is_readable($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) {
             continue;
         }
-        $out[] = [
-            'id'   => (int)substr($base, 0, 3),
-            'file' => $base,
-            'name' => (string)($def['name'] ?? $base),
-            'up'   => $def['up'],
-        ];
+        [$k, $v] = explode('=', $line, 2);
+        $map = ['DB_HOST' => 'host', 'DB_NAME' => 'name', 'DB_USER' => 'user', 'DB_PASS' => 'pass', 'DB_PORT' => 'port'];
+        $k = trim($k);
+        if (isset($map[$k])) {
+            $dbCfg[$map[$k]] = trim(trim($v), "\"'");
+        }
     }
-    return $out;
 }
-
-/** Names already recorded as completed. */
-function rh_applied(PDO $pdo): array
-{
-    $done = [];
-    $stmt = $pdo->query("SELECT migration_name FROM migration_log WHERE status = 'completed'");
-    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $n) {
-        $done[(string)$n] = true;
+foreach (['DB_HOST' => 'host', 'DB_NAME' => 'name', 'DB_USER' => 'user', 'DB_PASS' => 'pass', 'DB_PORT' => 'port'] as $env => $key) {
+    $fromEnv = getenv($env);
+    if ($dbCfg[$key] === '' && $fromEnv !== false) {
+        $dbCfg[$key] = $fromEnv;
     }
-    return $done;
+}
+if ($dbCfg['host'] === '' || $dbCfg['name'] === '') {
+    fwrite(STDERR, "No database credentials found (.env or environment).\n");
+    exit(1);
 }
 
-$migrations = rh_load_migrations();
-$applied    = rh_applied($pdo);
-
-$pending = array_values(array_filter(
-    $migrations,
-    static fn(array $m): bool => !isset($applied[$m['name']])
-));
-
-printf("Migrations found: %d | applied: %d | pending: %d\n\n", count($migrations), count($applied), count($pending));
-
-foreach ($migrations as $m) {
-    printf("  [%s] %-40s %s\n", isset($applied[$m['name']]) ? 'x' : ' ', $m['name'], $m['file']);
-}
-echo "\n";
-
-if ($status) {
-    echo "Read-only. Use --dry-run to preview, --run to apply.\n";
-    exit(0);
-}
-
-if (!$pending) {
-    echo "Nothing to do — all migrations applied.\n";
-    exit(0);
-}
-
-if ($dryRun) {
-    echo "DRY RUN — would apply:\n";
-    foreach ($pending as $m) {
-        printf("  - %s (%s)\n", $m['name'], $m['file']);
-    }
-    echo "\nNo changes made.\n";
-    exit(0);
-}
-
-$failed = 0;
-foreach ($pending as $m) {
-    printf("Applying %s ... ", $m['name']);
-
-    $mark = $pdo->prepare(
-        "INSERT INTO migration_log (migration_name, migration_date, status, created_at)
-         VALUES (?, NOW(), 'in_progress', NOW())"
+try {
+    $pdo = new PDO(
+        sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', $dbCfg['host'], $dbCfg['port'] ?: '3306', $dbCfg['name']),
+        $dbCfg['user'],
+        $dbCfg['pass'],
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
     );
-    $mark->execute([$m['name']]);
-    $logId = (int)$pdo->lastInsertId();
+} catch (PDOException $e) {
+    fwrite(STDERR, 'Connection failed: ' . $e->getMessage() . "\n");
+    exit(1);
+}
+
+printf("Database: %s@%s\n", $dbCfg['name'], $dbCfg['host']);
+
+$apply  = in_array('--run', $argv, true);
+$status = in_array('--status', $argv, true);
+
+$files = glob(__DIR__ . '/[0-9]*.php') ?: [];
+sort($files);
+if (!$files) {
+    echo "No migration files found.\n";
+    exit(0);
+}
+
+echo $apply ? "Applying migrations\n" : "DRY RUN — nothing will be changed (pass --run to apply)\n";
+echo str_repeat('-', 62) . "\n";
+
+$pending = 0;
+$applied = 0;
+
+foreach ($files as $file) {
+    $m = require $file;
+    $label = basename($file);
+
+    if (!is_array($m) || !isset($m['name'], $m['check'], $m['up'])) {
+        printf("  %-40s MALFORMED — skipped\n", $label);
+        continue;
+    }
 
     try {
-        $summary = (string)($m['up'])($pdo);
-        $pdo->prepare("UPDATE migration_log SET status = 'completed', migration_date = NOW() WHERE migration_id = ?")
-            ->execute([$logId]);
-        echo "OK — {$summary}\n";
+        $already = (bool)($m['check'])($pdo);
     } catch (Throwable $e) {
-        $pdo->prepare("UPDATE migration_log SET status = 'failed' WHERE migration_id = ?")
-            ->execute([$logId]);
-        $failed++;
-        echo "FAILED\n";
-        fwrite(STDERR, "  {$m['name']}: " . $e->getMessage() . "\n");
-        break; // stop on first failure — do not run later migrations against a half-migrated schema
+        printf("  %-40s CHECK FAILED: %s\n", $label, $e->getMessage());
+        continue;
+    }
+
+    if ($already) {
+        printf("  %-40s already applied\n", $label);
+        continue;
+    }
+
+    $pending++;
+
+    if (!$apply || $status) {
+        printf("  %-40s PENDING\n", $label);
+        continue;
+    }
+
+    try {
+        ($m['up'])($pdo);
+
+        // Record it, consistent with the rows already in migration_log.
+        $nextId = (int)$pdo->query("SELECT COALESCE(MAX(migration_id), 0) + 1 FROM migration_log")->fetchColumn();
+        $log = $pdo->prepare(
+            "INSERT INTO migration_log (migration_id, migration_name, migration_date, status, created_at)
+             VALUES (?, ?, NOW(), 'completed', NOW())"
+        );
+        $log->execute([$nextId, $m['name']]);
+
+        $applied++;
+        printf("  %-40s APPLIED\n", $label);
+    } catch (Throwable $e) {
+        printf("  %-40s FAILED: %s\n", $label, $e->getMessage());
+        exit(1);
     }
 }
 
-printf("\nDone. applied=%d failed=%d\n", count($pending) - $failed, $failed);
-exit($failed > 0 ? 1 : 0);
+echo str_repeat('-', 62) . "\n";
+if ($apply) {
+    printf("%d applied, %d pending remaining.\n", $applied, max(0, $pending - $applied));
+} else {
+    printf("%d pending. Re-run with --run to apply.\n", $pending);
+}

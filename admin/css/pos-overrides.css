@@ -6900,6 +6900,7 @@ html.page-zoomed .pos-ready-card {
     z-index: 100010 !important;
 }
 
+
 /* ══════════════════════════════════════════════════════════════════════════
    Modal size — pop-ups follow the display size like the rest of the till
    rem-based so they scale with html.page-zoomed; screen-relative bounds are

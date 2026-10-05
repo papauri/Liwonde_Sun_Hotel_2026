@@ -794,7 +794,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_booking'])) {
                 $pay_uuid = ($__incomingClientUuid ?? '') ? ($__incomingClientUuid . ':pay' . ($bi > 0 ? $bi : '')) : null;
                 // Gross = net x (1 + vat% + levy%): the levy sits outside the VAT base, so the VAT share is vat% / (100 + vat% + levy%).
                 $pay_vat  = ($vat_rate_db > 0) ? round($this_amount * ($vat_rate_db / (100 + $vat_rate_db + $levy_pct_db)), 2) : 0.0;
-                // payment_amount is NET (ex-VAT); payment_amount + vat_amount = total_amount (gross collected).
+                // Invariant across every payments write: payment_amount (NET) +
+                // vat_amount = total_amount (GROSS). accounting-dashboard.php sums
+                // payment_amount as total_collected_excl_vat, so storing the gross
+                // figure here overstated net collections by the VAT on every booking
+                // taken at the front desk.
                 $pay_net  = round($this_amount - $pay_vat, 2);
                 $receipt_number = finance_next_receipt_number($pdo, date('Y-m-d'));
 

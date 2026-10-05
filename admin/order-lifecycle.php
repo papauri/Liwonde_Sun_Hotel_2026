@@ -311,7 +311,6 @@ function fmt_dur(?int $from, ?int $to) { if (!$from || !$to) return '—'; $s = 
         <div class="metric"><div class="lbl">Placed → paid</div><div class="val"><?php echo fmt_dur($placed, $paid); ?></div></div>
         <div class="metric"><div class="lbl">Total cycle</div><div class="val"><?php echo fmt_dur($placed, $paid ?: $served); ?></div></div>
     </div>
-
     <?php if (!$fired && !$ready): ?>
         <?php /* A bar/coffee-only order is auto-served and never reaches a kitchen
                  board, so three empty stage tiles look like missing data rather than
