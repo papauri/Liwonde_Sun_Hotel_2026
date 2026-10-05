@@ -2141,12 +2141,13 @@ unset($_SESSION['success_message'], $_SESSION['error_message']);
     <!-- Add Charge Modal -->
     <div class="modal-overlay" id="addChargeModal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-plus" style="color: var(--gold, #7E684B);"></i> Add Custom Charge</h3>
-                <button class="modal-close" onclick="closeAddChargeModal()">&times;</button>
-            </div>
             <form method="POST" id="addChargeForm">
                 <input type="hidden" name="charge_action" value="add_charge">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus" style="color: var(--gold, #7E684B);"></i> Add Custom Charge</h3>
+                <button type="button" class="modal-close" aria-label="Close" onclick="closeAddChargeModal()">&times;</button>
+            </div>
+                <div class="modal-body">
                 <div class="form-group">
                     <label>Charge Type</label>
                     <select name="charge_type" required>
@@ -2174,7 +2175,8 @@ unset($_SESSION['success_message'], $_SESSION['error_message']);
                     <label>Unit Price</label>
                     <input type="number" name="unit_price" placeholder="0.00" min="0" step="0.01" required data-currency="<?php echo htmlspecialchars($currency_symbol, ENT_QUOTES); ?>">
                 </div>
-                <div class="modal-actions">
+                </div>
+                <div class="modal-actions modal-footer">
                     <div id="addChargeFeedback" class="admin-modal-feedback" style="width:100%;margin-bottom:8px;"></div>
                     <button type="button" class="btn-secondary" onclick="closeAddChargeModal()">Close</button>
                     <button type="submit" id="addChargeSaveBtn" class="btn-primary">Add Charge</button>
@@ -2186,16 +2188,16 @@ unset($_SESSION['success_message'], $_SESSION['error_message']);
     <!-- Menu Quick Add Modal -->
     <div class="modal-overlay" id="menuModal">
         <div class="modal-content wide">
-            <div class="modal-header">
-                <h3><i class="fas fa-utensils" style="color: var(--gold, #7E684B);"></i> Add Menu Item to Folio</h3>
-                <button class="modal-close" onclick="closeMenuModal()">&times;</button>
-            </div>
             <form method="POST" id="menuForm">
                 <input type="hidden" name="charge_action" value="add_menu_item">
                 <input type="hidden" name="menu_type" id="menuType" value="food">
                 <input type="hidden" name="menu_item_id" id="menuItemId" value="">
                 <input type="hidden" name="quantity" id="menuQuantity" value="1">
-
+            <div class="modal-header">
+                <h3><i class="fas fa-utensils" style="color: var(--gold, #7E684B);"></i> Add Menu Item to Folio</h3>
+                <button type="button" class="modal-close" aria-label="Close" onclick="closeMenuModal()">&times;</button>
+            </div>
+                <div class="modal-body">
                 <div class="tab-nav">
                     <button type="button" class="tab-btn active" onclick="switchMenuTab('food')">Food Menu</button>
                     <button type="button" class="tab-btn" onclick="switchMenuTab('drink')">Drinks</button>
@@ -2251,8 +2253,8 @@ unset($_SESSION['success_message'], $_SESSION['error_message']);
                     <label>Quantity</label>
                     <input type="number" id="menuQuantityInput" value="1" min="1" step="1" onchange="updateMenuQuantity()">
                 </div>
-
-                <div class="modal-actions">
+                </div>
+                <div class="modal-actions modal-footer">
                     <div id="menuFolioFeedback" class="admin-modal-feedback" style="width:100%;margin-bottom:8px;"></div>
                     <button type="button" class="btn-secondary" onclick="closeMenuModal()">Close</button>
                     <button type="submit" class="btn-primary" id="menuAddBtn" disabled>Add to Folio</button>
@@ -2264,13 +2266,14 @@ unset($_SESSION['success_message'], $_SESSION['error_message']);
     <!-- Void Charge Modal -->
     <div class="modal-overlay" id="voidChargeModal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-ban" style="color: #a03030;"></i> Void Charge</h3>
-                <button class="modal-close" onclick="closeVoidChargeModal()">&times;</button>
-            </div>
             <form method="POST" id="voidChargeForm">
                 <input type="hidden" name="charge_action" value="void_charge">
                 <input type="hidden" name="charge_id" id="voidChargeId" value="">
+            <div class="modal-header">
+                <h3><i class="fas fa-ban" style="color: #a03030;"></i> Void Charge</h3>
+                <button type="button" class="modal-close" aria-label="Close" onclick="closeVoidChargeModal()">&times;</button>
+            </div>
+                <div class="modal-body">
                 <div class="form-group">
                     <label>Charge to Void</label>
                     <input type="text" id="voidChargeDescription" readonly style="background: #f5f5f5;">
@@ -2279,7 +2282,8 @@ unset($_SESSION['success_message'], $_SESSION['error_message']);
                     <label>Reason for Voiding</label>
                     <textarea name="void_reason" placeholder="e.g., Item not consumed, Error in charging, Guest complaint" required></textarea>
                 </div>
-                <div class="modal-actions">
+                </div>
+                <div class="modal-actions modal-footer">
                     <div id="voidChargeFeedback" class="admin-modal-feedback" style="width:100%;margin-bottom:8px;"></div>
                     <button type="button" class="btn-secondary" onclick="closeVoidChargeModal()">Close</button>
                     <button type="submit" id="voidChargeSaveBtn" class="btn-danger">Void Charge</button>
@@ -2291,13 +2295,13 @@ unset($_SESSION['success_message'], $_SESSION['error_message']);
     <!-- Date Adjustment Modal -->
     <div class="modal-overlay" id="dateAdjustModal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-calendar-alt" style="color: var(--color-lux-gold, #8F6A35);"></i> Adjust Stay Dates</h3>
-                <button class="modal-close" onclick="closeDateAdjustModal()">&times;</button>
-            </div>
             <form method="POST" id="dateAdjustForm">
                 <input type="hidden" name="adjust_dates" value="1">
-
+            <div class="modal-header">
+                <h3><i class="fas fa-calendar-alt" style="color: var(--color-lux-gold, #8F6A35);"></i> Adjust Stay Dates</h3>
+                <button type="button" class="modal-close" aria-label="Close" onclick="closeDateAdjustModal()">&times;</button>
+            </div>
+                <div class="modal-body">
                 <div style="background: #f8f9fb; padding: 16px; border-radius: 12px; margin-bottom: 20px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                         <span style="font-size: 12px; color: #888;">Current Check-in:</span>
@@ -2353,8 +2357,8 @@ unset($_SESSION['success_message'], $_SESSION['error_message']);
                     <label>Reason for Adjustment *</label>
                     <textarea name="adjustment_reason" placeholder="e.g., Guest requested early check-in, Extended stay due to flight delay, Guest checked out early" required></textarea>
                 </div>
-
-                <div class="modal-actions">
+                </div>
+                <div class="modal-actions modal-footer">
                     <div id="dateAdjustFeedback" class="admin-modal-feedback" style="width:100%;margin-bottom:8px;"></div>
                     <button type="button" class="btn-secondary" onclick="closeDateAdjustModal()">Close</button>
                     <button type="submit" class="btn-primary" id="dateAdjustSubmitBtn">Confirm Adjustment</button>
