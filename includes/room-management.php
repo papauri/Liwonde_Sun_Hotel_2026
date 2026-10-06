@@ -410,7 +410,7 @@ function completeRoomTurnover(PDO $pdo, int $roomId, ?int $performedBy): void
  * payment), which keeps the room locked for new room-service orders. Call inside the checkout
  * transaction so the next guest in that room is not blocked. Returns the number of orders closed.
  */
-function closeFolioRoomServiceOrders(PDO $pdo, int $bookingId): int
+function closeFolioChargedRoomServiceOrders(PDO $pdo, int $bookingId): int
 {
     $stmt = $pdo->prepare("UPDATE stock_orders SET status = 'completed', updated_at = NOW()
         WHERE booking_id = ? AND order_type = 'room_service' AND status = 'placed' AND folio_posted_at IS NOT NULL");
@@ -546,7 +546,7 @@ function processGuestCheckout(int $bookingId, ?int $performedBy = null, array $o
         }
 
         // Release the room-service lock: folio-charged orders are settled by this checkout.
-        $workflowResults['room_service_closed'] = closeFolioRoomServiceOrders($pdo, $bookingId);
+        $workflowResults['room_service_closed'] = closeFolioChargedRoomServiceOrders($pdo, $bookingId);
 
         // Generate final invoice
         require_once __DIR__ . '/../config/invoice.php';

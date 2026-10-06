@@ -565,6 +565,9 @@ step('4. Settle folio, checkout at zero balance, invoice, receipt, timeline', fu
 
     $res = processGuestCheckout($id, (int)$user['id'], ['room_status' => ROOM_STATUS_CLEANING]);
     chk(!empty($res['success']), 'checkout succeeded', $res['message'] ?? '');
+    $pl = $pdo->prepare("SELECT COUNT(*) FROM stock_orders WHERE booking_id=? AND order_type='room_service' AND status='placed'");
+    $pl->execute([$id]);
+    chk((int)$pl->fetchColumn() === 0, 'no placed room-service orders remain after checkout (room lock released)');
     logBookingCheckOut($id, $ref, 'admin', (int)$user['id'], $user['full_name']);
     logBookingAudit($id, 'checked-out', ['status' => 'checked-in'], ['status' => 'checked-out'], 'E2E LIVE', $ref);
     $b = fetch_booking($id);
@@ -649,6 +652,7 @@ step('6. Refund-cancel path: cancel leftover open E2E-LIVE bookings through the 
     $st = $pdo->query("SELECT id, booking_reference, status FROM bookings WHERE booking_reference LIKE 'E2E-LIVE-%' AND status IN ('pending','tentative','confirmed','checked-in') ORDER BY id");
     $open = $st->fetchAll(PDO::FETCH_ASSOC);
     echo '    open E2E bookings: ' . count($open) . "\n";
+    chk(true, 'leftover scan complete (' . count($open) . ' open)');
     foreach ($open as $o) {
         $bid = (int)$o['id'];
         if ($o['status'] === 'checked-in') {
