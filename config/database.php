@@ -8049,7 +8049,7 @@ function cancelRoomBookingSettled(PDO $pdo, int $bookingId, int $adminUserId, st
 
         if (function_exists('logBookingEvent')) {
             logBookingEvent(
-                $bookingId, $ref, 'Cancellation settled', 'financial', $summary,
+                $bookingId, $ref, 'Cancellation settled', 'cancellation', $summary,
                 $prev, 'cancelled', 'admin', $adminUserId ?: null, null,
                 ['mode' => $mode, 'retained' => $retained, 'refunded' => $refunded, 'credit_balance' => $credit, 'reason' => $reason]
             );

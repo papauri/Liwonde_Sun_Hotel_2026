@@ -147,8 +147,14 @@ function updateRoomStatus(int $roomId, string $newStatus, string $reason = '', ?
 {
     global $pdo;
 
+    // Callers such as markRoomClean(), passRoomInspection() and processGuestCheckout() already hold a
+    // transaction; a second beginTransaction() threw "There is already an active transaction" and made
+    // every one of those flows fail. Join the caller's transaction instead of opening a nested one.
+    $ownTx = !$pdo->inTransaction();
     try {
-        $pdo->beginTransaction();
+        if ($ownTx) {
+            $pdo->beginTransaction();
+        }
 
         // Get current room status.
         //
@@ -172,7 +178,9 @@ function updateRoomStatus(int $roomId, string $newStatus, string $reason = '', ?
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$room) {
-            $pdo->rollBack();
+            if ($ownTx) {
+                $pdo->rollBack();
+            }
             return ['success' => false, 'message' => 'Room not found'];
         }
 
@@ -182,7 +190,9 @@ function updateRoomStatus(int $roomId, string $newStatus, string $reason = '', ?
         if (empty($options['force'])) {
             $validation = validateRoomStatusTransition($currentStatus, $newStatus);
             if (!$validation['valid']) {
-                $pdo->rollBack();
+                if ($ownTx) {
+                    $pdo->rollBack();
+                }
                 return ['success' => false, 'message' => $validation['reason']];
             }
         }
@@ -201,7 +211,9 @@ function updateRoomStatus(int $roomId, string $newStatus, string $reason = '', ?
         // Handle status-specific workflows
         $workflowResult = handleStatusWorkflow($pdo, $roomId, $currentStatus, $newStatus, $performedBy, $options);
 
-        $pdo->commit();
+        if ($ownTx) {
+            $pdo->commit();
+        }
 
         return [
             'success' => true,
@@ -214,7 +226,9 @@ function updateRoomStatus(int $roomId, string $newStatus, string $reason = '', ?
             ]
         ];
     } catch (PDOException $e) {
-        $pdo->rollBack();
+        if ($ownTx && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log("Room status update error: " . $e->getMessage());
         return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
     }
@@ -390,6 +404,21 @@ function completeRoomTurnover(PDO $pdo, int $roomId, ?int $performedBy): void
 }
 
 /**
+ * Close a booking's room-service orders that were charged to the room folio.
+ *
+ * Folio-charged room-service orders stay status 'placed' (settled via the room bill, not a POS
+ * payment), which keeps the room locked for new room-service orders. Call inside the checkout
+ * transaction so the next guest in that room is not blocked. Returns the number of orders closed.
+ */
+function closeFolioRoomServiceOrders(PDO $pdo, int $bookingId): int
+{
+    $stmt = $pdo->prepare("UPDATE stock_orders SET status = 'completed', updated_at = NOW()
+        WHERE booking_id = ? AND order_type = 'room_service' AND status = 'placed' AND folio_posted_at IS NOT NULL");
+    $stmt->execute([$bookingId]);
+    return $stmt->rowCount();
+}
+
+/**
  * Process guest checkout with full room management
  *
  * @param int $bookingId Booking ID
@@ -515,6 +544,9 @@ function processGuestCheckout(int $bookingId, ?int $performedBy = null, array $o
         } catch (Throwable $e) {
             // older schema without booking_rooms — safe to ignore
         }
+
+        // Release the room-service lock: folio-charged orders are settled by this checkout.
+        $workflowResults['room_service_closed'] = closeFolioRoomServiceOrders($pdo, $bookingId);
 
         // Generate final invoice
         require_once __DIR__ . '/../config/invoice.php';

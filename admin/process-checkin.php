@@ -39,8 +39,8 @@ try {
             echo json_encode(['success' => false, 'message' => $roomGate['message'], 'needs_confirm_room' => $roomGate['needs_confirm']]);
             exit;
         }
-        // Only allow check-in when booking is confirmed AND fully paid
-        $stmt = $pdo->prepare("UPDATE bookings SET status = 'checked-in' WHERE id = ? AND status = 'confirmed' AND payment_status = 'paid'");
+        // Same rule as bookings.php / validateCheckIn(): confirmed is enough, partial payment is allowed.
+        $stmt = $pdo->prepare("UPDATE bookings SET status = 'checked-in' WHERE id = ? AND status = 'confirmed'");
         $stmt->execute([$booking_id]);
 
         if ($stmt->rowCount() > 0) {
@@ -65,6 +65,10 @@ try {
                     VALUES (?, 'available', 'occupied', ?, ?)
                 ");
                 $logStmt->execute([$booking['individual_room_id'], 'Check-in: ' . $booking['booking_reference'], $admin_user_id ?: null]);
+            }
+            if ($booking) {
+                require_once __DIR__ . '/../includes/booking-timeline.php';
+                logBookingCheckIn($booking_id, (string)$booking['booking_reference'], 'admin', $admin_user_id ?: null, $user['full_name'] ?? null);
             }
             if ($booking && $roomGate['override']) {
                 logCheckInRoomNotReadyOverride($booking_id, (string)$booking['booking_reference'], $roomGate['rooms'], $admin_user_id ?: null, $user['full_name'] ?? null);
@@ -96,12 +100,6 @@ try {
         if ($row['status'] !== 'confirmed') {
             http_response_code(400);
             echo json_encode(['success' => false, 'message' => "Cannot check in: booking must be confirmed (current: {$row['status']})"]);
-            exit;
-        }
-
-        if ($row['payment_status'] !== 'paid') {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => "Cannot check in: payment must be PAID (current: {$row['payment_status']})"]);
             exit;
         }
 
