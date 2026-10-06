@@ -35,6 +35,7 @@ if ($header_logo_kicker === '') {
 <!-- Skip to content link for accessibility -->
 <a href="#main-content" class="skip-to-content">Skip to main content</a>
 
+<?php if (function_exists('rhUserTzScript')) { echo rhUserTzScript(); } ?>
 <header class="lsh-header" role="banner">
     <div class="lsh-header__inner">
         <?php
