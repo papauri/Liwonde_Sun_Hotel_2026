@@ -166,3 +166,23 @@ Options -Indexes
     RewriteRule ^favicon-16x16\.png$ favicon.svg [L,T=image/svg+xml]
     RewriteRule ^apple-touch-icon\.png$ /images/logo/logo.jpg [L]
 </IfModule>
+
+# ====================
+# ERROR PAGES
+# ====================
+# Branded 404 for unknown URLs (404.php sends the 404 status itself).
+ErrorDocument 404 /404.php
+
+# ====================
+# SESSION COOKIE HARDENING (mod_php / LiteSpeed only; PHP-FPM reads .user.ini)
+# ====================
+<IfModule mod_php.c>
+    php_flag session.cookie_httponly on
+    php_value session.cookie_samesite Lax
+    php_flag session.use_strict_mode on
+</IfModule>
+<IfModule mod_lsapi.c>
+    php_flag session.cookie_httponly on
+    php_value session.cookie_samesite Lax
+    php_flag session.use_strict_mode on
+</IfModule>
