@@ -368,8 +368,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['disable_booking'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_disabled_action'])) {
     $newDisabledAction = trim((string)$_POST['booking_disabled_action']);
     $newRedirectUrl = trim((string)($_POST['booking_disabled_redirect_url'] ?? ''));
-    if (!in_array($newDisabledAction, ['message', 'redirect', 'hide'], true)) {
-        $newDisabledAction = in_array((string)getSetting('booking_disabled_action', 'message'), ['message', 'redirect', 'hide'], true)
+    if (!in_array($newDisabledAction, ['message', 'contact', 'redirect'], true)) {
+        $newDisabledAction = in_array((string)getSetting('booking_disabled_action', 'message'), ['message', 'contact', 'redirect'], true)
             ? (string)getSetting('booking_disabled_action', 'message') : 'message';
     }
     // Redirect target: site-relative path or http(s) URL only (never javascript:/data:, never //host).
@@ -1454,7 +1454,7 @@ foreach ($canonicalTemplateDefaults as $templateKey => $templateDefaults) {
                     </div>
                 </div>
 
-                <div id="disabled-settings" style="display: none; margin-top: 25px;">
+                <div id="disabled-settings" style="margin-top: 25px;">
                     <h3 style="color: #7E684B; margin-bottom: 20px;"><i class="fas fa-sliders-h"></i> Disabled Mode Settings</h3>
 
                     <form method="POST" action="booking-settings.php">
