@@ -9,6 +9,7 @@ require_once 'admin-init.php';
 /** @var string $csrf_token */
 require_once '../includes/alert.php';
 require_once '../includes/section-headers.php';
+require_once '../includes/form-validation.php';
 
 $user = [
     'id' => $_SESSION['admin_user_id'],
@@ -95,14 +96,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'update_header') {
             $section_key = $_POST['section_key'] ?? '';
             $page = $_POST['page'] ?? '';
-            $section_label = $_POST['section_label'] ?? '';
-            $section_subtitle = $_POST['section_subtitle'] ?? '';
-            $section_title = $_POST['section_title'] ?? '';
-            $section_description = $_POST['section_description'] ?? '';
+            $section_label = rh_clean_text($_POST['section_label'] ?? '');
+            $section_subtitle = rh_clean_text($_POST['section_subtitle'] ?? '');
+            $section_title = rh_clean_text($_POST['section_title'] ?? '');
+            $section_description = trim((string)($_POST['section_description'] ?? ''));
             $is_active = isset($_POST['is_active']) ? 1 : 0;
 
             if (empty($section_key) || empty($page)) {
                 throw new Exception('Section key and page are required.');
+            }
+            // The key + page identify an existing header; headers are not created here.
+            $shExists = $pdo->prepare("SELECT COUNT(*) FROM section_headers WHERE section_key = ? AND page = ?");
+            $shExists->execute([$section_key, $page]);
+            if ((int)$shExists->fetchColumn() === 0) {
+                throw new Exception('That section header no longer exists.');
+            }
+            if ($section_title === '') {
+                throw new Exception('Section title is required.');
+            }
+            if (mb_strlen($section_label) > 100 || mb_strlen($section_subtitle) > 255 || mb_strlen($section_title) > 200) {
+                throw new Exception('Too long: label 100, subtitle 255 and title 200 characters at most.');
+            }
+            if (mb_strlen($section_description) > 2000) {
+                throw new Exception('Description cannot exceed 2000 characters.');
             }
 
             $stmt = $pdo->prepare("
@@ -153,15 +169,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = true;
         } elseif ($action === 'update_hero') {
             $hero_id          = (int)($_POST['hero_id'] ?? 0);
-            $hero_title       = trim($_POST['hero_title'] ?? '');
-            $hero_subtitle    = trim($_POST['hero_subtitle'] ?? '');
-            $hero_description = trim($_POST['hero_description'] ?? '');
-            $primary_cta_text = trim($_POST['primary_cta_text'] ?? '');
-            $primary_cta_link = trim($_POST['primary_cta_link'] ?? '');
+            $hero_title       = rh_clean_text($_POST['hero_title'] ?? '');
+            $hero_subtitle    = rh_clean_text($_POST['hero_subtitle'] ?? '');
+            $hero_description = trim((string)($_POST['hero_description'] ?? ''));
+            $primary_cta_text = rh_clean_text($_POST['primary_cta_text'] ?? '');
+            $primary_cta_link = rh_clean_text($_POST['primary_cta_link'] ?? '');
             $is_active        = isset($_POST['hero_is_active']) ? 1 : 0;
 
             if ($hero_id <= 0 || empty($hero_title)) {
                 throw new Exception('Hero ID and title are required.');
+            }
+            $heroExists = $pdo->prepare("SELECT COUNT(*) FROM page_heroes WHERE id = ?");
+            $heroExists->execute([$hero_id]);
+            if ((int)$heroExists->fetchColumn() === 0) {
+                throw new Exception('That page hero no longer exists.');
+            }
+            if (mb_strlen($hero_title) > 200 || mb_strlen($hero_subtitle) > 200 || mb_strlen($primary_cta_text) > 255 || mb_strlen($primary_cta_link) > 255) {
+                throw new Exception('Too long: title 200, subtitle 200, button text 255 and button link 255 characters at most.');
+            }
+            if (mb_strlen($hero_description) > 2000) {
+                throw new Exception('Hero description cannot exceed 2000 characters.');
+            }
+            if ($primary_cta_link !== '' && !preg_match('#^(https?://|/|\#|mailto:|tel:|[A-Za-z0-9][A-Za-z0-9._/?=&\#-]*$)#i', $primary_cta_link)) {
+                throw new Exception('Button link must be a page (e.g. booking.php), an anchor (#book) or a full web address.');
             }
 
             $stmt = $pdo->prepare("
@@ -242,25 +272,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = true;
         } elseif ($action === 'create_hero') {
             $page_slug_new  = trim(preg_replace('/[^a-z0-9\-]/', '', strtolower($_POST['new_page_slug'] ?? '')));
-            $page_url_new   = trim($_POST['new_page_url'] ?? '');
-            $hero_title_new = trim($_POST['new_hero_title'] ?? '');
+            $page_url_new   = rh_clean_text($_POST['new_page_url'] ?? '');
+            $hero_title_new = rh_clean_text($_POST['new_hero_title'] ?? '');
 
             if (empty($page_slug_new) || empty($hero_title_new)) {
                 throw new Exception('Page slug and hero title are required.');
             }
-
-            // Check slug not already taken
-            $chk = $pdo->prepare("SELECT id FROM page_heroes WHERE page_slug = ? LIMIT 1");
-            $chk->execute([$page_slug_new]);
-            if ($chk->fetchColumn()) {
-                throw new Exception("A hero for slug '{$page_slug_new}' already exists. Edit it from the list below.");
+            if (strlen($page_slug_new) > 100 || mb_strlen($hero_title_new) > 200 || mb_strlen($page_url_new) > 255) {
+                throw new Exception('Too long: slug 100, title 200 and page address 255 characters at most.');
+            }
+            if ($page_url_new !== '' && !preg_match('#^(https?://|/)?[A-Za-z0-9][A-Za-z0-9._/?=&\#-]*$#', $page_url_new)) {
+                throw new Exception('Page address must be a page such as /spa.php.');
             }
 
-            $ins = $pdo->prepare("
-                INSERT INTO page_heroes (page_slug, page_url, hero_title, hero_subtitle, hero_description, is_active, display_order)
-                VALUES (?, ?, ?, NULL, NULL, 1, 99)
-            ");
-            $ins->execute([$page_slug_new, $page_url_new ?: '/' . $page_slug_new . '.php', $hero_title_new]);
+            // Check slug not already taken - checked and inserted under one lock
+            rh_with_create_lock($pdo, 'page_hero', function () use ($pdo, $page_slug_new, $page_url_new, $hero_title_new) {
+                $dup = rh_find_duplicate($pdo, 'page_heroes', 'page_slug', $page_slug_new);
+                if ($dup) {
+                    throw new Exception("A hero for slug '{$dup['value']}' already exists. Edit it from the list below.");
+                }
+
+                $ins = $pdo->prepare("
+                    INSERT INTO page_heroes (page_slug, page_url, hero_title, hero_subtitle, hero_description, is_active, display_order)
+                    VALUES (?, ?, ?, NULL, NULL, 1, 99)
+                ");
+                $ins->execute([$page_slug_new, $page_url_new ?: '/' . $page_slug_new . '.php', $hero_title_new]);
+            });
 
             require_once __DIR__ . '/../config/cache.php';
             clearCache();
@@ -292,7 +329,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = true;
         } elseif ($action === 'update_loader') {
             $loader_id      = (int)($_POST['loader_id'] ?? 0);
-            $loader_subtext = trim($_POST['loader_subtext'] ?? '');
+            $loader_subtext = rh_clean_text($_POST['loader_subtext'] ?? '');
             $loader_active  = isset($_POST['loader_is_active']) ? 1 : 0;
 
             if ($loader_id <= 0) {
@@ -316,27 +353,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = true;
         } elseif ($action === 'create_loader') {
             $loader_slug_new    = trim(preg_replace('/[^a-z0-9\-]/', '', strtolower($_POST['new_loader_slug'] ?? '')));
-            $loader_subtext_new = trim($_POST['new_loader_subtext'] ?? '');
+            $loader_subtext_new = rh_clean_text($_POST['new_loader_subtext'] ?? '');
 
             if ($loader_slug_new === '') {
                 throw new Exception('Page slug is required.');
+            }
+            if (strlen($loader_slug_new) > 100) {
+                throw new Exception('Page slug must be 100 characters or fewer.');
             }
             if (mb_strlen($loader_subtext_new) > 255) {
                 throw new Exception('Loading message must be 255 characters or fewer.');
             }
 
-            $chk = $pdo->prepare("SELECT id FROM page_loaders WHERE page_slug = ? LIMIT 1");
-            $chk->execute([$loader_slug_new]);
-            if ($chk->fetchColumn()) {
-                throw new Exception("A loading screen for '{$loader_slug_new}' already exists. Edit it in the list below.");
-            }
+            rh_with_create_lock($pdo, 'page_loader', function () use ($pdo, $loader_slug_new, $loader_subtext_new) {
+                $dup = rh_find_duplicate($pdo, 'page_loaders', 'page_slug', $loader_slug_new);
+                if ($dup) {
+                    throw new Exception("A loading screen for '{$dup['value']}' already exists. Edit it in the list below.");
+                }
 
-            $maxOrder = (int)$pdo->query("SELECT COALESCE(MAX(display_order), 0) FROM page_loaders")->fetchColumn();
-            $ins = $pdo->prepare("
-                INSERT INTO page_loaders (page_slug, subtext, is_active, display_order)
-                VALUES (?, ?, 1, ?)
-            ");
-            $ins->execute([$loader_slug_new, $loader_subtext_new ?: null, $maxOrder + 1]);
+                $maxOrder = (int)$pdo->query("SELECT COALESCE(MAX(display_order), 0) FROM page_loaders")->fetchColumn();
+                $ins = $pdo->prepare("
+                    INSERT INTO page_loaders (page_slug, subtext, is_active, display_order)
+                    VALUES (?, ?, 1, ?)
+                ");
+                $ins->execute([$loader_slug_new, $loader_subtext_new ?: null, $maxOrder + 1]);
+            });
 
             require_once __DIR__ . '/../config/cache.php';
             clearCache();
