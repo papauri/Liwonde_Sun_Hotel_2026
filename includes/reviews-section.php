@@ -58,8 +58,9 @@ if (empty($hotel_reviews)) {
         <div class="editorial-reviews-grid" data-reviews-grid>
             <?php foreach ($hotel_reviews as $index => $review): ?>
             <div class="editorial-review-card scroll-reveal" data-review-card>
-                <div class="editorial-review-card__rating">
-                    <?php for ($i = 0; $i < $review['rating']; $i++): ?>
+                <?php $card_rating = max(1, min(5, (int)($review['rating'] ?? 5))); ?>
+                <div class="editorial-review-card__rating" role="img" aria-label="<?php echo $card_rating; ?> out of 5 stars">
+                    <?php for ($i = 0; $i < $card_rating; $i++): ?>
                     <i class="fas fa-star" aria-hidden="true"></i>
                     <?php endfor; ?>
                 </div>
@@ -69,7 +70,7 @@ if (empty($hotel_reviews)) {
                 </blockquote>
                 
                 <div class="editorial-review-card__author">
-                    <span class="editorial-review-card__name"><?php echo htmlspecialchars($review['guest_name']); ?></span>
+                    <span class="editorial-review-card__name"><?php echo htmlspecialchars(trim((string)($review['guest_name'] ?? '')) ?: 'Guest'); ?></span>
                 </div>
             </div>
             <?php endforeach; ?>
