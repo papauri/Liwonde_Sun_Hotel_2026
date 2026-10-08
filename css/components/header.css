@@ -1,9 +1,9 @@
 /**
- * Header Component — Liwonde Sun Hotel 2026
+ * Header Component
  * Modern centered navbar with glass-morphism
- * Inspired by Markopolo.ai — differentiated from Rosalyns Hotel
+ * Inspired by Markopolo.ai — differentiated from the sister site's header
  *
- * Key design differences from Rosalyns:
+ * Key design differences from the sister site:
  * - Centered logo with split navigation (left/right)
  * - Glass-morphism floating pill container
  * - Underline indicator animation instead of background fill
@@ -29,7 +29,7 @@
     --lsh-transition: 350ms cubic-bezier(0.22, 1, 0.36, 1);
     --lsh-transition-fast: 180ms ease;
 
-    /* Colors — warm amber/sunset palette (different from Rosalyns' gold/brown) */
+    /* Colors — warm amber/sunset palette (different from the sister site's gold/brown) */
     --lsh-accent: #E8913A;
     --lsh-accent-light: #F4A853;
     --lsh-accent-deep: #C4701F;
@@ -990,7 +990,7 @@
 /* ============================================
    MOBILE FLOATING PILL HEADER (< 1024px)
    A detached rounded glass bar — visually distinct
-   from Rosalyns' full-width edge-to-edge header.
+   from the sister site's full-width edge-to-edge header.
    ============================================ */
 
 @media (max-width: 1023px) {

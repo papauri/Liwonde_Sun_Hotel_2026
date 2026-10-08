@@ -154,7 +154,7 @@ try {
     // `bookings` — so every guest page view was a write transaction.
     //
     // Schema changes are an owner decision in this project (schema parity with the
-    // Rosalyn platform is locked — see .claude/CORE_SYSTEM_BRIEF.md), so the app
+    // source platform is locked — see .claude/CORE_SYSTEM_BRIEF.md), so the app
     // must never reshape the database on its own. The canonical path for schema
     // work is now:
     //

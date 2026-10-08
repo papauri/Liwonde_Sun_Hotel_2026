@@ -1,6 +1,6 @@
 <?php
 /**
- * Stock Audit Script — Liwonde Sun Hotel
+ * Stock Audit Script
  * Read-only diagnostic checks against the live DB.
  * Run: php scripts/stock-audit.php
  *

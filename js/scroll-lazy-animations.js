@@ -1,5 +1,5 @@
 /**
- * Scroll Reveal Animations — Liwonde Sun Hotel 2026
+ * Scroll Reveal Animations
  *
  * Fancy, staggered section + card reveal on desktop (≥1024px).
  * Simple opacity fade on mobile/tablet.
@@ -20,7 +20,7 @@
         if (document.getElementById('rh-scroll-reveal-css')) return;
 
         const css = `
-/* ── Liwonde Sun Hotel Scroll Reveal — Premium Cinematic System ───────── */
+/* ── Scroll Reveal — Premium Cinematic System ───────────────────────── */
 
 /* Base hidden state — subtle lift, ready to reveal */
 .rh-reveal {
@@ -137,7 +137,7 @@
     }
 }
 
-/* ── End Liwonde Sun Hotel Scroll Reveal ────────────────────────────── */
+/* ── End Scroll Reveal ───────────────────────────────────────────────── */
         `.trim();
 
         const style   = document.createElement('style');

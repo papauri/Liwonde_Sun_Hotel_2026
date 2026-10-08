@@ -1,7 +1,7 @@
 <?php
 /**
  * Header Component
- * Liwonde Sun Hotel 2026
+ * Hotel website
  * Modern centered navbar with glass-morphism - Inspired by Markopolo.ai
  */
 

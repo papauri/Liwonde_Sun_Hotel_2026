@@ -1,6 +1,6 @@
 /**
  * Page Transitions & Scroll Animations
- * Liwonde Sun Hotel 2026
+ * Hotel website
  * Passalacqua-inspired smooth page loading and scroll animations
  * 
  * Features:
@@ -562,7 +562,7 @@
         },
         
         closeMobileMenu() {
-            // New LSH mobile menu
+            // New mobile menu (.lsh-mobile)
             const lshMobile = document.querySelector('.lsh-mobile');
             if (lshMobile && lshMobile.classList.contains('lsh-mobile--active')) {
                 lshMobile.classList.remove('lsh-mobile--active');
@@ -657,7 +657,7 @@
         header: null,
         
         _findHeader() {
-            // New LSH header first, then legacy header
+            // New header (.lsh-header) first, then legacy header
             return document.querySelector('.lsh-header') || document.querySelector('.header');
         },
 
@@ -691,7 +691,7 @@
             }
 
             const isScrolled = scrollY > CONFIG.headerScrollThreshold;
-            // Toggle both new LSH and legacy scrolled classes
+            // Toggle both new (.lsh-header) and legacy scrolled classes
             this.header.classList.toggle('lsh-header--scrolled', isScrolled);
             this.header.classList.toggle('header--scrolled', isScrolled);
         },

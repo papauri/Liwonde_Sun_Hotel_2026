@@ -1,6 +1,6 @@
 /**
  * Unified Navigation System
- * Liwonde Sun Hotel 2026
+ * Hotel website
  *
  * Full SPA routing: clicks on internal nav links swap only
  * content between <header> and <footer> — The header
@@ -51,7 +51,7 @@
         'robots',
     ];
 
-    // ── Base path (supports subdirectory installs, e.g. /liwonde-sun-hotel/) ───
+    // ── Base path (supports subdirectory installs, e.g. /hotel-site/) ───
     // Derives the path prefix from this script's absolute src URL so that API
     // calls and relative-path fixes work whether the site is at / or /subdir/.
     const _BASE_PATH = (() => {
@@ -120,7 +120,7 @@
                 }
 
                 // Keep wrapper after header + mobile menu elements.
-                // Note: in the new LSH markup the mobile menu lives INSIDE the
+                // Note: in the new header markup (.lsh-*) the mobile menu lives INSIDE the
                 // header, so only use it as anchor when it is a sibling (legacy).
                 if (header) {
                     let wrapperAnchor = header;
@@ -166,7 +166,7 @@
             }
 
             // Create wrapper after header/mobile menu shell, then move content nodes into it.
-            // Note: in the new LSH markup the mobile menu lives INSIDE the header,
+            // Note: in the new header markup (.lsh-*) the mobile menu lives INSIDE the header,
             // so only use it as anchor when it is a sibling of the header (legacy).
             const wrapper = document.createElement('div');
             wrapper.id = 'spa-content';
@@ -360,7 +360,7 @@
             let url;
             try {
                 // Resolve relative hrefs against the current page URL (not just origin)
-                // so subdirectory installs like /liwonde-sun-hotel/ are preserved.
+                // so subdirectory installs like /hotel-site/ are preserved.
                 url = new URL(href, window.location.href).href;
                 // Strip /api/ prefix if accidentally present (e.g., /api/events.php → /events.php)
                 url = url.replace(/\/api\/([a-z0-9_-]+\.php)/i, `${_BASE_PATH}$1`);

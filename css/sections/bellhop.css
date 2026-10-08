@@ -21,8 +21,8 @@
  *     over 1s cubic-bezier(.075,.82,.165,1).
  *
  * Their palette (cream #f4f4f2 / brand-black #1b150a / orange #e54e27 /
- * green #4b7f66) is NOT copied — this maps the same roles onto Liwonde
- * Sun's warm-earth tokens so the section still belongs to this hotel.
+ * green #4b7f66) is NOT copied — this maps the same roles onto this
+ * site's warm-earth tokens so the section still belongs to this hotel.
  *
  * Loads after ballena.css and only restyles classes that already exist,
  * plus the `bellhop-*` blocks added to the rooms markup in index.php.
