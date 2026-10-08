@@ -983,7 +983,7 @@ Ordered by what blocks production. Owner actions are marked; everything else is 
 
 ## Parked / failed-twice
 
-- [ ] blocked: **Conference half-day / multi-day pricing (2026-10-08).** `conference_rooms` has only `daily_rate` and `conference_inquiries` has no end-date column, so the guest quote is always one day at the daily rate (now labelled an estimate; staff adjust in admin). Needs DDL — owner decision.
+- [x] **Conference half-day / multi-day pricing (2026-10-08)** — owner unblocked; migration 061 + code shipped (8775853 / Rosalyn a51e6c9). Code feature-detects the columns; owner runs `php admin/migrations/migrate.php --run` in each repo.
 - ASSUMPTION (2026-10-08): planned maintenance blocks a room from `start_date` (fallback `due_date`); recurring-maintenance scheduler job runs every 6 h, ON by default (Admin → Automated Emails toggle).
 
 - **P2.4 — CI.** Scrapped by the owner 2026-09-02 after the GitHub token's `workflow` scope
