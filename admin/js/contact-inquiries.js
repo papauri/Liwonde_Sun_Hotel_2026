@@ -20,7 +20,7 @@
             return;
         }
 
-        const siteName = form.dataset.siteName || 'Liwonde Sun Hotel';
+        const siteName = form.dataset.siteName || 'Hotel';
         const subject = (inquiry.subject || '').trim();
         const replySubject = subject.toLowerCase().startsWith('re:') ? subject : `Re: ${subject || inquiry.reference || 'Contact Inquiry'}`;
 
