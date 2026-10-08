@@ -136,6 +136,7 @@ $stock = [
             JOIN stock_ingredients i ON i.id = sa.ingredient_id
             WHERE sa.created_at BETWEEN ? AND ? AND sa.quantity_change < 0
               AND sa.source_type IN ('pos_order','sale','consumption','recipe','room_service')
+              AND NOT " . rh_voided_wastage_sql('sa') . "
             GROUP BY i.id ORDER BY cost DESC LIMIT 20");
         $st->execute([$rp_from, $rp_to]);
         return $st->fetchAll(PDO::FETCH_ASSOC);
