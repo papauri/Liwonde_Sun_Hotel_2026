@@ -261,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_hotel_details'])
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_booking_reference_prefix'])) {
     $newPrefix = strtoupper(trim((string)($_POST['booking_reference_prefix'] ?? '')));
     if (!preg_match('/^[A-Z0-9]{2,6}$/', $newPrefix)) {
-        $error = 'The booking reference prefix must be 2 to 6 letters or digits (for example RBH).';
+        $error = 'The booking reference prefix must be 2 to 6 letters or digits (for example LSH).';
     } else {
         $oldPrefix = rh_booking_reference_prefix();
         updateSetting('booking_reference_prefix', $newPrefix);
@@ -508,8 +508,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_email_templat
             '{{cancellation_reason}}'      => 'Requested by guest.',
             '{{special_requests}}'         => 'Late check-in preferred.',
             '{{tentative_expires_at_formatted}}' => date('F j, Y g:i A', strtotime('+2 days')),
-            '{{quotation_reference}}'      => 'QT-RBH-2026-PREVIEW-001',
-            '{{quote_reference}}'          => 'QT-RBH-2026-PREVIEW-001',
+            '{{quotation_reference}}'      => 'QT-LSH-2026-PREVIEW-001',
+            '{{quote_reference}}'          => 'QT-LSH-2026-PREVIEW-001',
             '{{valid_until}}'              => date('F j, Y', strtotime('+7 days')),
             '{{quotation_notes}}'          => 'Please reply by the validity date to secure your booking.',
             '{{rate_per_night}}'           => (string)getSetting('currency_symbol', 'MWK') . number_format(2250, 2),
@@ -546,7 +546,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_email_templat
             '{{description}}'              => 'Restaurant order preview for table service payment.',
             '{{bank_details_html}}'        => '<div style="background:#FCFAF7;padding:7px 10px;border-top:2px solid #D5B37C;"><p style="margin:0 0 4px;font-size:6px;letter-spacing:1px;text-transform:uppercase;color:#20303E;font-weight:700;">Bank Details</p><p style="margin:0;font-size:6px;color:#1E2430;">Bank: Preview Bank<br>Account No.: 00123456789</p></div>',
             '{{receipt_terms}}'            => '<p style="margin:0;font-size:6px;line-height:1.5;color:#5F655F;">Thank you for your payment. Please retain this receipt for your records.</p>',
-            '{{credit_note_number}}'       => 'CN-RBH-2026-001',
+            '{{credit_note_number}}'       => 'CN-LSH-2026-001',
             '{{amount}}'                   => (string)getSetting('currency_symbol', 'MWK') . number_format(1200, 2),
             '{{balance}}'                  => (string)getSetting('currency_symbol', 'MWK') . number_format(850, 2),
             '{{amount_used}}'              => (string)getSetting('currency_symbol', 'MWK') . number_format(350, 2),
@@ -965,7 +965,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $previewVars = [
                 '{{site_name}}'                => (string)getSetting('site_name', 'Hotel'),
                 '{{site_url}}'                 => (string)getSetting('site_url', ''),
-                '{{booking_reference}}'        => 'RBH-2026-PREVIEW-001',
+                '{{booking_reference}}'        => 'LSH-2026-PREVIEW-001',
                 '{{inquiry_reference}}'        => 'CONF-2026-PREVIEW-001',
                 '{{guest_name}}'               => 'Jane Doe',
                 '{{guest_email}}'              => 'jane.doe@example.com',
@@ -1004,8 +1004,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 '{{special_requests}}'         => 'Late check-in preferred.',
                 '{{tentative_expires_at_formatted}}' => date('F j, Y g:i A', strtotime('+2 days')),
                 // Quotation-specific
-                '{{quotation_reference}}'      => 'QT-RBH-2026-PREVIEW-001',
-                '{{quote_reference}}'          => 'QT-RBH-2026-PREVIEW-001',
+                '{{quotation_reference}}'      => 'QT-LSH-2026-PREVIEW-001',
+                '{{quote_reference}}'          => 'QT-LSH-2026-PREVIEW-001',
                 '{{valid_until}}'              => date('F j, Y', strtotime('+7 days')),
                 '{{quotation_notes}}'          => 'Please reply by the valid-until date to secure your reservation.',
                 '{{rate_per_night}}'           => $currencySymbol . number_format(2250, 2),
@@ -1040,7 +1040,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 '{{description}}'              => 'Restaurant order preview for table service payment.',
                 '{{bank_details_html}}'        => '<div style="background:#FCFAF7;padding:7px 10px;border-top:2px solid #D5B37C;"><p style="margin:0 0 4px;font-size:6px;letter-spacing:1px;text-transform:uppercase;color:#20303E;font-weight:700;">Bank Details</p><p style="margin:0;font-size:6px;color:#1E2430;">Bank: Preview Bank<br>Account No.: 00123456789</p></div>',
                 '{{receipt_terms}}'            => '<p style="margin:0;font-size:6px;line-height:1.5;color:#5F655F;">Thank you for your payment. Please retain this receipt for your records.</p>',
-                '{{credit_note_number}}'       => 'CN-RBH-2026-001',
+                '{{credit_note_number}}'       => 'CN-LSH-2026-001',
                 '{{amount}}'                   => $currencySymbol . number_format(1200, 2),
                 '{{balance}}'                  => $currencySymbol . number_format(850, 2),
                 '{{amount_used}}'              => $currencySymbol . number_format(350, 2),
