@@ -983,7 +983,7 @@ Ordered by what blocks production. Owner actions are marked; everything else is 
 
 ## Parked / failed-twice
 
-- [x] **Conference half-day / multi-day pricing (2026-10-08)** — owner unblocked; migration 061 + code shipped (8775853 / Rosalyn a51e6c9). Code feature-detects the columns; owner runs `php admin/migrations/migrate.php --run` in each repo.
+- [x] **Conference half-day / multi-day pricing (2026-10-08)** — migration 061 + code shipped (8775853 / Rosalyn a51e6c9); 061 and 062 (stock count) applied to both live DBs 2026-10-09.
 - ASSUMPTION (2026-10-08): planned maintenance blocks a room from `start_date` (fallback `due_date`); recurring-maintenance scheduler job runs every 6 h, ON by default (Admin → Automated Emails toggle).
 
 - **P2.4 — CI.** Scrapped by the owner 2026-09-02 after the GitHub token's `workflow` scope
