@@ -47,7 +47,18 @@ try {
             echo json_encode(['success' => false, 'message' => $roomGate['message'], 'needs_confirm_room' => $roomGate['needs_confirm']]);
             exit;
         }
-        // Same rule as bookings.php / validateCheckIn(): confirmed is enough, partial payment is allowed.
+        // One rule everywhere (validateCheckIn): confirmed, at least a partial payment, on/after arrival date.
+        $ciRowStmt = $pdo->prepare("SELECT status, payment_status, check_in_date FROM bookings WHERE id = ?");
+        $ciRowStmt->execute([$booking_id]);
+        $ciRow = $ciRowStmt->fetch(PDO::FETCH_ASSOC);
+        if ($ciRow) {
+            $ciRule = validateCheckIn($ciRow);
+            if (!$ciRule['allowed']) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Cannot check in: ' . $ciRule['reason']]);
+                exit;
+            }
+        }
         $stmt = $pdo->prepare("UPDATE bookings SET status = 'checked-in' WHERE id = ? AND status = 'confirmed'");
         $stmt->execute([$booking_id]);
 
@@ -62,17 +73,10 @@ try {
             $booking_stmt->execute([$booking_id]);
             $booking = $booking_stmt->fetch(PDO::FETCH_ASSOC);
 
-            // Update individual room status if assigned
-            if ($booking && !empty($booking['individual_room_id'])) {
-                $roomUpdate = $pdo->prepare("UPDATE individual_rooms SET status = 'occupied' WHERE id = ?");
-                $roomUpdate->execute([$booking['individual_room_id']]);
-
-                // Log the status change
-                $logStmt = $pdo->prepare("
-                    INSERT INTO room_maintenance_log (individual_room_id, status_from, status_to, reason, performed_by)
-                    VALUES (?, 'available', 'occupied', ?, ?)
-                ");
-                $logStmt->execute([$booking['individual_room_id'], 'Check-in: ' . $booking['booking_reference'], $admin_user_id ?: null]);
+            // Every room the booking holds turns occupied (both rooms of a joined pair, not just
+            // the primary one - the second room otherwise still looked free and ready).
+            if ($booking) {
+                updateBookingRoomsStatus($booking_id, 'occupied', 'Check-in: ' . $booking['booking_reference'], $admin_user_id ?: null);
             }
             if ($booking) {
                 require_once __DIR__ . '/../includes/booking-timeline.php';
@@ -134,12 +138,12 @@ try {
 
             // Release the room only if it is still 'occupied' (maintenance / out-of-order rooms are
             // left alone). The guest was in the room, so it goes to cleaning, not straight to available.
-            if ($booking && !empty($booking['individual_room_id'])) {
+            foreach (($booking ? getBookingRoomIds($booking_id) : []) as $releaseRoomId) {
                 $roomStatusStmt = $pdo->prepare("SELECT status FROM individual_rooms WHERE id = ?");
-                $roomStatusStmt->execute([$booking['individual_room_id']]);
+                $roomStatusStmt->execute([$releaseRoomId]);
                 if ($roomStatusStmt->fetchColumn() === ROOM_STATUS_OCCUPIED) {
                     $roomRelease = updateRoomStatus(
-                        (int)$booking['individual_room_id'],
+                        (int)$releaseRoomId,
                         ROOM_STATUS_CLEANING,
                         'Check-in cancelled: ' . $booking['booking_reference'],
                         $admin_user_id ?: null,
