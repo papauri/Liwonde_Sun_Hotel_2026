@@ -207,6 +207,12 @@ $loaderLineBottom = implode(' ', array_slice($loaderWords, $loaderHalf));
     // so drop the curtain instantly rather than replaying the animation.
     window.addEventListener('pageshow', function(e) {
         if (e.persisted) hideInstant();
+        else if (!window._pageLoaderNavigating) hide();
+    });
+
+    // A same-page #hash move never leaves the page, so the curtain must not stay up.
+    window.addEventListener('hashchange', function() {
+        if (!window._pageLoaderNavigating) hide();
     });
 })();
 </script>

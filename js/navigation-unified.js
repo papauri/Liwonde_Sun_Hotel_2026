@@ -88,7 +88,14 @@
             this._setupGlobalMobileMenu();
             this._attachLinkListeners();
 
+            // Path+query of the page currently on screen. A popstate whose path+query
+            // is unchanged is a hash-only move (#section links, back from an anchor):
+            // the browser scrolls natively and nothing must reload or show the loader.
+            this._loadedKey = window.location.pathname + window.location.search;
+
             window.addEventListener('popstate', e => this._onPopState(e));
+            // Never leave the loader up for a same-page hash move.
+            window.addEventListener('hashchange', () => { if (!this.isLoading) this._hideLoader(); });
             // bfcache restore is owned by the loader controller in
             // includes/loader.php (it snaps the curtain hidden instantly).
 
@@ -459,6 +466,7 @@
                 // Update browser history
                 history.pushState({ page: pageName }, data.title || '', url);
                 this.currentPage = pageName;
+                this._loadedKey = window.location.pathname + window.location.search;
 
                 this._updateActiveNav(url);
                 this._reinit();
@@ -655,6 +663,11 @@
         ================================================================ */
 
         _onPopState() {
+            // Hash-only change on the same document: leave it to the browser.
+            if (this._loadedKey === window.location.pathname + window.location.search) {
+                if (!this.isLoading) this._hideLoader();
+                return;
+            }
             const url = window.location.href;
             const pageName = this._pageName(url);
             if (this._isSPA(pageName)) {
