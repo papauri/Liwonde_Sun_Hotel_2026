@@ -1585,7 +1585,7 @@ try {
             roomId: null
         };
     </script>
-    <script src="js/booking.js"></script>
+    <script src="js/booking.js?v=<?php echo @filemtime(__DIR__ . '/js/booking.js'); ?>"></script>
 
     <?php include 'includes/footer.php'; ?>
 </body>
