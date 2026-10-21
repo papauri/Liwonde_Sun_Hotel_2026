@@ -84,7 +84,7 @@
 # working on 2.2. Both are present so the rule cannot silently do nothing.
 
 # Dotfiles (.env, .env.local, .git*, .user.ini, .htpasswd …)
-<FilesMatch "^\.">
+<FilesMatch "^(\.|error_log$)">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
@@ -153,6 +153,9 @@ Options -Indexes
     RewriteEngine On
     RewriteCond %{HTTPS} off
     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # Generated guest documents: never served directly (staff use admin/document-download.php).
+    RewriteRule ^(invoices|quotations)(/|$) - [F,L]
     
     # Dynamic Sitemap
     RewriteRule ^sitemap\.xml$ generate-sitemap.php [L]
