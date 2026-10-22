@@ -1489,9 +1489,11 @@ function getEmailSetting(string $key, mixed $default = '')
             }
         }
 
-        // Cache the result (1 hour TTL for encrypted, 6 hours for unencrypted)
-        $ttl = $is_encrypted ? 3600 : 21600;
-        setCache("email_setting_{$key}", $value, $ttl);
+        // Cache only plain values (6 hours). Encrypted ones (SMTP password etc.) are never written to a
+        // cache file in decrypted form; they are read from the database each time.
+        if (!$is_encrypted) {
+            setCache("email_setting_{$key}", $value, 21600);
+        }
 
         return $value;
     } catch (PDOException $e) {
