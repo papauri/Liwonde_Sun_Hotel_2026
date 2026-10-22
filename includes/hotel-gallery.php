@@ -40,7 +40,7 @@ if (!isset($gallery_images) || empty($gallery_images)) {
                 SELECT image_url, title, description, category, video_path, video_type 
                 FROM hotel_gallery 
                 WHERE is_active = 1 
-                ORDER BY display_order ASC
+                ORDER BY display_order ASC, id ASC
             ");
             $gallery_images = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
