@@ -60,6 +60,12 @@ body.privacy-page {
     margin-inline: auto;
 }
 
+/* Anchor jumps (footer/menu links, index.php#about from another page) must stop below the fixed header. */
+.landing-section[id],
+main section[id] {
+    scroll-margin-top: var(--header-height, 80px);
+}
+
 .landing-main .landing-scroll-container {
     position: relative;
 }
