@@ -17,6 +17,11 @@
 
 (function() {
     'use strict';
+    // Real fixed-header height, floating pill: bottom edge incl. its top gap.
+    function getHeaderOffset() {
+        var h = document.querySelector(".lsh-header");
+        return (h && Math.round(h.getBoundingClientRect().bottom)) || 80;
+    }
 
     if (window.__rhPageTransitionsLoaded) return;
     window.__rhPageTransitionsLoaded = true;
@@ -528,7 +533,7 @@
         },
         
         scrollTo(target, href) {
-            const headerOffset = 80;
+            const headerOffset = getHeaderOffset();
             const elementTop = target.getBoundingClientRect().top;
             const offsetPosition = elementTop + window.pageYOffset - headerOffset;
             
@@ -596,7 +601,7 @@
                 if (window.location.hash) {
                     const targetElement = document.querySelector(window.location.hash);
                     if (targetElement) {
-                        const headerOffset = 80;
+                        const headerOffset = getHeaderOffset();
                         
                         if (window.inertiaScroll) {
                             const elementTop = targetElement.getBoundingClientRect().top + window.scrollY;
