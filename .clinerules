@@ -1,0 +1,9 @@
+# Rules for Cline in this repo
+
+- Follow `CLAUDE.md` (project conventions, safety rails, ship gate) — it applies to every tool, not only Claude.
+- If you are continuing the AI Assistant build, start with
+  `C:\Users\john-paul.chirwa\OneDrive\MSP\Rosalyns-hotel-2026\.claude\CLINE_HANDOFF.md`
+  (orchestration docs live in the Rosalyn's repo) and do exactly what it says.
+- Never read large files whole: use search + line ranges. `config/database.php` (~9.5k lines),
+  `admin/bookings.php` (~9k) are lookup-only.
+- Every change goes to both hotels (Liwonde here, Rosalyn's at `C:\Users\john-paul.chirwa\OneDrive\MSP\Rosalyns-hotel-2026`).
