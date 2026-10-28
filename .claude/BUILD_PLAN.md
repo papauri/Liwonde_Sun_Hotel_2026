@@ -993,7 +993,12 @@ Ordered by what blocks production. Owner actions are marked; everything else is 
 
 ## ASSUMPTIONS log
 
-_(none yet)_
+- ASSUMPTION (2026-10-28, AI lookups): order_status shows every order to holders of pos_all_tabs, stock_orders or a station / room-service view; a till-only user sees only orders they opened (the POS open-tabs rule). Room-service orders are looked up only while station_room_service is on.
+- ASSUMPTION (2026-10-28, AI lookups): an order's balance left = total_amount minus its split payments (stock_order_splits); a room-service order posted to the folio says "charged to the room bill" with no till balance.
+- ASSUMPTION (2026-10-28, AI lookups): a gym member's balance owed = the Gym Reports rule (live gym_inquiries bills, enrolment + [member:NUMBER] renewals, amount_due > 0, not cancelled), shown only to gym_financials / gym_reports / accounting / payments holders.
+- ASSUMPTION (2026-10-28, AI lookups): gym classes have no capacity column, so "spaces left" comes from the slot calendar (gym_slot_capacity) at the class's hour; a "Monday - Friday" day label counts as every weekday (the schedule screen matches only named days).
+- ASSUMPTION (2026-10-28, AI lookups): one-record lookups extend existing reads (gym_watch member/class/date/time, events_pipeline query, work_queues room, inventory_watch item/purchase_order); only order_status is a new tool. New sizes ai_lookup_matches (5) and ai_order_lookback_hours (24) are settings defaults.
+- ASSUMPTION (2026-10-28, AI business type): the Assistant's wording follows the modules switched on (noun: hotel / venue / gym / restaurant / shop) with the business preset's label from rh_detect_active_preset(); room-only reads (occupancy, pace, room balances) are hidden when room bookings are off.
 
 ## Future Ideas (not in scope)
 
