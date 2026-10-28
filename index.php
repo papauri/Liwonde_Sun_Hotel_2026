@@ -274,13 +274,20 @@ foreach ($footer_links_raw as $link) {
                                 'title' => 'Rooms & Suites',
                                 'description' => 'Each room is composed for rest — warm textures, generous light, and the slow rhythm of the Shire never far from the window.'
                             ], 'editorial-header section-header--editorial bellhop-header'); ?>
-                            <div class="bellhop-rail__nav" data-bh-rail-nav hidden>
-                                <button type="button" class="bellhop-rail__arrow" data-bh-rail-prev aria-label="Show previous rooms">
-                                    <i class="fas fa-arrow-left" aria-hidden="true"></i>
-                                </button>
-                                <button type="button" class="bellhop-rail__arrow" data-bh-rail-next aria-label="Show next rooms">
-                                    <i class="fas fa-arrow-right" aria-hidden="true"></i>
-                                </button>
+                            <div class="bellhop-section__aside">
+                                <!-- Always in view: the circle at the end of the rail sits off-screen
+                                     on wide screens until the rail is scrolled. -->
+                                <?php if (!empty($featured_rooms)): ?>
+                                    <a href="rooms-gallery.php" class="btn btn-outline btn-outline-on-light bellhop-head-link">View all rooms</a>
+                                <?php endif; ?>
+                                <div class="bellhop-rail__nav" data-bh-rail-nav hidden>
+                                    <button type="button" class="bellhop-rail__arrow" data-bh-rail-prev aria-label="Show previous rooms">
+                                        <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" class="bellhop-rail__arrow" data-bh-rail-next aria-label="Show next rooms">
+                                        <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
