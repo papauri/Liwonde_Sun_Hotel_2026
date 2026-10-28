@@ -999,6 +999,8 @@ Ordered by what blocks production. Owner actions are marked; everything else is 
 - ASSUMPTION (2026-10-28, AI lookups): gym classes have no capacity column, so "spaces left" comes from the slot calendar (gym_slot_capacity) at the class's hour; a "Monday - Friday" day label counts as every weekday (the schedule screen matches only named days).
 - ASSUMPTION (2026-10-28, AI lookups): one-record lookups extend existing reads (gym_watch member/class/date/time, events_pipeline query, work_queues room, inventory_watch item/purchase_order); only order_status is a new tool. New sizes ai_lookup_matches (5) and ai_order_lookback_hours (24) are settings defaults.
 - ASSUMPTION (2026-10-28, AI business type): the Assistant's wording follows the modules switched on (noun: hotel / venue / gym / restaurant / shop) with the business preset's label from rh_detect_active_preset(); room-only reads (occupancy, pace, room balances) are hidden when room bookings are off.
+- ASSUMPTION (2026-10-28, AI "no bookings" fault): a whole search of "%" lists the latest bookings (the brief named it a wildcard); "%"/"_" inside a longer search are literal. The absence guard counts "orders" as orders open now (others all-time) and acts only on an allowlist of bare whole-subject "none" sentences (anything narrower is never rewritten). Its re-ask stays on the same model; only a contradiction goes to Primary.
+- ASSUMPTION (2026-10-28, AI "Not right"): the tap itself still only records feedback; the next question in that chat takes the re-check path (no panel change). Zero-token ground-truth questions run daily beside the 5 key questions but do not count toward the smoke auto-pause; a failure still makes the day not clean (guardrail).
 
 ## Future Ideas (not in scope)
 
