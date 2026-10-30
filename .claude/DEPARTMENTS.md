@@ -91,7 +91,7 @@ each one CLOSE / DELETE / KEEP / BLOCK in the same transaction — nothing linke
    `{base}/__devlogin?to=page.php` signs in as admin). Check desktop and 390px phone width.
    If port 8000 is already taken by a plain `php -S` (no router), use another port and set
    `BASE=http://localhost:<port>`.
-4. Then port to Liwonde, re-run its tests, commit and push both.
+4. Then port to Liwonde (`php -l` the copied files; owner 2026-10-30: tests run at Rosalyn's only, never re-run at Liwonde), commit and push both.
 5. **Guides and KB**: once a change that staff will notice has shipped, `guides-kb-lead` updates the
    matching pages in `docs/guides/` in plain, easy-to-follow English and checks the KB search finds
    them; that update goes through the same review and is committed to both hotels.
