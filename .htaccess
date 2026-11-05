@@ -162,8 +162,8 @@ Options -Indexes
     RewriteCond %{HTTPS} off
     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-    # Generated guest documents: never served directly (staff use admin/document-download.php).
-    RewriteRule ^(invoices|quotations|cache)(/|$) - [F,L]
+    # Generated guest documents, the file cache, private storage (sessions, staged imports), database backups, logs and dumps: never served directly (staff use admin/document-download.php).
+    RewriteRule ^(invoices|quotations|cache|storage|backups|logs|Database)(/|$) - [F,L]
     
     # Dynamic Sitemap
     RewriteRule ^sitemap\.xml$ generate-sitemap.php [L]
