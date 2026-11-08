@@ -98,6 +98,12 @@ active design work. Read tokens before writing any CSS value:
 
 ## Hard safety rails (all agents, no exceptions)
 
+**ROSALYN'S IS LIVE (since 2026-11-09) — real guests, real money, real staff.** Work with extreme
+caution. Liwonde (this repo) is the TEST hotel: every DB test, rehearsal and test email happens here, never
+against Rosalyn's database. Never change Rosalyn's settings/data unless the owner asked for that exact
+change. Never send email to a real guest. Changes that could alter live bookings, money, stock or guest
+communication are tested here first and independently reviewed before they ship to both hotels.
+
 Specialists never run git; the build loop commits each QA-passed task itself (see Git in
 CLAUDE.md). Never force-push or rewrite pushed history. Never `DROP`/`TRUNCATE`/
 `DELETE`-without-`WHERE`. Never edit `.env` or `config/*local*`. Never print credentials.
