@@ -80,6 +80,7 @@ function rh_kb_synonym_groups(): array
         ['booking', 'reservation', 'reservations', 'bookings', 'rsvp', 'rsvps'], ['guest', 'customer', 'client', 'visitor'],
         ['housekeeping', 'cleaning', 'clean', 'dirty', 'housekeeper', 'cleaner', 'turnover'],
         ['maintenance', 'repair', 'broken', 'fault', 'faulty'],
+        ['printer', 'printers', 'printing', 'print', 'thermal', 'docket', 'dockets', 'reprint', 'reprints'],
         ['kds', 'kitchen', 'chef', 'cook'], ['bds', 'bar', 'drinks', 'bartender'], ['cds', 'coffee', 'barista'],
         ['staff', 'user', 'users', 'employee', 'employees', 'worker'],
         ['permission', 'permissions', 'access', 'rights', 'allow', 'privilege'],
