@@ -39,13 +39,7 @@
 <IfModule mod_expires.c>
     ExpiresActive on
     
-    # CSS - 1 hour. The guest site loads css/main.css, which pulls ~30 partials
-    # via @import; a query string on main.css is NOT inherited by those imports,
-    # so no cache-busting stamp can reach them. A short TTL is what makes a CSS
-    # deploy (e.g. a header or loader restyle) actually reach returning visitors.
-    ExpiresByType text/css "access plus 1 hour"
-
-    # JavaScript - 1 year (footer.php stamps js/*.js with ?v=filemtime)
+    # JavaScript - 1 year (CSS lifetime is set per hotel in the GUEST SITE section at the end)
     ExpiresByType application/x-javascript "access plus 1 year"
     ExpiresByType application/javascript "access plus 1 year"
     ExpiresByType text/javascript "access plus 1 year"
@@ -74,6 +68,57 @@
 </IfModule>
 
 # ====================
+# SECURITY HEADERS
+# ====================
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
+</IfModule>
+
+# ====================
+# PWA / MANIFEST CORS
+# ====================
+# Allow browsers to fetch images referenced by the Web App Manifest
+# (required by Chrome / Edge in manifest icon contexts since Chromium 93+)
+<IfModule mod_headers.c>
+    <FilesMatch "\.(png|jpg|jpeg|gif|svg|webp|ico)$">
+        Header set Access-Control-Allow-Origin "*"
+    </FilesMatch>
+    <Files "manifest.php">
+        Header set Access-Control-Allow-Origin "*"
+    </Files>
+</IfModule>
+
+# Service workers: always revalidated so a redeploy reaches installed apps (never a 1 year Expires).
+<IfModule mod_headers.c>
+    <FilesMatch "^(sw|public-sw)\.js$">
+        Header set Cache-Control "no-cache, max-age=0, must-revalidate"
+        Header unset Expires
+    </FilesMatch>
+</IfModule>
+
+# ====================
+# PERFORMANCE
+# ====================
+
+# Disable ETags for better caching
+FileETag None
+
+# Custom error pages
+ErrorDocument 404 /404.php
+ErrorDocument 403 /404.php
+
+# Prevent directory browsing
+Options -Indexes
+
+# Belt-and-suspenders: never expose PHP errors to the browser in production
+php_flag display_errors Off
+
+# ====================
 # FILE ACCESS DENIAL
 # ====================
 # This file previously had no Files / FilesMatch / Require rule of any kind, so
@@ -83,7 +128,7 @@
 # Apache 2.4 uses "Require all denied"; the mod_authz_core fallback keeps this
 # working on 2.2. Both are present so the rule cannot silently do nothing.
 
-# Dotfiles (.env, .env.local, .git*, .user.ini, .htpasswd …)
+# Dotfiles (.env, .env.local, .git*, .user.ini, .htpasswd …) and PHP's extensionless error_log files (any folder)
 <FilesMatch "^(\.|error_log$)">
     <IfModule mod_authz_core.c>
         Require all denied
@@ -119,70 +164,27 @@
     </IfModule>
 </FilesMatch>
 
-# Version-control, dependency and private directories.
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteRule ^(\.git|\.github|node_modules|vendor/bin)(/|$) - [F,L]
-    RewriteRule ^(backups|logs|cache)(/|$) - [F,L]
-</IfModule>
-
 # ====================
-# SECURITY HEADERS
+# FORCE HTTPS + DIRECTORY DENIAL + DYNAMIC FILES
 # ====================
-
-<IfModule mod_headers.c>
-    Header always set X-Content-Type-Options "nosniff"
-    Header always set X-Frame-Options "SAMEORIGIN"
-    Header always set X-XSS-Protection "1; mode=block"
-    Header always set Referrer-Policy "strict-origin-when-cross-origin"
-    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
-</IfModule>
-
-# Service workers: always revalidated so a redeploy reaches installed apps (never a 1 year Expires).
-<IfModule mod_headers.c>
-    <FilesMatch "^(sw|public-sw)\.js$">
-        Header set Cache-Control "no-cache, max-age=0, must-revalidate"
-        Header unset Expires
-    </FilesMatch>
-</IfModule>
-
-# ====================
-# PERFORMANCE
-# ====================
-
-# Disable ETags for better caching
-FileETag None
-
-# Prevent directory browsing
-Options -Indexes
-
-# Force HTTPS
+# Order matters: HTTPS redirect first, then the deny rules, then the sitemap/robots rewrites.
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteCond %{HTTPS} off
     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-    # Generated guest documents, the file cache, private storage (sessions, staged imports), database backups, logs and dumps: never served directly (staff use admin/document-download.php).
+    # Version-control, dependency and private directories.
+    RewriteRule ^(\.git|\.github|node_modules|vendor/bin)(/|$) - [F,L]
+
+    # Generated guest documents, the file cache (cache/*.cache can hold decrypted settings), private storage (sessions, staged imports), database backups, logs and dumps: never served directly (staff use admin/document-download.php).
     RewriteRule ^(invoices|quotations|cache|storage|backups|logs|Database)(/|$) - [F,L]
-    
+
     # Dynamic Sitemap
     RewriteRule ^sitemap\.xml$ generate-sitemap.php [L]
-    
+
     # Dynamic Robots.txt
     RewriteRule ^robots\.txt$ robots.php [L]
-    
-    # Favicon - redirect legacy .ico/.png requests to SVG
-    RewriteRule ^favicon\.ico$ favicon.svg [L,T=image/svg+xml]
-    RewriteRule ^favicon-32x32\.png$ favicon.svg [L,T=image/svg+xml]
-    RewriteRule ^favicon-16x16\.png$ favicon.svg [L,T=image/svg+xml]
-    RewriteRule ^apple-touch-icon\.png$ /images/logo/logo.jpg [L]
 </IfModule>
-
-# ====================
-# ERROR PAGES
-# ====================
-# Branded 404 for unknown URLs (404.php sends the 404 status itself).
-ErrorDocument 404 /404.php
 
 # ====================
 # SESSION COOKIE HARDENING (mod_php / LiteSpeed only; PHP-FPM reads .user.ini)
@@ -200,4 +202,23 @@ ErrorDocument 404 /404.php
     php_value session.gc_maxlifetime 30600
     php_value session.cookie_samesite Lax
     php_flag session.use_strict_mode on
+</IfModule>
+
+# ====================
+# GUEST SITE (per hotel) - the only part of this file that may differ between hotels
+# ====================
+<IfModule mod_expires.c>
+    # CSS - 1 hour. The guest site loads css/main.css, which pulls ~30 partials
+    # via @import; a query string on main.css is NOT inherited by those imports,
+    # so no cache-busting stamp can reach them. A short TTL is what makes a CSS
+    # deploy (e.g. a header or loader restyle) actually reach returning visitors.
+    ExpiresByType text/css "access plus 1 hour"
+</IfModule>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Favicon - redirect legacy .ico/.png requests to SVG
+    RewriteRule ^favicon\.ico$ favicon.svg [L,T=image/svg+xml]
+    RewriteRule ^favicon-32x32\.png$ favicon.svg [L,T=image/svg+xml]
+    RewriteRule ^favicon-16x16\.png$ favicon.svg [L,T=image/svg+xml]
+    RewriteRule ^apple-touch-icon\.png$ /images/logo/logo.jpg [L]
 </IfModule>
