@@ -1756,6 +1756,7 @@ table.fit-or-card:not(.mobile-enhanced) td {
 .section-title i {
     color: var(--gold);
     font-size: 16px;
+    /* fixed-width icon box so text aligns across pages */
     flex: 0 0 1.25em;
     width: 1.25em;
     text-align: center;
@@ -2967,7 +2968,8 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 0 0 18px; /* 4px bar + 14px clear space */
+    /* 4px bar + 14px clear space before the icon/text, at every breakpoint */
+    padding: 0 0 0 18px;
     margin: 4px 0 18px;
     font-family: 'Jost', sans-serif;
     font-size: clamp(15px, 1.4vw, 17px);
@@ -4014,6 +4016,21 @@ button:focus-visible {
     *::after {
         transition: none !important;
         animation: none !important;
+    }
+
+    /* Loading indicators are essential motion, not decoration: with the rule above (and admin-responsive.css)
+       the loader ring looked dead. These selectors are more specific than "*", so they win even against
+       !important. A steady, slower linear spin only; every other animation stays off. */
+    .admin-page-loader .admin-page-loader-spinner span:nth-child(1),
+    .admin-inline-spinner,
+    .admin-pagination-loader__spinner,
+    .btn-loading .fa-spinner,
+    .fa-spin {
+        animation: adminLoaderSpin 1.2s linear infinite !important;
+    }
+
+    .admin-page-loader .admin-page-loader-bar span {
+        animation: adminLoaderShimmer 1.8s linear infinite !important;
     }
 }
 
