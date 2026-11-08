@@ -3,8 +3,10 @@
 /**
  * 051 - bookings.payment_status accepts 'refunded' (additive).
  *
- * Cancelling a paid booking with a full refund sets payment_status = 'refunded'; if the column is an
- * ENUM without that value the write stores '' (or errors in strict mode). Values are only ADDED.
+ * recalculateBookingFinancials() sets 'refunded' on a cancelled booking whose money has all gone back
+ * out, but the column was ENUM('unpaid','partial','paid'), so under strict SQL the write failed and
+ * cancelRoomBookingSettled() rolled back. Values are only ADDED - nothing removed, renamed or rewritten;
+ * the column's existing nullability and default are kept as they are.
  */
 
 return [
@@ -32,8 +34,17 @@ return [
         $list = implode(',', array_map(static function (string $v): string {
             return "'" . $v . "'";
         }, $values));
-        $null = $row['IS_NULLABLE'] === 'YES' ? 'NULL' : 'NOT NULL';
-        $def = $row['COLUMN_DEFAULT'] !== null ? ' DEFAULT ' . $pdo->quote($row['COLUMN_DEFAULT']) : ($row['IS_NULLABLE'] === 'YES' ? ' DEFAULT NULL' : '');
+        $nullable = $row['IS_NULLABLE'] === 'YES';
+        $default = $row['COLUMN_DEFAULT'];
+        // MariaDB reports string defaults already quoted ('unpaid') and a NULL default as the word NULL;
+        // MySQL reports the bare value. Normalise so the default is never double-quoted.
+        if ($default !== null && strlen($default) >= 2 && $default[0] === "'" && substr($default, -1) === "'") {
+            $default = str_replace("''", "'", substr($default, 1, -1));
+        } elseif ($default !== null && $nullable && strtoupper($default) === 'NULL') {
+            $default = null;
+        }
+        $null = $nullable ? 'NULL' : 'NOT NULL';
+        $def = $default !== null ? ' DEFAULT ' . $pdo->quote($default) : ($nullable ? ' DEFAULT NULL' : '');
         $pdo->exec("ALTER TABLE bookings MODIFY COLUMN payment_status ENUM($list) $null$def");
     },
 ];

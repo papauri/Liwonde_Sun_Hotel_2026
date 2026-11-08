@@ -147,9 +147,9 @@ function updateRoomStatus(int $roomId, string $newStatus, string $reason = '', ?
 {
     global $pdo;
 
-    // Callers such as markRoomClean(), passRoomInspection() and processGuestCheckout() already hold a
-    // transaction; a second beginTransaction() threw "There is already an active transaction" and made
-    // every one of those flows fail. Join the caller's transaction instead of opening a nested one.
+    // Join the caller's transaction when there is one (markRoomClean() and processGuestCheckout()
+    // both call this inside their own); a second beginTransaction() threw "already an active
+    // transaction" and its catch rolled the caller's whole transaction back.
     $ownTx = !$pdo->inTransaction();
     try {
         if ($ownTx) {
@@ -226,10 +226,13 @@ function updateRoomStatus(int $roomId, string $newStatus, string $reason = '', ?
             ]
         ];
     } catch (PDOException $e) {
-        if ($ownTx && $pdo->inTransaction()) {
+        error_log("Room status update error: " . $e->getMessage());
+        if (!$ownTx) {
+            throw $e; // let the owning transaction roll back as a whole
+        }
+        if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        error_log("Room status update error: " . $e->getMessage());
         return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
     }
 }
@@ -374,14 +377,13 @@ function createRoomInspection(int $roomId, ?int $performedBy): array
 {
     global $pdo;
 
+    // `room_inspections` is created by admin/migrations/001_create_room_inspections.php.
+    // The lazy CREATE TABLE that used to live here could never succeed: it declared
+    // individual_room_id as signed INT with a foreign key to individual_rooms.id,
+    // which is INT UNSIGNED, so MySQL 8 rejected the constraint (errno 3780) and the
+    // catch below swallowed the failure on every attempt. Schema changes belong in a
+    // migration where a failure is visible, not on a page request where it is not.
     try {
-        // `room_inspections` is provisioned by admin/migrations/001_create_room_inspections.php.
-        // The lazy CREATE TABLE that used to sit here was app-code DDL (which the
-        // locked-schema rail forbids) and was also broken: it declared
-        // `individual_room_id INT` against `individual_rooms.id INT UNSIGNED`, so
-        // MySQL 8 rejected the foreign key and the failure surfaced only as a
-        // generic "inspection could not be created".
-
         // Create inspection task
         $stmt = $pdo->prepare("
             INSERT INTO room_inspections (individual_room_id, status, created_at)
@@ -424,17 +426,15 @@ function completeRoomTurnover(PDO $pdo, int $roomId, ?int $performedBy): void
 }
 
 /**
- * Close a booking's room-service orders that were charged to the room folio.
- *
- * Folio-charged room-service orders stay status 'placed' (settled via the room bill, not a POS
- * payment), which keeps the room locked for new room-service orders. Call inside the checkout
- * transaction so the next guest in that room is not blocked. Returns the number of orders closed.
+ * Close a booking's room-service orders that were charged to the folio but are
+ * still 'placed', so the room's active-order lock is released at checkout.
+ * Call inside the checkout transaction. Returns the number of orders closed.
  */
-function closeFolioChargedRoomServiceOrders(PDO $pdo, int $bookingId): int
+function closeFolioChargedRoomServiceOrders($pdo, $bookingId): int
 {
     $stmt = $pdo->prepare("UPDATE stock_orders SET status = 'completed', updated_at = NOW()
         WHERE booking_id = ? AND order_type = 'room_service' AND status = 'placed' AND folio_posted_at IS NOT NULL");
-    $stmt->execute([$bookingId]);
+    $stmt->execute([(int)$bookingId]);
     return $stmt->rowCount();
 }
 
@@ -643,8 +643,7 @@ function processGuestCheckout(int $bookingId, ?int $performedBy = null, array $o
             // older schema without booking_rooms — safe to ignore
         }
 
-        // Release the room-service lock: folio-charged orders are settled by this checkout.
-        $workflowResults['room_service_closed'] = closeFolioChargedRoomServiceOrders($pdo, $bookingId);
+        closeFolioChargedRoomServiceOrders($pdo, $bookingId);
 
         // Generate final invoice
         require_once __DIR__ . '/../config/invoice.php';
@@ -652,6 +651,10 @@ function processGuestCheckout(int $bookingId, ?int $performedBy = null, array $o
         $workflowResults['invoice'] = $invoiceResult;
 
         $pdo->commit();
+
+        // Timeline entry (the booking-details.php checkout logs its own; this is the dashboard / process-checkin.php path).
+        require_once __DIR__ . '/booking-timeline.php';
+        logBookingCheckOut($bookingId, (string)$booking['booking_reference'], 'admin', $performedBy, null);
 
         return [
             'success' => true,
@@ -791,7 +794,9 @@ function markRoomClean(int $roomId, ?int $performedBy = null, array $options = [
             ]
         ];
     } catch (PDOException $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log("Mark room clean error: " . $e->getMessage());
         return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
     }

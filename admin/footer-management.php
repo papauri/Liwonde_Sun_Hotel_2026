@@ -684,7 +684,7 @@ $active_tab = $_GET['tab'] ?? 'links';
                     </div>
                     <div class="form-group">
                         <label>Tagline</label>
-                        <input type="text" name="site_tagline" value="<?php echo htmlspecialchars($fs['site_tagline']); ?>" placeholder="Where Comfort Meets Value">
+                        <input type="text" name="site_tagline" value="<?php echo htmlspecialchars($fs['site_tagline']); ?>" placeholder="Your hotel tagline">
                         <p class="help-text">Shown under the logo, in the mobile menu, and split across the loading screen (first half above the site name, second half below) — so 4–6 words read best. Also used as the default SEO description.</p>
                     </div>
                     <div class="form-group">

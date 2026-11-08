@@ -489,7 +489,7 @@ function extract_hotel_terms(string $hotelName): array
 /**
  * The distinctive part of the hotel's name: normalised, with generic trailing
  * words dropped ("Sunset Bay Hotel" -> "sunset bay", "Mary's Beach Hotel"
- * -> "marys").
+ * -> "/hotel/").
  */
 function hotel_core_phrase(string $hotelName): string
 {
@@ -1467,8 +1467,7 @@ if ($action === 'import') {
     // 'approved'. This scraper imports **web-search snippets**, not verified
     // reviews: it queries DuckDuckGo/Bing/r.jina.ai, so a candidate is whatever
     // text a search engine returned. In practice that has meant Facebook page
-    // posts and even a news item ("Hon. Dr. Michael Usi officially opening a
-    // revamped 42 room [hotel name]") stored as a 5-star guest review, with
+    // posts and even a news item stored as a 5-star guest review, with
     // the rating chosen at import rather than derived from anything.
     // Nothing scraped reaches the public site until a human approves it in
     // admin/reviews.php. Owner decision, 2026-09-02.

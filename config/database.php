@@ -76,12 +76,12 @@ if (!defined('BALANCE_TOLERANCE')) {
 $dbDebug = in_array(strtolower((string)getenv('DB_DEBUG')), ['1', 'true', 'on', 'yes'], true);
 
 /**
- * Is app-code schema auto-migration enabled?
+ * Whether application code may migrate the schema on a normal request.
  *
- * Default FALSE. The application must not alter its own schema during a normal
- * request — schema parity is locked and any DDL is an owner decision. Enable
- * only to bootstrap a brand-new empty database; the maintained path for schema
- * changes is admin/migrations/migrate.php.
+ * Default OFF. Schema changes belong in admin/migrations/ where a failure is
+ * visible; a CREATE/ALTER issued from a page request sits inside a catch block
+ * and fails silently, which is how `room_inspections` stayed missing while the
+ * code depending on it quietly returned empty results.
  */
 if (!function_exists('rh_auto_migrate_enabled')) {
     function rh_auto_migrate_enabled(): bool
@@ -146,22 +146,18 @@ try {
         }
     }
 
-    // ---- Schema auto-migration: OFF unless explicitly enabled ----------------
-    // These ensure*() helpers used to run on EVERY request. Between them they
-    // issued ~23 information_schema probes and held ~54 CREATE TABLE / ADD COLUMN
-    // statements armed against the live database, and ensureChildPricingColumns()
-    // additionally ran three unconditional full-table UPDATE backfills on
-    // `bookings` — so every guest page view was a write transaction.
+    // Schema self-migration — OFF by default.
     //
-    // Schema changes are an owner decision in this project (schema parity with the
-    // source platform is locked — see .claude/CORE_SYSTEM_BRIEF.md), so the app
-    // must never reshape the database on its own. The canonical path for schema
-    // work is now:
+    // These nine functions probe information_schema and issue CREATE/ALTER on every
+    // single request. Verified against this installation: a bootstrap issues zero
+    // ALTER TABLE (every column they add is already present) and two no-op
+    // CREATE TABLE IF NOT EXISTS, so switching them off changes no schema — it only
+    // removes the per-request cost and the standing ability for a page request to
+    // alter the live database.
     //
-    //     php admin/migrations/migrate.php
-    //
-    // Set RH_ALLOW_AUTO_MIGRATE=1 only to reproduce the legacy self-provisioning
-    // behaviour (e.g. bootstrapping a brand-new empty database).
+    // Schema changes belong in admin/migrations/, where a failure is visible.
+    // Set RH_ALLOW_AUTO_MIGRATE=1 to restore the old behaviour temporarily (for
+    // example when deploying to a fresh database that has never been migrated).
     if (rh_auto_migrate_enabled()) {
         // Ensure child-pricing columns exist for backward-compatible deployments
         ensureChildPricingColumns($pdo);
@@ -445,8 +441,9 @@ function ensureChildPricingColumns(PDO $pdo): void
         $pdo->exec("UPDATE bookings SET adult_guests = CASE WHEN number_of_guests < 1 THEN 1 ELSE number_of_guests END WHERE adult_guests IS NULL OR adult_guests < 1");
         $pdo->exec("UPDATE bookings SET child_guests = 0 WHERE child_guests IS NULL OR child_guests < 0");
 
-        // Backfill booking multiplier from rooms where possible
-        $pdo->exec("UPDATE bookings b LEFT JOIN rooms r ON b.room_id = r.id SET b.child_price_multiplier = COALESCE(r.child_price_multiplier, b.child_price_multiplier, 50.00) WHERE b.child_price_multiplier IS NULL OR b.child_price_multiplier <= 0");
+        // Backfill booking multiplier from rooms where possible. Only a MISSING value is filled: 0 is a real rule
+        // (children stay free) and must keep the rule the booking was saved with.
+        $pdo->exec("UPDATE bookings b LEFT JOIN rooms r ON b.room_id = r.id SET b.child_price_multiplier = COALESCE(r.child_price_multiplier, b.child_price_multiplier, 50.00) WHERE b.child_price_multiplier IS NULL");
     } catch (Throwable $e) {
         error_log('ensureChildPricingColumns warning: ' . $e->getMessage());
     }
@@ -8888,7 +8885,10 @@ function ensureBookingChargesTable(PDO $pdo): void
         $ensureColumn('bookings', 'checkout_completed_at', "ALTER TABLE bookings ADD COLUMN checkout_completed_at DATETIME NULL COMMENT 'When checkout was completed'");
         $ensureColumn('bookings', 'folio_charges_total', "ALTER TABLE bookings ADD COLUMN folio_charges_total DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Total of all folio charge lines (including VAT)'");
         $ensureColumn('bookings', 'primary_booking_id', "ALTER TABLE bookings ADD COLUMN primary_booking_id INT UNSIGNED NULL DEFAULT NULL COMMENT 'For group bookings: ID of the primary (lead) booking. NULL on the primary itself.'");
-        // Money owed BACK to the guest (overpayment / cancellation kept as credit).
+        // Money owed BACK to the guest — e.g. a stay shortened after payment. amount_due
+        // is clamped at 0 and cannot carry a negative, so without this column an
+        // overpayment was invisible to every finance page (it lived only inside the
+        // metadata JSON of booking_date_adjustments).
         $ensureColumn('bookings', 'credit_balance', "ALTER TABLE bookings ADD COLUMN credit_balance DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Amount owed back to the guest (overpayment / shortened stay). Settled via refund or credit note.'");
         // Cancelled bookings: the room charge retained after cancellation (first night
         // under 'keep_first_night', otherwise 0/NULL). Original total fields stay intact
@@ -8899,8 +8899,7 @@ function ensureBookingChargesTable(PDO $pdo): void
     }
 }
 
-// Initialize booking charges table on connection.
-// Gated: see rh_auto_migrate_enabled() — schema work belongs in admin/migrations/.
+// Initialize booking charges table on connection (gated — see rh_auto_migrate_enabled)
 if (rh_auto_migrate_enabled()) {
     ensureBookingChargesTable($pdo);
 }
@@ -9485,7 +9484,9 @@ function recalculateBookingFinancials(int $bookingId): bool
         $totalWithVat = $baseTotalWithVat + $chargesTotal; // charges_total already includes VAT
         $balance = $totalWithVat - $amountPaid;
         $amountDue = max(0, $balance);
-        // Overpayment is money owed back to the guest; kept on the booking.
+        // Overpayment is money owed back to the guest. Keep it on the booking so it
+        // stays correct as charges and payments move — otherwise a credit written by
+        // adjustBookingDates() would go stale the moment a folio charge is added.
         $creditBalance = $balance < -BALANCE_TOLERANCE ? round(-$balance, 2) : 0.00;
         $paymentStatus = $amountDue <= BALANCE_TOLERANCE ? 'paid' : ($amountPaid > BALANCE_TOLERANCE ? 'partial' : 'unpaid');
         // A cancelled booking with nothing billed and nothing ever paid is simply unpaid.
@@ -9901,7 +9902,7 @@ function cancelRoomBookingSettled(PDO $pdo, int $bookingId, int $adminUserId, st
 
         if (function_exists('logBookingEvent')) {
             logBookingEvent(
-                $bookingId, $ref, 'Cancellation settled', 'cancellation', $summary,
+                $bookingId, $ref, 'Cancellation settled', 'financial', $summary,
                 $prev, 'cancelled', 'admin', $adminUserId ?: null, null,
                 ['mode' => $mode, 'retained' => $retained, 'refunded' => $refunded, 'credit_balance' => $credit, 'reason' => $reason]
             );
@@ -10373,8 +10374,7 @@ function ensureBookingDateAdjustmentsSupport(PDO $pdo): void
     }
 }
 
-// Initialize booking date adjustments support on connection.
-// Gated: see rh_auto_migrate_enabled() — schema work belongs in admin/migrations/.
+// Initialize booking date adjustments support on connection (gated — see rh_auto_migrate_enabled)
 if (rh_auto_migrate_enabled()) {
     ensureBookingDateAdjustmentsSupport($pdo);
 }

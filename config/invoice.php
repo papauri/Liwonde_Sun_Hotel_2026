@@ -1707,7 +1707,6 @@ function sendEmailWithAttachmentAndCC(string $to, ?string $toName, string $subje
         } elseif ($smtpSecureNormalized === '' && (int)$smtp_port === 465) {
             $smtpSecureNormalized = 'ssl';
         }
-
         // Many SMTP relays require From to match authenticated mailbox.
         $fromAddress = $smtp_username;
 
@@ -1806,7 +1805,7 @@ function generateAndSendFinalInvoice(int $booking_id, ?int $processed_by = null)
 
     try {
         // Check if booking exists
-        $stmt = $pdo->prepare("SELECT id, booking_reference, guest_name, guest_email, room_id, status, final_invoice_generated FROM bookings WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT id, room_id, booking_reference, guest_name, guest_email, status, final_invoice_generated FROM bookings WHERE id = ?");
         $stmt->execute([$booking_id]);
         $booking = $stmt->fetch(PDO::FETCH_ASSOC);
 
