@@ -1862,7 +1862,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $orig = $alloc['payment'];
                             $leg  = (float)$alloc['amount'];
                             $spE  = rh_refund_vat_split($orig, $leg);
-                            $vr   = $spE['rate'];
+                            $vr   = rh_refund_leg_rate($pdo, $orig, (float)$spE['rate']); // true rate; VAT amount / net unchanged
                             $va   = $spE['vat'];
                             $earlyLegRef = finance_next_refund_reference($pdo, $todayStr_s);
                             $insRef->execute([
