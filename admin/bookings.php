@@ -54,7 +54,7 @@ function ensureBookingStatusLogTable(PDO $pdo): void
         $pdo->exec(
             "CREATE TABLE IF NOT EXISTS booking_status_log (
                 id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                booking_id INT NOT NULL,
+                booking_id INT UNSIGNED NOT NULL,
                 old_status VARCHAR(32) DEFAULT NULL,
                 new_status VARCHAR(32) DEFAULT NULL,
                 changed_by INT DEFAULT NULL,
