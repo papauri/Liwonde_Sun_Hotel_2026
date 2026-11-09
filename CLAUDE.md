@@ -43,8 +43,11 @@ do not re-derive plans or re-scan the repo ad hoc.
 ## Standing rails (apply to ALL sessions and agents)
 
 - **ROSALYN'S IS LIVE (owner 2026-11-09)**: real guests and money in the sister repo ../Rosalyns-hotel-2026. Extreme
-  caution. This Liwonde copy is the TEST hotel: all DB tests, rehearsals and test emails happen here, never
-  against Rosalyn's DB. Change Rosalyn's settings/data only when the owner asked for that exact change.
+  caution. Never run DB tests, rehearsals or test emails against Rosalyn's DB. Change Rosalyn's
+  settings/data only when the owner asked for that exact change.
+- **LIWONDE IS LIVE TOO (owner 2026-11-10)**: this hotel's bookings and document numbers are real from the
+  trial on ("numbering has to be perfect"). It is NO LONGER the test hotel: no DB tests, rehearsals, writing
+  scripts or test emails against Liwonde's DB without the owner's OK. Pure (no-DB) tests and php -l only.
 
 - **Cost**: follow the Cost rules in `.claude/DEPARTMENTS.md` (no agent for small work, haiku
   for docs/lint/small QA, CODE_INDEX + offset reads instead of whole files, one QA per ship,
