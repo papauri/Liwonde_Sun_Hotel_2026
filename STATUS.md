@@ -46,8 +46,26 @@ Another session also works in this folder: always stage files by name. Files:
   out by a small script.
 - Everyone is view only while the licence panel has set the business's free trial to view only (`trial_view_only` in the
   signed answer). Otherwise only people with the `view_only` permission explicitly ticked are view only.
-- **Inert until switched on:** no role has it, and the panel switch is off for both live hotels.
+- **Inert until switched on:** no role has it. Liwonde's trial has had view only switched ON on the panel since
+  2026-11-10 10:43.
 - Still to do: the Assistant-lead check, and a staff-guide page in `docs/guides/` (no guide yet).
+
+## Shipped 2026-11-10: view-only trial fix, after the owner's report
+The owner reported that, on Liwonde's view-only trial, Export and New booking could still be clicked. Causes:
+- Exports were allowed on purpose.
+- The greying skipped every `<header>` and `<nav>`, which hold the dashboard's "New booking" button.
+- It only looked at `a.btn` links, so it missed the Bookings toolbar links.
+
+The fix touches `includes/view-only.php` and `scripts/tests/view_only.php` (80 pure tests). It is identical in Rosalyn's:
+- **Server:** during a view-only TRIAL, exports and downloads are refused (`rh_view_only_is_export`). That covers the CSV
+  exports, any `?export=` / `?download=` on a staff page (system logs, backups, quotations), reports-export and the
+  end-of-day PDF. Opening one invoice or receipt (`document-download.php`) still works. People who are view only by
+  permission may still export.
+- **Greying:** it now skips only the site's own header and menu. It checks every link: by its target (create- / add- /
+  new- / edit- pages, exports in a trial) and, for button-like links, by its words, title or icon (trash, plus, pen).
+- **Known gap:** POS and KDS do not load the admin header, so they show no banner or greying. The server still refuses
+  every change there. `admin/pos.php` has another session's uncommitted edits, so it was left alone.
+- Pushed with the owner's OK (both hotels).
 
 ## Live now
 The site runs `origin/main` at `d32ba8f`.
