@@ -7,7 +7,8 @@ Vanilla PHP (≥7.4, no framework) hotel website + PMS. PDO/MySQL (creds via `.e
 
 **This repo is a fork of the Rosalyn's Hotel 2026 platform** with Liwonde Sun's own branding,
 content, imagery and guest-facing design. `MIGRATION_PLAN.md` at the repo root is the record
-of that migration and is required reading before any structural work.
+of that migration. Code changes are built in ../Rosalyns-hotel-2026 and ported here by
+`scripts/ship.php` (run from the Rosalyn's folder); only the guest front end and settings/data differ.
 
 ## Autonomous build system (default workflow)
 
@@ -19,21 +20,20 @@ do not re-derive plans or re-scan the repo ad hoc.
   conventions, safety rails, output discipline (no code in the terminal).
 - `.claude/COVERAGE_MATRIX.md` — per-domain sweep status; how the loop guarantees it
   touches every aspect of the system. Planner owns Status, scout owns Mapped.
-  **All 14 domains currently `unswept`** — early cycles are scout-heavy by design.
 - `.claude/PROJECT_CONTEXT.md` — goals, users, best-in-class bar (Cloudbeds/Mews/
-  Little Hotelier), ranked gaps, and **where the migration actually stands**. Required
-  reading for build-planner before any planning.
+  Little Hotelier), ranked gaps. Required reading for build-planner before any planning.
 - `.claude/BUILD_PLAN.md` — phased backlog (P0 Learn → P1 Stabilise → P2 Complete →
-  P3 Polish), the project-specific "built to completion" definition, and the
-  **OPEN OWNER DECISIONS that gate most of it**. Owned by build-planner.
+  P3 Polish) + the project-specific "built to completion" definition. Owned by build-planner.
 - `.claude/SYSTEM_MAP.md` — feature→file→endpoint→table map, built by codebase-scout.
-  Briefs reference this instead of re-scanning. Currently empty.
+  Briefs reference this instead of re-scanning.
 - `.claude/agents/` — codebase-scout (haiku, read-only mapper) · build-planner (opus,
-  plans only, never edits code) · backend-specialist (sonnet) · frontend-specialist
-  (sonnet) · ui-designer (sonnet, polish pass on just-touched files) · qa-auditor
-  (read-only gate; haiku for lint, sonnet for logic/security).
+  plans only, never edits code) · backend-specialist (opus) · frontend-specialist
+  (opus) · ui-designer (opus, polish pass on just-touched files) · qa-auditor
+  (read-only gate; haiku for lint, opus for logic/security). Model rule (owner 2026-11-11):
+  Opus for anything touching logic (money, stock, bookings, auth, security, Assistant rails); switch
+  autonomously to Sonnet for very small/tedious low-risk work it can surely do; haiku for docs/lint.
 - Department leads (`.claude/DEPARTMENTS.md`): `dept-rooms-lead`, `dept-restaurant-lead`,
-  `dept-accounting-lead`, `dept-stock-lead`, `dept-guest-site-lead`, `dept-events-gym-lead` (sonnet; each audits/fixes its department end to end and
+  `dept-accounting-lead`, `dept-stock-lead`, `dept-guest-site-lead`, `dept-events-gym-lead`, `dept-pwa-lead` (patch-only: installed app, offline, POS/KDS stations), `dept-import-lead` (opus; Import button: Excel/CSV/Word/PDF → review → import, `data_import` permission default admin+manager, no staff-list import, spec `.claude/IMPORT_PLAN.md`), `dept-patch-lead` (owner-approved feature patches in `.claude/PATCH_QUEUE.md` + all security patches) (opus; each audits/fixes its department end to end and
   is the one to ask when it breaks) and `ui-lead` (one visual language; turns the leads'
   `UI_REQUEST`s into shared `UI_DECISION`s). Money changes from any department are reviewed by the
   accounting lead.
@@ -42,22 +42,22 @@ do not re-derive plans or re-scan the repo ad hoc.
 
 ## Standing rails (apply to ALL sessions and agents)
 
-- **ROSALYN'S IS LIVE (owner 2026-11-09)**: real guests and money in the sister repo ../Rosalyns-hotel-2026. Extreme
-  caution. Never run DB tests, rehearsals or test emails against Rosalyn's DB. Change Rosalyn's
-  settings/data only when the owner asked for that exact change.
+- **ROSALYN'S IS LIVE (owner 2026-11-09)**: real guests and money in the sister repo ../Rosalyns-hotel-2026.
+  Extreme caution. No DB tests, writing scripts or test emails against Rosalyn's DB. Change Rosalyn's
+  settings/data only when the owner asked for that exact change. Every dispatch brief must say this.
 - **LIWONDE IS LIVE TOO (owner 2026-11-10)**: this hotel's bookings and document numbers are real from the
-  trial on ("numbering has to be perfect"). It is NO LONGER the test hotel: no DB tests, rehearsals, writing
-  scripts or test emails against Liwonde's DB without the owner's OK. Pure (no-DB) tests and php -l only.
+  trial on ("numbering has to be perfect"). No DB tests, writing scripts or test emails against
+  Liwonde's DB without the owner's OK. Pure (no-DB) tests and php -l only.
 
-- **Cost**: follow the Cost rules in `.claude/DEPARTMENTS.md` (no agent for small work, haiku
+- **Cost (owner 2026-11-11)**: guides + AI-lead sync only when needed and once a day (SYNC QUEUE in TASKS.md); one review per round; small tasks inline ONLY IF they cannot break logic; stop every `php -S` when not in use. Also follow the Cost rules in `.claude/DEPARTMENTS.md` (no agent for small work, haiku
   for docs/lint/small QA, CODE_INDEX + offset reads instead of whole files, one QA per ship,
   `scripts/ship.php` to ship). Also: /compact every 3 completed tasks; /clear on phase switch; haiku for read-only/
-  lint, sonnet for build execution; Fable 5/Opus only for setup and planning, never routine
-  execution; max 2 concurrent specialists; /cost checkpoint after every loop cycle; every
+  lint/docs, Opus for build execution and logic QA (Sonnet only for very small sure tasks); never Fable unless told;
+  max 2 concurrent specialists; /cost checkpoint after every loop cycle; every
   subagent brief carries exact file paths — no open-ended "explore".
 - **Safety**: commit and push completed work to `main` (see Git below); never destructive
-  SQL; never edit `.env`; park owner decisions as `blocked:` in BUILD_PLAN.md
-  and continue with the next task.
+  SQL; `.env` may be edited when needed (owner 2026-11-09) — back it up first, never print secrets, never stage or commit it; park owner decisions as `blocked:` in BUILD_PLAN.md and continue
+  with the next task.
 - **Git**: commit and push to `origin/main` directly — no feature branches, no waiting for
   the owner to trigger it. Commit only work that has passed the ship gate in `.claude/DEPARTMENTS.md`:
   `php -l`, tests, a mandatory independent `qa-auditor` review of the diff, and a headless
@@ -65,28 +65,38 @@ do not re-derive plans or re-scan the repo ad hoc.
   anything with a screen. One commit per completed task, message
   stating what changed and why. Check the diff for secrets and stray files before staging;
   `.env` is untracked and stays that way. Never force-push, never rewrite pushed history.
-- **Schema parity is LOCKED.** The database was rebuilt object-identical to Rosalyn's
-  (115 tables + 2 views, zero additions). **Any DDL — additive columns included — is an
-  owner decision, not an agent one.** `admin/migrations/` is empty; do not start filling it
-  unauthorised. Two features were deliberately removed by the migration (guest-facing
-  restaurant reservations, secondary hero CTA) and must not be restored without a decision.
+- **Task tracker**: `.claude/TASKS.md` is the live list of open/shipped work. Read it first when a
+  session resumes; the orchestrator updates it whenever a task starts, an agent reports, or work ships.
 - **Reporting**: STATUS block after every task (finished / in-progress / next 3 / blocked);
   SESSION SUMMARY at end of every run (completed, remaining by phase, blockers,
   one-line recommendation).
-- **Autonomy**: never pause because a task finished — pull the next queued task. Stop only
-  for: blocker needing owner, task failed twice, safety violation, or Phase 3 complete.
-  Ambiguous-but-not-blocking → best assumption, logged as `ASSUMPTION:` in BUILD_PLAN.md.
+- **Autonomy (owner 2026-10-24, overrides /build-loop's "advance automatically")**: the code is
+  FINISHED (BUILD_PLAN.md §6). Do only what the owner asks or a reported PATCH fault; when it ships,
+  stop. Never pull queued/LATER work on your own. Ambiguous-but-not-blocking → best assumption,
+  logged as `ASSUMPTION:` in BUILD_PLAN.md.
+
+## Token rules (owner 2026-10-24: "usage is way over normal") — apply before every step
+1. Fresh session per task: `/clear` after each shipped task; never `/resume` a long session (it
+   re-reads the whole history uncached). State lives in `.claude/TASKS.md` "Open" — read only that.
+2. Do it inline when it is under ~10 tool calls (one-file fix, lookup, port, test). An agent only for
+   real multi-file build work: ONE builder + ONE review, never parallel audits "to be safe".
+3. Builders run only their own test file (`php scripts/tests/<x>.php`), never the full
+   `run_tests.php` (10+ min, agents loop on it). At ship the orchestrator runs only what the change needs (tiers in DEPARTMENTS.md ship gate step 1): no DB tests for UI/docs, the area's suites for one area, the full suite only for core/money/migrations/auth.
+4. Never read big files whole: `.claude/CODE_INDEX.md` + Grep + offset reads. `config/database.php`
+   (~9.5k lines), BUILD_PLAN/SYSTEM_MAP/CODE_INDEX are lookup-only. Shipped history is in
+   `.claude/archive/`, never read unless asked.
+5. Briefs carry the facts (paths, lines, rule, test cases) so agents don't re-discover them; reports
+   under 150 words. Haiku for lint/docs/guides, Opus for build and logic QA, Sonnet only for very small sure tasks (owner 2026-11-09).
 
 ## Code conventions (enforced by qa-auditor)
 
 Prepared statements always · `htmlspecialchars()`/`sanitizeString()` on all user-data
 output · CSRF on every POST (admin: `admin-init.php` token; public:
-`includes/public-csrf.php`) · money comparisons via `BALANCE_TOLERANCE`
-(`config/database.php`), never raw float equality · module-gated pages honour
-`rh_module_key_enabled()` · reuse `includes/` helpers before writing new ones · procedural
-style, no frameworks/build steps/new Composer packages without owner approval · `php -l`
-every changed file · never read `vendor/`, `PHPMailer/`, `logs/`, `cache/`, `backups/`,
-`images/`, `Database/`, `invoices/`, `quotations/`.
+`includes/public-csrf.php`) · money comparisons via `BALANCE_TOLERANCE`, never raw float
+equality · reuse `includes/` helpers before writing new ones · procedural style, no
+frameworks/build steps/new Composer packages without owner approval · `php -l` every
+changed file · module-gated pages honour `rh_module_key_enabled()` · never read `vendor/`,
+`PHPMailer/`, `logs/`, `cache/`, `backups/`, `images/`, `Database/`, `invoices/`, `quotations/`.
 
 ## Front-end conventions
 
