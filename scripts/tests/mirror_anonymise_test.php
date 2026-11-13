@@ -216,6 +216,16 @@ $stM = mirror_anon_init('m');
 mirror_anonymise_row($stM, 'gym_members', ['id' => '1', 'full_name' => 'Mary'], ['full_name' => 'name'], ['id']);
 $sm = (string)mirror_scrub($stM, 'Rosemary called; Mary paid');
 ok(strpos($sm, 'Rosemary called; ') === 0 && strpos($sm, 'Mary paid') === false, 'single-word name swapped only as a whole word');
+// Owner 2026-11-13: a name must go whatever its case in the text (found: a group name kept in pay-later history text).
+$stC = mirror_anon_init('c');
+mirror_anonymise_row($stC, 'bookings', ['id' => '1', 'guest_name' => 'Zorbix', 'guest_email' => 'z@zorbix.mw'], ['guest_name' => 'name', 'guest_email' => 'email'], ['id']);
+$sc = (string)mirror_scrub($stC, 'Pay-later on for ZORBIX; zorbix group; Zorbixon stays; Guest name kept');
+ok(stripos(str_replace('Zorbixon', '', $sc), 'zorbix') === false && strpos($sc, 'Zorbixon stays') !== false, 'name swapped in UPPER and lower case, whole words only');
+ok(strpos($sc, 'Guest name kept') !== false && strpos($sc, "\x01") === false && strpos($sc, "\x02") === false, 'stoplist word kept, no marker left behind');
+$st2c = mirror_anon_init('c2');
+mirror_anonymise_row($st2c, 'bookings', ['id' => '1', 'guest_name' => 'Thandiwe Phirilo'], ['guest_name' => 'name'], ['id']);
+$s2c = (string)mirror_scrub($st2c, 'note from THANDIWE PHIRILO and phirilo family');
+ok(stripos($s2c, 'thandiwe') === false && stripos($s2c, 'phirilo') === false, 'full name and surname swapped in any case');
 ok(mirror_unique_collisions(['uniq_name' => ['full_name'], 'uniq_email' => ['email'], 'uniq_ref' => ['reference']], ['full_name' => 'name', 'email' => 'email', 'reference' => 'keep'])
     === ['uniq_name (full_name)'], 'UNIQUE index on a repeatable fake is blocking; email / keep are not');
 

@@ -1078,7 +1078,31 @@ function mirror_replace_pairs(array &$st): array
         }
         $i++;
     }
-    $st['pairs'] = ['map' => $pairs, 'fakes' => $fakes];
+    // Case-insensitive whole-word pass (owner 2026-11-13: a name stored as "Abcde" must also go when the text says
+    // "ABCDE" or "abcde"). Names / companies / tokens only (no emails, nothing with digits), stoplist words skipped,
+    // whole words only so "Mary" never touches "Rosemary". Longest first.
+    $stopLc = array_map(static fn($w) => mb_strtolower($w, 'UTF-8'), array_merge(mirror_token_stoplist(), ['Guest', 'Walk-in', 'Walk-in Guest']));
+    $ci = [];
+    $cands = [];
+    foreach ($st['replace'] as $orig => $fake) {
+        $cands[] = [(string)$orig, $pairs[(string)$orig]];
+    }
+    $t = 0;
+    foreach (($st['tokens'] ?? []) as $a => $b) {
+        $marker = chr(1) . "t" . $t++ . chr(2);
+        $fakes[$marker] = $b;
+        $cands[] = [(string)$a, $marker];
+    }
+    foreach ($cands as [$o, $marker]) {
+        $o = trim($o);
+        if ($o === '' || strpos($o, '@') !== false || preg_match('/\d/', $o) || mb_strlen($o, 'UTF-8') < 4
+            || in_array(mb_strtolower($o, 'UTF-8'), $stopLc, true)) {
+            continue;
+        }
+        $ci[mb_strtolower($o, 'UTF-8')] = ['/(?<![\p{L}\p{N}_@.])' . preg_quote($o, '/') . '(?![\p{L}\p{N}_])/iu', $marker];
+    }
+    uksort($ci, static fn($x, $y) => mb_strlen($y, 'UTF-8') <=> mb_strlen($x, 'UTF-8'));
+    $st['pairs'] = ['map' => $pairs, 'fakes' => $fakes, 'ci' => array_values($ci)];
     return $st['pairs'];
 }
 
@@ -1099,6 +1123,10 @@ function mirror_scrub(array &$st, $text)
     $p = mirror_replace_pairs($st);
     if ($p['map']) {
         $s = strtr($s, $p['map']);
+    }
+    foreach (($p['ci'] ?? []) as [$re, $marker]) {
+        $r = preg_replace($re, $marker, $s);
+        $s = is_string($r) ? $r : $s;
     }
     if ($st['tokens']) {
         $tokens = $st['tokens'];
