@@ -30,12 +30,13 @@ until the module-enablement decision is answered.
    *Every domain in this repo starts `unswept`, so early cycles will be scout-heavy. That is
    correct, not a stall.*
 2. **Build** — dispatch the named specialist (`backend-specialist` / `frontend-specialist`,
-   sonnet) with the brief **verbatim**. Run the two parallel-safe tasks concurrently when
+   opus; Sonnet only for very small sure tasks per DEPARTMENTS.md cost rule 2) with the brief **verbatim**. Run the two parallel-safe tasks concurrently when
    their file sets are disjoint; never more than 2 specialists at once.
-3. **Polish** — only if the task changed UI files: `ui-designer` (sonnet), scoped to exactly
+3. **Polish** — only if the task changed UI files: `ui-designer` (opus, effort medium), scoped to exactly
    the files the specialist reported touching.
-4. **Gate** — `qa-auditor` with the acceptance criteria + changed-file list. haiku for
-   lint/format-only gates, sonnet for logic/security/money gates.
+4. **Gate** — with the acceptance criteria + changed-file list: `qa-quick` (sonnet) only when EVERY
+   changed hunk is CSS, markup, docs or help text; otherwise, or when qa-quick answers ESCALATE,
+   `qa-auditor` (opus). Money changes: `dept-accounting-lead` is the gate (DEPARTMENTS.md).
    - PASS → planner ticks the checklist item, updates `.claude/COVERAGE_MATRIX.md`, moves
      the task to Completed with date + verdict.
    - FAIL → send the FIX LIST to the same specialist for ONE retry, re-gate.
@@ -75,8 +76,11 @@ it; agents don't log their own cost.
 
 - `/compact` after every 3 completed tasks; `/clear` when switching phases.
 - Every brief carries exact file/line scope — no open-ended "explore".
-- Model tiers: haiku read-only/lint/mapping · sonnet build/polish/logic-QA · opus planner
-  only · never opus/Fable for routine execution.
+- Model tiers (owner 2026-11-11; DEPARTMENTS.md cost rule 2 wins on any conflict): Opus for anything
+  touching logic (planner, build, fix, logic QA) · Sonnet for very small sure tasks, port FAIL files and
+  qa-quick · haiku read-only/lint/mapping/guides · Fable only for cost rule 2's three cases.
+- Turn caps (owner 2026-11-17): agents stop at their `maxTurns` and hand back PARTIAL. Never ship
+  or commit while a PARTIAL result is in the tree; see DEPARTMENTS.md cost rule 11.
 - Max 2 specialists concurrent.
 - Commit and push each QA-passed task to `origin/main`, one commit per task, after the gate
   passes — never force-push, never rewrite pushed history.

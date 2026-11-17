@@ -8,7 +8,7 @@ Vanilla PHP (≥7.4, no framework) hotel website + PMS. PDO/MySQL (creds via `.e
 **This repo is a fork of the Rosalyn's Hotel 2026 platform** with Liwonde Sun's own branding,
 content, imagery and guest-facing design. `MIGRATION_PLAN.md` at the repo root is the record
 of that migration. Code changes are built in ../Rosalyns-hotel-2026 and ported here by
-`scripts/ship.php` (run from the Rosalyn's folder); only the guest front end and settings/data differ.
+`scripts/ship.php` (run from the Rosalyn's folder; work already committed there: `scripts/port-commit.php`); only the guest front end and settings/data differ.
 
 ## Autonomous build system (default workflow)
 
@@ -29,12 +29,12 @@ do not re-derive plans or re-scan the repo ad hoc.
 - `.claude/agents/` — codebase-scout (haiku, read-only mapper) · build-planner (opus,
   plans only, never edits code) · backend-specialist (opus) · frontend-specialist
   (opus) · ui-designer (opus, polish pass on just-touched files) · qa-auditor
-  (read-only gate; haiku for lint, opus for logic/security). Model rule (owner 2026-11-11):
+  (read-only gate, opus, anything with logic) · qa-quick (sonnet; only CSS/markup/docs diffs, escalates the rest). Model rule (owner 2026-11-11):
   Opus for anything touching logic (money, stock, bookings, auth, security, Assistant rails); switch
   autonomously to Sonnet for very small/tedious low-risk work it can surely do; haiku for docs/lint.
 - Department leads (`.claude/DEPARTMENTS.md`): `dept-rooms-lead`, `dept-restaurant-lead`,
   `dept-accounting-lead`, `dept-stock-lead`, `dept-guest-site-lead`, `dept-events-gym-lead`, `dept-pwa-lead` (patch-only: installed app, offline, POS/KDS stations), `dept-import-lead` (opus; Import button: Excel/CSV/Word/PDF → review → import, `data_import` permission default admin+manager, no staff-list import, spec `.claude/IMPORT_PLAN.md`), `dept-patch-lead` (owner-approved feature patches in `.claude/PATCH_QUEUE.md` + all security patches), `dept-logs-lead` (owner 2026-11-14; System Logs + activity hook + Hotel Settings change log, who/when/old → new, secrets never stored), `dept-eod-lead` (owner 2026-11-13; End of Day report + timed report emails: who gets what, when, test mode, never twice; contract `.claude/EOD_SPEC.md`; liaises with accounting/restaurant/rooms/AI/guides leads) (opus; each audits/fixes its department end to end and
-  is the one to ask when it breaks) and `artifacts-lead` (owner 2026-11-12: the anonymised sales showcase in `OneDrive\MSP\Showcase`, business-type picker + MSP panel track; same lead in msp-control-panel; told of shipped screen changes via the daily SYNC QUEUE) and `ui-lead` (one visual language; turns the leads'
+  is the one to ask when it breaks) and `artifacts-lead` (owner 2026-11-12: the anonymised sales showcase in `OneDrive\MSP\Showcase`, business-type picker + MSP panel track; same lead in msp-control-panel; told of shipped screen changes via the SYNC QUEUE, worked through once a week) and `ui-lead` (one visual language; turns the leads'
   `UI_REQUEST`s into shared `UI_DECISION`s). Money changes from any department are reviewed by the
   accounting lead.
 - `.claude/skills/build-loop/SKILL.md` — the cycle: plan → build → polish (UI only) →
@@ -88,6 +88,10 @@ do not re-derive plans or re-scan the repo ad hoc.
    `.claude/archive/`, never read unless asked.
 5. Briefs carry the facts (paths, lines, rule, test cases) so agents don't re-discover them; reports
    under 150 words. Haiku for lint/docs/guides, Opus for build and logic QA, Sonnet only for very small sure tasks (owner 2026-11-09).
+6. Hard limits, not just rules (owner 2026-11-17): agents have `maxTurns` caps (PARTIAL hand-back:
+   DEPARTMENTS.md cost rule 11), sessions auto-compact at 250k (`.claude/settings.json`), and
+   `scripts/claude-hooks/read-guard.php` blocks whole reads of files over 400 lines / 40 KB. Work already
+   committed at Rosalyn's is ported with `php scripts/port-commit.php <commit>`, not an agent.
 
 ## Code conventions (enforced by qa-auditor)
 
