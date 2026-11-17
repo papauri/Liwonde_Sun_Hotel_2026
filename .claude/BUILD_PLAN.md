@@ -993,6 +993,7 @@ Ordered by what blocks production. Owner actions are marked; everything else is 
 
 ## ASSUMPTIONS log
 
+- ASSUMPTION (2026-11-18, Reports, until the owner answers): VAT on credit-note payments stays in the VAT Collected card and VAT Register (it equals the register), but Reports Net Revenue takes off only the VAT on the payments Gross Revenue counts (credit-note payments are not in Gross). The VAT Collection table shows the two apart: "VAT on payments counted" and "VAT on credit-note payments (already counted when first paid)". Owner question: should credit-note VAT leave VAT Collected altogether?
 - ASSUMPTION (2026-10-28, AI lookups): order_status shows every order to holders of pos_all_tabs, stock_orders or a station / room-service view; a till-only user sees only orders they opened (the POS open-tabs rule). Room-service orders are looked up only while station_room_service is on.
 - ASSUMPTION (2026-10-28, AI lookups): an order's balance left = total_amount minus its split payments (stock_order_splits); a room-service order posted to the folio says "charged to the room bill" with no till balance.
 - ASSUMPTION (2026-10-28, AI lookups): a gym member's balance owed = the Gym Reports rule (live gym_inquiries bills, enrolment + [member:NUMBER] renewals, amount_due > 0, not cancelled), shown only to gym_financials / gym_reports / accounting / payments holders.
