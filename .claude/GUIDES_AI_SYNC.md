@@ -25,6 +25,125 @@ when prompted."
 
 ## Pending (oldest first)
 
+### Group bookings Ship A: Correct Stay Dates after checkout + group table (2026-11-17, owner ask) — hashes in TASKS.md
+- **Guides (Bookings > booking details):**
+  - A checked-out room has a new "Correct Stay Dates" button. It needs the "Correct a stay after checkout" permission (default admin and manager) and a reason, and goes through preview → confirm.
+  - It is used when a guest really arrived late or early, or left early or late.
+  - Extra nights are charged at the booked rate (a changed rate needs a reason). Money owed back goes out as a refund to the original payment or as a credit note.
+  - The room's invoice is rebuilt with the same number. Receipts do not change.
+  - Past End of Day figures for those dates change.
+  - A room with a cancellation policy cannot have nights cut this way yet.
+- **Guides (group table):** a booking in a group shows every room (no-show included) with:
+  - dates and nights;
+  - booked rate × nights;
+  - billed, paid, owed, credit and refunds;
+  - group totals over all rooms, and the net position (owed − credit).
+- **Assistant:**
+  - knows the new action and permission;
+  - group figures = the sum of the rooms, all statuses;
+  - stays read-only on this. It points staff to Correct Stay Dates and never does the correction itself.
+
+### Assistant: full booking / group breakdown when asked about a booking (2026-11-17, owner ask, for the next sync)
+Owner: "I also like how you broke down everything you know about the booking including days. Put this sort of details in the steps for the AI when we are ready to sync later."
+
+When staff ask about a booking or a group, the Assistant answers in the same structured way as the ICTAm breakdown. It is read-only, and it only states figures it has checked (rail: never claim absence unverified). The answer covers:
+- **Group summary:** reference, number of rooms, how the group is stored (lead room + linked rooms), and a payer or company account if any.
+- **Dates and nights:** booked check-in → check-out and number of nights, per room. It calls out rooms whose dates differ from the group's.
+- **Money per room:**
+  - booked rate per night × nights = bill (including VAT and levy);
+  - paid;
+  - owed or credit;
+  - how a lump sum was split (e.g. 15,000,000 split as 937,500 per room);
+  - folio charges.
+- **Group totals:** billed, paid, owed (with the sum written out, e.g. 16 × 129,000 = 2,064,000), refunds, net position.
+- **Status timeline:** each room's history in plain words with dates and times, in local time. Raw log times are UTC, so read them via the app.
+  - When each room checked in, and who marked a no-show (with the note).
+  - Rate corrections, old → new, with the approval note.
+  - Checked out, and "with outstanding balance, authorised by X".
+- **What stands out:** e.g. dates never corrected after checkout, a no-show still carrying a share of the lump sum, a missing checkout time.
+  It points to the screen to fix each one; it never fixes anything itself, and preview → confirm stays.
+
+Guides: none for this entry. The guide entries for the group bookings ships are logged separately when they ship.
+Depends on the group bookings ships (Ship A group table, A8 correction after checkout), so the Assistant reuses the same figures (getBookingFolioSummary per room, group = sum of rooms, all statuses).
+
+### Group bookings Ship B1: payments on no-show / cancelled rooms that still owe + booking search (2026-11-17, owner ask) — hashes in TASKS.md
+- Payments > Add Payment and Bookings > Payments & balance now accept a payment on a no-show room, a cancelled room whose kept fee or extras still owe, and an expired hold carrying the group no-show charge, only while it owes. The room keeps its status. Such a room can never be overpaid (the overpay tick does not apply): "This no-show booking owes MWK X. A payment on it cannot be more than that."
+- A room that owes nothing still refuses: "This no-show booking owes nothing. No payment can be recorded." Deleted rooms refuse everywhere.
+- Add Payment booking search: deleted rooms no longer listed; a room in a group shows "Room x of N, group <lead ref>"; the recent list also shows up to 10 older rooms that still owe.
+- Guides: Payments (Add Payment, search), no-show/cancelled sections, FAQ "can I take money on a no-show". Assistant: payment answers must not say no-show/cancelled rooms cannot take payments.
+
+### Group bookings Ship B2: Add charge from Payments / Accounting + small fixes (2026-11-18, owner ask) — hashes in TASKS.md
+- New "Add charge" button on Payments Ledger and the Accounting Dashboard (page admin/charge-add.php, needs Edit Booking). Pick a booking, then "This room only" or the whole group (one line on the group's lead room, or split evenly across the rooms), charge type, description, quantity, price (VAT included, no levy), and a reason (required). Preview shows each room's owed now → after; Confirm posts it. History: "Charge added" / "Group charge added" with the reason and owed old → new.
+- A checked-out room can take a charge here only (not from booking details), and only with the "Correct Stay After Check-out" permission (admin + manager). No-show, cancelled, expired and deleted rooms are refused. Issued invoices are rebuilt under the same number. Extra nights still go through Correct Stay Dates / Extend stay.
+- Bookings: an expired room carrying its group no-show charge that still owes now has Payments & balance in the More menu. Booking details' group list leaves deleted rooms out.
+- Guides: Payments (Add charge), Accounting dashboard shortcuts, group bookings section, FAQ "how do I charge a guest who has already checked out". Assistant: can say charges after check-out go through Payments > Add charge with the permission; must not say checked-out rooms can never be charged.
+
+### Group bookings Ship A2: Kept for unused nights (2026-11-18, owner ask) — hashes in TASKS.md
+- When a stay gets shorter (leaves early, arrives late and pays only nights stayed, dates changed, nights taken off, check-out date corrected, edit/modify booking), the room's saved cancellation tiers decide how much of the unused nights is kept: shown before confirm as "rate × nights × %". Staff can change the amount (0 up to the bill reduction) with a reason. A booking with no saved cancellation policy keeps nothing (ICTAm included).
+- The amount kept is a line on the bill (VAT and levy inside), on the invoice; History "Kept for unused nights" / "No fee kept for unused nights". Notice date: the leave date at checkout/after-checkout, the arrival date for late-arrival nights, today for future changes (never later than today).
+- Adjust Stay Dates no longer leaves paid money as credit: staff choose a refund or a credit note. Correct Stay Dates after check-out can now cut nights on rooms with a policy.
+- Guides: check-out (early leave / late arrival), Adjust Stay Dates, Add / take off nights, cancellation policy page, FAQ "why was money kept when the guest left early". Assistant: its "Correct check-out" / "Change booking" cards do not show the kept amount yet and the save refuses when a fee applies — tell staff to use the screen (dept-ai-lead).
+
+### Group bookings Ship C1: make primary, make a group, remove from group (2026-11-18, owner ask) — hashes in TASKS.md
+- All Bookings has tick boxes (this page only; cancelled / expired / no-show / deleted cannot be ticked) and a "Make a group" bar: pick the primary room, review each room's paid / owed and the group totals, confirm. Refused when payers differ (company vs guest, two companies) or a booking is already in another group.
+- Booking details "Rooms in this group" table: "Make primary" and "Remove" per room (review, then confirm; Edit Booking). The group invoice number never changes on a primary switch. A removed room becomes an individual booking with its own payments, balance, invoice and cancellation policy; if it held the group number, the number stays with the group (in a group of 2, with the room left) and the removed room gets its own number on its next invoice. Removing the primary room hands the group to another room first.
+- Group documents print each distinct cancellation policy text ("For REF1, REF2: ..."). No money moves in any of these. History: "Made the primary room of the group", "Primary room of the group moved", "Group invoice number kept", "Added to a group", "Rooms added to the group", "Removed from the group", "Group invoice number left with the group", "Room removed from the group".
+- Guides: Bookings (groups), booking details group table, FAQ "how do I join two bookings into one group / take a room out". Assistant: group answers must know these exist; it has no actions for them (screen only).
+
+### Group bookings Ship C2: move credit between rooms, move group payment to a leaving room (2026-11-18, owner ask) — hashes in TASKS.md
+- Booking details "Rooms in this group": when one room has credit and others owe, "Use this credit for the rooms that owe" (review each room's owed now → after, then confirm). It issues one credit note on the room with credit and applies it to the owing rooms; payments and receipts never move. Unused credit stays on its room. Refused when any room is company-billed. Needs Issue refunds (refund_payment).
+- Remove from group: optional "Move part of the group payment to this room" (default none, at most what the room owes and what the other rooms can give); shown before confirm, done in the same step as the removal. Needs Issue refunds.
+- A cancelled or no-show room gives only its credit, never what its policy kept. History: "Credit moved to rooms that owe", "Credit received from another room", "Group payment moved to a room that left", "Group payment received on leaving the group".
+- Guides: booking details group table, Remove from group, credit notes page, FAQ "a room left early and has credit, others owe". Assistant: knows these screen actions exist; no Assistant action.
+
+### Group bookings Ship C2b: same-company credit moves (2026-11-18, owner "same-payer rule") — hashes in TASKS.md
+- Both C2 moves now also work when EVERY room is billed to the SAME company: only that company's money moves (credit note made out to the company); a guest's own extra money stays on its room (review says so); a receiving room takes at most what the company owes on it (never the guest's extras). Mixed guest/company or two companies: still refused, with the reason.
+- Company accounts / company invoice: the moved money counts as the receiving room's company payment and comes off the giving room's; "company money received" does not drop. A company credit-note payment cannot be edited (change it on Credit Notes); refunds of it go to the company.
+- History says "company money of <company>". Guides: same pages as C2 + Company accounts page. Assistant: knows the rule; no Assistant action.
+
+### All Bookings row click opens the full booking (2026-11-18, owner "show the full booking and not the summary") — hashes in TASKS.md
+- Clicking/tapping anywhere on a booking row (not on a button) now opens the full booking page (Booking Details), at every width. The (i) summary icon still opens the quick summary. Ctrl/Cmd-click opens the booking in a new tab.
+- Guides: All Bookings page ("click a row to open the booking"). Assistant: no change.
+
+### Group follow-up G4: a no-show / owing cancelled room can join a group (2026-11-18, owner "Yes it can still join") — hashes in TASKS.md
+- All Bookings: the group tick now also shows on no-show rooms and on cancelled rooms that still owe a kept fee. Make a group lets them join; they keep their own owed amount and cancellation terms. A group payment pays them only what they still owe; credit from other rooms never moves into them.
+- A no-show or cancelled room can never be the group's primary room (the lead choice is greyed out; Make primary is hidden on its booking page).
+- History on the joining room: "Added to a group … Joined as a no-show: a group payment pays it only what it still owes." / "… Joined as a cancelled booking: only its kept fee counts in the group." Guides: All Bookings Make a group, booking details group table. Assistant: knows the joining rule; no Assistant action.
+
+### Group follow-up G1: payment statuses never say "Completed" while the bill still owes (2026-11-18, owner) — hashes in TASKS.md
+- Payment details (top badge, Status row, other payments), Accounting dashboard recent payments, booking History "Status now", Reports (Payment Status Mix) and the reports export now use the Payments list words: "Received" (the money came in) + whether the bill is settled or still owes MWK X. Refunds show their step ("Refund: Paid out", "Refund: Moved to credit note"); a payment made from a credit note reads "Paid from credit note" (guest credit used, not money received). Pending / failed / cancelled keep their own words.
+- Guides: Payment details, Accounting dashboard, Reports pages. Assistant: payment rows' status words changed (it should say "Received" + bill position, never "Completed" for a part-paid bill); no Assistant action.
+
+### Group follow-ups G2 + G3: change any room's dates and name who's staying, from the group table (2026-11-18, owner) — hashes in TASKS.md
+- Booking details "Rooms in this group": each room has "Change dates". On the room you are on, its own date dialog opens; on another room it opens that room's page with the right dialog already open (Adjust Stay Dates before check-out, Correct Stay Dates after) and "Back to the group". Hidden on cancelled / no-show / expired rooms and for staff without that dialog's permission.
+- Each room has "Who's staying" (optional name, up to 150 characters, any status incl. after check-out; Edit booking permission). Empty = the lead booker's name shows again. A checked-out room's invoice PDF is rebuilt with the new name. History on that room: "Name on the room changed" (old → new).
+- Guides: booking details group table. Assistant: knows both buttons; no Assistant action.
+
+### Group follow-up G5a: All Bookings tick column, select all and bulk actions (2026-11-18, owner "Yes I want them all") — hashes in TASKS.md
+- All Bookings: the tick is its own first column (also on phones), with a header tick for select all / none. A bar shows "N selected · Clear" and the actions: Make a group, Add to an existing group, Remove from group, Send a reminder (late / overdue bookings, as the single button), Resend confirmation, Email invoice, Export selected (CSV), Print arrival list.
+- Every action (except export / print) shows a review list of each ticked room — what will happen, or "skipped: reason" — then Confirm; each room is done or skipped on its own, with a result list. Same rules and permissions as each single button. At most 50 rooms per send, 200 per remove.
+- History / email log as the single actions; one "bookings_bulk_apply" activity line per bulk confirm. Guides: All Bookings (ticks, bulk bar, each action). Assistant: knows the bulk bar exists; no Assistant action.
+
+### Group follow-up G5b: bulk Confirm, Assign rooms, Check in (2026-11-18, owner) — hashes in TASKS.md
+- All Bookings bulk bar adds Confirm (tentative / pending → confirmed), Assign rooms (the review proposes a free room per booking, never the same room twice for overlapping nights; each proposal can be changed before Confirm) and Check in (same gates as the single button: room assigned, payment rule, arrival day, room clean; late arrivals are skipped; no check-in email from the bulk bar).
+- Confirming the same review twice never runs it twice; after a lost connection the message says the result is unknown (check History). The bookings CSV export neutralises cells that start like a spreadsheet formula.
+- History as each single action. Guides: All Bookings bulk bar. Assistant: knows the bulk bar actions; no Assistant action.
+
+### Group follow-up G5c: bulk Cancel and Mark no-show (2026-11-18, owner) — hashes in TASKS.md
+- All Bookings bulk bar adds Cancel (one reason for all, "Email the guest" tick) and Mark no-show (optional note). The review shows each room's fee kept, refund, guest credit (or no-show fee) and what will happen; nothing changes until Confirm. Fees are the automatic ones (policy locked at booking, else the hotel rule / no-show setting); to change one room's fee, cancel it from its own booking. Rooms of one group that are all ticked are cancelled together. No-show needs a confirmed booking whose arrival date has passed.
+- History, refunds and emails as the single row's Cancel / No-show. Guides: All Bookings bulk bar + cancelling a booking. Assistant: knows the bulk Cancel / no-show; no Assistant action.
+
+### Check-in: group members use the lead's pay-later arrangement (2026-11-18, owner audit) — hashes in TASKS.md
+- A room in a group whose lead booking has "check in now, pay later" (or a company account) can now be checked in unpaid from booking details, All Bookings and the check-in page (it was refused on save before).
+- Make primary copies the pay-later switch and its note to the new lead (History: "Check in before payment copied", Off → On). Cancel check-in now writes History ("Check-in undone", Checked in → Confirmed).
+- Guides: Groups (pay later for the whole group), Check-in (undo). Assistant: group members inherit the lead's pay-later arrangement at check-in.
+
+### Reports: payment status mix adds up + credit-note payments as End of Day (2026-11-18, owner audit) — hashes in TASKS.md
+- Payment Status Mix shows every status (incl. Received, part refunded / refunded, Paid from credit note, Failed) with a Total row equal to the payments in the period; the three Received lines = Gross Revenue. Helper text per line.
+- Gross revenue, payment methods, daily / monthly trends and prior-period comparison no longer count payments made from a credit note (same as End of Day). Net Revenue takes off only the VAT on counted payments; VAT Collection shows "VAT on payments counted" and "VAT on credit-note payments" apart.
+- CSV export: status breakdown follows the chosen dates, has a Total row, refund rows after it; no "Credit note" method line. Guides: Reports (Payment Status Mix, VAT Collection). Assistant: revenue answers use the same rule.
+
+
 ### Ship M: guest credit is not a refund, VAT counted once (2026-11-18, owner) - hashes in TASKS.md
 - Guides (End of Day page/PDF/email/WhatsApp, Reports page + CSV export, timed Accounting Summary CSV): "Refunds"
   now counts only money really paid back to a guest; money moved onto a credit note is no longer a refund. New
@@ -36,7 +155,28 @@ when prompted."
   and admin/includes/guest-credit.php (rh_guest_credit_summary / rh_guest_credit_lines); rh_eod_refunds_to_credit and
   rh_eod_credit_notes_redeemed removed. includes/ai/ai-insights.php ~315 still says "Moved to credit notes" - check at sync.
 
-### Ship M2 + step 13: refunds = payouts on Payments / Accounting / guest history; one payment label everywhere (2026-11-19, owner, Bundle A) - hashes in TASKS.md
+### Stock Step U1: count in shots / glasses (2026-11-18, owner) - hashes in TASKS.md
+- Guides (Stock › Items, Stock › Stock count): an item can have a measure ("1 bottle = 25 shots", or glasses, cups...;
+  which one is the stock unit), suggested from the size in the name and the shot/glass size settings. On a count line
+  staff pick stock unit / bottles / shots / both ("2 bottles + 7 shots"); the line shows what it converts to and the
+  cost per shot. "Set measure" from the count line (Approve stock counts or stock management). Changing N re-works
+  draft and submitted counts, never approved ones. Approved count typed in bottles but counted in shots: "These were
+  counted in shots" correction, Preview -> Confirm, once per line; it does not show as missing stock.
+- Assistant: new columns stock_ingredients.measure_* and stock_count_lines.entry_*; helpers rh_stock_measure_* in
+  config/database.php (rh_stock_measure_fix_sql excludes the correction from loss lists); activity actions
+  stock_measure_changed, stock_count_line_measure_changed, stock_count_measure_correction. Counts it reads stay in the
+  stock unit.
+
+### Ship Q: group remove keeps / drops pay later, rooms' own names + dates in emails (2026-11-19, owner) - hashes in TASKS.md
+- Guides (Bookings › Groups): removing a room that gets "check in now, pay later" from its group (single Remove or bulk
+  Remove) asks "Keep pay later for this room" or "Drop it - this room pays on its own"; History "Kept pay-later from
+  group" / "Dropped pay-later from group". A no-show room's unpaid fee never stops the rest of the group checking out;
+  the fee stays owed on that room. Received / Confirmed / Tentative / quotation emails list each room with its own
+  dates and nights and "Who's staying" name when entered.
+- Assistant: rh_group_remove opts take the pay-later choice (keep/drop), refused when needed and missing; email rate
+  block rh_email_booked_rate_rows rows carry per-room dates/nights + room_guest_name.
+
+### Ship M2 + step 13: refunds = payouts on Payments / Accounting / guest history; one payment label everywhere (2026-11-19, owner, Bundle A) - Rosalyn's d10e20c, Liwonde 348a182
 - Guides: Payments "Refunds" card and Accounting dashboard "Refunds" (KPI, pop-up, reasons, trend, latest list) count
   only money paid back in cash, bank or mobile money; money moved onto a credit note shows on its own "Moved to
   guest credit" line, never in the refunds total. Accounting Net reads "Gross − refunds − moved to guest credit"
@@ -52,13 +192,13 @@ when prompted."
   rh_refund_payout_sql / rh_refund_to_credit_sql at sync. Bookings "paid / unpaid" answers should use
   rh_bk_pay_key_sql (admin/includes/bookings-list-filters.php), not stored payment_status.
 
-### Step 14: POS till reuses a Fire whose reply was lost; void lock order (2026-11-19, owner, Bundle C) - hashes in TASKS.md
+### Step 14: POS till reuses a Fire whose reply was lost; void lock order (2026-11-19, owner, Bundle C) - Rosalyn's 704d493, Liwonde a4a8ec9
 - Guides (POS till): if the connection drops just after Fire, the next Pay or edit picks up the tab that was already
   sent (no second tab); an edited cart whose Fire had already landed shows that sent order instead of adding to it -
   the cashier re-adds anything extra. No new screens.
 - Assistant: nothing to change (no AI wording touched).
 
-### Bundle B: group emails, invoice and quotation list every room (2026-11-19, owner) - hashes in TASKS.md
+### Bundle B: group emails, invoice and quotation list every room (2026-11-19, owner) - Liwonde a2de61b, Rosalyn's see TASKS.md
 - Guides: group invoice email + booked-rate lines show each room's guest (only when entered); invoice PDF room line
   shows "(N nights)"; a group quotation lists every live room and its total is the sum of the rooms (cancelled rooms
   left out); reminder, pre-arrival, check-in, cancellation, no-show, extend and modified emails list the group's rooms
@@ -83,7 +223,7 @@ when prompted."
   Use this for counting fills the count measure with it (saved with Save). For recipes and the menu too, add the
   measure under Drink measures. Manager Guides: stock.html measures paragraph, one line.
 - Assistant: nothing to change.
-### Import: Drinks for the menu (2026-11-19, owner, drinks profit projection P1) - Liwonde (hash at ship), Rosalyn's see TASKS.md
+### Import: Drinks for the menu (2026-11-19, owner, drinks profit projection P1) - Liwonde 994f0f8, Rosalyn's see TASKS.md
 - Guides (08 Stock + Import guide): step 4 Confirm now lists "Drinks for the menu" when the file has a selling price:
   name, sold as, price (VAT included, used exactly, never added), category (file's column, else Bar; per row or
   "Set for all"), cost of one, profit of one, below-cost warning. Nothing goes on the menu unless ticked; a drink
@@ -92,15 +232,29 @@ when prompted."
 - Manager Guides: stock.html import paragraph, one or two lines. Rebuild stock, check 2 pages.
 - Assistant: answer "which drinks did the import offer for the menu" (AI_REQUEST to the AI lead; data in the
   import job's answers `_drinks` + activity log `drink_menu_import`).
-### Stock Reports: Projected profit tab (2026-11-20, owner, drinks profit projection P2) - Liwonde (hash at ship), Rosalyn's see TASKS.md
+### Stock Reports: Projected profit tab (2026-11-20, owner, drinks profit projection P2) - Liwonde 5033c0f, Rosalyn's see TASKS.md
 - Guides (08 Stock): Stock Reports > Projected profit: one row per menu price of a drink sold as itself (one stock
   item): on hand, measures per unit, selling price, projected sales, stock cost, projected profit, margin. Cards on
   top = each stock item counted once, at its lowest-selling menu price ("In totals"); cost not known is left out.
   "Take VAT out" switch (on by default when VAT is on) shows sales/profit without VAT; the menu is not changed.
-  Filter cards: Sells below cost (red), No selling price yet (link to the Menu page), Cost not known. Read-only.
+  Filter cards: Sells below cost (red), No selling price yet (drink stock only; link to the Menu page), Cost not known. Read-only.
 - Manager Guides: stock.html reports paragraph, one or two lines. Rebuild stock, check 2 pages.
 - Assistant: answer "what profit will our drinks stock make" (AI_REQUEST to the AI lead; reuse
   admin/includes/stock-projected-profit.php rh_spp_load + rh_spp_build, same totals rule and VAT switch).
+
+### Stock Reports: Projected vs actual tab (2026-11-20, owner, drinks profit projection P3) - Liwonde d10a051, Rosalyn's see TASKS.md
+- Guides (08 Stock): Stock Reports > Projected vs actual: pick dates; per drink, between ITS OWN first and last
+  approved counts in those dates: opening/closing count, actual used, sold (till + room service, voids put back),
+  unaccounted measures (free pours, spillage, missing) at menu price (Take VAT out switch as Projected profit) and at
+  today's cost; recorded wastage is never in the gap. Second line "Till vs menu price" = what the till took vs sold x
+  today's menu price (happy hour/deals, discounts, comps, price changes; order discounts shared across the bill's
+  lines). Fewer than two approved counts = "count it again" message, no figure. Cocktails count as sold but are not
+  in the till line. Totals net extra stock found against losses (card help says so). Read-only. Also: Stock-In,
+  Usage, Wastage, Yield, Adjustments now honour From/To (were stuck on last 30 days).
+- Manager Guides: stock.html - illustrated, simple "count -> report -> gap" explanation (owner asked 2026-11-20;
+  manager-guides-lead dispatched the same day).
+- Assistant: answer "how much drink went missing between counts" (AI_REQUEST to the AI lead; reuse
+  admin/includes/stock-projected-vs-actual.php, same per-item snapping, totals and VAT rules).
 ## Synced 2026-11-16 (guides + Assistant: every entry from 2026-11-14 to 2026-11-16 below, including the 2026-11-15/16 entries further down; hashes in TASKS.md) - entries kept for reference
 
 ### Import stock check: value column warning + stock check workbook (2026-11-16, owner ask) — hashes in TASKS.md
@@ -151,6 +305,60 @@ when prompted."
 - Assistant: check at sync time whether any read tool reads stock_counts, import_jobs or the data_reset permission
   wording (grep includes/ai/ai-import.php, ai-tools.php, ai-insights.php); no action tools added.
 
+### Joined rooms follow-up (2026-11-15, step 8e follow-up) — hashes in TASKS.md
+- Guides (Bookings > Change room type, Individual Rooms, Reports > Occupancy): an upgrade into a joined room is now
+  priced like a new booking of it (the pair's rate, else the joined room price, plus the joined room's rate plans) and
+  the guest gets the exact pair it was priced on; an in-house guest moves to a clean pair. With two or more pairs the
+  first free pair by name is given; for a stay starting today a clean pair goes before one still being cleaned.
+  Individual Rooms: the status cards count the rows below (a room with a guest checked in = Occupied; a future
+  booking no longer hides a room being cleaned or under maintenance; a switched-off room shows Inactive), a card click works with the 10-per-page list, filtering by the Joined
+  Room type lists the pair's two rooms, a room being cleaned can still be assigned. Reports "Occupancy by Room Type"
+  Rooms = rooms that can be sold now (a joined room with no active pair = dash), same figure in ADR/RevPAR and CSV.
+- Assistant: includes/ai/ai-extras.php:680 falls back to rooms.total_rooms when rh_sellable_room_units_by_type() has no
+  entry (a Shared joined type) - rh_room_type_unit_total() now gives the per-type figure the reports use.
+
+### Joined rooms on demand (2026-11-15, NEXT_BUILD_ORDER step 8e) — hashes in TASKS.md
+- Guides (Individual Rooms > Room Combinations, New Booking, Bookings check-in, Room Types): a joined room type
+  with no ACTIVE pair now shows sold out everywhere (it was sold on its stored room count with no rooms behind it).
+  A pair in "On their own and as the joined room" (Shared) mode joins the two rooms only for the nights a joined
+  booking takes it. Saving or switching on a pair gives it to joined bookings still waiting for rooms (the message
+  lists who got it and who still waits). Check-in of a joined booking with no rooms joins a free pair, or is refused
+  ("No free joined pair for this stay"). The last pair of a joined type cannot be deleted or re-typed (deactivate it).
+  Rate Override blank = the joined type's own price and rate plans. Room Types cards and price fields show the VAT
+  and tourism levy inside the price (each line only when it is switched on). Upgrade into a joined type is priced at
+  the pair's rate (one rate whatever the occupancy). Pick Shared, not "Only as the joined room", for 7A + 7B.
+- Assistant: availability/quotes go through checkRoomAvailability, so a joined type without a pair now reads 0 left;
+  check includes/ai/ for any room-count read that uses rooms.total_rooms / rooms_available directly.
+
+### Refunds on the payout day everywhere (2026-11-15, NEXT_BUILD_ORDER step 8d) — e90b5c7 / 5151a26
+- Guides (Dashboard, Payments, Accounting, Company accounts): a refund now shows and counts on the day it was paid
+  out on the Dashboard "today" list (with the payout time), the Payments list Payment Date column and its date sort,
+  the Accounting payment-method counts and Company accounts "received this month" - the same day as End of Day and
+  Reports. A refund still pending shows the day it was raised and counts in no period. The time under Payment Date is
+  still when the record was saved. No amounts changed.
+- Assistant: check at sync time whether any read tool filters refunds by payment_date (grep includes/ai/ for
+  payment_type = 'refund' with a date filter) and apply the payout-day rule.
+
+### Payments accuracy + Payments page (2026-11-15, NEXT_BUILD_ORDER step 8b) — SHIPPED (hashes: see TASKS.md line)
+- Guides (Payments, Payment details, Bookings "Payments & balance", End of Day, Reports, Credit notes, email templates):
+  click anywhere on a Payments row (or an "accounts that owe" row) to open it; Payment details now shows paid by,
+  received by, group and credit note; "Refunded" counts only refunds actually made (pending on its own line, 2 decimals).
+  "Payments & balance" lists refunded payments and every refund; Total charged = the bill (kept fee / no-show charge).
+  Room invoice email shows the invoice's own totals; its last row is the balance (new tags {{invoice_total_amount}},
+  {{amount_paid_amount}}, {{balance_due_amount}}; stored templates unchanged, so they still say "Total Due" above the
+  balance). A partly refunded payment can be refunded again up to what is left. OWNER RULES 2026-11-14/15: a no-show is
+  money earned per its policy (new End of Day line "Kept on no-shows", on the check-in date, not in ADR/RevPAR; past
+  days' totals change); a refund counts on the day it was paid out in every report, pending refunds in no period; the
+  levy is a once-off on the room booking. Every payment write now shows in History.
+- Assistant: check at sync time. No grep hit in includes/ai/ for rh_eod_earned_revenue, rh_pay_count_day_sql,
+  payment_audit_log or find_payment_for_refund; check any refund-by-date figure it reads against the payout-day rule.
+- LATER (not pulled): Payments list date column/sort still use the day a refund was raised; dashboard today feed
+  (dashboard.php:1461), api/payments.php:182-238, billing-accounts.php:615 and accounting-dashboard.php:376 count
+  refunds by the day raised; new date filters cannot use the payment_date index; Rosalyn's stored payment_invoice
+  template label "Total Due" (owner); row click on Receipts/Invoices/Quotations/Credit notes; dead code
+  api/payments.php:1070-1150, bookings.php:1634, booking-details.php:1423; till refund status rows not in History;
+  receipts/CSV still show a per-payment levy share (owner: levy is booking-level).
+
 ### Assistant: stay questions by first name (2026-11-15, step 8a) — hashes in TASKS.md
 - Guides: staff can ask the Assistant "when did <first name> check in / out", "has X left / arrived", "who checked them
   in / out", "who cancelled X's booking", "was X a no-show", "did X extend", "was X moved". The answer comes from the
@@ -181,6 +389,18 @@ when prompted."
   commas; settings-lookup refusal names the wrong missing permission; 10 money cases in ai_assistant_test.php have no
   refuse-at-Rosalyn's guard; 7 data-dependent fails at Liwonde (briefing left-owing + refunds, 4 alert checks, digest
   recipients) - they also fail on the previous code; idea: cancellations decision could offer the policy as an option.
+
+### Individual rooms + housekeeping review (2026-11-16, NEXT_BUILD_ORDER step 12a) — SHIPPED (hashes: see NEXT_BUILD_ORDER.md row 12a)
+- Staff-visible: checkout no longer sends an out-of-order room, a room still holding another checked-in guest, or a
+  room under blocking maintenance to Cleaning (maintenance rooms show "Room is in maintenance; its clean waits");
+  check-in "not clean" override only covers dirty/cleaning rooms (occupied/maintenance/out of order always refused);
+  changing a booking's room refuses a pair room a waiting joined-room booking needs; in-house move puts the old room
+  on the Housekeeping list; Individual Rooms refuses statuses that contradict bookings, Cleaning creates one task;
+  Create Checkout Cleanup covers every room of a booking; Maintenance "Block room during maintenance" unticked =
+  room stays on sale (owner 2026-11-16); Housekeeping + Maintenance filters page 10 + picker, Clear, search all
+  rows; column helpers; overdue guests show "Overdue".
+- Guides: housekeeping, maintenance, individual rooms, check-in/checkout pages. Assistant: room status / checkout
+  answers must not say a maintenance or out-of-order room was sent to cleaning.
 
 ## Synced 2026-11-14 (guides: step 6, 844f21f / 4a02c11 · Assistant: step 7) — entries kept for reference
 
@@ -308,6 +528,110 @@ when prompted."
   error_log_clear, stock_count_approval*, documents_flow, rehearsal_fixes have no refuse-at-Rosalyn's guard; past
   same-day early checkouts at Rosalyn's keep the old night count in their History text (no money effect).
 
+### Create Booking: levy shown once (2026-11-15, owner urgent fix) — SHIPPED (hashes: see TASKS.md line)
+- Guides (Create Booking, page 07 or wherever "Payment to Collect" is explained): the table now reads Room rate -> rate plan -> x nights (the all-in price) -> Subtotal (before levy and VAT) -> Tourism levy 1% (included in price) -> VAT 17.5% (included in price) -> Total to collect. Subtotal + levy + VAT = total; the levy is charged once. Display only: saved amounts were already right.
+- Assistant: no change (it reads saved booking figures, which did not change).
+
+### Stock review fixes (2026-11-15, NEXT_BUILD_ORDER step 8c) — SHIPPED (hashes: see TASKS.md line)
+- Guides (Stock: ingredients, recipes, wastage, receiving, purchase orders, barcode receive, Data Import; POS/KDS void, recall, delete): new refusals staff can now see: archiving an item a recipe uses (names the dishes); saving a recipe with an archived item (and a warning listing recipes that already use one); receiving an archived item by barcode; throwing out an empty/closed batch; backdated wastage before an approved count ("this loss is already in the count of <date>"); a second click on Receive / Stock in is ignored; KDS recall refused on a refunded order; Import: "another import is being saved", "nothing was cancelled", a new-item row whose name now exists is refused ("review the import again"), a ticked quantity of 0 is counted. Recipe "yields N portions" help now says quantities are per ONE portion sold (the yield is for reference).
+- Assistant: stock figures it reads stay the same tables; check any answer that explains why stock was or was not put back after a void / recall / delete (only lines with a recorded deduction are restored; recall of a room-service line moves no stock).
+
+### Guests on the Bookings list (2026-11-15, NEXT_BUILD_ORDER step 8f) — SHIPPED (hashes: see NEXT_BUILD_ORDER.md row 8f)
+- Guides (Bookings list, phone/tablet/laptop screenshots or wording): every booking row now shows the number of guests. Phones: line 2 reads "27 Nov -> 29 Nov · 2 nights · 4 guests". Tablets and laptops where the Guests column is hidden: "4 guests" under the Check In / Out dates. Wide screens keep the Guests column.
+- Assistant: no change (layout only; number_of_guests unchanged).
+
+### Better filtering on Bookings and Payments (2026-11-15, NEXT_BUILD_ORDER step 8g) — SHIPPED (hashes: see NEXT_BUILD_ORDER.md row 8g)
+- Guides (Bookings list): new tabs Checked Out, Cancelled, No-Show, Group Bookings (each with its count). New "More filters" button: Booking kind (Single / Group / Joined room), Room type, Payment (Paid / Part paid / Unpaid / Refunded / Fee owed after cancel or no-show). Group = rooms booked together under one lead booking; joined room = two rooms sold as one. Filters stay on through paging, sorting and CSV export; the "Showing N ..." line names them with Clear.
+- Guides (Payments): new filters Money in / Refunds (money out), Booking status (upcoming / in-house / checked out / no-show / cancelled), Group or company, Recorded by (staff), Room type, Amount from / to; on phones behind "More filters". The money cards follow the filters except Still owed and Today (their helpers say so). Each filter shows as a chip with its own Clear.
+- Assistant: no change to data it reads; if it links staff to filtered Bookings/Payments lists, the new GET params are kind / room_type / pay / filter=group_bookings (Bookings) and direction / booking_status / group / recorded_by / room_type / amount_from / amount_to (Payments).
+
+### Rate plans: per-room-type amounts, price basis, breakdown (2026-11-15, NEXT_BUILD_ORDER step 8h) — SHIPPED (hashes: see NEXT_BUILD_ORDER.md row 8h)
+- Guides (Rate Plans): one plan can now give each room type its own % or fixed amount ("Same for all room types" / "Different per room type"; a blank row uses the plan amount). New "Apply on" choice (only when VAT and/or levy is on): the full price incl. VAT + levy, or the base rate before VAT/levy (a fixed amount on the base rate adds VAT + levy on top; a percentage gives the same guest total either way). The modal shows a breakdown per room type: standard price, base + VAT + levy, new price, "Up by MWK X (Y%) per night". A plan must be all increases or all discounts (mixed is refused); a fixed discount that would make a room free is refused. Plan History shows one line per room type. Needs migration 086 (run at Liwonde; Rosalyn's on owner request - until then the old one-amount form shows there).
+- Assistant: rate_plans gains room_adjustments (JSON per room id) + price_basis; quotes go through rh_apply_rate_plans so prices are right; ai-tools.php:1856 (plan list) shows only the plan's main amount - add the per-room amounts at sync time.
+
+### Rate plan pop-up layout (2026-11-15, owner: "its not clearly arranged and this is hidden") — SHIPPED (hashes: see TASKS.md)
+- Guides (Rate Plans, Add/Edit pop-up): now in 4 numbered parts: 1. Name and when it applies, 2. Which room types (Applies To moved up, before the prices), 3. Price change (amounts, per room type, apply on, what each room type will cost), 4. Settings (Priority, Stack with other plans, Active - the two switches were cut off before and now show properly). Update any screenshot/step order.
+- Assistant: no change.
+
+### Payment status tells the truth (2026-11-16, NEXT_BUILD_ORDER step 8i) — SHIPPED (hashes: see NEXT_BUILD_ORDER.md row 8i)
+- Guides (Bookings list, Booking Details pop-up + page, Dashboard check-in card, Calendar tooltip): payment status now comes from the money: "Paid in full", "Part paid (MWK X left)", "Unpaid", "Refunded". "Paid" is now "Paid in full", "Partial" is now "Part paid (MWK X left)". The pop-up no longer says "Completed" for a booking that still owes (it was showing one payment's status). A cancelled/no-show booking with nothing paid or owed shows "Unpaid". Booking History gets a "Payment status now ..." line whenever the status changes.
+- Assistant: no data change (bookings.payment_status was already right); if it words a booking's payment state, use the same four labels (includes/booking-pay-state.php rh_booking_pay_state).
+
+### Rate plan pop-up: choose "Same / Different per room type" first (2026-11-16, owner) — SHIPPED (hashes: see TASKS.md)
+- Guides (Rate Plans, part 3 Price change): the first choice is now "Amount by room type": Same for all room types (then one Adjustment Type + Value) or Different per room type (the room type rows first, then "Amount for any room type left empty above"). Update step order/screenshots.
+- Assistant: no change.
+
+### POS / KDS core review fixes (2026-11-16, NEXT_BUILD_ORDER step 9) — SHIPPED (hashes: see NEXT_BUILD_ORDER.md row 9)
+- Guides (POS till, KDS/BDS/CDS, Orders & Tabs, Drift report, End of Day): a retried Fire / Add to tab after a lost connection no longer sends the order twice; the till now gets a "ready" alert for every later round and after a recall; ready alerts, My orders and sent notes stay on the till after the stations close until the next opening; the closed-station warning follows the station each dish goes to (coffee bar included) and updates live; a new round on an old tab no longer shows as overdue; notes and rush flags go only to the stations on the order; voiding the last unfinished dish sends the ready alert; deleting a live order sends a STOP note to the station; KDS Bump help no longer mentions a Recall button. Drift report compares against the till's own shift totals (no false drift for a tab settled by another cashier or a refund). End of Day counts a POS refund on the day it is paid out (same as the Z). Voiding a room-service charge after the order closed lowers the order total too (Z / End of Day "Charged to room" match the folio). A discount bigger than the order now stores the real discount.
+- Assistant: POS figures it reads (stock_orders totals, Z/EOD helpers) now agree with the folio and payout day; check any answer about drift, EOD refunds or room-service voids.
+
+### Money leftovers from step 9 (2026-11-16, NEXT_BUILD_ORDER step 12) — SHIPPED (hashes: see NEXT_BUILD_ORDER.md row 12)
+- Guides (End of Day, Booking History, POS till / Orders & Tabs / tables, Drift report): End of Day revenue now counts a till refund on the day the money was paid out (pending refunds left out), same as the Z and EOD report; voiding a room-bill charge adds a "Charge voided: <item> MWK x" line (who, when, type, reason) to the booking's History; the till, Orders & Tabs settle and tables refuse to take payment for an order that is already on a guest's room bill; Drift report's shift section now says it re-works each closed shift the way the Z report does and compares it with what was recorded at close.
+- Assistant: new History action `charge_voided`; voiding a room-service charge also lowers the order's cost (total_cost), so margin answers change; EOD revenue refunds by payout day (rh_pos_refund_paid_out_sql).
+
+### Rate plan: bottom amount optional when every chosen room type has its own (2026-11-16, owner fault) — hashes in TASKS.md
+- Guides (Rate Plans): with "Different per room type", a plan for chosen room types where each has its own amount can leave "Amount for any room type left empty above" empty; a plan for all room types still needs it (a room type added later uses it); the error names any room type left without an amount.
+- Assistant: no change in what it reads (adjustment_value still set: the first chosen room type's amount).
+- Follow-up (same day, owner): a room type at 0 keeps its normal price and is left out of the plan; bottom amount empty or 0 = room types without their own amount keep their normal price; the plan then covers exactly the room types that change (so a room type added later is untouched). Replaces the line above about all-room-type plans needing the bottom amount.
+
+### Import: clearer flags (2026-11-16, owner ask "RBH REVISED STOCK NOV26") - pending ship
+- Guides (Stock > Import, guide 23): "look very similar" no longer asks about two names that differ by one whole word (Black tea / Black tie, sweet red / sweet rose); the question that stays shows each row's quantity and unit cost and says "Use X for both" makes ONE item and ADDS the quantities (different sheets: you are then asked add or first sheet only), and that answer no longer leaves the item stuck. Case-price question shows the unit, the counted quantity, the line value and what each answer does (example pack, quantity stays in the sheet's unit). Value check: every disagreeing row has "Most likely: ..." on Step 3 and a "What it most likely means" column in the stock-check workbook; the Summary states the counted fact. "trays" reads as "tray".
+- Assistant: question texts it may relay changed (possible-typo, case-price); value-check rows carry `why` / `why_code` (qty-changed, no-qty, no-value, no-fit) and groups `why_*` counts. includes/ai/ai-import.php needs no change (it keys on question type).
+
+### Menu items: Save adds a picked stock item (2026-11-17, owner fault "keeps saying something is picked but not added") - hashes in TASKS.md
+- Guides (Menu Management, add/edit item): you no longer have to press Add before Save. A stock item picked with an amount typed is added when you press Save; one already in the list is just cleared; picked with no amount, Save asks "Type how much X one sale uses, or clear the Stock item box." A "New category" typed with other capitals (drinks / Drinks) joins the existing category. New stock item from "Not in the list?" is picked for you.
+- Assistant: no change in what it reads (same tables, same recipe lines).
+
+### Import: case price vs unit price + "May be a case price" note (2026-11-17, owner ask "add logic in determining during import to decide and also flag any suspect") - hashes in TASKS.md
+- Guides (Stock > Import, guide 23; Stock items): Step 3 can show a case question already "Answered for you" with a one-line reason when this hotel's own data is clear (selling price of a linked recipe, the item's pack size × known cost, or the sheet's value cell); it can be changed. Step 4 card "Read as case prices". Ticking Pack also ticks Cost (warning says so); answering "keep the current price" drops the Pack tick; a pack without its divided cost is refused. Stock items list: "May be a case price" note under Avg cost / unit, its ? says what it compared; it changes nothing.
+- Assistant (AI_REQUEST): new import summary keys `auto_reason`, `pack_hint`, `case_evidence`, item `cost_suspect`, overview `case_auto`.
+
+### Stock: Fix crate prices (2026-11-17, owner ask "Correction tool 'price was for a crate of N'") - hashes in TASKS.md
+- Guides (Stock, new page after Buying): Stock › Fix crate prices: type how many units are in one crate/case (or "Fill from list" with the CSV: Item + Units in one crate/case; rows marked Y skipped; unmatched names listed), Preview (old → new cost and value per item, totals), Confirm. Cost and the stock still held are divided; unit and quantities unchanged; past counts and deliveries keep their numbers. Refused: an item on a stock count not yet approved (approve or delete that count first), or a cost changed since Preview. Stock items' "May be a case price" note links here. Staff activity shows "Corrected a crate price".
+- Assistant: new page stock-cost-fix.php, permission stock_management, activity action stock_cost_correction; nothing else it reads changed.
+
+### Fix crate prices: purchase orders, per-batch ticks, full log text (2026-11-17, owner "fix these") - hashes in TASKS.md
+- Guides (Stock › Fix crate prices): Preview now has a "Divide this batch" box per batch still holding stock (batches already at a price for one start unticked) and shows the new cost as the average cost of the stock held; open purchase-order lines still at the crate price are divided too (line total old → new, order total recomputed; check the quantity is in single units, not crates, and send the supplier the corrected order if it was already sent). Staff activity shows the whole "Corrected a crate price" entry.
+- Assistant: no change in what it reads (PO unit_cost/line_total/total_cost may now change through this page; activity text longer).
+
+### Fix crate prices page redone (2026-11-17, owner "UI all over the place … explanation needs to be easier") - hashes in TASKS.md
+- Guides (Stock › Fix crate prices): page is now 3 steps: 1 Type the crate size (box next to the item name; "Choose CSV file" then "Fill from list"; "May be a case price" is a filter tick), 2 Check (Preview → "Now: X each → After: Y each", value before/after), 3 Save (Confirm and correct). Short 3-line intro + "More detail". Screenshots for the guide should be retaken.
+- Assistant: no change.
+
+### Assistant: stock name check, phase 1 (2026-11-17, owner "use it … just as a helper … without it on it works still like this") - hashes in TASKS.md
+- Guides (AI Settings; Stock › Fix crate prices): AI Settings has a "stock name check" switch (OFF by default), a list of what it learned from people (remove a wrong one), and pre-fill stays locked until the name test passes on the hotel's own answers. On Fix crate prices, with it on: "Check names" marks items whose price looks like a crate price for that kind of drink and offers "Use N" per row; "Use all" appears only after the name test passes. You still Preview and Confirm. The Assistant notice now folds into a small pill beside the Assistant button after a few seconds (Escape folds it).
+- Assistant (dept-ai-lead's own feature): new tool surface ai-stock-helper endpoint; settings ai_stock_helper_enabled / ai_stock_prefill_enabled; table ai_stock_kinds.
+
+### Import reads bar stock sheets (2026-11-17, owner "without needing me to answer so many questions") - hashes in TASKS.md
+- Guides (Stock > Import, guide 23): Import now recognises quantity ("Total Balance"), selling price, "bought as" (crate/case), "how many in one" and "sold/served by" columns, also from misspelt headings and from the values; a crate/case price is divided by how many are in it automatically with a reason (same unit = price of one); a Stock Value at selling price is recognised and only rows that differ are listed; section rows and TOTAL rows are skipped; a name in two sections becomes two items with the section added. It still asks a row when the numbers don't add up (price already at or below selling price, odd pack size, cases vs single units). An existing item still on a crate price stays out of the opening count until Cost is ticked.
+- Assistant: import summary carries the value-at-selling-price line (differ, both totals); new hook import_unsure_columns / import_attach_column_suggestions for the AI column reader (not built yet).
+
+### Group booking page + group emails (2026-11-18) - Rosalyn's e7d69dd, a54a28c / Liwonde 5f4b5b0, c31882f
+- Guides (Bookings > booking details, group bookings): "Rooms in this group" folds open/closed (remembered); the totals are now the table's last row "All N rooms" with the Net position under it. Who pays: on the lead room it says which other rooms that choice covers; on another room it says it follows the lead room (link) unless it has its own company. Check in before payment: shows "Already allowed" when the room's company, or the lead room's switch or company, already lets it check in before paying; on the lead room it says which other rooms its switch covers.
+- Guides (emails): a group's Booking received / Confirmed / Tentative email from the lead room shows the whole party's total (all rooms), not the lead room only.
+- Assistant: no change in tools; if it explains check-in before payment for a group room, the lead room's switch or company covers rooms without their own.
+
+### Step S1: import crate check + menu cost warning (2026-11-19) - Rosalyn's 1af010e / Liwonde efea0f2
+- Guides (Stock > Import, guide 23): a row saying "bought by the case of N" with NO selling price beside it is divided only when the hotel's own data agrees (cost in stock, deliveries, the sheet's value, menu price, or other checked case rows of the same sheet at a similar price); otherwise one question asks "price of one or of the whole case?" (N pre-filled), and like rows share one question. A pack-size column found only by its place is asked once.
+- Guides (Menu Management): red "Costs more than it sells for" badge on a row, and a warning in the Edit form, when one sale's stock cost is above the price (free items never); "Fix crate prices" link (stock managers) opens that stock item on Fix crate prices.
+- Assistant: no change in tools; new helper rh_menu_cost_check() in admin/includes/menu-recipe-lib.php could back a "which menu items lose money" answer.
+
+### Stock Step U2: drink measures everywhere (2026-11-19) - Rosalyn's 321699c / Liwonde 20c492a
+- Guides (Stock > Ingredients): hotel measures list (shot, tot, glass, pour... with ml; names refuse < > & "); an item can have its own volume in ml, shown as "1 L bottle = 33 shots"; crate/case/pack items never take a size from their name. Needs migration 089 (applied at both hotels 2026-11-19).
+- Guides (Recipes + Menu Management): a recipe line can be typed as "2 shots", "50 ml", "1 glass"; it shows the stock-unit fraction and cost live and is saved in the stock unit, so the till and kitchen deduct as before.
+- Guides (Stock > Import, guide 23): measure columns (tots per bottle, price per tot) are read; an unclear measure word or count is asked; a price-per-tot price is kept as written.
+- Assistant: part (e) (suggest bottle size / measure for unsized names, spec AI_STOCK_HELPER_SPEC.md) only when the owner prompts; helpers rh_drink_* in config/database.php can back measure answers.
+
+### Stock: custom drink measures + Edit ingredient layout (2026-11-19) - Rosalyn's e415694 / Liwonde 13b2c0e
+- Guides (Stock > Ingredients): the Drink measures list takes the hotel's own measures (jigger, half tot, carafe...) with any ml; plurals typed on recipe lines are understood ("2 jiggers"); the same name twice (shot / shots) is refused. Edit ingredient is now a wide dialog in five sections (Basic details, Units and packs, Stock levels and supplier, Bottle size and drink measures, Count measure). Screenshots in guide 08 need refreshing.
+- Guides (Stock > Import, guide 23): one-word measures from the hotel list are read from a sheet ("40 jiggers"); multi-word or unknown words are asked.
+- Assistant: no change in tools.
+- Manager quick guide PDF sent to the owner 2026-11-19 (OneDrive\MSP\Rosalyns-Stock-Quick-Guide.pdf).
+
+### Stock: yield explained plainly (2026-11-19) - Rosalyn's 1f0953a / Liwonde 6e3dc69
+- Guides: guide 08 already updated in this ship (chips example). Other guides that mention yield (recipes/menu, KB answers) should use the same example: 10 kg potatoes peeled to 8 kg = 80 %; 250 g chips plate takes 313 g raw; sack makes 32 plates, not 40; type the plate amount; rice/pasta dry amount at 100 %.
+- Assistant: if it explains yield, use the same example and rule (raw taken off = plate amount / yield).
+
 ## Known leftovers from earlier syncs (fix during a sync, never on their own)
 - `ai_assistant_test` at Liwonde: 7 data-dependent fails (left-owing + refunds briefing, 4 alert checks, digest
   recipients); ai_review_engine "nothing to add for this person" fails on HEAD too. (Tomorrow / 4 of 3 / K1,068,000 now pass.)
@@ -317,5 +641,9 @@ when prompted."
   when one email is found; `balances_due` per-row fallback (speed).
 
 ## Synced
+- 2026-11-20 (owner prompted), PART DONE: Guides for every Pending entry above, Rosalyn's 909510e / Liwonde 8704293.
+  Manager Guides: Stock, Bookings, Money and End of Day, Staff and Permissions refreshed; Daily checklist no change.
+  Assistant: built at Liwonde, not yet committed; waiting on its test run (see TASKS.md SYNC 2026-11-20).
+  The Pending entries stay until the Assistant part ships; after that, move them all here.
 - Through 943ca16: Rosalyn's 55827b0 / Liwonde 717b36e (and earlier 859473d / 8f7301d, 5085f61 / 2c82b0e).
   Full history: `.claude/TASKS.md` Shipped + `.claude/archive/`.
