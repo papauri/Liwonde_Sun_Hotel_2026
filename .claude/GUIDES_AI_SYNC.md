@@ -46,6 +46,12 @@ when prompted."
   rh_refund_payout_sql / rh_refund_to_credit_sql at sync. Bookings "paid / unpaid" answers should use
   rh_bk_pay_key_sql (admin/includes/bookings-list-filters.php), not stored payment_status.
 
+### Step 14: POS till reuses a Fire whose reply was lost; void lock order (2026-11-19, owner, Bundle C) - hashes in TASKS.md
+- Guides (POS till): if the connection drops just after Fire, the next Pay or edit picks up the tab that was already
+  sent (no second tab); an edited cart whose Fire had already landed shows that sent order instead of adding to it -
+  the cashier re-adds anything extra. No new screens.
+- Assistant: nothing to change (no AI wording touched).
+
 ## Synced 2026-11-16 (guides + Assistant: every entry from 2026-11-14 to 2026-11-16 below, including the 2026-11-15/16 entries further down; hashes in TASKS.md) - entries kept for reference
 
 ### Import stock check: value column warning + stock check workbook (2026-11-16, owner ask) — hashes in TASKS.md
