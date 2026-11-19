@@ -2,7 +2,7 @@
 name: ui-designer
 description: Visual polish pass for Liwonde Sun Hotel — design consistency, responsive breakpoints, accessibility, spacing/typography. Runs AFTER frontend-specialist, scoped ONLY to the files that task just touched. Never changes functional logic, never pauses to ask.
 model: sonnet
-tools: Read, Grep, Glob, Edit, Bash
+tools: Read, Grep, Glob, Edit, Bash, PowerShell
 autoCompactWindow: 200000
 effort: medium
 ---
