@@ -30,6 +30,22 @@ when prompted."
   and admin/includes/guest-credit.php (rh_guest_credit_summary / rh_guest_credit_lines); rh_eod_refunds_to_credit and
   rh_eod_credit_notes_redeemed removed. includes/ai/ai-insights.php ~315 still says "Moved to credit notes" - check at sync.
 
+### Ship M2 + step 13: refunds = payouts on Payments / Accounting / guest history; one payment label everywhere (2026-11-19, owner, Bundle A) - hashes in TASKS.md
+- Guides: Payments "Refunds" card and Accounting dashboard "Refunds" (KPI, pop-up, reasons, trend, latest list) count
+  only money paid back in cash, bank or mobile money; money moved onto a credit note shows on its own "Moved to
+  guest credit" line, never in the refunds total. Accounting Net reads "Gross − refunds − moved to guest credit"
+  (same figure as before). Guest history and Booking details: "Refunded" = paid back only, "Moved to guest credit"
+  on its own line; Received / balances unchanged.
+- Guides: Bookings Paid / Unpaid tabs, their counts, the Payment filter (part paid / refunded), the sort and the CSV
+  export follow the badge (from the money: Paid in full / Part paid (MWK X left) / Unpaid / Refunded). The same
+  words on booking lookup (guest page), Individual Rooms booking cards, the Bookings stats pop-up and the calendar
+  tooltip (coloured like the list's pill, no Title Case).
+- Assistant: includes/ai/ai-insights.php ~303/315 ("Moved to credit notes" wording, still on the settled refund
+  total), includes/ai/ai-decisions.php ~1626 (refund figures on the settled rule) and includes/ai/ai-tools.php
+  ~1864 (money.refunded should mean payouts only, with moved-to-credit-notes separate) - align to
+  rh_refund_payout_sql / rh_refund_to_credit_sql at sync. Bookings "paid / unpaid" answers should use
+  rh_bk_pay_key_sql (admin/includes/bookings-list-filters.php), not stored payment_status.
+
 ## Synced 2026-11-16 (guides + Assistant: every entry from 2026-11-14 to 2026-11-16 below, including the 2026-11-15/16 entries further down; hashes in TASKS.md) - entries kept for reference
 
 ### Import stock check: value column warning + stock check workbook (2026-11-16, owner ask) — hashes in TASKS.md
