@@ -29,6 +29,13 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Clean-up 2026-11-21 (owner-approved, `cleanup` skill)
+- Nothing sensitive exposed in git. Secret-looking values in `scripts/tests` are made-up test data (kept).
+- To the Recycle Bin (local, not in git): 1,134 old `scripts/tests/sessions` files, 1 log older than 30 days, the 7
+  August migration dumps in `Database/` (incl. a copy of Rosalyn's live schema + seed), 8 backups older than 30 days.
+- Kept: `images/gym/personal-training.jpg` (used here; 8.1 MB, could be compressed), `includes/test-platform-mail.php`
+  (real feature), all tests (per-area regression tests), invoices, cache, vendor.
+
 ## Hard rules
 - **Liwonde is LIVE**, and so is Rosalyn's.
   - The local `.env` points at the live database.
