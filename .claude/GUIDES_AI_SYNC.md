@@ -40,6 +40,17 @@ when prompted."
 - **Assistant:** built by the AI lead; nothing more to sync.
 - **Manager Guides:** none.
 
+### Room Timeline calendar, step A (2026-11-21, owner ask) - Liwonde (this commit) / Rosalyn's port
+- **Guides (Calendar / Front desk, Housekeeping, Maintenance):**
+  - Calendar now opens on the Room Timeline: rooms down the side grouped by type, dates across, bookings as coloured bars.
+  - Each type has an Unassigned line; each day has occupancy / arrivals / departures rows; maintenance and blocked dates show hatched.
+  - Housekeeping state shows as a dot per room. Range is 14 days by default, 30 optional, 7 on tablet and 3 on phone, with an Agenda list on phone.
+  - Clicking a bar opens a side panel (a sheet on phone) that links to the booking.
+  - Dragging across empty days opens New booking with the room and dates filled in.
+  - The old month grid is at Calendar > Month. Housekeeping and Maintenance tabs list rooms and link to the full pages.
+- **Assistant:** the new page view is calendar.php (default timeline, ?view=month); read-only JSON admin/api/calendar-timeline.php; create-booking.php accepts room, room_type, check_in, check_out prefill. No table or permission changes.
+- **Manager Guides:** Bookings - one line that the calendar is now the room timeline; Housekeeping & maintenance - the tabs on the calendar.
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md
