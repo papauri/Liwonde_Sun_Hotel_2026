@@ -10,8 +10,11 @@ General rules for every project (safety, git, models and cost, UI) live in `../A
 
 **This repo is a fork of the Rosalyn's Hotel 2026 platform** with Liwonde Sun's own branding,
 content, imagery and guest-facing design. `MIGRATION_PLAN.md` at the repo root is the record
-of that migration. Code changes are built in ../Rosalyns-hotel-2026 and ported here by
-`scripts/ship.php` (run from the Rosalyn's folder; work already committed there: `scripts/port-commit.php`); only the guest front end and settings/data differ.
+of that migration. Flow (owner 2026-11-21): changes are built and tested HERE first, pushed, then ported to
+../Rosalyns-hotel-2026 (copy the changed files, `php -l`, commit "Port of Liwonde <hash>"). Tests never run in the
+Rosalyn's folder: the shared guard refuses them there. `scripts/ship.php` / `scripts/port-commit.php` live at Rosalyn's
+and only port Rosalyn's -> Liwonde (ship.php there only with `--tests=none`). Only the guest front end and
+settings/data differ.
 
 ## Autonomous build system (default workflow)
 
