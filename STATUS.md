@@ -39,8 +39,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   to 4 and was undone in bdd6519 (port 004aab9); the stale "not announced" test now checks notice == table.
 - `ai_assistant_test.php` is >1h against the remote DB; run sections with AI_TEST_OWNER_ROUND / *_ONLY flags and
   SKIPSW=1 SKIPRQ=1 (the claim-check self-test then fails only on its count). 2026-11-21: owner round to end 514/1.
-- In progress: dept-ai-lead on the owner's screenshot (named guest "money unpaid" says none, "(ID [number
-  removed])" in booking lists, "total for all rooms" = MWK 0.00). Not committed yet.
+- Shipped (owner screenshot): named guest "money unpaid" said none, "(ID [number removed])" in booking lists,
+  "total for all rooms" = MWK 0.00. Now answered locally from the booking-screen folio figures (no provider call);
+  booking-id-only "(ID n)" dropped before the scrub; claim check no longer swaps in a guest-credit 0.00 or cuts
+  names at "DR.". Files: includes/ai/ai-money.php, ai-desk.php, ai-claims.php, ai-agents.php + test
+  (AI_TEST_MONEY_1121_ONLY: 234/0; sync 292/0; owner round 524/1 count floor). qa-auditor PASS.
+  LATER: (1) claim check: a money claim whose label has no money word now accepts any number in the evidence
+  ("total for all rooms is MWK 0.00" passes if a 0 is anywhere); move the money-word rule into
+  rh_ai_claim_candidate (ai-claims.php ~1226), not rh_ai_claim_labelled (~1080). (2) Same-name guests are merged
+  under "N bookings under this name" (references listed). (3) rh_ai_money_last_search_ids does not re-check
+  search_bookings (answer never names the guest). (4) Hotel-wide "total unpaid" with a booking in focus answers
+  for that booking only.
 
 ## Shipped 2026-11-21: Room Timeline calendar (owner FEATURE)
 - `admin/calendar.php` now opens a room x date timeline. The old month grid is at `?view=month`. Tabs: Calendar / Housekeeping / Maintenance. Phone (3 days + Agenda) and tablet (7 days) layouts.
