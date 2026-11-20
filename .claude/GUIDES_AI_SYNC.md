@@ -61,6 +61,15 @@ when prompted."
 - **Assistant:** the calendar uses the existing bookings.php actions assign_individual_room, upgrade_room_type (pricing=charge, send_email=0), stay_nights_quote and stay_nights_apply. No new tables, settings or permissions.
 - **Manager Guides:** Bookings - "move a guest by dragging on the calendar".
 
+### Menu Management: Delete selected + Delete all (2026-11-21, owner ask) - Liwonde d2aff50 / Rosalyn's 5ac2f4a
+- **Guides (Menu Management):** administrators with the Clear Stock Data permission see tick boxes, a tick per category,
+  "Select all shown" (only rows the search/filters show on the open tab), Delete selected, and Delete all (Food, Drinks
+  or both; type DELETE). Each item follows the one-item rule: never sold = deleted with its till copy and stock list;
+  sold = hidden; on an open order = left. Everyone else keeps the one-item Delete only.
+- **Assistant:** new POST actions menu_bulk_delete / menu_delete_all on admin/menu-management.php; System Logs rows
+  menu_items_bulk_deleted / menu_items_all_deleted (Till & orders) list every item and outcome. No new tables/settings/permissions.
+- **Manager Guides:** Stock - "clear the whole menu before a re-import" (admin with Clear Stock Data only).
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md

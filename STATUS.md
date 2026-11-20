@@ -59,6 +59,15 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Liwonde f011c65 + 1f3658e, Rosalyn's cadda61 + f8a9ec2. Tests `scripts/tests/calendar_timeline_test.php` (50) and `calendar_timeline_actions_test.php` (55), both read-only.
 - LATER items are in Rosalyn's TASKS.md. The guides and Assistant entries are pending in `.claude/GUIDES_AI_SYNC.md`.
 
+## Shipped 2026-11-21: Menu Management Delete selected + Delete all (owner FEATURE)
+- Tick boxes, Select all shown, Delete selected and Delete all (food/drinks/both, typed DELETE) on admin/menu-management.php,
+  only for an active administrator with Clear Stock Data (data_reset, rh_sc_authorize); server re-checks (403).
+  Same per-item rule as one-item Delete (rh_mm_delete_one). System Logs rows menu_items_bulk_deleted / menu_items_all_deleted.
+- Liwonde d2aff50, Rosalyn's port 5ac2f4a. Tests menu_portions.php section 4 (rolled back): 170/1; the 1 fail is the
+  pre-existing "Stock > Recipes: inactive category" check (stock-recipes.php, untouched). qa-auditor PASS; browser check desktop + phone.
+- ASSUMPTION: product-catalog mode (non-restaurant presets, includes/product-management-mode.php) not covered.
+- LATER: 44px hit area for the tick boxes / phone buttons; "nothing was changed" wording if logActivity ever throws after deletes.
+
 ## Clean-up 2026-11-21 (owner-approved, `cleanup` skill)
 - Nothing sensitive exposed in git. Secret-looking values in `scripts/tests` are made-up test data (kept).
 - To the Recycle Bin (local, not in git): 1,134 old `scripts/tests/sessions` files, 1 log older than 30 days, the 7
