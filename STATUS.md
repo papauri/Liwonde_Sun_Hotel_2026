@@ -29,6 +29,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-21: Assistant "Invalid function name" fault (PATCH, owner report)
+- Gemini refused every question (HTTP 400): the privacy vault's last pass rewrote tool NAMES when a vaulted guest
+  word matched one (`group_breakdown` -> `[GUEST_1]_breakdown`). Fixed in `includes/ai/ai-vault.php` (names, schemas,
+  call ids/signatures left alone; all text still scrubbed) + guard in `includes/ai/ai-providers.php` (invalid-named
+  tools dropped and logged). Liwonde 687dab0, Rosalyn's port 4b42333. qa-auditor PASS; 4 new checks pass.
+- Open: `ai_assistant_test.php` takes over 15 min (one run timed out, one was stopped for low memory); the
+  checks after ~1060 were not reached. 2 failures not in this fix's code (lines ~527 and ~669 of the output:
+  model announced / Gemini 4 Argon suggestion), not yet checked against the code before the fix.
+- LATER: orphaned `rh_ai_build_request` docblock (ai-providers.php ~570); the dropped-tool warning logs on every request.
+
 ## Shipped 2026-11-21: Room Timeline calendar (owner FEATURE)
 - `admin/calendar.php` now opens a room x date timeline. The old month grid is at `?view=month`. Tabs: Calendar / Housekeeping / Maintenance. Phone (3 days + Agenda) and tablet (7 days) layouts.
 - Design: `.claude/CALENDAR_UI_DECISION.md`. Data: `admin/includes/calendar-data.php`, shared by both views. JSON: `admin/api/calendar-timeline.php`. JS: `admin/js/room-timeline.js`.
