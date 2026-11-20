@@ -52,6 +52,23 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   search_bookings (answer never names the guest). (4) Hotel-wide "total unpaid" with a booking in focus answers
   for that booking only.
 
+## Shipped 2026-11-21: Housekeeping, Maintenance, Room Service like the calendar (owner FEATURE)
+- Owner answers 2026-11-21: pages = "All three"; scope = "Same look + room timeline". Design:
+  `.claude/CALENDAR_UI_DECISION.md` §10.
+- Each page: calendar toolbar, filter cards, Timeline | List (phone opens List), side drawer with the page's own
+  buttons. Housekeeping = tasks by due day; Maintenance = every open job From..To (hatched if it blocks the room; the
+  calendar still draws only block_room = 1); Room Service = today's orders by room x hour, late edge = KDS 600 s rule,
+  still one timer. Calendar maintenance blocks open `room-maintenance.php?id=N&view=timeline`.
+- Files: `admin/js/room-timeline-ops.js`, `admin/css/room-timeline-ops.css`, `admin/includes/ops-timeline-{view,data}.php`,
+  `admin/api/{housekeeping,maintenance,room-service}-timeline.php` (read-only GET, page permission + module gate),
+  seam `cfg.mode` in `admin/js/room-timeline.js`. Test `scripts/tests/ops_timeline_test.php` 114/0 (read-only);
+  calendar_timeline 50/0, calendar_timeline_actions 55/0.
+- qa-auditor (opus) PASS; browser 1400/768/390 no console errors (Liwonde had no open maintenance jobs or RS orders).
+  LATER: shared pager on #rsActiveTable 10/25/50/All; .tl-hk-link 24px on phones; compact rows 36px; old stat cards
+  "Hover for insight" text (pre-existing, shown only if the timeline fails). dept-rooms-lead / dept-restaurant-lead
+  frontmatter say `model: sonnet` (dispatched with opus; owner to decide).
+- Commits: git log "Ops pages like the calendar" (Liwonde) / "Port of Liwonde" (Rosalyn's).
+
 ## Shipped 2026-11-21: Room Timeline calendar (owner FEATURE)
 - `admin/calendar.php` now opens a room x date timeline. The old month grid is at `?view=month`. Tabs: Calendar / Housekeeping / Maintenance. Phone (3 days + Agenda) and tablet (7 days) layouts.
 - Design: `.claude/CALENDAR_UI_DECISION.md`. Data: `admin/includes/calendar-data.php`, shared by both views. JSON: `admin/api/calendar-timeline.php`. JS: `admin/js/room-timeline.js`.

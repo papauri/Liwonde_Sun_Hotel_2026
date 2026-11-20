@@ -70,6 +70,16 @@ when prompted."
   menu_items_bulk_deleted / menu_items_all_deleted (Till & orders) list every item and outcome. No new tables/settings/permissions.
 - **Manager Guides:** Stock - "clear the whole menu before a re-import" (admin with Clear Stock Data only).
 
+### Housekeeping, Maintenance, Room Service look like the calendar (2026-11-21, owner ask) - hashes in TASKS.md
+- **Guides (Housekeeping, Maintenance, Room Service):** each page has a Timeline | List switch (phones open on List).
+  Housekeeping: tasks on their due day per room, overdue red edge, shaded nights with a guest in. Maintenance: every
+  open job from its From to its To date, hatched when it blocks the room. Room Service: today's orders by room and hour,
+  "Show all rooms", late edge after 10 minutes (the KDS rule). Clicking a bar opens a side panel with the page's own
+  buttons (Start / Mark done / next order state, Open on calendar, More). Calendar maintenance blocks open that job.
+- **Assistant:** new read-only JSON admin/api/housekeeping-timeline.php, maintenance-timeline.php, room-service-timeline.php;
+  pages read ?view=timeline|list, ?id=, ?room=, ?date=, ?days=. No table, setting or permission changes.
+- **Manager Guides:** Housekeeping & maintenance - one line on the Timeline view; POS & Kitchen Screens - Room Service timeline.
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md

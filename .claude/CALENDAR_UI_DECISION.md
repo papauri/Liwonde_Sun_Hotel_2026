@@ -190,7 +190,114 @@ Compact versions of the existing screens; reuse their markup and the shared page
 - Phone/tablet: the shared card mode + `.rh-col-help` "What the columns mean" disclosure.
 - Link "Open full Housekeeping page" / "Open full Maintenance page" top right (secondary).
 
-## 10. Accessibility
+## 10. Operations pages (Housekeeping, Maintenance, Room Service)
+Owner FEATURE 2026-11-21 "same look + room timeline". Builder: dept-rooms-lead (HK, Maintenance), dept-restaurant-lead
+(Room Service). Same rules as 0-9: no new tokens, no gradients, `.badge-*` colours, 44px targets. Existing POST
+handlers, CSRF, permissions and module gates stay; the drawer only re-presents the same forms/buttons.
+(Old section 10 Accessibility is now 11 and applies to these grids too.)
+
+### 10.1 Shared layout (all three pages, top to bottom)
+1. Title row (`section-title`, icon) + right-side primary button the page already has (New task / Report issue / New order).
+2. Figure cards `.ck-kpi` (section 9 sets): each has `.help`; click = filter + scroll to rows; `.is-active`.
+3. Toolbar `.tl-toolbar` (section 3): Today / prev / next / date, range tabs, filters, search, Legend. Page filters
+   (status, assignee, priority) reuse `.cal-filter-select`. Range tabs and the density toggle only on the two date grids.
+4. View toggle `.ck-tabs.tl-view` right end of toolbar: "Timeline" | "List". Remembered per page in localStorage
+   (`rh_ops_view_<page>`); default Timeline on tablet and desktop, List on phone.
+5. Body: `.tl-grid` (Timeline) or the existing list (List, paginated 10 + `.pg-size`, columns with `data-help`).
+6. Drawer `.tl-drawer` (sheet on phone). Old modals for view/edit remain only as a fallback when JS fails.
+
+### 10.2 Reuse: one engine, three modes (DECIDED)
+- `RoomTimeline.init(root)` gains an optional `cfg.mode`: `booking` (default, current code path, untouched),
+  `housekeeping`, `maintenance`, `service`. Read it in one place; each non-default mode supplies a small adapter
+  object in a new file `admin/js/room-timeline-ops.js` (loaded after room-timeline.js, registers
+  `RoomTimeline.modes.<name> = {rows, bars, drawer, columns}`). Booking drag, grips, selection, agenda stay booking-only.
+- Reused as is: toolbar and nav code, range tabs, rooms column + `.tl-group` headers, date head, `.tl-now`, today tint,
+  `.tl-bar` shape and sizing, search/dim, roving keyboard model, drawer + sheet shell and `data-tl-drawer-*` hooks,
+  `.actions-more-menu`, `.tl-status` live region, localStorage helpers.
+- New CSS: only `admin/css/room-timeline-ops.css` (after room-timeline.css) holding the bar modifiers below. Calendar
+  behaviour and its existing classes do not change. Fallback if the mode seam proves costly: the adapter file may carry
+  its own thin renderer, but it must still emit the same `.tl-*` classes.
+- Data: each page embeds `[data-tl-json]` like the calendar (`{mode, data, api, initial}`); range reload via a read-only
+  `GET` endpoint per page (handback). Escape all strings server-side as the calendar does.
+
+### 10.3 Housekeeping (`admin/housekeeping.php`)
+- Cards: Dirty - Cleaning - Inspection - Clean - Unassigned (same five and the same derivation as section 9/6).
+- Grid: rows = rooms, grouped by room type (same `.tl-group`, collapse state shared with the calendar); columns = days.
+  A bar = one task on its due date, drawn as a FULL-day cell (a cleaning is a day job, not a stay: no half-day offset),
+  class `.tl-bar.tl-task`, two lines: task type (13px 600) + assignee initials/name (12px). Several tasks one room-day
+  stack as a count chip "3 tasks" that opens the drawer list. Overdue = due before today and not done: 3px right edge
+  #b91c1c (same as `--overdue`). Occupied nights are NOT drawn; instead a faint `--tl-softer` cell when a guest is
+  in house (read-only context, so staff see "can I clean now?"), from the calendar JSON.
+- Task state colours (existing `.badge-*` values, same as the pills in the list):
+  pending `.tl-task--pending` #9a4a08 solid white text (matches booking pending) · in progress `--progress`
+  #1d4ed8 solid · completed `--done` rgba(107,114,128,.14)/#374151 · verified `--verified` #047857 solid + `fa-check` ·
+  blocked `--blocked` `--tl-hatch` + `fa-ban`. Priority urgent adds a `.tl-flag` `fa-exclamation` chip, never colour alone.
+- Drawer: room + type + `.badge` status · task type, priority, due, assigned to · checklist/notes · linked booking
+  (guest, check-out time) as a link. Footer (right, one baseline): ONE state primary (Start / Mark done / Verify,
+  whichever the current handler offers for that user), `.btn-secondary` "Open on calendar", rest (Assign, Reassign,
+  Edit, Cancel task) in `.actions-more-menu`.
+- Reads `?due=now` and `?room=` keep working; they preselect the filter and the room's lane.
+
+### 10.4 Maintenance (`admin/room-maintenance.php`)
+- Cards: Open - In progress - Out of order now - Due this week (section 9).
+- Grid: rows = rooms (same grouping), columns = days. A bar = one job from its From to its To date, whole cells
+  (rooms are out for whole nights), class `.tl-bar.tl-job`. EVERY open job shows (ASSUMPTION in BUILD_PLAN), including
+  `block_room = 0`. Blocking jobs (`block_room = 1`) get `--tl-hatch` + 3px left border #6b7280 + `fa-ban` "Blocks
+  room", exactly the calendar's `.tl-block--maintenance` look; non-blocking jobs are solid with a `fa-screwdriver-wrench`
+  and no hatch, so "guests can still stay" reads at once. Open-ended job (no To) runs to the range edge with
+  `--cut-end`. Overlapping jobs in one room use a second sub-lane (row grows to 2 x 36px, never overlap).
+- States: open `.tl-job--open` rgba(245,158,11,.14)/#9a4a08 dashed border · in progress `--progress` #1d4ed8 solid ·
+  done `--done` grey (shown 7 days, then hidden) · priority high/urgent = `fa-exclamation` flag chip.
+- Drawer: room + `.badge` status · issue, category, priority · From/To, blocks room yes/no · reported by/assigned to
+  · notes · "Affects bookings" line (count of stays overlapping the dates, link to the calendar lane). Footer: state
+  primary (Start / Mark done, as today), `.btn-secondary` "Open on calendar", More menu (Edit, Reassign, Cancel).
+- Reads `?status=out_of_service` unchanged.
+
+### 10.5 Room Service (`admin/room-service-dashboard.php`)
+- Cards: New - Preparing - Ready - Delivered today (existing order states, same filter-card rule).
+- Toolbar is day based: Today / prev / next / date step ONE DAY; range tabs replaced by an hour window tabs
+  "All day | Breakfast | Lunch | Dinner" (6-11, 11-16, 16-23, plain words, hide if the hotel has no such sittings);
+  filters: status, floor, search (room or guest).
+- Grid `.tl-grid.tl-grid--hours`: rows = ONLY rooms that have an order that day (an empty 100-row grid is noise) plus
+  a "Show all rooms" toggle; columns = hours (`--tl-day-w` becomes hour width, min 56px; head shows "07" / "AM"
+  style per hotel clock). A bar = one order from placed time to delivered time (or to "now" while open), class
+  `.tl-bar.tl-order`, min width 44px, text: order no. + item count. Colours: new `--new` #9a4a08 solid · preparing
+  `--preparing` #1d4ed8 solid · ready `--ready` #047857 solid · delivered `--done` grey · cancelled `--void`
+  dotted grey (shown only when the status filter says so). Late (open over the configured target) = right edge
+  #b91c1c. `.tl-now` marks the current hour only when the day is today.
+- Drawer: room, guest, order no., placed/ready times, items with qty, notes/allergies (visible, not hidden), total
+  and charge-to-room state. Footer: ONE next-state primary (same transitions as today's buttons), "Room on calendar"
+  secondary, More (Cancel order, Print ticket). Keeps its role/permission checks.
+- Live data: the existing `check_ready` poll stays the trigger. It may refresh the grid only if the drawer is closed
+  and no filter text is being typed, and announces via `.tl-status` ("1 new order, Room 104"). No sound, no flashing;
+  a count badge on the tab title is allowed. Do not add a second timer: reuse the page's one `setInterval`.
+
+### 10.6 Phone and tablet
+- Tablet (768-1024): grid as the calendar (room col 168px, 7 days; service: 8 hours). Drawer 380px. Touch targets 44px.
+- Phone: default to List. Timeline stays available: room col 64px (number + state icon), 3 days / 6 hours, snap-x,
+  bars at 44px row. Tap = `.tl-drawer--sheet` with the same buttons in the same order, 44px each. List uses the
+  shared card mode + `.rh-col-help`. No drag anywhere in these modes (nothing in them is draggable).
+
+### 10.7 Links both ways (exact URL params)
+- Calendar to pages: maintenance blocks and the HK icon become
+  `room-maintenance.php?id=<entry id>&view=timeline` and `housekeeping.php?room=<room id>&view=timeline`
+  (the HK icon keeps `?due=now` semantics unchanged when `room` is absent). Calendar tab "Open full ..." links keep
+  plain URLs.
+- Pages read `id` (open that entry's drawer on load, scroll its row into view, clear the param with
+  `history.replaceState`), `room` (highlight + scroll to lane; also on room-maintenance and room-service), `date`
+  (YYYY-MM-DD, start of range; for service the day), `view` = `timeline`|`list`, `days` = 3/7/14/30. Unknown or
+  invalid values are ignored; ids must belong to the user's permitted data.
+- Pages to calendar: `calendar.php?view=timeline&start=<YYYY-MM-DD>&filter_room_id=<room id>` (parameters the
+  calendar already reads: `start` line 166, `filter_room_id` line 39, `days`). Anchor text "Open on calendar", icon
+  `fa-calendar-days`. A booking shown in a drawer ("Affects bookings", linked stay) links to the calendar with the same
+  params, `start` = stay check-in.
+- No new calendar param is needed; calendar code and booking mode stay unchanged.
+
+### 10.8 Motion
+Same as 0: drawer 200ms slide and 150ms hover colour only; under `prefers-reduced-motion` no slide, no smooth scroll,
+and the Room Service refresh swaps content without any fade or highlight animation.
+
+## 11. Accessibility
 - `.tl-grid` `role="grid"` + `aria-label="Room timeline, 4 to 17 Oct"`, `aria-rowcount`/`aria-colcount`;
   rows `role="row"`, room cells `role="rowheader"`, date cells `role="columnheader"` (full date in `aria-label`),
   day cells `role="gridcell"`; bars are buttons inside the check-in gridcell.
@@ -216,3 +323,11 @@ UI_HANDBACK | dept-rooms-lead | admin/api (new range endpoint) | one JSON per ra
 UI_HANDBACK | dept-rooms-lead | move/resize save | reuse existing room-assignment and date-change paths with per-room FOR UPDATE locks, availability + price recalculation shown in the confirm; accounting lead reviews price changes
 UI_HANDBACK | dept-rooms-lead | create-booking.php | accept prefill params room, check_in, check_out
 UI_HANDBACK | dept-rooms-lead | housekeeping state | derive clean/dirty/cleaning/inspection as in 6; action buttons follow existing permissions
+UI_DECISION | Operations pages reuse the calendar shell via `RoomTimeline.init` `cfg.mode` (`housekeeping`/`maintenance`/`service`), adapters in `admin/js/room-timeline-ops.js`, bars in `admin/css/room-timeline-ops.css`; booking mode untouched | housekeeping.php, room-maintenance.php, room-service-dashboard.php | owner FEATURE 2026-11-21 "same look + room timeline"; prefer reuse
+UI_DECISION | task/job/order bars use the `.badge-*` colours; blocking jobs use the calendar hatch, non-blocking solid; day-job bars are full cells | the three grids | one style per state, no new tokens
+UI_DECISION | Timeline/List toggle `.ck-tabs.tl-view`, default List on phone; drawer/sheet with one state primary + "Open on calendar" + More menu | the three pages | held row-action and drawer patterns
+UI_DECISION | deep links: pages read `id`, `room`, `date`, `view`, `days`; back to calendar via existing `start`, `filter_room_id`, `view=timeline` | calendar + three pages | no calendar change
+UI_DECISION | Room Service grid = today's orders by room x hour, `check_ready` poll reused, no second timer, no sound or flash | room-service-dashboard.php | logged assumption
+UI_HANDBACK | dept-rooms-lead | housekeeping.php, room-maintenance.php, calendar-data.php | read-only range endpoints (tasks by room/due date; all open jobs with from/to, block_room, status, priority); `?id=`/`room`/`date`/`view`/`days` parsing with permission check; drawer reuses existing POST handlers; calendar HK icon and maintenance blocks link to the new URLs (section 10.7); "Affects bookings" count
+UI_HANDBACK | dept-rooms-lead | admin/js/room-timeline.js | add `cfg.mode` seam only; booking path byte-for-byte behaviour unchanged; run the calendar's tests after
+UI_HANDBACK | dept-restaurant-lead | room-service-dashboard.php | read-only endpoint of today's orders (placed/ready/delivered times, items, notes, state) by room; reuse `check_ready` poll and existing status POSTs in the drawer; late-order target setting if one exists
