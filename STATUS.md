@@ -44,6 +44,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   booking-id-only "(ID n)" dropped before the scrub; claim check no longer swaps in a guest-credit 0.00 or cuts
   names at "DR.". Files: includes/ai/ai-money.php, ai-desk.php, ai-claims.php, ai-agents.php + test
   (AI_TEST_MONEY_1121_ONLY: 234/0; sync 292/0; owner round 524/1 count floor). qa-auditor PASS.
+  Liwonde f933bd8, Rosalyn's port de2daae.
   LATER: (1) claim check: a money claim whose label has no money word now accepts any number in the evidence
   ("total for all rooms is MWK 0.00" passes if a 0 is anywhere); move the money-word rule into
   rh_ai_claim_candidate (ai-claims.php ~1226), not rh_ai_claim_labelled (~1080). (2) Same-name guests are merged
