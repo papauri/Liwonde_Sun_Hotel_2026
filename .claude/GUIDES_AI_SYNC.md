@@ -25,12 +25,17 @@ when prompted."
 
 ## Pending (oldest first)
 
+### Whole-group payment receipts show the group total and every room (2026-11-20, owner fault) - Liwonde 7d5c105 / Rosalyn's 3781b20
+- **Guides (Payments / Receipts, Bookings group payment):** each room still gets its own receipt number, but every room's receipt PDF and email now show "Whole-group payment: <total> split across N rooms" and list each room (booking, room, receipt number, amount); emailing any of them (automatic or Email receipt) sends ONE email with every room's receipt attached, to the lead room's guest plus CC, and all are marked emailed.
+- **Assistant:** when asked about a group payment's receipt, say it is one receipt per room, each showing the group total, all sent together in one email.
+- **Manager Guides:** Money & End of Day - one line on group payment receipts.
+
 ### AI Settings: Check for newer models refreshes the pick lists (2026-11-20, owner fault) - Liwonde 69942d3 / Rosalyn's 214a0f1
 - **Guides (AI Settings page, admin only):** after Check for newer models the lists show the current top models and drop older ones; the model in use stays selected as '(older, still in use)' until someone saves another; a retired model shows a warning only.
 - **Assistant:** built by the AI lead; nothing more to sync.
 - **Manager Guides:** none.
 
-### AI Settings: top 10 models, Google price page, Gemini 4 allowed, untick + Save fixed, provider cards lined up (2026-11-20, owner ask + fault) - hashes in TASKS.md
+### AI Settings: top 10 models, Google price page, Gemini 4 allowed, untick + Save fixed, provider cards lined up (2026-11-20, owner ask + fault) - Liwonde a7e1e5d / Rosalyn's port
 - **Guides (22-assistant.html, Models rows ~350/377/378, admin only):** each provider now shows up to 10 current models (cheapest, fastest, latest); badges Newest / Cheapest / Fastest; "Replies here in about X s"; Google prices are read from Google's price page in the daily check and on Check for newer models ("Price from Google's page, <date>"), typed prices are never changed; Gemini 4 models are now shown and can be suggested (line 378 still says they are not); big models (Pro/Ultra/Opus or US$15+ per million out) are shown but never suggested; ticking a model makes it Extra, unticking clears its role, picking a role ticks it; Save fixes a missing Primary / second Fast and says what it set.
 - **Assistant:** built by the AI lead; nothing more to sync.
 - **Manager Guides:** none.
