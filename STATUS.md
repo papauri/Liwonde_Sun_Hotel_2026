@@ -34,10 +34,13 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   word matched one (`group_breakdown` -> `[GUEST_1]_breakdown`). Fixed in `includes/ai/ai-vault.php` (names, schemas,
   call ids/signatures left alone; all text still scrubbed) + guard in `includes/ai/ai-providers.php` (invalid-named
   tools dropped and logged). Liwonde 687dab0, Rosalyn's port 4b42333. qa-auditor PASS; 4 new checks pass.
-- Open: `ai_assistant_test.php` takes over 15 min (one run timed out, one was stopped for low memory); the
-  checks after ~1060 were not reached. 2 failures not in this fix's code (lines ~527 and ~669 of the output:
-  model announced / Gemini 4 Argon suggestion), not yet checked against the code before the fix.
-- LATER: orphaned `rh_ai_build_request` docblock (ai-providers.php ~570); the dropped-tool warning logs on every request.
+- Follow-up 450455f (port 79287ed): briefing links wrap in the panel, docblock + once-per-request warning,
+  hidden username field on the key forms, Gemini 4 test fixed. Its unpriced-model rule cut the Models top 10
+  to 4 and was undone in bdd6519 (port 004aab9); the stale "not announced" test now checks notice == table.
+- `ai_assistant_test.php` is >1h against the remote DB; run sections with AI_TEST_OWNER_ROUND / *_ONLY flags and
+  SKIPSW=1 SKIPRQ=1 (the claim-check self-test then fails only on its count). 2026-11-21: owner round to end 514/1.
+- In progress: dept-ai-lead on the owner's screenshot (named guest "money unpaid" says none, "(ID [number
+  removed])" in booking lists, "total for all rooms" = MWK 0.00). Not committed yet.
 
 ## Shipped 2026-11-21: Room Timeline calendar (owner FEATURE)
 - `admin/calendar.php` now opens a room x date timeline. The old month grid is at `?view=month`. Tabs: Calendar / Housekeeping / Maintenance. Phone (3 days + Agenda) and tablet (7 days) layouts.
