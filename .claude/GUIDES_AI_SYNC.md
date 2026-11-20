@@ -51,6 +51,16 @@ when prompted."
 - **Assistant:** the new page view is calendar.php (default timeline, ?view=month); read-only JSON admin/api/calendar-timeline.php; create-booking.php accepts room, room_type, check_in, check_out prefill. No table or permission changes.
 - **Manager Guides:** Bookings - one line that the calendar is now the room timeline; Housekeeping & maintenance - the tabs on the calendar.
 
+### Room Timeline calendar, step B: move room / change nights from the calendar (2026-11-21, owner ask) - Liwonde (this commit) / Rosalyn's port
+- **Guides (Calendar):**
+  - On desktop, drag a bar to another room to move it, or drag an unassigned bar onto a room. On a confirmed booking, dropping on another room type changes the type at that type's price.
+  - Drag a checked-in stay's right edge to change its check-out. Keys: M = Move room, D = Change dates.
+  - On phone and tablet, use More > Move room / Change dates in the sheet.
+  - Every change shows a confirm (before -> after, price) and saves only on Confirm. No guest email is sent.
+  - Changes that would give money back, checked-out, past, joined-room and group bookings, and a confirmed stay's dates are done from the booking.
+- **Assistant:** the calendar uses the existing bookings.php actions assign_individual_room, upgrade_room_type (pricing=charge, send_email=0), stay_nights_quote and stay_nights_apply. No new tables, settings or permissions.
+- **Manager Guides:** Bookings - "move a guest by dragging on the calendar".
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md
