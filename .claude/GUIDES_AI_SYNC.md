@@ -40,7 +40,7 @@ when prompted."
 - **Assistant:** built by the AI lead; nothing more to sync.
 - **Manager Guides:** none.
 
-### Room Timeline calendar, step A (2026-11-21, owner ask) - Liwonde (this commit) / Rosalyn's port
+### Room Timeline calendar, step A (2026-11-21, owner ask) - Liwonde f011c65 / Rosalyn's cadda61
 - **Guides (Calendar / Front desk, Housekeeping, Maintenance):**
   - Calendar now opens on the Room Timeline: rooms down the side grouped by type, dates across, bookings as coloured bars.
   - Each type has an Unassigned line; each day has occupancy / arrivals / departures rows; maintenance and blocked dates show hatched.
@@ -51,7 +51,7 @@ when prompted."
 - **Assistant:** the new page view is calendar.php (default timeline, ?view=month); read-only JSON admin/api/calendar-timeline.php; create-booking.php accepts room, room_type, check_in, check_out prefill. No table or permission changes.
 - **Manager Guides:** Bookings - one line that the calendar is now the room timeline; Housekeeping & maintenance - the tabs on the calendar.
 
-### Room Timeline calendar, step B: move room / change nights from the calendar (2026-11-21, owner ask) - Liwonde (this commit) / Rosalyn's port
+### Room Timeline calendar, step B: move room / change nights from the calendar (2026-11-21, owner ask) - Liwonde 1f3658e / Rosalyn's f8a9ec2
 - **Guides (Calendar):**
   - On desktop, drag a bar to another room to move it, or drag an unassigned bar onto a room. On a confirmed booking, dropping on another room type changes the type at that type's price.
   - Drag a checked-in stay's right edge to change its check-out. Keys: M = Move room, D = Change dates.
