@@ -1914,16 +1914,21 @@
             var allIn = document.createElement('input'); allIn.type = 'text'; allIn.className = 'di-fin'; allIn.maxLength = 100; allIn.setAttribute('list', listId); allIn.setAttribute('aria-label', 'Category for every new drink');
             var allBtn = h('button', 'btn-secondary di-btn', 'Set for all'); allBtn.type = 'button';
             var allWrap = h('div', 'di-drinks-all'); add(allWrap, allIn, allBtn);
+            var tickAllBtn = h('button', 'btn-secondary di-btn', 'Tick all'); tickAllBtn.type = 'button';
+            var untickAllBtn = h('button', 'btn-secondary di-btn', 'Untick all'); untickAllBtn.type = 'button';
+            var tickWrap = h('div', 'di-drinks-all'); add(tickWrap, tickAllBtn, untickAllBtn);
+            var tickDone = h('p', 'di-small'); tickDone.setAttribute('role', 'status'); tickDone.hidden = true;
             add(ctrl, ctlWrap('Search', si, 'Finds a drink, a category or a cell such as F12.'), ctlWrap('Show', sh, 'Only some of the drinks.'),
                 ctlWrap('Rows per page', sz, 'How many drinks to show at once.'),
-                ctlWrap('Category for all new drinks', allWrap, 'Puts every drink that would be added in this category. Drinks already on the menu keep theirs.'));
+                ctlWrap('Category for all new drinks', allWrap, 'Puts every drink that would be added in this category. Drinks already on the menu keep theirs.'),
+                ctlWrap('Put on the menu', tickWrap, 'Ticks (or unticks) every drink in the list as it is now, on every page, after Search and Show. Drinks that cannot go on the menu stay unticked.'));
             var wrap = h('div', 'di-tablewrap'), tb = h('table', 'di-table di-lt'), thead = h('thead'), htr = h('tr');
             DRINK_HEADS.forEach(function (c) { var th = h('th', null, c[0]); th.title = c[1]; htr.appendChild(th); });
             thead.appendChild(htr); tb.appendChild(thead);
             var body = h('tbody'); tb.appendChild(body); wrap.appendChild(tb);
             var info = h('p', 'di-help'); info.setAttribute('role', 'status');
             var pgBox = h('div');
-            add(sec, head, intro, key, perm, ctrl, dlCats, info, wrap, pgBox, note);
+            add(sec, head, intro, key, perm, ctrl, tickDone, dlCats, info, wrap, pgBox, note);
             sec.hidden = true;
             p.appendChild(sec);
             var money = function (cur, x) { return x === null || x === undefined ? '—' : cur + num(x, 2); };
@@ -1944,6 +1949,7 @@
                 (r.cats || []).forEach(function (x) { var op = document.createElement('option'); op.value = x; dlCats.appendChild(op); });
                 if (!allIn.value) { allIn.value = r.default_category || 'Bar'; }
                 allBtn.disabled = !r.can_menu; allIn.disabled = !r.can_menu;
+                tickAllBtn.disabled = !r.can_menu; untickAllBtn.disabled = !r.can_menu;
                 note.textContent = (r.waiting ? num(r.waiting, 0) + ' more item' + (r.waiting === 1 ? '' : 's') + ' with a selling price will show here once answered in step 3. ' : '') + (c.below ? num(c.below, 0) + ' drink' + (c.below === 1 ? ' sells' : 's sell') + ' below what one costs (marked). ' : '');
                 note.hidden = !note.textContent;
                 clear(body);
@@ -2001,15 +2007,29 @@
                     draw(r);
                 });
             };
-            var save = function (data, cb) {
+            var save = function (data, cb, after) {
                 if (cb) { cb.disabled = true; }
+                tickDone.hidden = true;
                 var d = q(); Object.keys(data).forEach(function (k) { d[k] = data[k]; });
                 post('drinks_set', d).then(function (r) {
                     if (!r.ok) { msg(r.error || 'That could not be saved.'); load(); return; }
                     msg('');
                     if (r.list && r.list.ok) { draw(r.list); } else { load(); }
+                    if (after) { after(r); }
                 });
             };
+            var tickAll = function (on) {
+                tickAllBtn.disabled = true; untickAllBtn.disabled = true;
+                st.q = si.value.trim();     // the search as typed now, even within the 300 ms before the list updates
+                save({ mode: 'tick_all', on: on ? '1' : '0' }, null, function (r) {
+                    var n = r.changed || 0, below = r.list && r.list.counts ? (r.list.counts.below || 0) : 0;
+                    tickDone.textContent = num(n, 0) + ' drink' + (n === 1 ? '' : 's') + (on ? ' ticked.' : ' unticked.')
+                        + (on && below ? ' Check the ones marked "Sells below cost" before you import.' : '');
+                    tickDone.hidden = false;
+                });
+            };
+            tickAllBtn.addEventListener('click', function () { tickAll(true); });
+            untickAllBtn.addEventListener('click', function () { tickAll(false); });
             si.addEventListener('input', debounce(function () { st.q = si.value.trim(); st.page = 1; load(); }, 300));
             sh.addEventListener('change', function () { st.show = sh.value; st.page = 1; load(); });
             sz.addEventListener('change', function () { st.size = parseInt(sz.value, 10) || 10; st.page = 1; load(); });

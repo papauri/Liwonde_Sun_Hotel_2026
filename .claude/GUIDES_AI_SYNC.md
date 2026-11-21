@@ -101,6 +101,12 @@ when prompted."
   rh_menu_pos_sync_item). Page URL admin/menu-management.php?tab=room-service.
 - **Manager Guides:** Menu/Restaurant guide - one line on the Room service tab and moving drinks into categories.
 
+### Import step 4 "Drinks for the menu": Tick all / Untick all (2026-11-21, owner ask) - Liwonde (this commit) / Rosalyn's port
+- **Guides (23-import):** step 4 "Put on the menu" has Tick all and Untick all: they act on every drink the list shows
+  (after Search and Show, all pages). Drinks that cannot go on the menu stay unticked. Nothing is written until Import.
+- **Assistant:** new drinks_set mode tick_all (on, q, show) on admin/data-import.php; no table/setting/permission change.
+- **Manager Guides:** Stock - "Tick all in step 4 to put every priced drink on the menu at once".
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md

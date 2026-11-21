@@ -125,6 +125,28 @@ try {
     [, $A3] = $view($jA, $admin);
     $ck('category: one row can be changed; a drink already on the menu keeps its category (refused)', !empty($rOne['ok']) && ($A3[$n('Cola')]['category'] ?? '') === $n('Softs') && empty($rUp['ok']), json_encode([$rOne, $rUp]));
 
+    // ---- tick all / untick all: the list as shown (search + Show filter, every page) ---------------------------------------------
+    $tickedNow = function ($rows) { return array_keys(array_filter($rows, function ($r) { return !empty($r['ticked']); })); };
+    $rTaNo = import_job_drinks_set($pdo, $jA, $mgrNoMenu, ['mode' => 'tick_all', 'on' => true]);
+    $ck('tick all: refused without the Menu permission', empty($rTaNo['ok']) && stripos((string)$rTaNo['error'], 'Menu permission') !== false, json_encode($rTaNo));
+    $rTaAdd = import_job_drinks_set($pdo, $jA, $admin, ['mode' => 'tick_all', 'on' => true, 'show' => 'add']);
+    [, $AT] = $view($jA, $admin);
+    $wantAdd = $measureOn ? [$n('Cola'), $n('Cheap'), $n('Gin')] : [$n('Cola'), $n('Cheap')];
+    $gotAdd = $tickedNow($AT); sort($gotAdd); sort($wantAdd);
+    $ck('tick all: Show "New on the menu" ticks only the new drinks (not the price change)', !empty($rTaAdd['ok']) && $gotAdd === $wantAdd && (int)($rTaAdd['changed'] ?? 0) === count($wantAdd), json_encode([$rTaAdd['changed'] ?? null, $gotAdd]));
+    $rTaQ = import_job_drinks_set($pdo, $jA, $admin, ['mode' => 'tick_all', 'on' => false, 'q' => $n('Cheap')]);
+    [, $AT2] = $view($jA, $admin);
+    $ck('untick all: a search unticks only the drinks it finds', !empty($rTaQ['ok']) && (int)($rTaQ['changed'] ?? 0) === 1 && empty($AT2[$n('Cheap')]['ticked']) && !empty($AT2[$n('Cola')]['ticked']), json_encode($rTaQ));
+    $rTaAll = import_job_drinks_set($pdo, $jA, $admin, ['mode' => 'tick_all', 'on' => true]);
+    [$vTa, $AT3] = $view($jA, $admin);
+    $ck('tick all: no filter ticks every drink that can be ticked (Lager price change and Cheap below cost too)', !empty($rTaAll['ok']) && ($vTa['counts']['ticked'] ?? 0) === ($measureOn ? 4 : 3)
+        && !empty($AT3[$n('Lager')]['ticked']) && !empty($AT3[$n('Cheap')]['ticked']), json_encode($vTa['counts'] ?? []));
+    $rTaAgain = import_job_drinks_set($pdo, $jA, $admin, ['mode' => 'tick_all', 'on' => true]);
+    $ck('tick all: when everything is already ticked it says so', empty($rTaAgain['ok']) && stripos((string)$rTaAgain['error'], 'already ticked') !== false, json_encode($rTaAgain));
+    $rUa = import_job_drinks_set($pdo, $jA, $admin, ['mode' => 'tick_all', 'on' => false]);
+    [$vUa] = $view($jA, $admin);
+    $ck('untick all: every drink is unticked again', !empty($rUa['ok']) && ($vUa['counts']['ticked'] ?? -1) === 0, json_encode($vUa['counts'] ?? []));
+
     // ---- ticks ------------------------------------------------------------------------------------------------------------------
     foreach (['Cola', 'Lager', 'Cheap'] + ($measureOn ? [3 => 'Gin'] : []) as $nm) {
         $r = import_job_drinks_set($pdo, $jA, $admin, ['mode' => 'tick', 'key' => $A[$n($nm)]['key'], 'on' => true]);

@@ -15,7 +15,7 @@
  * transaction). Ticking and importing ticked rows need the Menu permission as well as Import.
  *
  *   import_job_drinks_view($pdo, $jobId, $userId, $p)    the paged list (q, show, page, size)
- *   import_job_drinks_set($pdo, $jobId, $userId, $p)     mode tick (key, on) | category (key, value) | category_all (value)
+ *   import_job_drinks_set($pdo, $jobId, $userId, $p)     mode tick (key, on) | category (key, value) | category_all (value) | tick_all (on, q, show)
  *   import_drinks_commit($pdo, $items, $answers, $jobId, $userId)   writes the ticked rows (caller holds the transaction + menu lock)
  */
 
@@ -479,6 +479,28 @@ if (!function_exists('import_drinks_build')) {
         return ['rows' => $rows, 'waiting' => $waiting, 'cats' => $cats];
     }
 
+    /** The rows the screen shows for a search ($p['q']) and a Show filter ($p['show']), every page. Also what "Tick all" acts on. */
+    function import_drinks_filter(array $all, array $p): array
+    {
+        $q = mb_strtolower(trim(mb_substr((string)($p['q'] ?? ''), 0, 100)));
+        $show = in_array($p['show'] ?? '', ['ticked', 'below', 'add', 'update'], true) ? (string)$p['show'] : 'all';
+        return array_values(array_filter($all, function ($r) use ($q, $show) {
+            if ($q !== '' && mb_strpos(mb_strtolower($r['name'] . ' ' . $r['category'] . ' ' . $r['price_source']), $q) === false) {
+                return false;
+            }
+            if ($show === 'ticked') {
+                return $r['ticked'];
+            }
+            if ($show === 'below') {
+                return $r['below'];
+            }
+            if ($show === 'add' || $show === 'update') {
+                return $r['action'] === $show;
+            }
+            return true;
+        }));
+    }
+
     /** The list for the screen: search, a show filter, 10 per page by default (10 / 25 / 50 / 100). */
     function import_job_drinks_view(PDO $pdo, int $jobId, int $userId, array $p): array
     {
@@ -496,23 +518,7 @@ if (!function_exists('import_drinks_build')) {
             $counts['below'] += $r['below'] ? 1 : 0;
             $counts['not_tickable'] += $r['tickable'] ? 0 : 1;
         }
-        $q = mb_strtolower(trim(mb_substr((string)($p['q'] ?? ''), 0, 100)));
-        $show = in_array($p['show'] ?? '', ['ticked', 'below', 'add', 'update'], true) ? (string)$p['show'] : 'all';
-        $rows = array_values(array_filter($all, function ($r) use ($q, $show) {
-            if ($q !== '' && mb_strpos(mb_strtolower($r['name'] . ' ' . $r['category'] . ' ' . $r['price_source']), $q) === false) {
-                return false;
-            }
-            if ($show === 'ticked') {
-                return $r['ticked'];
-            }
-            if ($show === 'below') {
-                return $r['below'];
-            }
-            if ($show === 'add' || $show === 'update') {
-                return $r['action'] === $show;
-            }
-            return true;
-        }));
+        $rows = import_drinks_filter($all, $p);
         $size = in_array((int)($p['size'] ?? 10), [10, 25, 50, 100], true) ? (int)$p['size'] : 10;
         $pages = max(1, (int)ceil(count($rows) / $size));
         $page = min($pages, max(1, (int)($p['page'] ?? 1)));
@@ -525,7 +531,7 @@ if (!function_exists('import_drinks_build')) {
             'currency' => function_exists('getSetting') ? (string)getSetting('currency_symbol', '') : ''];
     }
 
-    /** Tick / untick one drink, set its category, or set one category for every drink that would be added. Needs the Menu permission. */
+    /** Tick / untick one drink, tick / untick every drink the list shows (tick_all), set its category, or set one category for every drink that would be added. Needs the Menu permission. */
     function import_job_drinks_set(PDO $pdo, int $jobId, int $userId, array $p): array
     {
         if (!import_drinks_can_menu($userId)) {
@@ -567,6 +573,17 @@ if (!function_exists('import_drinks_build')) {
             if (!$keys) {
                 return ['ok' => false, 'error' => 'No drink in this list would be added, so there is no category to set.'];
             }
+        } elseif ($mode === 'tick_all') {
+            // every drink the list shows now (search + Show filter, all pages): on = tick the ones that can be ticked; off = untick them all
+            $keys = [];
+            foreach (import_drinks_filter($b['rows'], $p) as $r) {
+                if (!empty($p['on']) ? ($r['tickable'] && !$r['ticked']) : $r['ticked']) {
+                    $keys[] = $r['key'];
+                }
+            }
+            if (!$keys) {
+                return ['ok' => false, 'error' => !empty($p['on']) ? 'Every drink in this list that can go on the menu is already ticked.' : 'No drink in this list is ticked.'];
+            }
         } else {
             return ['ok' => false, 'error' => 'Unknown change.'];
         }
@@ -580,6 +597,11 @@ if (!function_exists('import_drinks_build')) {
                 $set($key, ['tick' => !empty($p['on']) ? 1 : 0]);
             } elseif ($mode === 'category') {
                 $set($key, ['cat' => $cat]);
+            } elseif ($mode === 'tick_all') {
+                foreach ($keys as $k) {
+                    $set($k, ['tick' => !empty($p['on']) ? 1 : 0]);
+                }
+                return ['changed' => count($keys)];
             } else {
                 foreach ($keys as $k) {
                     $set($k, ['cat' => $cat]);
