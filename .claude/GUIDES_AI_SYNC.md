@@ -138,6 +138,14 @@ when prompted."
 - **Assistant:** no table/setting change; when quoting stock to staff, prefer the same words (helper rh_stock_qty_words).
 - **Manager Guides:** Stock - one line on reading "bottles + shots".
 
+### Put stock items on the drinks menu (2026-11-22, owner ask) - Liwonde (this commit)
+- **Guides (stock + menu):** Stock Items: tick drinks (or Tick all shown) -> "Put N on the menu" -> type price (VAT
+  included), check Sold as and category -> Add. Menu Management Drinks tab has "Add from stock" (same page). Needs the
+  Menu permission. A drink already on the menu only gets its new price; weight items (kg) cannot go on.
+- **Assistant:** new page admin/stock-to-menu.php (permission menu); log action drink_menu_from_stock; shared writer
+  import_drinks_menu_write(). No table/setting change.
+- **Manager Guides:** Stock + Menu - one line each on "Put on the menu" / "Add from stock".
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md

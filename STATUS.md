@@ -50,6 +50,20 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Anthropic key is saved there (never synced); they get prices once a key passes Test connection.
 - LATER: cache the 5 MB price list once per daily run (now read once per provider); Test connection waits up to 20 s more.
 
+## Shipped 2026-11-22: Put stock items on the drinks menu (owner FEATURE)
+- Owner: "be able to add menu items from stock imported in the simplest way"; chose BOTH: Stock Items list action and a
+  Menu Management shortcut. (Same day: Rosalyn's "no add to menu in step 4" = job 780's file had no Selling price
+  column, owner's slip; checked read-only on Rosalyn's import_jobs.)
+- New page admin/stock-to-menu.php (+ admin/includes/stock-to-menu-lib.php, js/css): per item name, Sold as, price (VAT
+  incl.), category, cost of one, profit, status (new / price change / same / cannot + why) -> "Add N to the menu".
+  Stock Items: tick column + "Tick all shown" + "Put N on the menu"; Menu Management Drinks tab: "Add from stock".
+  Permission menu + modules pos+stock. Import's write part refactored to import_drinks_menu_write(), shared.
+- Tests stock_to_menu 27/0, import_drink_prices 105/0, permission_tiers 169/0, menu_room_service 23/0; menu_portions
+  170/1 pre-existing (needs a stock item; test DB empty). QA PASS.
+- LATER: price "1,50" reads as 150.00 (commas dropped as thousands); 1000+ ticks capped in the URL; import link error
+  text now says "Nothing was saved"; Menu-only users see stock costs; staff-activity label for drink_menu_from_stock;
+  Stock Items rows tall at 1400.
+
 ## Shipped 2026-11-21: Stock quantities shown as "bottles + shots" (owner FEATURE, display only)
 - Owner asked why stock shows 4 decimals (stored 6 dp so a shot = 0.033333 bottle adds up), then: "show bottles + shots".
 - config/database.php rh_stock_qty_words / rh_stock_qty_html (exact figure on hover) / rh_stock_qty_sort_attr (raw
