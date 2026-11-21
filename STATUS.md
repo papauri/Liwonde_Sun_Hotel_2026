@@ -50,6 +50,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Anthropic key is saved there (never synced); they get prices once a key passes Test connection.
 - LATER: cache the 5 MB price list once per daily run (now read once per provider); Test connection waits up to 20 s more.
 
+## Shipped 2026-11-21: Stock quantities shown as "bottles + shots" (owner FEATURE, display only)
+- Owner asked why stock shows 4 decimals (stored 6 dp so a shot = 0.033333 bottle adds up), then: "show bottles + shots".
+- config/database.php rh_stock_qty_words / rh_stock_qty_html (exact figure on hover) / rh_stock_qty_sort_attr (raw
+  data-sort-value for the shared sorter) / rh_stock_measure_attach: "2 bottles + 7 shots" for items with a count
+  measure, "short by ..." below zero, "over by / short by" for count differences, no measure = max 2 dp + unit.
+- Screens: Stock Overview, Ingredients, Stock Reports, Reorder, Batches, Wastage, Stock Count (incl. live Difference),
+  Dashboard low stock. Stored figures, inputs, CSV/Excel exports and logs unchanged. Tests stock_qty_words 39/39,
+  stock_count_measures 103/0, stock_list_filters 85/0; stock_count_approval 124/1 pre-existing (0 stock items).
+  QA: FAIL on sort order -> fixed in the one fix round (data-sort-value on every changed cell), checked.
+- LATER: Reorder "Suggested" and reports delta columns still plain numbers.
+
 ## Shipped 2026-11-21: Import page UI - clear step plan, foldable sections, pinned footer (owner FEATURE, UI only)
 - Owner: "fix the UI of the import process ... cannot fold things ... endless scrolling with an unclear step plan ...
   Logic is fine but the UI can be better".
@@ -59,6 +70,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   (same single confirm handler and can_confirm rule); one-sentence intros + "More about this". No post()/payload change.
 - Tests import_engine 592/0, import_drink_prices 105/0; import_export_test 100/1 = pre-existing (test DB has 0 stock
   items after the owner's Clear Stock Data 2026-11-20 18:00). QA PASS.
+- Liwonde 79d0a4a, Rosalyn's port d14bca5.
 - LATER: Assistant bubble can overlap the footer's right end on desktop; footer ResizeObserver may loop briefly when
   pinning; scroll/resize listeners never removed; pagers 10/25/50/100 not All.
 

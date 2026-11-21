@@ -123,13 +123,20 @@ when prompted."
 - **Assistant:** new POST action sizes_bulk on admin/data-import.php; row answer _sizes.r.<key>.sold. No table/setting/permission change.
 - **Manager Guides:** Stock - "Step 3: tick many drinks and set their shot or bottle size in one go".
 
-### Import page: step plan, folding sections, pinned buttons (2026-11-21, owner ask, UI only) - Liwonde (this commit)
+### Import page: step plan, folding sections, pinned buttons (2026-11-21, owner ask, UI only) - Liwonde 79d0a4a / Rosalyn's d14bca5
 - **Guides (23-import):** new screenshots needed. Each step shows "On this step" (numbered actions and what is left),
   sections fold (Required / Optional / Done; the ones that need you start open; Open all / Fold all), Back / Continue /
   Confirm and import stay pinned at the bottom. Wording shortened; "More about this" holds the detail.
 - **Assistant:** no action/table/setting change; section names: "Answer what is unclear", "All items", sizes, value check,
   "The numbers for the whole file", drinks, rows left out, fixed for you.
 - **Manager Guides:** Stock import page picture refresh.
+
+### Stock quantities shown as "bottles + shots" (2026-11-21, owner ask, display only) - Liwonde (this commit)
+- **Guides (stock pages):** on-hand, batch, wastage, reorder, report and count figures read "2 bottles + 7 shots" for
+  items with a count measure (hover shows the exact figure); below zero reads "short by ..."; items without a measure
+  show at most 2 decimals. Stored stock, exports and what you type are unchanged.
+- **Assistant:** no table/setting change; when quoting stock to staff, prefer the same words (helper rh_stock_qty_words).
+- **Manager Guides:** Stock - one line on reading "bottles + shots".
 
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
