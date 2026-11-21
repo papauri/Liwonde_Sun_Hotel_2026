@@ -29,6 +29,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-21: POS drink tiles show the serving and other servings' prices (owner FEATURE)
+- Owner: "show whether it's a shot or glass for drinks and how much, and in small how much the smaller item is" + "price
+  of the smaller serving and also price of the bottle". Bar / coffee-bar tiles whose stock link is ONE stock item show
+  "Shot · 25 ml" / "Bottle · 750 ml" / "Can · 330 ml" under the name and, in small under the price, the menu price of the
+  same drink's other till items (real prices only, 86'd left out, max 3). Cart line shows the serving.
+- `admin/includes/pos-drink-servings.php` (new), `admin/pos.php`, `admin/css/pos-overrides.css`. Liwonde 829c657,
+  Rosalyn's 2274258. Test `scripts/tests/pos_drink_servings_test.php` 29/0; QA (opus) PASS; browser 1400 + 390.
+- Data: tiles stay plain until a drink is linked to its stock item (one line) and Stock has the bottle size or the
+  bottle/shot measure. Liwonde's menu has almost no drinks now, so it was checked with made-up drinks (removed).
+- LATER: a bottle on room service only is not listed on the till tile.
+
 ## Shipped 2026-11-21: Assistant "Invalid function name" fault (PATCH, owner report)
 - Gemini refused every question (HTTP 400): the privacy vault's last pass rewrote tool NAMES when a vaulted guest
   word matched one (`group_breakdown` -> `[GUEST_1]_breakdown`). Fixed in `includes/ai/ai-vault.php` (names, schemas,
