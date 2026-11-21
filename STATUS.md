@@ -38,7 +38,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Rosalyn's 2274258. Test `scripts/tests/pos_drink_servings_test.php` 29/0; QA (opus) PASS; browser 1400 + 390.
 - Data: tiles stay plain until a drink is linked to its stock item (one line) and Stock has the bottle size or the
   bottle/shot measure. Liwonde's menu has almost no drinks now, so it was checked with made-up drinks (removed).
-- LATER: a bottle on room service only is not listed on the till tile.
+- Follow-up (owner 2026-11-21 "fix the room service bottle gap too"): other servings carry show_pos/show_rs and the tile lists the ones for the till's mode, so a Room-Service-only bottle shows in Room Service mode. Test 34/0, QA PASS, browser both modes.
 
 ## Shipped 2026-11-21: Assistant "Invalid function name" fault (PATCH, owner report)
 - Gemini refused every question (HTTP 400): the privacy vault's last pass rewrote tool NAMES when a vaulted guest
