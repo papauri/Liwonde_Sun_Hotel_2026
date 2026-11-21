@@ -79,7 +79,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   room column 64 -> 92px (CSS `--tl-room-w` + `roomW` in room-timeline.js / room-timeline-ops.js, keep all three
   equal), room numbers wrap; "Hover for insight" / "Quick Insights" -> "Click to see these" / "Details". No change
   needed: compact rows are mouse-only; the RS list already gets the shared pager. qa-quick PASS.
-  Still open: dept-rooms-lead / dept-restaurant-lead frontmatter say `model: sonnet` (dispatched with opus; owner to decide).
+  Model: owner 2026-11-21 keeps Sonnet leads; Opus only for money/stock/bookings/auth/security logic (RULES.md).
 - Commits: git log "Ops pages like the calendar" (Liwonde) / "Port of Liwonde" (Rosalyn's).
 
 ## Shipped 2026-11-21: Room Timeline calendar (owner FEATURE)
