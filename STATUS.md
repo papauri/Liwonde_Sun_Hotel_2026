@@ -42,6 +42,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - New admin/js/blocked-dates-grid.js; CSS in admin/css/blocked-dates.css (44px targets on touch). Tests:
   scripts/tests/blocked_dates_grid.php 28/28 (not yet in run_tests.php: another profile has that file open), block_rooms 42/42.
   QA (opus): FAIL on 2 blockers (type-row unblock message, 44px touch targets) -> fixed in the one fix round, re-tested.
+- Liwonde 8efdd57, Rosalyn's port e44ff36 (both pushed; owner deploys).
 - LATER: past nights mixed into a selection are dropped silently; add blocked_dates_grid.php to run_tests.php.
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
