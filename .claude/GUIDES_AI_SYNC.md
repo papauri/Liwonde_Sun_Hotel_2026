@@ -131,7 +131,7 @@ when prompted."
   "The numbers for the whole file", drinks, rows left out, fixed for you.
 - **Manager Guides:** Stock import page picture refresh.
 
-### Stock quantities shown as "bottles + shots" (2026-11-21, owner ask, display only) - Liwonde (this commit)
+### Stock quantities shown as "bottles + shots" (2026-11-21, owner ask, display only) - Liwonde dced1a0 / Rosalyn's 8686663
 - **Guides (stock pages):** on-hand, batch, wastage, reorder, report and count figures read "2 bottles + 7 shots" for
   items with a count measure (hover shows the exact figure); below zero reads "short by ..."; items without a measure
   show at most 2 decimals. Stored stock, exports and what you type are unchanged.

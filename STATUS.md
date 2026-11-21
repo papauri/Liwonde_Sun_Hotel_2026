@@ -59,6 +59,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Dashboard low stock. Stored figures, inputs, CSV/Excel exports and logs unchanged. Tests stock_qty_words 39/39,
   stock_count_measures 103/0, stock_list_filters 85/0; stock_count_approval 124/1 pre-existing (0 stock items).
   QA: FAIL on sort order -> fixed in the one fix round (data-sort-value on every changed cell), checked.
+- Liwonde dced1a0, Rosalyn's port 8686663 (config/database.php hunk applied with git apply; Rosalyn's RBH lines kept).
 - LATER: Reorder "Suggested" and reports delta columns still plain numbers.
 
 ## Shipped 2026-11-21: Import page UI - clear step plan, foldable sections, pinned footer (owner FEATURE, UI only)
