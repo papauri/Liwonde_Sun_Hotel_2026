@@ -58,7 +58,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   size) -> POST sizes_bulk, each value checked as on its row, one transaction, changed/skipped reported.
 - "Sold as" override (answers _sizes.r.<key>.sold; shot / glass / whole unit / Drink measures list names) is read only
   in import_drinks_build: menu side only (cost, link, tickability). Opening count, count measure and the Drink measures
-  list are untouched (tested). Tests import_drink_prices 105/0, engine 592/0. QA PASS. Rosalyn's port: waits for owner OK.
+  list are untouched (tested). Tests import_drink_prices 105/0, engine 592/0. QA PASS. Rosalyn's port 6fb1abe.
 - LATER: Tick all shown posts every key (PHP max_input_vars 1000 would cut past ~995 drinks: send all=1 + filter);
   card-mode tick box 22px (<44px); a bulk save builds the list ~5 times; rows-per-page is 10/25/50/100, not All.
 

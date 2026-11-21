@@ -115,7 +115,7 @@ when prompted."
   may pre-fill a shot size. No table/setting/permission change.
 - **Manager Guides:** Stock - one line: "Step 3: check the shot size if your bar pours other than the list's shot".
 
-### Import step 3 sizes: tidy table, "Change several drinks at once", per-row "Sold as" (2026-11-21, owner ask) - Liwonde (this commit)
+### Import step 3 sizes: tidy table, "Change several drinks at once", per-row "Sold as" (2026-11-21, owner ask) - Liwonde 68e62fe / Rosalyn's 6fb1abe
 - **Guides (23-import):** tick drinks (or "Tick all shown": every drink the search, Show and Group pick, all pages), then
   fill only what should change: Sold as (shot / glass / whole bottle / a Drink measures list name), shot, glass, bottle
   size; Apply. Each value is checked per drink; skipped ones say why. Sold as changes the menu only (cost of one, what a
