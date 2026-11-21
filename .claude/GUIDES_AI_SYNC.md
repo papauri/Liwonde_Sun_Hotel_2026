@@ -161,6 +161,10 @@ when prompted."
   window; a joined type when every pair has a room off). Check-out ON a blocked date is allowed (the night before is what
   counts); once a check-in is picked, check-out dates that would cross a blocked night are greyed. Guides: one line in the
   guest booking / blocking section. Assistant: no table/setting change (helper includes/blocked-nights.php).
+- **Follow-up (2026-11-22, owner PATCH "specify the room names and the date"):** the Blocked Dates calendar's summary,
+  Block/Unblock confirm and result message now name each room and its nights ("Blocked 6 night(s): Villa 2 on 3 to 5 Jan
+  2028; ..."), never "rows"; the List-view forms say e.g. "Room 101 blocked on 12 Dec 2026". Guides: update any screenshot
+  text that shows the old "N nights on N rows" wording. Assistant: no change.
 
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 

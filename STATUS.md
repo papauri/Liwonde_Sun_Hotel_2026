@@ -29,6 +29,19 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## IN PROGRESS 2026-11-22 (ClaudeWorkOne): Import step 3 = one "Drinks for the menu" table (owner FEATURE)
+- Owner: "easily add all imported stock to the menu with the price ... math logic correct ... steps as simple ... especially step 3".
+  Owner chose: ONE compact table in step 3 (sold as, sizes, cost of one, EDITABLE selling price, profit, On menu tick,
+  "Put all N on the menu"); drinks UNTICKED by default; step 4 = summary line + Confirm. Math audit included.
+- Scope widened (owner 2026-11-22): ANY menu item (drinks, snacks, food), grouped by the file's categories (fold per
+  group, group-level Menu Drinks/Food + category, "Put all in this group"); never a silent guess (unclear = person
+  chooses); Assistant (if set up) only SUGGESTS, one click to accept; works fully without it.
+- Checked on job 2402 (owner's Bar Nov, reviewing; do not change its answers): Green 50,420 / crate 20 = 2,521 cost, OK.
+- Builder (opus) not committed yet. Files: admin/data-import.php, admin/js/data-import.js, admin/css/data-import.css,
+  includes/import/drinks.php, scripts/tests/import_drink_prices.php. Next: QA (opus), commit, port to Rosalyn's.
+- QUEUED after it (owner 2026-11-22): global admin UI fix: cramped toolbar spacing (e.g. Blocked Dates month nav:
+  arrows / This month / month input mismatched heights) and unstyled native selects (e.g. "Room type" filter).
+
 ## Shipped 2026-11-22: Blocked Dates calendar - block / unblock single rooms on a month grid (owner FEATURE)
 - Owner: "Fix the logic and UI for blocked rooms to also look like calendar so we can individually block individual rooms. Make sure logic is perfect."
 - admin/blocked-dates.php opens on a Calendar view (List view kept at ?view=list): rows All rooms / each room type / each room
@@ -52,7 +65,18 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   type count and stop that room (checkIndividualRoomAvailability), stay changes re-check both (rh_validate_booking_stay_change),
   same-type room moves rightly ignore type blocks (the booking already holds the type). Tests: blocked_dates_grid.php 43/43
   (new "Availability follows the blocks" section, rolled back), block_rooms 42/42. QA PASS. Liwonde 8b60ae5, Rosalyn's port c3fccbe.
-- Public booking calendar 2026-11-22 (owner "fix the calendar so fully blocked types show greyed out and the other issue"):  booking.php now also greys a night when every room of a type is off (each blocked, Maintenance / Out of Order, or a  maintenance window; joined type = every pair has a room off), via new includes/blocked-nights.php. js/booking.js check-out  picker: check-out ON a blocked date allowed (night before counts), dates crossing a blocked night greyed once check-in is  picked. "Other issue" read as the test that could skip: the availability tests now search for free nights. Tests 50/50,  browser check passed (seeded + removed 16 ZZ blocks on Liwonde), QA PASS. LATER: clearing check-in does not redraw the  check-out picker; getDateRange (pre-existing) uses toISOString.
+- Public booking calendar 2026-11-22 (owner "fix the calendar so fully blocked types show greyed out and the other issue"):
+  booking.php now also greys a night when every room of a type is off (each blocked, Maintenance / Out of Order, or a
+  maintenance window; joined type = every pair has a room off), via new includes/blocked-nights.php. js/booking.js check-out
+  picker: check-out ON a blocked date allowed (night before counts), dates crossing a blocked night greyed once check-in is
+  picked. "Other issue" read as the test that could skip: the availability tests now search for free nights. Tests 50/50,
+  browser check passed (seeded + removed 16 ZZ blocks on Liwonde), QA PASS. Liwonde 7f33c58, Rosalyn's port 959faa4.
+  LATER: clearing check-in does not redraw the check-out picker; getDateRange (pre-existing) uses toISOString.
+- Messages name rooms + dates 2026-11-22 (owner "when blocking dont say blocked rows, specify the room names and the date"):
+  calendar summary, Block/Unblock confirm and the result now read "Blocked 6 night(s): Villa 2 on 3 to 5 Jan 2028; ..."
+  (back-to-back nights joined, "Room 101" for numbered rooms); List-view form messages name the room/type and date; "row"
+  wording removed from legend/help/tooltips. api/blocked-dates.php (key API) messages unchanged. Tests 53/53, block_rooms
+  42/42, browser check passed.
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
 - Liwonde 57e21db, Rosalyn's port 1b96445. Owner: "for Budgets and limits be able to auto set to the best capacity to fit
