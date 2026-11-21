@@ -29,6 +29,12 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-21: POS top bar spacing (owner PATCH)
+- Owner: top bar "very zoomed, too squeezed, not enough spacing". At 1181-1700 CSS px (e.g. 1920 screen at 125%) the
+  stats row was a 6-column grid with 7 stats (Card wrapped) and 7px labels. Fix: appended block at the end of
+  `admin/css/pos-overrides.css` (roomier brand/tiles; stats one row, one column each). Liwonde 733adeb, Rosalyn's
+  2505b27. Review PASS; browser 1536/1300/1200/1920/1024.
+
 ## Shipped 2026-11-21: POS drink tiles show the serving and other servings' prices (owner FEATURE)
 - Owner: "show whether it's a shot or glass for drinks and how much, and in small how much the smaller item is" + "price
   of the smaller serving and also price of the bottle". Bar / coffee-bar tiles whose stock link is ONE stock item show
