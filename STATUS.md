@@ -64,9 +64,11 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   seam `cfg.mode` in `admin/js/room-timeline.js`. Test `scripts/tests/ops_timeline_test.php` 114/0 (read-only);
   calendar_timeline 50/0, calendar_timeline_actions 55/0.
 - qa-auditor (opus) PASS; browser 1400/768/390 no console errors (Liwonde had no open maintenance jobs or RS orders).
-  LATER: shared pager on #rsActiveTable 10/25/50/All; .tl-hk-link 24px on phones; compact rows 36px; old stat cards
-  "Hover for insight" text (pre-existing, shown only if the timeline fails). dept-rooms-lead / dept-restaurant-lead
-  frontmatter say `model: sonnet` (dispatched with opus; owner to decide).
+  LATER items fixed same day (owner: "fix the left for later changes"): phone `.tl-hk-link` 44x44 with the phone
+  room column 64 -> 92px (CSS `--tl-room-w` + `roomW` in room-timeline.js / room-timeline-ops.js, keep all three
+  equal), room numbers wrap; "Hover for insight" / "Quick Insights" -> "Click to see these" / "Details". No change
+  needed: compact rows are mouse-only; the RS list already gets the shared pager. qa-quick PASS.
+  Still open: dept-rooms-lead / dept-restaurant-lead frontmatter say `model: sonnet` (dispatched with opus; owner to decide).
 - Commits: git log "Ops pages like the calendar" (Liwonde) / "Port of Liwonde" (Rosalyn's).
 
 ## Shipped 2026-11-21: Room Timeline calendar (owner FEATURE)
