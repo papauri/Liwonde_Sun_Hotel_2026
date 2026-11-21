@@ -45,7 +45,13 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Liwonde 8efdd57, Rosalyn's port e44ff36 (both pushed; owner deploys).
 - Follow-up 2026-11-22: past nights mixed into a selection are now named in the message ("N past night(s) ... skipped");
   blocked_dates_grid.php (29/29) registered in run_tests.php. QA PASS. Liwonde bb127b6, Rosalyn's port 45595e0.
-- LATER: the same past night posted twice for one row counts twice in that message (grid normally sends one item per row).
+- Gaps fixed 2026-11-22 (owner "fix gaps and check block logic again and individual room logic"): a past night is counted
+  once per row (also when a joined room is posted as both members); the unblock "none were blocked" message now names
+  skipped past nights; a half-blocked joined room (old data) counts as newly blocked when completed, not "already blocked".
+  Re-audit: room-type / all-rooms blocks stop type sales (checkRoomAvailability), room blocks take one room off the
+  type count and stop that room (checkIndividualRoomAvailability), stay changes re-check both (rh_validate_booking_stay_change),
+  same-type room moves rightly ignore type blocks (the booking already holds the type). Tests: blocked_dates_grid.php 43/43
+  (new "Availability follows the blocks" section, rolled back), block_rooms 42/42.
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
 - Liwonde 57e21db, Rosalyn's port 1b96445. Owner: "for Budgets and limits be able to auto set to the best capacity to fit
