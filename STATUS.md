@@ -77,6 +77,15 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   (back-to-back nights joined, "Room 101" for numbered rooms); List-view form messages name the room/type and date; "row"
   wording removed from legend/help/tooltips. api/blocked-dates.php (key API) messages unchanged. Tests 53/53, block_rooms
   42/42, browser check passed. QA PASS. Liwonde c319a62, Rosalyn's port c10fd66.
+- Logs + booking-aware logic 2026-11-22 (owner "make sure there is proper logic and logs for these things as it works
+  directly with bookings"): new includes/block-log.php. Every block / unblock (calendar, List-view forms, bulk unblock,
+  integration API) writes one Staff activity row ('Blocked rooms' / 'Unblocked rooms': who, rooms + nights, type, reason,
+  bookings already on those nights, "via the integration API (client)") and a note on each affected booking's History
+  ("Room blocked on a night of this stay" / "Block removed ..."). Calendar saves log inside their transaction. Block now
+  asks the server first (preview_block, read only) and the confirm lists the bookings that will NOT be moved. API PUT
+  (delete + re-create) is one transaction now (a failed re-create used to lose the old block). Tests 62/62, block_rooms
+  42/42, booking_history 88/88, system_logs_activity 116/116, browser check passed.
+  LATER: the API still blocks one member of a joined pair on its own (the screen blocks both).
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
 - Liwonde 57e21db, Rosalyn's port 1b96445. Owner: "for Budgets and limits be able to auto set to the best capacity to fit
