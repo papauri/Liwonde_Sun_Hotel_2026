@@ -79,7 +79,10 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Liwonde 49ddf7d, Rosalyn's port 1af07fa.
 - Tests stock_to_menu 27/0, import_drink_prices 105/0, permission_tiers 169/0, menu_room_service 23/0; menu_portions
   170/1 pre-existing (needs a stock item; test DB empty). QA PASS.
-- LATER: price "1,50" reads as 150.00 (commas dropped as thousands); 1000+ ticks capped in the URL; import link error
+- Minor fixes (owner 2026-11-22 "Fix minor points", this follow-up commit): commas only as thousands groups ("1,50", "0,500" refused
+  with a plain message), ticked ids POSTed in one field (cap 5000, said plainly), costs/profit only for stock_management
+  (never sent to Menu-only users), import stop wording says "Nothing was imported" once. Tests 43/0, 106/0. QA PASS.
+- LATER (was): price "1,50" reads as 150.00 (commas dropped as thousands); 1000+ ticks capped in the URL; import link error
   text now says "Nothing was saved"; Menu-only users see stock costs; staff-activity label for drink_menu_from_stock;
   Stock Items rows tall at 1400.
 
