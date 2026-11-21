@@ -44,7 +44,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - New drinks_set mode `tick_all` (includes/import/drinks.php): ticks every tickable drink the list shows (Search + Show,
   every page); Untick all clears them. Menu permission still required; commit re-checks ticks. Tests in
   import_drink_prices (67 pass). Port to Rosalyn's: drinks.php, admin/data-import.php, admin/js/data-import.js.
-- Rosalyn's port NOT done: the auto-mode permission check refused the push to Rosalyn's main (live deploy). Owner to OK.
+- Ported to Rosalyn's 3c3b30e (owner OK 2026-11-21, together with the Shot size below).
 
 ## Shipped 2026-11-21: Import step 3 "Shot size (ml)" in the sizes section (owner FEATURE)
 - Owner: "set the shot size in advance in step 3 ... same as Glass size (ml) ... without messing up any stock count logic
@@ -58,8 +58,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - LATER: group shot size beats a count measure (such rows then need a bottle size); no warning when a bottle typed later
   is smaller than the shot; "Tot 35ml" now groups as m:shot (an in-progress import's old ml:35 group answer is dropped);
   till tile says "35 ml" not "Shot · 35 ml".
-- Port to Rosalyn's (with the Tick all port): drinks.php, measure.php, default-aliases.php, admin/includes/import-schema.php,
-  admin/data-import.php, admin/js/data-import.js.
+- Ported to Rosalyn's 3c3b30e (owner OK 2026-11-21).
 
 ## Shipped 2026-11-21: Menu Management Room Service tab + drink categories (owner FEATURE)
 - Liwonde 7c341f4, Rosalyn's port 6ee2bc2.

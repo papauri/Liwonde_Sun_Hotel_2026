@@ -101,13 +101,13 @@ when prompted."
   rh_menu_pos_sync_item). Page URL admin/menu-management.php?tab=room-service.
 - **Manager Guides:** Menu/Restaurant guide - one line on the Room service tab and moving drinks into categories.
 
-### Import step 4 "Drinks for the menu": Tick all / Untick all (2026-11-21, owner ask) - Liwonde (this commit) / Rosalyn's port
+### Import step 4 "Drinks for the menu": Tick all / Untick all (2026-11-21, owner ask) - Liwonde e4bbc37 / Rosalyn's 3c3b30e
 - **Guides (23-import):** step 4 "Put on the menu" has Tick all and Untick all: they act on every drink the list shows
   (after Search and Show, all pages). Drinks that cannot go on the menu stay unticked. Nothing is written until Import.
 - **Assistant:** new drinks_set mode tick_all (on, q, show) on admin/data-import.php; no table/setting/permission change.
 - **Manager Guides:** Stock - "Tick all in step 4 to put every priced drink on the menu at once".
 
-### Import step 3: Shot size (ml) in "Optional: add sizes" (2026-11-21, owner ask) - Liwonde (this commit) / Rosalyn's port
+### Import step 3: Shot size (ml) in "Optional: add sizes" (2026-11-21, owner ask) - Liwonde 9b776c5 / Rosalyn's 3c3b30e
 - **Guides (23-import):** drinks sold by the shot (or tot) show a Shot size (ml), filled in from the Drink measures list
   (or the file / the Assistant's reading); change it per group or per row if the bar pours a different shot. Used for the
   cost of one shot and what each sale takes off stock only; the opening count and the Drink measures list do not change.
