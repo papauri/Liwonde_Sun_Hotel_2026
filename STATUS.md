@@ -76,7 +76,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   calendar summary, Block/Unblock confirm and the result now read "Blocked 6 night(s): Villa 2 on 3 to 5 Jan 2028; ..."
   (back-to-back nights joined, "Room 101" for numbered rooms); List-view form messages name the room/type and date; "row"
   wording removed from legend/help/tooltips. api/blocked-dates.php (key API) messages unchanged. Tests 53/53, block_rooms
-  42/42, browser check passed.
+  42/42, browser check passed. QA PASS. Liwonde c319a62, Rosalyn's port c10fd66.
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
 - Liwonde 57e21db, Rosalyn's port 1b96445. Owner: "for Budgets and limits be able to auto set to the best capacity to fit
