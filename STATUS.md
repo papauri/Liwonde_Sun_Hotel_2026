@@ -29,6 +29,20 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-21: Menu Management Room Service tab + drink categories (owner FEATURE)
+- Owner: "missing a room service menu in menu management; drinks need to be split in categories within the drinks menu".
+  Owner answers: live drinks all sit in ONE category; Room Service tab = all items with an "On room service" switch.
+- Third tab "Room service" (?tab=room-service): food + drinks by category, switch saves at once (POST
+  `toggle_room_service`: web row + till copy, one transaction), filter On / Not on / All. Drinks tab: category buttons +
+  "Move selected to category" (POST `menu_move_category`, via `rh_menu_pos_sync_item` so the till copy + stock link
+  follow; same-name in target skipped; one transaction per item; logged). Drinks moves open to anyone with page access;
+  food moves + Delete selected/all stay with Clear Stock Data holders (server-enforced).
+- Tests: new scripts/tests/menu_room_service.php 23/0; menu_portions.php 170/1 (the 1 = pre-existing stock-recipes
+  inactive-category check). qa-auditor: 1 blocker (server check on food moves) fixed + test added. Browser check
+  desktop + 390px. Test clean-up also removed Liwonde's empty old "ZZ Test Category" (id 988177).
+- LATER: move log text is cut to 140 chars in System Logs; the menu lock is held for a whole bulk move (an add/update
+  made at the same time waits up to 10 s).
+
 ## Shipped 2026-11-21: POS top bar spacing (owner PATCH)
 - Owner: top bar "very zoomed, too squeezed, not enough spacing". At 1181-1700 CSS px (e.g. 1920 screen at 125%) the
   stats row was a 6-column grid with 7 stats (Card wrapped) and 7px labels. Fix: appended block at the end of
