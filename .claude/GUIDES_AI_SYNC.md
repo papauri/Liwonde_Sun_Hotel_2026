@@ -107,6 +107,14 @@ when prompted."
 - **Assistant:** new drinks_set mode tick_all (on, q, show) on admin/data-import.php; no table/setting/permission change.
 - **Manager Guides:** Stock - "Tick all in step 4 to put every priced drink on the menu at once".
 
+### Import step 3: Shot size (ml) in "Optional: add sizes" (2026-11-21, owner ask) - Liwonde (this commit) / Rosalyn's port
+- **Guides (23-import):** drinks sold by the shot (or tot) show a Shot size (ml), filled in from the Drink measures list
+  (or the file / the Assistant's reading); change it per group or per row if the bar pours a different shot. Used for the
+  cost of one shot and what each sale takes off stock only; the opening count and the Drink measures list do not change.
+- **Assistant:** sizes_set field 'shot' (group|row); new import alias kind shot_words (seed v9); the single reader call
+  may pre-fill a shot size. No table/setting/permission change.
+- **Manager Guides:** Stock - one line: "Step 3: check the shot size if your bar pours other than the list's shot".
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md

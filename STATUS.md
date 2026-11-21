@@ -44,7 +44,22 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - New drinks_set mode `tick_all` (includes/import/drinks.php): ticks every tickable drink the list shows (Search + Show,
   every page); Untick all clears them. Menu permission still required; commit re-checks ticks. Tests in
   import_drink_prices (67 pass). Port to Rosalyn's: drinks.php, admin/data-import.php, admin/js/data-import.js.
-- NEXT (owner ask same day): step 3 sizes section - set the shot size in advance like Glass size (ml).
+- Rosalyn's port NOT done: the auto-mode permission check refused the push to Rosalyn's main (live deploy). Owner to OK.
+
+## Shipped 2026-11-21: Import step 3 "Shot size (ml)" in the sizes section (owner FEATURE)
+- Owner: "set the shot size in advance in step 3 ... same as Glass size (ml) ... without messing up any stock count logic
+  ... dynamic ... especially if we also have AI assistance ON".
+- Shot rows (new alias kind shot_words: shot, tot; aliases seed v9) get a group + row shot size; order row > served-by
+  cell > Assistant reading (same single call per import) > group > item's count measure > Drink measures list (25 ml).
+  Shot rows are listed even when the bottle size is known. Spec + order: .claude/IMPORT_PLAN.md "Shot size in Step 3".
+- Link: list size = today's "shot" link; other size = ml line (shot ml / bottle ml per sale; till tile "35 ml").
+  Never changes the opening count, measure_per_big or the Drink measures list (tested). Tests: import_drink_prices 87/0,
+  import_engine_test 592/0. QA PASS. ASSUMPTION: a typed shot size is for this import only, not hotel-wide.
+- LATER: group shot size beats a count measure (such rows then need a bottle size); no warning when a bottle typed later
+  is smaller than the shot; "Tot 35ml" now groups as m:shot (an in-progress import's old ml:35 group answer is dropped);
+  till tile says "35 ml" not "Shot · 35 ml".
+- Port to Rosalyn's (with the Tick all port): drinks.php, measure.php, default-aliases.php, admin/includes/import-schema.php,
+  admin/data-import.php, admin/js/data-import.js.
 
 ## Shipped 2026-11-21: Menu Management Room Service tab + drink categories (owner FEATURE)
 - Liwonde 7c341f4, Rosalyn's port 6ee2bc2.
