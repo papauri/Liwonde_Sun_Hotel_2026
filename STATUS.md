@@ -50,6 +50,18 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Anthropic key is saved there (never synced); they get prices once a key passes Test connection.
 - LATER: cache the 5 MB price list once per daily run (now read once per provider); Test connection waits up to 20 s more.
 
+## Shipped 2026-11-21: Import step 3 sizes - tidy table + mass set + per-row "Sold as" (owner FEATURE)
+- Owner: "fix the UI table perfectly and also be able to mass set like if default shot size is 30ml and you have a lot of
+  bottles to bundle or even change within whether by glass or shot".
+- Compact table (short "Menu in step 4" badge, dashes for not-applicable cells, cards on narrow screens); ticks per row +
+  "Tick all shown" (search/Show/Group, all pages) + bar "Change several drinks at once" (Sold as, shot, glass, bottle
+  size) -> POST sizes_bulk, each value checked as on its row, one transaction, changed/skipped reported.
+- "Sold as" override (answers _sizes.r.<key>.sold; shot / glass / whole unit / Drink measures list names) is read only
+  in import_drinks_build: menu side only (cost, link, tickability). Opening count, count measure and the Drink measures
+  list are untouched (tested). Tests import_drink_prices 105/0, engine 592/0. QA PASS. Rosalyn's port: waits for owner OK.
+- LATER: Tick all shown posts every key (PHP max_input_vars 1000 would cut past ~995 drinks: send all=1 + filter);
+  card-mode tick box 22px (<44px); a bulk save builds the list ~5 times; rows-per-page is 10/25/50/100, not All.
+
 ## Shipped 2026-11-21: Import step 4 "Drinks for the menu" - Tick all / Untick all (owner FEATURE)
 - Owner: "Be able to select all and add to menu during a stock import".
 - New drinks_set mode `tick_all` (includes/import/drinks.php): ticks every tickable drink the list shows (Search + Show,

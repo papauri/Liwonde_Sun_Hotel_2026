@@ -115,6 +115,14 @@ when prompted."
   may pre-fill a shot size. No table/setting/permission change.
 - **Manager Guides:** Stock - one line: "Step 3: check the shot size if your bar pours other than the list's shot".
 
+### Import step 3 sizes: tidy table, "Change several drinks at once", per-row "Sold as" (2026-11-21, owner ask) - Liwonde (this commit)
+- **Guides (23-import):** tick drinks (or "Tick all shown": every drink the search, Show and Group pick, all pages), then
+  fill only what should change: Sold as (shot / glass / whole bottle / a Drink measures list name), shot, glass, bottle
+  size; Apply. Each value is checked per drink; skipped ones say why. Sold as changes the menu only (cost of one, what a
+  sale takes off stock); the opening count still reads the file. Each row's Sold as can be set or cleared back to the file.
+- **Assistant:** new POST action sizes_bulk on admin/data-import.php; row answer _sizes.r.<key>.sold. No table/setting/permission change.
+- **Manager Guides:** Stock - "Step 3: tick many drinks and set their shot or bottle size in one go".
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md
