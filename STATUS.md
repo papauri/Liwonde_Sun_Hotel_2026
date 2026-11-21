@@ -51,7 +51,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Re-audit: room-type / all-rooms blocks stop type sales (checkRoomAvailability), room blocks take one room off the
   type count and stop that room (checkIndividualRoomAvailability), stay changes re-check both (rh_validate_booking_stay_change),
   same-type room moves rightly ignore type blocks (the booking already holds the type). Tests: blocked_dates_grid.php 43/43
-  (new "Availability follows the blocks" section, rolled back), block_rooms 42/42.
+  (new "Availability follows the blocks" section, rolled back), block_rooms 42/42. QA PASS. Liwonde 8b60ae5, Rosalyn's port c3fccbe.
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
 - Liwonde 57e21db, Rosalyn's port 1b96445. Owner: "for Budgets and limits be able to auto set to the best capacity to fit
