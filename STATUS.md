@@ -85,7 +85,9 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   asks the server first (preview_block, read only) and the confirm lists the bookings that will NOT be moved. API PUT
   (delete + re-create) is one transaction now (a failed re-create used to lose the old block). Tests 62/62, block_rooms
   42/42, booking_history 88/88, system_logs_activity 116/116, browser check passed.
-  LATER: the API still blocks one member of a joined pair on its own (the screen blocks both).
+  QA: FAIL on 1 blocker (API date-list unblock read type blocks as the room's own -> false log/note), fixed.
+  Liwonde 8593d48, Rosalyn's port 25eb701. LATER: the API still blocks one member of a joined pair on its own (the
+  screen blocks both); a same-date API PUT notes the booking twice; generic page_action row still written too.
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
 - Liwonde 57e21db, Rosalyn's port 1b96445. Owner: "for Budgets and limits be able to auto set to the best capacity to fit
