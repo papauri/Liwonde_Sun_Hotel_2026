@@ -1,7 +1,7 @@
 # STATUS: Liwonde Sun Hotel 2026 (hotel PMS / HMS)
 
 **Read this first.** Any agent (Claude, Cline, another provider) should be able to continue from this file alone. Keep it
-current during work. Last updated: **2026-11-11**.
+current during work. Last updated: **2026-11-22**.
 
 This repo is a fork of the Rosalyn's platform (`../Rosalyns-hotel-2026`): most fixes go into both repos with the same
 commit message.
@@ -28,6 +28,21 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   (one copy; plain node, no AI calls) reads Claude Code's own session logs for ALL projects and writes
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
+
+## Shipped 2026-11-22: Blocked Dates calendar - block / unblock single rooms on a month grid (owner FEATURE)
+- Owner: "Fix the logic and UI for blocked rooms to also look like calendar so we can individually block individual rooms. Make sure logic is perfect."
+- admin/blocked-dates.php opens on a Calendar view (List view kept at ?view=list): rows All rooms / each room type / each room
+  (a joined room = one row, same lanes as the Calendar via rh_calendar_load), columns = the month's nights. Click, drag,
+  shift-click or click a room name to select nights, then Block (type + reason) or Unblock. New action grid_apply: one
+  transaction under the blocked_dates lock, all or nothing; past nights refused; joined room = both rooms; re-block updates
+  type/reason; unblock removes only the row's own block and says when a room-type / all-rooms block still covers the night.
+  Booked nights show a blue bar, booked + blocked a red ring. Block Rooms permission enforced (grid view-only without it).
+- Logic fixes: inactive room refused with a clear message; List filter dates validated; filtering by one room no longer
+  lists other room types' blocks; unblock id precedence bug; refresh after a modal save now also works from an empty list.
+- New admin/js/blocked-dates-grid.js; CSS in admin/css/blocked-dates.css (44px targets on touch). Tests:
+  scripts/tests/blocked_dates_grid.php 28/28 (not yet in run_tests.php: another profile has that file open), block_rooms 42/42.
+  QA (opus): FAIL on 2 blockers (type-row unblock message, 44px touch targets) -> fixed in the one fix round, re-tested.
+- LATER: past nights mixed into a selection are dropped silently; add blocked_dates_grid.php to run_tests.php.
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
 - Liwonde 57e21db, Rosalyn's port 1b96445. Owner: "for Budgets and limits be able to auto set to the best capacity to fit
