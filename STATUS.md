@@ -58,6 +58,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   incl.), category, cost of one, profit, status (new / price change / same / cannot + why) -> "Add N to the menu".
   Stock Items: tick column + "Tick all shown" + "Put N on the menu"; Menu Management Drinks tab: "Add from stock".
   Permission menu + modules pos+stock. Import's write part refactored to import_drinks_menu_write(), shared.
+- Liwonde 49ddf7d, Rosalyn's port 1af07fa.
 - Tests stock_to_menu 27/0, import_drink_prices 105/0, permission_tiers 169/0, menu_room_service 23/0; menu_portions
   170/1 pre-existing (needs a stock item; test DB empty). QA PASS.
 - LATER: price "1,50" reads as 150.00 (commas dropped as thousands); 1000+ ticks capped in the URL; import link error
