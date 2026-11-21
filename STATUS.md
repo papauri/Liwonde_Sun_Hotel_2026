@@ -50,6 +50,18 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Anthropic key is saved there (never synced); they get prices once a key passes Test connection.
 - LATER: cache the 5 MB price list once per daily run (now read once per provider); Test connection waits up to 20 s more.
 
+## Shipped 2026-11-21: Import page UI - clear step plan, foldable sections, pinned footer (owner FEATURE, UI only)
+- Owner: "fix the UI of the import process ... cannot fold things ... endless scrolling with an unclear step plan ...
+  Logic is fine but the UI can be better".
+- Step bar with one-line descriptions + ticks; "On this step" box per step (numbered actions, live counts, Open all /
+  Fold all); every big block a native <details> fold with Required/Optional/Done badge + one-line summary (needs-you
+  open, optional/done folded; remembered per job in localStorage); Back/Continue/Confirm and import pinned in a footer
+  (same single confirm handler and can_confirm rule); one-sentence intros + "More about this". No post()/payload change.
+- Tests import_engine 592/0, import_drink_prices 105/0; import_export_test 100/1 = pre-existing (test DB has 0 stock
+  items after the owner's Clear Stock Data 2026-11-20 18:00). QA PASS.
+- LATER: Assistant bubble can overlap the footer's right end on desktop; footer ResizeObserver may loop briefly when
+  pinning; scroll/resize listeners never removed; pagers 10/25/50/100 not All.
+
 ## Shipped 2026-11-21: Import step 3 sizes - tidy table + mass set + per-row "Sold as" (owner FEATURE)
 - Owner: "fix the UI table perfectly and also be able to mass set like if default shot size is 30ml and you have a lot of
   bottles to bundle or even change within whether by glass or shot".
