@@ -52,6 +52,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   type count and stop that room (checkIndividualRoomAvailability), stay changes re-check both (rh_validate_booking_stay_change),
   same-type room moves rightly ignore type blocks (the booking already holds the type). Tests: blocked_dates_grid.php 43/43
   (new "Availability follows the blocks" section, rolled back), block_rooms 42/42. QA PASS. Liwonde 8b60ae5, Rosalyn's port c3fccbe.
+- Public booking calendar 2026-11-22 (owner "fix the calendar so fully blocked types show greyed out and the other issue"):  booking.php now also greys a night when every room of a type is off (each blocked, Maintenance / Out of Order, or a  maintenance window; joined type = every pair has a room off), via new includes/blocked-nights.php. js/booking.js check-out  picker: check-out ON a blocked date allowed (night before counts), dates crossing a blocked night greyed once check-in is  picked. "Other issue" read as the test that could skip: the availability tests now search for free nights. Tests 50/50,  browser check passed (seeded + removed 16 ZZ blocks on Liwonde), QA PASS. LATER: clearing check-in does not redraw the  check-out picker; getDateRange (pre-existing) uses toISOString.
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
 - Liwonde 57e21db, Rosalyn's port 1b96445. Owner: "for Budgets and limits be able to auto set to the best capacity to fit
