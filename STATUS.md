@@ -29,6 +29,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-21: Assistant Settings model prices automatic, "Monthly cap" (owner FEATURE)
+- Liwonde 0637b87, Rosalyn's port 74871bb. Owner: "Check AI selector in AI settings and no need for us to set AI prices,
+  you do it automatically, we just set max cap"; owner chose the cap stays information only (never stops chat).
+- Models table: no price boxes; prices read automatically (Google page; public LiteLLM price list for Anthropic, OpenAI,
+  xAI, DeepSeek and Google models the page lacks) on the daily refresh, Check for newer models and Test connection.
+  A model with no price yet cannot be ticked. A known price replaces any old typed one. "Monthly aim" -> "Monthly cap".
+- Selector check: tick/untick/role logic works. Liwonde's two Anthropic rows (Opus 5.5, Haiku 5.5) have no price because no
+  Anthropic key is saved there (never synced); they get prices once a key passes Test connection.
+- LATER: cache the 5 MB price list once per daily run (now read once per provider); Test connection waits up to 20 s more.
+
 ## Shipped 2026-11-21: Menu Management Room Service tab + drink categories (owner FEATURE)
 - Liwonde 7c341f4, Rosalyn's port 6ee2bc2.
 - Owner: "missing a room service menu in menu management; drinks need to be split in categories within the drinks menu".
