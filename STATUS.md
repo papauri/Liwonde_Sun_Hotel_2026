@@ -30,6 +30,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
 ## Shipped 2026-11-21: Menu Management Room Service tab + drink categories (owner FEATURE)
+- Liwonde 7c341f4, Rosalyn's port 6ee2bc2.
 - Owner: "missing a room service menu in menu management; drinks need to be split in categories within the drinks menu".
   Owner answers: live drinks all sit in ONE category; Room Service tab = all items with an "On room service" switch.
 - Third tab "Room service" (?tab=room-service): food + drinks by category, switch saves at once (POST
