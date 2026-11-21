@@ -44,7 +44,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   QA (opus): FAIL on 2 blockers (type-row unblock message, 44px touch targets) -> fixed in the one fix round, re-tested.
 - Liwonde 8efdd57, Rosalyn's port e44ff36 (both pushed; owner deploys).
 - Follow-up 2026-11-22: past nights mixed into a selection are now named in the message ("N past night(s) ... skipped");
-  blocked_dates_grid.php (29/29) registered in run_tests.php. QA PASS.
+  blocked_dates_grid.php (29/29) registered in run_tests.php. QA PASS. Liwonde bb127b6, Rosalyn's port 45595e0.
 - LATER: the same past night posted twice for one row counts twice in that message (grid normally sends one item per row).
 
 ## Shipped 2026-11-21: Assistant Settings "Fit limits to the cap" + layout fixes (owner FEATURE)
