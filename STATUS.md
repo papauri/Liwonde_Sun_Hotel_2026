@@ -29,6 +29,18 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-22: import asks "bottles or shots?" for measure-served drinks + "57 shots = 2 bottles + 7 shots" (owner)
+- Owner: "how come it just says 2.8 bottles everywhere instead of saying how many shots". Owner answers 2026-11-22: in their
+  bar sheet the count for shot drinks is SHOTS LEFT; show "57 shots = 2 bottles + 7 shots" (exact on hover).
+- FOUND: job 2402 (Bar Nov) read premier brandy 57 as 57 BOTTLES (Stock Value = 57 x 4,000 shot price) -> opening count
+  25x too high for 66 shot rows. Job 2402 now shows 3 blocking questions (60 shot, 9 casket, 1 carton), suggestion = shots.
+- One BLOCKING question per served-by group when the count cell is a plain number (row override: POST count_row); Stock
+  Value evidence = a suggestion needing a click; "in shots" reuses Step U2 d (count measure, else step 3 shot/bottle ml,
+  else ask); "66 shots" cells / measure headings skip it (no double conversion); costs never divided by N.
+- Tests engine 613/0, drink_prices 150/0, import_stock 259/0, ai_import_suggest 38/0, stock_to_menu 43/0. QA (opus) PASS.
+- LATER: unanswered rows still show "57" next to the question; N from step 3 sizes is NOT saved as the item's count measure
+  (after import, stock screens show e.g. "2.28 bottles", not bottles + shots); count_row has no row lock (as answer).
+
 ## Shipped 2026-11-22: admin phone + tablet polish (owner PATCH, CSS + class tagging only)
 - Owner: Ingredients and other pages not mobile friendly; cards should be compact like the Bookings rows; ticks and buttons
   uniform; NOTHING changes above 1024px.
