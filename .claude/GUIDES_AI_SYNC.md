@@ -178,6 +178,11 @@ when prompted."
 - **Assistant:** if set up, it may show "Suggested: Food · Snacks" on an unclear group; nothing changes until "Use this" is pressed; it never ticks.
 - **Manager Guides:** Stock - one line: import can put drinks and food on the menu at a price you can change.
 
+### Admin phone + tablet polish (2026-11-22, owner PATCH) - Liwonde (this commit)
+- **Guides:** layout only. On phones and tablets list pages show compact rows (tick at the left, name + status, short detail lines, action buttons on the right, more in the ... menu). Screenshots of phone views in guides may look different; no steps change.
+- **Assistant:** no change.
+- **Manager Guides:** no change.
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md

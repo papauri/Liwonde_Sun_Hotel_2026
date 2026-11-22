@@ -29,6 +29,27 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-22: admin phone + tablet polish (owner PATCH, CSS + class tagging only)
+- Owner: Ingredients and other pages not mobile friendly; cards should be compact like the Bookings rows; ticks and buttons
+  uniform; NOTHING changes above 1024px.
+- admin/js/admin-mobile.js: markCompactRows() tags card-mode rows only (tick / primary / status / money / actions cells,
+  data-short labels, icon-button counts). Nothing is moved or renamed. Guarded to <=1024px. Opt-outs: table class
+  bookings-table, receipts-table, rh-own-rows, and tables inside .pos-acct-close-form / .pos-acct-sales-wrap (own rules).
+  Page opt-in classes on a td: rh-ph-primary, rh-ph-status, rh-ph-meta, rh-ph-money, rh-ph-skip.
+- admin/css/admin-uniform.css (appended, every rule inside max-width media): compact list rows for table.mobile-enhanced
+  (tick left, primary bold + status, muted "Label value" lines, up to 3 icon buttons on line 1 else a wrapping row,
+  "Tick all" slim row from the thead), 18px ticks (bulk tick keeps its 44px area), 40px / 8px toolbars and header buttons,
+  chip/tab rows scroll in one row at <=640px, stock-toolbar grid.
+- housekeeping.css, room-maintenance.css: room cards as compact rows (Quick Assign + Guest has left side by side).
+- stock-ingredients.php: Yield % cell tagged rh-ph-skip (hidden in card rows only; value stays in Edit).
+- Test targets: Liwonde only. Test DB has no ingredients: checked with a client-side fixture (no DB writes).
+- Ship gate: php -l + node --check, independent review PASS, browser check 68 pages at 390 (no sideways scroll, 0 console
+  errors), 20 at 820, 8 at 1440 (desktop unchanged). Ported to Rosalyn's (hashes in the MSP index line).
+- LATER: side-row icon buttons hide their text label on touch (name only in title); title attrs stay after resize to
+  desktop; an icon-only value cell is treated as empty (product-management-mode.php:429); Individual Rooms / Invoices /
+  Stock Clear rows still ~190px; some 44px buttons remain (Bookings, Backup, Restaurant Tables); Menu Management rows
+  unseen with data. Untracked invoices/*.pdf and the deleted Database/*.txt are not part of this.
+
 ## Shipped 2026-11-22: global admin UI - uniform controls + toolbar rhythm (owner FEATURE, CSS/markup only)
 - Owner: "fix the UI of these sort of things globally, the spacing ... make sure its uniform" (Blocked Dates month bar,
   raw "Room type" select).
