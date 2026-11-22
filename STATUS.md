@@ -58,7 +58,12 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Job 2402: owner answered its 3 questions 2026-11-22 13:49-13:53 (159 ready, can_confirm; saves 25 shots a bottle).
 - LATER (do with the next import build): "Shot 30" ignores the 30 and uses the 25 ml list shot (should not save / should
   ask when the cell shows a different number); question wording "glass of wines".
-- (11) SHIPPED ON LIWONDE ONLY 2026-11-23; Rosalyn's port WAITING for owner OK on the runtime column
+- OWNER RULE 2026-11-23: never touch Rosalyn's DB / run migrations until the owner confirms the exact list ("just about
+  stocks"). Approved: stock_counts.import_job_id (auto on first confirmed import); import_aliases seed top-ups v10-v12
+  (new word rows only, auto on first Import page use; owner "ok" 2026-11-23). NEVER run admin/migrations there.
+  Flow (owner 2026-11-23): build, review, commit to Liwonde first; THEN list the Rosalyn's DB changes at the end; port
+  after the owner's yes. Don't ask mid-build.
+- (11) SHIPPED 2026-11-23, Rosalyn's port 28b55bf (owner OK for the column). Was: Rosalyn's port WAITING for owner OK on the runtime column
   stock_counts.import_job_id (nullable, added by code on first use like is_opening; owner asked 2026-11-23; if no, link via
   the "Import #id" in the count notes instead). New includes/import/diff-report.php; report frozen in
   import_jobs.result_json.diff_report (built in the commit transaction, try/catch: a report failure never stops a valid
@@ -72,7 +77,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   costs worked out from packs, fixes, rows left out / not in opening count + why, value check file vs imported totals,
   answers given, typed vs file menu prices, count measures saved/kept/not saved); shown on the opening count (stock-count.php,
   for the approver) and the import result page, with a spreadsheet download. Frozen at commit.
-- (10) QUEUED after (8) QA (owner 2026-11-23: "extend it to read other wordings too ... not always hard coded ... with AI it
+- (10) SHIPPED ON LIWONDE 2026-11-23 (QA FAIL: learned answer lost to another field's seed alias; grammar question dropped
+  pre-#10 options -> fixed (person's latest answer wins; any other field match keeps its exact pre-#10 question; 2719-heading
+  before/after check) -> PASS. Tests engine 680/0, ai_import_suggest 43/0, import_stock 277/0, drink prices 162/0, diff
+  report 32/0. Rosalyn's DB changes: NONE (rows only when a person answers). LATER: col_use no lock; no screen to undo a
+  learned "not this". Was (spec IMPORT_PLAN.md A92-A94): includes/import/header-grammar.php (new) +
+  mapper/structure/analyze/review/review-view/drinks/measure.php, admin/includes/import-schema.php, includes/ai/ai-import-suggest.php,
+  admin/data-import.php (POST col_use), admin/js/data-import.js. No new table/column, no seed bump; new import_aliases kind
+  `field_not` / `field_yes` written only by a person's answer. Tests engine 677/0, ai_import_suggest 43/0, import_stock 275/0,
+  drink prices 162/0, diff report 32/0; headless step 2 at 1400/400 PASS (test job + learned rows removed). Job 2402 untouched.
+- (10) was QUEUED after (8) QA (owner 2026-11-23: "extend it to read other wordings too ... not always hard coded ... with AI it
   can also help ... works perfectly without it"): header grammar "[measure word] per/in/to/from/each [container word]" from
   the hotel's own word lists + abbreviations (btl, gls, cskt, ctn); size/volume/capacity/ml/cl -> unit_ml / measure_ml; no
   container named = ask. A person's column answer saved as a hotel-learned alias (import_aliases is_hotel_learned=1).
