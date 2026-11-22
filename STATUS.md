@@ -29,6 +29,24 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## In progress 2026-11-23: one grid for Calendar / Blocked Dates / Maintenance / Housekeeping (owner FEATURE)
+- Plan, owner words + answers, phases: `.claude/GRID_UNIFY_PLAN.md` (read it first). Phases: 1 selection engine (SHIPPED),
+  1b right-click everywhere in admin, 2 booking-clash check (skip booked nights), 3 Extend.
+- Phase 1 shipped (see git log "Grid Phase 1"): new admin/js/admin-context-menu.js (`RhContextMenu.open/register`),
+  admin/js/room-timeline-select.js, test scripts/tests/grid_select_test.mjs 13/0. Calendar: rectangle drag across rooms,
+  Shift/Ctrl, room name, day head; right-click New booking / Block / Unblock (preview_block + grid_apply) / New maintenance
+  job. HK + Maintenance timelines: multi-select bars -> list bulk actions; picked days -> add form prefilled (one POST
+  per room/day, form read once). Lists: Shift range + right-click rows. No save handler / SQL changed.
+  Tests: calendar_timeline 50/0, calendar_timeline_actions 55/0, ops_timeline 114/0, blocked_dates_grid 62/0, block_rooms 42/0.
+  QA FAIL (multi-add re-read live form) -> fixed inline -> pages load headless.
+- NOT done in Phase 1: Blocked Dates still on its own grid (blocked-dates-grid.js; moving it breaks blocked_dates_grid
+  test's markup checks) - with menu + bulk bar added.
+- ASSUMPTIONS: new maintenance jobs 08:00-17:00; max 60 HK tasks / 30 maintenance rooms per add; a mouse click on a room
+  name or calendar block now selects (Enter opens the link).
+- LATER: maintenance multi-room add uses earliest..latest picked day for every room; a retry after a lost reply can add
+  a duplicate task/job.
+- Next: Phase 1b (wire RhContextMenu across admin list rows), then Phase 2 (Fable spec check first).
+
 ## Shipped 2026-11-23: import reads "Shots per bottle" / "Bottle size (ml)" / "Shot size" columns (owner FEATURE, #8)
 - Owner 2026-11-23: "Is the stock import able to recognise a column that mentions how many shots in a bottle or glasses in a casket ...?" -> "yes". Spec: `.claude/IMPORT_PLAN.md` last section.
 - Files: includes/import/{default-aliases (seed v11), mapper, measure, validator, analyze, resolve, review, drinks, commit-stock}.php, admin/includes/import-schema.php (kind ask_phrase), admin/js/data-import.js, tests (engine, import_stock_child, import_drink_prices_child).
