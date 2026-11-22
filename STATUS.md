@@ -29,11 +29,19 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
-## In progress 2026-11-23 (UNCOMMITTED, dept-import-lead): import reads "Shots per bottle" / "Bottle size (ml)" / "Shot size" columns (owner FEATURE)
+## Shipped 2026-11-23: import reads "Shots per bottle" / "Bottle size (ml)" / "Shot size" columns (owner FEATURE, #8)
 - Owner 2026-11-23: "Is the stock import able to recognise a column that mentions how many shots in a bottle or glasses in a casket ...?" -> "yes". Spec: `.claude/IMPORT_PLAN.md` last section.
 - Files: includes/import/{default-aliases (seed v11), mapper, measure, validator, analyze, resolve, review, drinks, commit-stock}.php, admin/includes/import-schema.php (kind ask_phrase), admin/js/data-import.js, tests (engine, import_stock_child, import_drink_prices_child).
 - Tests 2026-11-23: engine 655/0, import_stock 265/0, drink prices 162/0, stock_count_measures 103/0. Job 2402 unchanged (read-only snapshot before/after).
-- Next: qa-auditor review of the diff (money/stock logic: Opus), headless check of step 2/3, commit + port to Rosalyn's.
+- QA fix round 2026-11-23 (done, uncommitted): open count lines = item keeps its measure even for a corrected N (resolve + commit re-check);
+  typed step 3 sizes vs file values = blocking measure-file question (import_file_typed_check); "Volume (ml)"/"Size ml" etc. asked (seed v12).
+  Tests: engine 661/0, import_stock 267/0, drink prices 162/0, stock_count_measures 103/0, stock_measure_bulk 65/0. Job 2402 untouched.
+- QA re-check: 1 more blocker ("use the file's size" not followed on the menu side) -> fixed inline in drinks.php
+  ($fileUnitOverTyped / $fileMeasOverTyped first in the shot/glass/bottle order) -> PASS. engine 661/0 (one run showed
+  660/1, not reproduced: possible flaky check), drink prices 162/0.
+- LATER: not-in-a-measure path (resolve.php:2052): a typed size beats the file size without a question (menu box shows
+  "file", so visible); a confirmed "No of shots" is asked again next import (#10 learning covers it); N column not saved
+  on rows counted in bottles; import messages say "Stock Items" where the hotel says "Ingredients" (fix in #11).
 
 ## Shipped 2026-11-22: import saves the count measure (N shots/glasses per bottle) on the item, no guess (owner FEATURE)
 - Owner: "Yes as long as the counts are set like shot, double, glass whatever update these accordingly. No guess work".
@@ -50,6 +58,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Job 2402: owner answered its 3 questions 2026-11-22 13:49-13:53 (159 ready, can_confirm; saves 25 shots a bottle).
 - LATER (do with the next import build): "Shot 30" ignores the 30 and uses the 25 ml list shot (should not save / should
   ask when the cell shows a different number); question wording "glass of wines".
+- (11) QUEUED (owner 2026-11-23: "when the import is submitted for review it reports any discrepancies with the file that
+  was uploaded ... in summary"): at commit build + store a "Differences from the uploaded file" report (counts converted,
+  costs worked out from packs, fixes, rows left out / not in opening count + why, value check file vs imported totals,
+  answers given, typed vs file menu prices, count measures saved/kept/not saved); shown on the opening count (stock-count.php,
+  for the approver) and the import result page, with a spreadsheet download. Frozen at commit.
+- (10) QUEUED after (8) QA (owner 2026-11-23: "extend it to read other wordings too ... not always hard coded ... with AI it
+  can also help ... works perfectly without it"): header grammar "[measure word] per/in/to/from/each [container word]" from
+  the hotel's own word lists + abbreviations (btl, gls, cskt, ctn); size/volume/capacity/ml/cl -> unit_ml / measure_ml; no
+  container named = ask. A person's column answer saved as a hotel-learned alias (import_aliases is_hotel_learned=1).
+  Assistant: unread headers + sample values in the SAME single call -> "Suggested: ..." + "Use this" (validated, never auto).
+  Value cross-checks unchanged whatever the source.
 - (9) SHIPPED 2026-11-23 (owner "Build #2"): Stock Items bulk "Set count measure" (tick / Tick all shown -> bigger unit,
   measure, N, kept in; preview set / same / different (only with "Change these too") / skipped + reason; rh_stock_measure_save
   per item; refused while open count lines use the old measure; stale preview refused). Why: Rosalyn's 2026-11-21 import
@@ -57,7 +76,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   admin/js/stock-ingredients-measure-bulk.js. Tests stock_measure_bulk 65/0, stock_count_measures 103/0, stock_qty_words
   39/0, stock_list_filters 85/0. QA PASS. LATER: skip/warn kg/litre units; warn when typed bottle ml != item volume_ml;
   report Apply failures apart from skips.
-- (8) BUILDING (owner 2026-11-23 "yes"): import reads columns "Shots per bottle" / "Glasses per casket" / "Tots per bottle"
+- (8) SHIPPED (see the Shipped 2026-11-23 #8 block above): import reads columns "Shots per bottle" / "Glasses per casket" / "Tots per bottle"
   (measures per unit, word from header), "Bottle/Casket size (ml)", "Shot size / ml per shot" as certain sources; a row whose
   own cells disagree = ask; "No of shots" must not map to row_no. Fold in LATER "Shot 30" (cell number != list ml = ask).
 - (6)+(7) SHIPPED 2026-11-23: (6) rh_stock_qty_words adds the total in smalls once a whole big shows ("2 bottles + 7 shots
