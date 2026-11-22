@@ -63,7 +63,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   (new word rows only, auto on first Import page use; owner "ok" 2026-11-23). NEVER run admin/migrations there.
   Flow (owner 2026-11-23): build, review, commit to Liwonde first; THEN list the Rosalyn's DB changes at the end; port
   after the owner's yes. Don't ask mid-build.
-- (11) SHIPPED 2026-11-23, Rosalyn's port 28b55bf (owner OK for the column). Was: Rosalyn's port WAITING for owner OK on the runtime column
+- (11) SHIPPED 2026-11-23: Liwonde 512c702, Rosalyn's port 28b55bf (owner OK for the column). Was: Rosalyn's port WAITING for owner OK on the runtime column
   stock_counts.import_job_id (nullable, added by code on first use like is_opening; owner asked 2026-11-23; if no, link via
   the "Import #id" in the count notes instead). New includes/import/diff-report.php; report frozen in
   import_jobs.result_json.diff_report (built in the commit transaction, try/catch: a report failure never stops a valid
@@ -77,7 +77,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   costs worked out from packs, fixes, rows left out / not in opening count + why, value check file vs imported totals,
   answers given, typed vs file menu prices, count measures saved/kept/not saved); shown on the opening count (stock-count.php,
   for the approver) and the import result page, with a spreadsheet download. Frozen at commit.
-- (10) SHIPPED ON LIWONDE 2026-11-23 (QA FAIL: learned answer lost to another field's seed alias; grammar question dropped
+- (10) SHIPPED 2026-11-23: Liwonde daddac2, Rosalyn's port 6ecd0a1 (owner yes). (QA FAIL: learned answer lost to another field's seed alias; grammar question dropped
   pre-#10 options -> fixed (person's latest answer wins; any other field match keeps its exact pre-#10 question; 2719-heading
   before/after check) -> PASS. Tests engine 680/0, ai_import_suggest 43/0, import_stock 277/0, drink prices 162/0, diff
   report 32/0. Rosalyn's DB changes: NONE (rows only when a person answers). LATER: col_use no lock; no screen to undo a
