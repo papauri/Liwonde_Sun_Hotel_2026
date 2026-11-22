@@ -38,6 +38,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   Value evidence = a suggestion needing a click; "in shots" reuses Step U2 d (count measure, else step 3 shot/bottle ml,
   else ask); "66 shots" cells / measure headings skip it (no double conversion); costs never divided by N.
 - Tests engine 613/0, drink_prices 150/0, import_stock 259/0, ai_import_suggest 38/0, stock_to_menu 43/0. QA (opus) PASS.
+- Liwonde a768fe6, Rosalyn's port 80f4a9b (both pushed; owner deploys).
 - LATER: unanswered rows still show "57" next to the question; N from step 3 sizes is NOT saved as the item's count measure
   (after import, stock screens show e.g. "2.28 bottles", not bottles + shots); count_row has no row lock (as answer).
 
