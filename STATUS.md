@@ -45,7 +45,22 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   name or calendar block now selects (Enter opens the link).
 - LATER: maintenance multi-room add uses earliest..latest picked day for every room; a retry after a lost reply can add
   a duplicate task/job.
-- Next: Phase 1b (wire RhContextMenu across admin list rows), then Phase 2 (Fable spec check first).
+- SHIPPED 2026-11-23: Phase 1b Liwonde 3addb8a / Rosalyn's 6464350; Blocked Dates patch Liwonde 53c7d34 / Rosalyn's
+  2bd5082 (both QA'd, fixes applied: copy toast escaped, class-disabled actions skipped, tap/keyboard picks store records).
+- Phase 2 BUILDING (Opus) per plan + Fable check + owner answers 2026-11-23 (in GRID_UNIFY_PLAN.md: maintenance refuse;
+  type block = block only the free rooms; generated jobs block_room=0 on booked nights; booking drag YES in Phase 3).
+- LATER (Fable): changing a stay's dates takes no type/room locks, so a stay extension can race a block (bookings patch,
+  needs owner OK). Room picker change listener not guarded against double add (harmless).
+- 2026-11-23 (ClaudeWorkOne) Phase 1b BUILT, uncommitted, in QA: admin/includes/admin-footer.php loads admin-context-menu.js
+  + new admin/js/admin-row-context.js on every admin page (right-click a list row = that row's own buttons / More items,
+  Open, Open in new tab, Copy reference; native menu on inputs, text, links, Shift, [data-no-ctx]; POS/KDS excluded).
+- 2026-11-23 Blocked Dates PATCH (owner reports), uncommitted, in QA: blocked-dates-grid.js keeps picks across months
+  (SPA month swaps; sessionStorage + rh:content-updated); Block Date Range picker rebuilt after SPA swaps (admin-spa
+  _cleanup removed its calendar); Block Date Range Individual level = tick several rooms -> preview_block + grid_apply.
+  Weekends "not selectable": not reproduced on Blocked Dates or the Calendar timeline (asked owner which screen).
+  Tests: blocked_dates_grid 62/0, block_rooms 42/0, grid_select 13/0, headless checks.
+- Phase 2+3 spec written (.claude/GRID_UNIFY_PLAN.md "Phase 2+3 build spec"), incl. owner's drag-to-extend/shorten
+  (2026-11-23). Fable spec check running; then owner answers to its open questions, then Opus build Phase 2.
 
 ## Shipped 2026-11-23: import reads "Shots per bottle" / "Bottle size (ml)" / "Shot size" columns (owner FEATURE, #8)
 - Owner 2026-11-23: "Is the stock import able to recognise a column that mentions how many shots in a bottle or glasses in a casket ...?" -> "yes". Spec: `.claude/IMPORT_PLAN.md` last section.
