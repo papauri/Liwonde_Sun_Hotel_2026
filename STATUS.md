@@ -40,6 +40,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   question (count read as bottles silently) -> fixed (measure.php import_count_in_read/_exact, pack-rule.php:128 measure
   word without unit word = portion, resolve.php matched item unit) -> PASS. Tests engine 634/0, import_stock 264/0,
   drink_prices 155/0, stock_count_measures 103/0, stock_qty_words 39/0, stock_to_menu 43/0.
+- Liwonde e9bb924, port dbd8e05. (6)+(7): Liwonde 75ef370, port 28288a2 (database.php hunk via git apply). All pushed.
 - Job 2402: owner answered its 3 questions 2026-11-22 13:49-13:53 (159 ready, can_confirm; saves 25 shots a bottle).
 - LATER (do with the next import build): "Shot 30" ignores the 30 and uses the 25 ml list shot (should not save / should
   ask when the cell shows a different number); question wording "glass of wines".
