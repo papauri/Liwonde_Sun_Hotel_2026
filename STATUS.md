@@ -29,6 +29,12 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## In progress 2026-11-23 (UNCOMMITTED, dept-import-lead): import reads "Shots per bottle" / "Bottle size (ml)" / "Shot size" columns (owner FEATURE)
+- Owner 2026-11-23: "Is the stock import able to recognise a column that mentions how many shots in a bottle or glasses in a casket ...?" -> "yes". Spec: `.claude/IMPORT_PLAN.md` last section.
+- Files: includes/import/{default-aliases (seed v11), mapper, measure, validator, analyze, resolve, review, drinks, commit-stock}.php, admin/includes/import-schema.php (kind ask_phrase), admin/js/data-import.js, tests (engine, import_stock_child, import_drink_prices_child).
+- Tests 2026-11-23: engine 655/0, import_stock 265/0, drink prices 162/0, stock_count_measures 103/0. Job 2402 unchanged (read-only snapshot before/after).
+- Next: qa-auditor review of the diff (money/stock logic: Opus), headless check of step 2/3, commit + port to Rosalyn's.
+
 ## Shipped 2026-11-22: import saves the count measure (N shots/glasses per bottle) on the item, no guess (owner FEATURE)
 - Owner: "Yes as long as the counts are set like shot, double, glass whatever update these accordingly. No guess work".
 - At commit, a row converted from a measure saves big = stock unit, small = measure word, exact N via rh_stock_measure_save
@@ -44,7 +50,14 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Job 2402: owner answered its 3 questions 2026-11-22 13:49-13:53 (159 ready, can_confirm; saves 25 shots a bottle).
 - LATER (do with the next import build): "Shot 30" ignores the 30 and uses the 25 ml list shot (should not save / should
   ask when the cell shows a different number); question wording "glass of wines".
-- (8) QUEUED (owner 2026-11-23 "yes"): import reads columns "Shots per bottle" / "Glasses per casket" / "Tots per bottle"
+- (9) SHIPPED 2026-11-23 (owner "Build #2"): Stock Items bulk "Set count measure" (tick / Tick all shown -> bigger unit,
+  measure, N, kept in; preview set / same / different (only with "Change these too") / skipped + reason; rh_stock_measure_save
+  per item; refused while open count lines use the old measure; stale preview refused). Why: Rosalyn's 2026-11-21 import
+  items have no measure, so counts show "2.28 bottle". New admin/includes/stock-measure-bulk-lib.php +
+  admin/js/stock-ingredients-measure-bulk.js. Tests stock_measure_bulk 65/0, stock_count_measures 103/0, stock_qty_words
+  39/0, stock_list_filters 85/0. QA PASS. LATER: skip/warn kg/litre units; warn when typed bottle ml != item volume_ml;
+  report Apply failures apart from skips.
+- (8) BUILDING (owner 2026-11-23 "yes"): import reads columns "Shots per bottle" / "Glasses per casket" / "Tots per bottle"
   (measures per unit, word from header), "Bottle/Casket size (ml)", "Shot size / ml per shot" as certain sources; a row whose
   own cells disagree = ask; "No of shots" must not map to row_no. Fold in LATER "Shot 30" (cell number != list ml = ask).
 - (6)+(7) SHIPPED 2026-11-23: (6) rh_stock_qty_words adds the total in smalls once a whole big shows ("2 bottles + 7 shots
@@ -74,6 +87,9 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 ## Shipped 2026-11-22: admin phone + tablet polish (owner PATCH, CSS + class tagging only)
 - Owner: Ingredients and other pages not mobile friendly; cards should be compact like the Bookings rows; ticks and buttons
   uniform; NOTHING changes above 1024px.
+- Round 2 (ClaudeWorkTwo): 32b8840 / port 1f483b2 (details in the commit message + GUIDES_AI_SYNC.md). LATER: Bookings
+  rows ~713px at 820 tablet; row-button names go stale if a page swaps button text in place; Credit Notes sort by Issued
+  has no visible column on phones.
 - admin/js/admin-mobile.js: markCompactRows() tags card-mode rows only (tick / primary / status / money / actions cells,
   data-short labels, icon-button counts). Nothing is moved or renamed. Guarded to <=1024px. Opt-outs: table class
   bookings-table, receipts-table, rh-own-rows, and tables inside .pos-acct-close-form / .pos-acct-sales-wrap (own rules).
