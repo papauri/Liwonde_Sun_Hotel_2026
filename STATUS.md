@@ -44,7 +44,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - stock-ingredients.php: Yield % cell tagged rh-ph-skip (hidden in card rows only; value stays in Edit).
 - Test targets: Liwonde only. Test DB has no ingredients: checked with a client-side fixture (no DB writes).
 - Ship gate: php -l + node --check, independent review PASS, browser check 68 pages at 390 (no sideways scroll, 0 console
-  errors), 20 at 820, 8 at 1440 (desktop unchanged). Ported to Rosalyn's (hashes in the MSP index line).
+  errors), 20 at 820, 8 at 1440 (desktop unchanged). Commit 90602cb, port c0b6177 (Rosalyn's).
 - LATER: side-row icon buttons hide their text label on touch (name only in title); title attrs stay after resize to
   desktop; an icon-only value cell is treated as empty (product-management-mode.php:429); Individual Rooms / Invoices /
   Stock Clear rows still ~190px; some 44px buttons remain (Bookings, Backup, Restaurant Tables); Menu Management rows
