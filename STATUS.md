@@ -29,6 +29,24 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-22: import saves the count measure (N shots/glasses per bottle) on the item, no guess (owner FEATURE)
+- Owner: "Yes as long as the counts are set like shot, double, glass whatever update these accordingly. No guess work".
+- At commit, a row converted from a measure saves big = stock unit, small = measure word, exact N via rh_stock_measure_save
+  (same transaction) only when N is certain: answered N, or unit ml / measure ml with both from the file, typed in step 3 or
+  the Drink measures list entry of that exact name, exact at 4 dp (750/25, 750/60 yes; 750/35, 1000/30 no + reason).
+  Two measures on one item = none. Existing different measure = blocking Keep / Change (not applied while open count lines
+  use the old measure). Step 4 lists the items + reasons. Replaces the ASSUMPTION "typed shot size is import-only".
+- QA FAIL (from a768fe6): served-by "Shot 30", "Tot 35", "Double", "Glass of wine", "Wine glass" skipped the bottles-or-shots
+  question (count read as bottles silently) -> fixed (measure.php import_count_in_read/_exact, pack-rule.php:128 measure
+  word without unit word = portion, resolve.php matched item unit) -> PASS. Tests engine 634/0, import_stock 264/0,
+  drink_prices 155/0, stock_count_measures 103/0, stock_qty_words 39/0, stock_to_menu 43/0.
+- Job 2402: owner answered its 3 questions 2026-11-22 13:49-13:53 (159 ready, can_confirm; saves 25 shots a bottle).
+- LATER (do with the next import build): "Shot 30" ignores the 30 and uses the 25 ml list shot (should not save / should
+  ask when the cell shows a different number); question wording "glass of wines".
+- QUEUED (owner 2026-11-22): (6) stock screens show both units "2 bottles + 7 shots (57 shots)" via rh_stock_qty_words +
+  stock-count.php live Difference JS; (7) profit stays VAT-inclusive (owner decision) + a "Show profit without VAT" tick box
+  on import step 3 menu table and admin/stock-to-menu.php (price / (1 + hotel VAT rate) - cost; display only).
+
 ## Shipped 2026-11-22: import asks "bottles or shots?" for measure-served drinks + "57 shots = 2 bottles + 7 shots" (owner)
 - Owner: "how come it just says 2.8 bottles everywhere instead of saying how many shots". Owner answers 2026-11-22: in their
   bar sheet the count for shot drinks is SHOTS LEFT; show "57 shots = 2 bottles + 7 shots" (exact on hover).
