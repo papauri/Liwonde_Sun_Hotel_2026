@@ -43,6 +43,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Job 2402: owner answered its 3 questions 2026-11-22 13:49-13:53 (159 ready, can_confirm; saves 25 shots a bottle).
 - LATER (do with the next import build): "Shot 30" ignores the 30 and uses the 25 ml list shot (should not save / should
   ask when the cell shows a different number); question wording "glass of wines".
+- (8) QUEUED (owner 2026-11-23 "yes"): import reads columns "Shots per bottle" / "Glasses per casket" / "Tots per bottle"
+  (measures per unit, word from header), "Bottle/Casket size (ml)", "Shot size / ml per shot" as certain sources; a row whose
+  own cells disagree = ask; "No of shots" must not map to row_no. Fold in LATER "Shot 30" (cell number != list ml = ask).
+- (6)+(7) SHIPPED 2026-11-23: (6) rh_stock_qty_words adds the total in smalls once a whole big shows ("2 bottles + 7 shots
+  (67 shots)", "short by 1 bottle + 3 shots (33 shots)"), stock-count.php JS the same; (7) "Show profit without VAT" tick box
+  on import step 3 + stock-to-menu (vat_mode inclusive: round(price/(1+r),2) - cost; exclusive = same; off = no box; server
+  computes; Stock permission gate kept on stock-to-menu). Profit itself stays VAT-included (owner). Tests stock_qty_words
+  39/0, count_measures 103/0, import_drink_prices 160/0, stock_to_menu 47/0, import_engine 634/0. QA PASS.
+  LATER: dashboard.php:1593 low-stock detail shows brackets inside brackets; import step 3 sends profit_ex_vat to every
+  data_import user (as cost/profit there already).
 - QUEUED (owner 2026-11-22): (6) stock screens show both units "2 bottles + 7 shots (57 shots)" via rh_stock_qty_words +
   stock-count.php live Difference JS; (7) profit stays VAT-inclusive (owner decision) + a "Show profit without VAT" tick box
   on import step 3 menu table and admin/stock-to-menu.php (price / (1 + hotel VAT rate) - cost; display only).
