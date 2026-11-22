@@ -183,6 +183,11 @@ when prompted."
 - **Assistant:** no change.
 - **Manager Guides:** no change.
 
+### Admin phone + tablet polish round 2 (2026-11-22, owner PATCH) - Liwonde (this commit)
+- **Guides:** layout only. Phone row buttons now show a small name under the icon; Individual Rooms, Invoices, Credit Notes, Stock Clear, Cache, Menu Management and Receipts use compact rows; no big gap above the page buttons. On phones Credit Notes hides Issued (on the PDF), Individual Rooms hides booking dates (in Details), Menu hides barcode/tags (in Edit). No steps change.
+- **Assistant:** no change.
+- **Manager Guides:** no change.
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md
