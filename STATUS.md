@@ -40,6 +40,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   accounting, menu-management, bookings. qa-quick: FAIL (double arrow where a sheet sets appearance:auto) -> fixed -> checked.
 - LATER: table-cell selects/inputs now 34px; Payments KPI cards very tall (was so before); ai-settings.php not checked
   (blank in headless run); room-calendar day width varies per load (JS, not this change).
+- Liwonde dc4ce68, Rosalyn's port 5308220 (both pushed; owner deploys).
 
 ## Shipped 2026-11-22: Import step 3 "Put items on the menu" - drinks AND food, grouped, editable price (owner FEATURE)
 - Owner: "easily add all imported stock to the menu with the price ... math logic correct ... steps as simple ... especially
