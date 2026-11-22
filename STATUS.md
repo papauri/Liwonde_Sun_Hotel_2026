@@ -29,13 +29,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
-## IN PROGRESS 2026-11-22 (ClaudeWorkOne): global admin UI - uniform controls + toolbar rhythm (owner FEATURE, CSS/markup)
+## Shipped 2026-11-22: global admin UI - uniform controls + toolbar rhythm (owner FEATURE, CSS/markup only)
 - Owner: "fix the UI of these sort of things globally, the spacing ... make sure its uniform" (Blocked Dates month bar,
   raw "Room type" select).
-- Built (sonnet, not committed): admin/css/admin-components.css :where() base for bare selects/inputs/textareas in
-  .content/.admin-content/modals (40px, 44px touch, one radius/border/font, custom arrow) + .rh-toolbar; blocked-dates.php
-  + .css, room-timeline.css. Now bringing old .filter-bar/.toolbar/.search-bar/.table-toolbar rows to the same spec +
-  the bookings filter bar. Next: qa-quick, commit, port.
+- admin/css/admin-components.css: :where() base for bare selects/inputs/textareas in .content/.admin-content/modals
+  (40px, 44px touch/narrow, one radius/border/font, custom arrow, native arrow off) + .rh-toolbar / .rh-toolbar-notes;
+  old .filter-bar/.toolbar/.search-bar/.table-toolbar rows on the same spec. blocked-dates.php (classes only) + .css,
+  bookings.css (filter bar), room-timeline.css (label + select on one line). POS/KDS do not load this sheet.
+- Checked headless 1400/400 (+1920 Blocked Dates): blocked-dates, payments, calendar, ingredients, stock dashboard/reports,
+  accounting, menu-management, bookings. qa-quick: FAIL (double arrow where a sheet sets appearance:auto) -> fixed -> checked.
+- LATER: table-cell selects/inputs now 34px; Payments KPI cards very tall (was so before); ai-settings.php not checked
+  (blank in headless run); room-calendar day width varies per load (JS, not this change).
 
 ## Shipped 2026-11-22: Import step 3 "Put items on the menu" - drinks AND food, grouped, editable price (owner FEATURE)
 - Owner: "easily add all imported stock to the menu with the price ... math logic correct ... steps as simple ... especially
@@ -52,6 +56,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   REPORTED, not changed: profit compares a VAT-inclusive price with cost (owner decides).
 - Tests import_drink_prices 142/0, ai_import_suggest 38/0, import_engine 592/0, stock_to_menu 43/0. QA (opus): FAIL on 1
   blocker (group answer beat "already on a menu") -> fixed in the one fix round -> PASS. Job 2402 still loads (152 rows).
+- Liwonde 78f3802, Rosalyn's port 275badb (both pushed; owner deploys). Alias seed v10 (menu words) applies itself.
 - LATER: kilo food item with blank served-by takes 1 kg per sale; seed v10 alias words; supplies with a served-by cell but
   no price show "Needs price".
 
