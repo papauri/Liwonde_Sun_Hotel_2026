@@ -89,3 +89,4 @@ Owner: "Extend the right click gestures wherever we can globally to bring up sev
 
 ## Status
 - 2026-11-23: plan written, owner answers recorded. Phase 1 dispatched (dept-rooms-lead, Opus).
+- 2026-11-23: Phase 1 SHIPPED Liwonde 0bb811a / Rosalyn's 790990b. Blocked Dates kept its own grid (+ menu + bulk bar). Next: Phase 1b.

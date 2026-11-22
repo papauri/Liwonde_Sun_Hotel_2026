@@ -32,7 +32,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 ## In progress 2026-11-23: one grid for Calendar / Blocked Dates / Maintenance / Housekeeping (owner FEATURE)
 - Plan, owner words + answers, phases: `.claude/GRID_UNIFY_PLAN.md` (read it first). Phases: 1 selection engine (SHIPPED),
   1b right-click everywhere in admin, 2 booking-clash check (skip booked nights), 3 Extend.
-- Phase 1 shipped (see git log "Grid Phase 1"): new admin/js/admin-context-menu.js (`RhContextMenu.open/register`),
+- Phase 1 shipped: Liwonde 0bb811a, Rosalyn's port 790990b (both pushed): new admin/js/admin-context-menu.js (`RhContextMenu.open/register`),
   admin/js/room-timeline-select.js, test scripts/tests/grid_select_test.mjs 13/0. Calendar: rectangle drag across rooms,
   Shift/Ctrl, room name, day head; right-click New booking / Block / Unblock (preview_block + grid_apply) / New maintenance
   job. HK + Maintenance timelines: multi-select bars -> list bulk actions; picked days -> add form prefilled (one POST
