@@ -58,7 +58,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Job 2402: owner answered its 3 questions 2026-11-22 13:49-13:53 (159 ready, can_confirm; saves 25 shots a bottle).
 - LATER (do with the next import build): "Shot 30" ignores the 30 and uses the 25 ml list shot (should not save / should
   ask when the cell shows a different number); question wording "glass of wines".
-- (11) QUEUED (owner 2026-11-23: "when the import is submitted for review it reports any discrepancies with the file that
+- (11) SHIPPED ON LIWONDE ONLY 2026-11-23; Rosalyn's port WAITING for owner OK on the runtime column
+  stock_counts.import_job_id (nullable, added by code on first use like is_opening; owner asked 2026-11-23; if no, link via
+  the "Import #id" in the count notes instead). New includes/import/diff-report.php; report frozen in
+  import_jobs.result_json.diff_report (built in the commit transaction, try/catch: a report failure never stops a valid
+  import); shown on stock-count.php (opening counts from an import: chips, pager, Excel/CSV download, formula-safe) + import
+  result page; import messages use import_stock_page_name() ("Ingredients" / "Stock Items"). Tests import_diff_report 32/0,
+  engine 661/0, import_stock 267/0, drink prices 162/0, count measures 103/0; stock_count_approval 124/1 pre-existing (no
+  stock items on Liwonde). QA PASS. LATER: cap rows while adding (5000); two imports adding the column at once -> second
+  count unlinked; delete.php:12 comment stale; CSV negatives get a leading apostrophe.
+- (11) ASKED (owner 2026-11-23: "when the import is submitted for review it reports any discrepancies with the file that
   was uploaded ... in summary"): at commit build + store a "Differences from the uploaded file" report (counts converted,
   costs worked out from packs, fixes, rows left out / not in opening count + why, value check file vs imported totals,
   answers given, typed vs file menu prices, count measures saved/kept/not saved); shown on the opening count (stock-count.php,
