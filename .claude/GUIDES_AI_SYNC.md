@@ -173,6 +173,11 @@ when prompted."
   Booking History. Assistant: new admin_activity_log actions room_block / room_unblock; new booking_timeline_logs note
   actions (no table/setting change).
 
+### Import step 3 "Put items on the menu": drinks AND food, grouped, editable price (2026-11-22, owner FEATURE) - Liwonde (this commit)
+- **Guides (23-import):** step 3 now holds ONE "Put items on the menu" section: items grouped by the file's category; each group has Menu (Drinks / Food) + menu category; per row Sold as, sizes (drinks), cost of one, selling price (VAT incl., editable, filled from the file), profit, On menu tick; "Put all N on the menu" + "Put all in this group"; nothing ticked by default. Unclear groups say "Choose: Drinks or Food" and cannot be ticked until answered; an item already on a menu stays on it. Step 4 shows one summary line ("N go on the menu: D drinks, F food ...") + "Change in step 3". A typed price changes the menu price only, never stock cost or the opening count.
+- **Assistant:** if set up, it may show "Suggested: Food · Snacks" on an unclear group; nothing changes until "Use this" is pressed; it never ticks.
+- **Manager Guides:** Stock - one line: import can put drinks and food on the menu at a price you can change.
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md

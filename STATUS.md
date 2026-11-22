@@ -29,18 +29,31 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
-## IN PROGRESS 2026-11-22 (ClaudeWorkOne): Import step 3 = one "Drinks for the menu" table (owner FEATURE)
-- Owner: "easily add all imported stock to the menu with the price ... math logic correct ... steps as simple ... especially step 3".
-  Owner chose: ONE compact table in step 3 (sold as, sizes, cost of one, EDITABLE selling price, profit, On menu tick,
-  "Put all N on the menu"); drinks UNTICKED by default; step 4 = summary line + Confirm. Math audit included.
-- Scope widened (owner 2026-11-22): ANY menu item (drinks, snacks, food), grouped by the file's categories (fold per
-  group, group-level Menu Drinks/Food + category, "Put all in this group"); never a silent guess (unclear = person
-  chooses); Assistant (if set up) only SUGGESTS, one click to accept; works fully without it.
-- Checked on job 2402 (owner's Bar Nov, reviewing; do not change its answers): Green 50,420 / crate 20 = 2,521 cost, OK.
-- Builder (opus) not committed yet. Files: admin/data-import.php, admin/js/data-import.js, admin/css/data-import.css,
-  includes/import/drinks.php, scripts/tests/import_drink_prices.php. Next: QA (opus), commit, port to Rosalyn's.
-- QUEUED after it (owner 2026-11-22): global admin UI fix: cramped toolbar spacing (e.g. Blocked Dates month nav:
-  arrows / This month / month input mismatched heights) and unstyled native selects (e.g. "Room type" filter).
+## IN PROGRESS 2026-11-22 (ClaudeWorkOne): global admin UI - uniform controls + toolbar rhythm (owner FEATURE, CSS/markup)
+- Owner: "fix the UI of these sort of things globally, the spacing ... make sure its uniform" (Blocked Dates month bar,
+  raw "Room type" select).
+- Built (sonnet, not committed): admin/css/admin-components.css :where() base for bare selects/inputs/textareas in
+  .content/.admin-content/modals (40px, 44px touch, one radius/border/font, custom arrow) + .rh-toolbar; blocked-dates.php
+  + .css, room-timeline.css. Now bringing old .filter-bar/.toolbar/.search-bar/.table-toolbar rows to the same spec +
+  the bookings filter bar. Next: qa-quick, commit, port.
+
+## Shipped 2026-11-22: Import step 3 "Put items on the menu" - drinks AND food, grouped, editable price (owner FEATURE)
+- Owner: "easily add all imported stock to the menu with the price ... math logic correct ... steps as simple ... especially
+  step 3"; then "Not just drinks, any sort of menu item ... harnesses AI if available but works perfectly without it ... 100%
+  confident ... group accordingly". Owner chose: ONE table in step 3, nothing ticked by default, "Put all N on the menu".
+- Step 3 section groups rows by the file category; group Menu (Drinks/Food) + menu category; row: Sold as, sizes (drinks),
+  cost of one, selling price (editable, drinks_set mode price, parsed like stock-to-menu), profit, status, On menu tick;
+  Put all / Put all in this group. Food rows go to the food menu + till with stock link. Step 4 = one summary line.
+- Certain signals only (already on a menu > file/stock category match > drink-only measures); unclear = "Choose: Drinks or
+  Food", untickable until answered; an item already on a menu never changes menu (row answer for the other menu = blocked).
+  Ambiguous words (can, bottle, water...) decide nothing. Assistant: menu + category suggested inside the same single call,
+  shown "Suggested ...", applied only by "Use this"; the served-by reading is a suggestion only.
+- Math: profit = price - cost rounded 2 dp (as stock-to-menu); money shown 2 dp (2,521 vs 2,521.01 were both right).
+  REPORTED, not changed: profit compares a VAT-inclusive price with cost (owner decides).
+- Tests import_drink_prices 142/0, ai_import_suggest 38/0, import_engine 592/0, stock_to_menu 43/0. QA (opus): FAIL on 1
+  blocker (group answer beat "already on a menu") -> fixed in the one fix round -> PASS. Job 2402 still loads (152 rows).
+- LATER: kilo food item with blank served-by takes 1 kg per sale; seed v10 alias words; supplies with a served-by cell but
+  no price show "Needs price".
 
 ## Shipped 2026-11-22: Blocked Dates calendar - block / unblock single rooms on a month grid (owner FEATURE)
 - Owner: "Fix the logic and UI for blocked rooms to also look like calendar so we can individually block individual rooms. Make sure logic is perfect."
