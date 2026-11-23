@@ -29,6 +29,22 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-23: calendar side panel opens like the Assistant chat (owner PATCH, layout only)
+- Owner: panel should squeeze the page like the chat panel, not cover it, and not sit under the Assistant / notice
+  buttons (they hid Open booking / More). Covers Calendar timeline + Housekeeping / Maintenance / Room Service grids.
+- How: `admin/js/room-timeline.js` `syncDock()` (shared via `RoomTimeline.util`, used by `room-timeline-ops.js`) sets
+  `html.rh-tl-open` (buttons move left of the panel) and `html.rh-tl-docked` (1025px+ and the page keeps 600px:
+  `#rh-admin-page` padding-right = `--rh-tl-w`); the grid redraws to fit, keeping the selected bar + focus.
+  CSS in `admin/css/room-timeline.css`; notice pill re-places on `rh-dock-change` (`admin/includes/ai-panel.php`).
+- Checked: headless browser at 1476x1197 (docked) and 1100x800 (overlay, buttons clear), Calendar + Housekeeping;
+  reviewer-critical PASS. LATER: with both the Assistant and this panel docked, alerts/bulk bar clear only the
+  Assistant's width; docking the Assistant while this panel is open does not redraw the grid.
+
+## Also shipped 2026-11-23 by ClaudeWorkTwo (lines added for them)
+- Maintenance windows from the panel + hotel backups skip cp_ tables: Liwonde 46efbca / Rosalyn's 974003a.
+- Update from Remote, hotel side: Liwonde 3fccfba / Rosalyn's 1bad20c. ClaudeWorkTwo is continuing (git pull instead
+  of uapi) in includes/licence.php, scripts/deploy-check.php: see the board.
+
 ## Shipped 2026-11-23: one grid for Calendar / Blocked Dates / Maintenance / Housekeeping (owner FEATURE)
 - Plan, owner words + answers, phases: `.claude/GRID_UNIFY_PLAN.md` (read it first). Phases: 1 selection engine (SHIPPED),
   1b right-click everywhere in admin, 2 booking-clash check (skip booked nights), 3 Extend.

@@ -840,6 +840,23 @@ Depends on the group bookings ships (Ship A group table, A8 correction after che
 - Guides: on/off pickers now read short ("On - prepares changes", "Off - local answers only"...); the full meaning is in the help text under each. Usage table names the system row "Nightly checks". Prices show as $0.30, not $0.3.
 - Assistant: new helper `rh_ai_fit_limits()` (includes/ai/ai-catalog.php); no tool change.
 
+### Maintenance windows from the panel + hotel backups skip cp_ tables (2026-11-23, ClaudeWorkTwo) - Liwonde 46efbca / Rosalyn's 974003a
+- Line added for ClaudeWorkTwo (board note). Files: includes/licence-maintenance.php, licence.php, licence-guard.php,
+  config/database.php frontend maintenance block, db-backup.php. Details in the commit message. New panel pages
+  Maintenance + Deployments = Showcase SYNC QUEUE item.
+
+### Update from Remote, hotel side (2026-11-23, ClaudeWorkTwo) - Liwonde 3fccfba / Rosalyn's 1bad20c
+- Line added for ClaudeWorkTwo (board note). Files: includes/licence.php, scripts/deploy-check.php. Details in the commit message.
+
+### Calendar side panel opens like the Assistant chat (2026-11-23, owner ask) - commit "Calendar side panel docks" in both repos
+- Owner: "on the calendar views ... should be opening like our chat panel and not hiding page content but minimising the
+  page like how chat does and also not overlapping with our assistant icon and notice icon because it's hiding some buttons".
+- Guides (Calendar, Housekeeping, Maintenance, Room Service grids): on a laptop the booking / task panel now sits beside
+  the page (the page gets narrower, like the Assistant), and the Assistant, notice and "?" buttons move to the left of
+  the panel so Open booking / More are never covered. On a small screen with the menu open the panel still covers the
+  page, but the buttons still move clear. Phones keep the bottom sheet.
+- Assistant: no change.
+
 ## Known leftovers from earlier syncs (fix during a sync, never on their own)
 - `ai_assistant_test` at Liwonde: 7 data-dependent fails (left-owing + refunds briefing, 4 alert checks, digest
   recipients); ai_review_engine "nothing to add for this person" fails on HEAD too. (Tomorrow / 4 of 3 / K1,068,000 now pass.)
