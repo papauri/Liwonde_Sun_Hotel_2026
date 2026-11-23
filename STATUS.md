@@ -52,7 +52,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   licence_client 247/0; browser check admin + receptionist passed.
 - 091 RUN ON ROSALYN'S 2026-11-24 (owner: "Run the migration to rosalyn now"): dry run showed 091 the only pending,
   backup backups/2026/11/db-20261123-180341.sql.gz first, then `--run` -> 091 APPLIED, 0 pending.
-- Phase C LATER items fixed 2026-11-24 (owner: "Finish the left for later"; commit "Dashboard Phase C follow-up"):
+- Phase C LATER items fixed 2026-11-24 (owner: "Finish the left for later"; Liwonde 87436ce / port Rosalyn's 64942fa):
   browser counts the 500 limit per character like the server (emoji note of 308 chars saves; maxlength 1000);
   "All clear" hidden while a note shows and back after the last note is read or found expired; view_only.php asserts
   handover-notes.php refused / dashboard-seen.php allowed under view only, trial and licence read-only. Browser check
