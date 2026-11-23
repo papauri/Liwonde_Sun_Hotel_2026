@@ -356,3 +356,5 @@ race a block"): "Yes fix it so there is overlaping errors and its clear".
   roof leak). Choose other dates or another room."
 - Money untouched: the reprice path stays as it is; only locking + the clash refusal are added. Opus build,
   qa-auditor, full run_tests.php (bookings core).
+
+- 2026-11-23: ALL PHASES SHIPPED. 1b 3addb8a/6464350, Blocked Dates patch 53c7d34/2bd5082, 2 94710ea/abeeac2, 2b 77536cd/dca1e25, 3 f7fa487/a7a8340 (Liwonde/Rosalyn's).

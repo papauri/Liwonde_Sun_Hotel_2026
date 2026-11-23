@@ -29,7 +29,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
-## In progress 2026-11-23: one grid for Calendar / Blocked Dates / Maintenance / Housekeeping (owner FEATURE)
+## Shipped 2026-11-23: one grid for Calendar / Blocked Dates / Maintenance / Housekeeping (owner FEATURE)
 - Plan, owner words + answers, phases: `.claude/GRID_UNIFY_PLAN.md` (read it first). Phases: 1 selection engine (SHIPPED),
   1b right-click everywhere in admin, 2 booking-clash check (skip booked nights), 3 Extend.
 - Phase 1 shipped: Liwonde 0bb811a, Rosalyn's port 790990b (both pushed): new admin/js/admin-context-menu.js (`RhContextMenu.open/register`),
@@ -68,7 +68,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   cause, no check weakened, no app code changed: Liwonde 10bc317 / Rosalyn's 69f6f31. documents_flow: one silent child
   death never captured; now retried once on lock/connection errors only, real errors printed (3 runs 103/0).
   LATER: test runs left untracked PDFs in invoices/ (LSH-INV-2026-001005..7, STMT-*); numbers reused after rollback.
-- 2026-11-23 SHIPPED Phase 3 (Extend for blocks / maintenance / housekeeping, Excel-style end handles, booking drag ->
+- 2026-11-23 SHIPPED Phase 3 Liwonde f7fa487 / Rosalyn's a7a8340 (Extend for blocks / maintenance / housekeeping, Excel-style end handles, booking drag ->
   Change dates prefilled): critical review PASS; extend_test 35/0 + grid, clash, stay-change, timeline suites green;
   headless check of the four pages at 1280 + 390. Blocked Dates: no handle on a month's last night (run may continue
   into next month; Extend... instead). LATER (review): HK preview over-counts two tasks sharing room+type;
