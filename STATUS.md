@@ -35,7 +35,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `.claude/DASHBOARD_FIRSTLOGIN_PLAN.md` (binding).
 - Owner decisions 2026-11-24: handover note goes to EVERYONE until each marks it read; welcome card shows until "Got it";
   VIP chip dropped (no VIP field); maintenance notice stays the existing top bar (task A5 not built).
-- Phase A SHIPPED 2026-11-24 (last sign-in line, End of Day day chip, Android/iOS login labels): reviewer-critical PASS;
+- Phase A SHIPPED 2026-11-24, Liwonde 3102daa / port Rosalyn's 5d944bb (last sign-in line, End of Day day chip, Android/iOS login labels): reviewer-critical PASS;
   tests login_email 27/0, log_pager_test 125/0, dashboard_firstlogin 22/0 + --db 34/0, dashboard_figure_perms 89/0.
   LATER: timed send time read from automated_email_log.updated_at, not sent_at; a manual send during day D counts as closed.
 - NEXT: Phase B (B1 since filters -> B2 since line, B3 guest chips, B4 donut free tonight + Money week headline, B5 "?"
