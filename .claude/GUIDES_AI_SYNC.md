@@ -857,6 +857,18 @@ Depends on the group bookings ships (Ship A group table, A8 correction after che
   page, but the buttons still move clear. Phones keep the bottom sheet.
 - Assistant: no change.
 
+### Update from Remote pulls with git (2026-11-24, ClaudeWorkTwo) - Liwonde 9f01daa / Rosalyn's 5c9779e
+- Line added for ClaudeWorkTwo (board note). Update from Remote now uses git pull, not cPanel uapi. Details in the commit message.
+
+### Dashboard Phase A: last sign-in line + End of Day day chip (2026-11-24, owner FEATURE) - commit "Dashboard Phase A" in both repos
+- Owner: dashboard "missing some very vital information that can help anyone that first logs in"; mock-up approved 2026-11-24.
+  Plan `.claude/DASHBOARD_FIRSTLOGIN_PLAN.md` (Phases B and C to follow).
+- Guides (Dashboard): under the greeting a small line "Last signed in Mon 23 Nov at 18:40, Chrome on Windows. Not you?
+  Change your password" ("First sign-in on this account." the first time). Next to the date, for people with End of Day
+  access: a green "Yesterday closed · End of Day sent HH:MM" tag, or "Yesterday's End of Day not run" linking to the report
+  ("(test)" when the send was in test mode). System Logs > Recent Logins now name Android / iOS phones instead of "Linux".
+- Assistant: no tool change. New helpers `rh_dash_prev_signin()`, `rh_dash_eod_status()` (admin/includes/dashboard-since-data.php).
+
 ## Known leftovers from earlier syncs (fix during a sync, never on their own)
 - `ai_assistant_test` at Liwonde: 7 data-dependent fails (left-owing + refunds briefing, 4 alert checks, digest
   recipients); ai_review_engine "nothing to add for this person" fails on HEAD too. (Tomorrow / 4 of 3 / K1,068,000 now pass.)

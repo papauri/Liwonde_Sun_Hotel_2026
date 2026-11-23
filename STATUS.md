@@ -1,7 +1,7 @@
 # STATUS: Liwonde Sun Hotel 2026 (hotel PMS / HMS)
 
 **Read this first.** Any agent (Claude, Cline, another provider) should be able to continue from this file alone. Keep it
-current during work. Last updated: **2026-11-22**.
+current during work. Last updated: **2026-11-24**.
 
 This repo is a fork of the Rosalyn's platform (`../Rosalyns-hotel-2026`): most fixes go into both repos with the same
 commit message.
@@ -28,6 +28,18 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   (one copy; plain node, no AI calls) reads Claude Code's own session logs for ALL projects and writes
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
+
+## In progress 2026-11-24: dashboard first-login information (owner FEATURE, ClaudeWorkOne)
+- Owner: dashboard misses vital info for someone who first logs in; mock-up approved
+  (https://claude.ai/artifact/VGrVZnzhATWGmQeJDRUXWp). Plan + spec-check fixes + owner answers:
+  `.claude/DASHBOARD_FIRSTLOGIN_PLAN.md` (binding).
+- Owner decisions 2026-11-24: handover note goes to EVERYONE until each marks it read; welcome card shows until "Got it";
+  VIP chip dropped (no VIP field); maintenance notice stays the existing top bar (task A5 not built).
+- Phase A SHIPPED 2026-11-24 (last sign-in line, End of Day day chip, Android/iOS login labels): reviewer-critical PASS;
+  tests login_email 27/0, log_pager_test 125/0, dashboard_firstlogin 22/0 + --db 34/0, dashboard_figure_perms 89/0.
+  LATER: timed send time read from automated_email_log.updated_at, not sent_at; a manual send during day D counts as closed.
+- NEXT: Phase B (B1 since filters -> B2 since line, B3 guest chips, B4 donut free tonight + Money week headline, B5 "?"
+  helpers). Then Phase C (C1 migration 091 on Liwonde only, owner confirms before Rosalyn's; C2-C4 handover + welcome).
 
 ## Shipped 2026-11-23: calendar side panel opens like the Assistant chat (owner PATCH, layout only)
 - Owner: panel should squeeze the page like the chat panel, not cover it, and not sit under the Assistant / notice
