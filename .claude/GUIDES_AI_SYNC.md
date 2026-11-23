@@ -25,6 +25,10 @@ when prompted."
 
 ## Pending (oldest first)
 
+(none)
+
+## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
+
 ### Whole-group payment receipts show the group total and every room (2026-11-20, owner fault) - Liwonde 7d5c105 / Rosalyn's 3781b20
 - **Guides (Payments / Receipts, Bookings group payment):** each room still gets its own receipt number, but every room's receipt PDF and email now show "Whole-group payment: <total> split across N rooms" and list each room (booking, room, receipt number, amount); emailing any of them (automatic or Email receipt) sends ONE email with every room's receipt attached, to the lead room's guest plus CC, and all are marked emailed.
 - **Assistant:** when asked about a group payment's receipt, say it is one receipt per room, each showing the group total, all sent together in one email.
@@ -188,7 +192,7 @@ when prompted."
 - **Assistant:** no change.
 - **Manager Guides:** no change.
 
-### Grid Phase 1: select many, right-click, bulk bar on Calendar / Housekeeping / Maintenance / Blocked Dates (2026-11-23, owner FEATURE) - Liwonde (this commit)
+### Grid Phase 1: select many, right-click, bulk bar on Calendar / Housekeeping / Maintenance / Blocked Dates (2026-11-23, owner FEATURE) - Liwonde 0bb811a / Rosalyn's 790990b
 - **Guides (calendar, housekeeping, maintenance, blocked dates):** drag a box across rooms and days, Shift+click a range, Ctrl+click to add, click a room name (its days) or a day head (that night for all rooms); right-click (or long-press, or the Menu key) opens the actions; a bar at the bottom shows what is picked. Calendar right-click: New booking (one room, free nights), Block / Unblock nights (same check as Blocked Dates), New maintenance job. Housekeeping / Maintenance timelines: pick several tasks/jobs for the list's bulk actions; pick days to add tasks/jobs for those rooms in one go. Lists: Shift+click ticks a range; right-click a row for its actions. Clicking a room name or a calendar block now selects it (Enter opens it). Shift+right-click = the browser's own menu.
 - **Assistant:** no change (no tables, settings or statuses changed).
 - **Manager Guides:** Bookings / Rooms guide may mention right-click + drag-select (check at sync).
@@ -206,6 +210,70 @@ when prompted."
 - **Assistant:** Block dates card (includes/ai/ai-actions.php rh_ai_pv_block_dates / rh_ai_vf_block_dates): the preview runs the same clash check, warns which nights are skipped, refuses when every night is booked, and the verify checks only the nights the save may block (plus single-room blocks), so a correct partial save is no longer an action_failed incident. Wording in its card help changed.
 - **API:** POST /api/blocked-dates skips booked nights (response `skipped[]`, 409 when nothing free; `warnings` kept empty); PUT onto a booked night = 409, old block kept; an individual block of a joined room now blocks both rooms. POST/PUT /api/maintenance-schedules with block_room=1 over a booked night = 409.
 - **Manager Guides:** Rooms guide: one line "blocks skip booked nights" (check at sync).
+
+### Assistant Settings: model prices automatic, "Monthly cap" (2026-11-21, owner FEATURE)
+- Owner: "no need for us to set AI prices, you do it automatically, we just set max cap" (cap stays information only, never stops chat).
+- Guides (Assistant Settings > Models): no Price in / Price out boxes any more; prices are read automatically each day (Google's own price page; the public model price list for Anthropic, OpenAI, xAI, DeepSeek, and for Google models its page does not show) and on Test connection / Check for newer models. A model with "No price yet" cannot be ticked until a price is found. "New - set price" is gone.
+- Guides (Budgets and limits, Usage): "Monthly aim" is now "Monthly cap (US$)"; still information only.
+- Assistant: settings key unchanged (`ai_monthly_budget_usd`); if it mentions the figure, call it the monthly cap. `rh_ai_save_selection()` takes no prices.
+
+### Assistant Settings: Fit limits to the cap + layout fixes (2026-11-21, owner FEATURE)
+- Owner: "for Budgets and limits be able to auto set to the best capacity to fit budget and fix the UI in assistant settings".
+- Guides (Assistant Settings > Budgets and limits): Monthly cap now comes first. New "Fit limits to the cap" button fills Daily limit per person and Most tokens for one question so that even if every person with access plus the nightly checks used all of it every day (and went one question past the daily limit, which can happen), a month stays within the cap with 10% kept back; it shows the figures and what the current limit could cost. Click Save limits to keep it. When a person's daily limit is used up, quick lookups still work and the rest is back the next day.
+- Guides: on/off pickers now read short ("On - prepares changes", "Off - local answers only"...); the full meaning is in the help text under each. Usage table names the system row "Nightly checks". Prices show as $0.30, not $0.3.
+- Assistant: new helper `rh_ai_fit_limits()` (includes/ai/ai-catalog.php); no tool change.
+
+### Maintenance windows from the panel + hotel backups skip cp_ tables (2026-11-23, ClaudeWorkTwo) - Liwonde 46efbca / Rosalyn's 974003a
+- Line added for ClaudeWorkTwo (board note). Files: includes/licence-maintenance.php, licence.php, licence-guard.php,
+  config/database.php frontend maintenance block, db-backup.php. Details in the commit message. New panel pages
+  Maintenance + Deployments = Showcase SYNC QUEUE item.
+
+### Update from Remote, hotel side (2026-11-23, ClaudeWorkTwo) - Liwonde 3fccfba / Rosalyn's 1bad20c
+- Line added for ClaudeWorkTwo (board note). Files: includes/licence.php, scripts/deploy-check.php. Details in the commit message.
+
+### Calendar side panel opens like the Assistant chat (2026-11-23, owner ask) - commit "Calendar side panel docks" in both repos
+- Owner: "on the calendar views ... should be opening like our chat panel and not hiding page content but minimising the
+  page like how chat does and also not overlapping with our assistant icon and notice icon because it's hiding some buttons".
+- Guides (Calendar, Housekeeping, Maintenance, Room Service grids): on a laptop the booking / task panel now sits beside
+  the page (the page gets narrower, like the Assistant), and the Assistant, notice and "?" buttons move to the left of
+  the panel so Open booking / More are never covered. On a small screen with the menu open the panel still covers the
+  page, but the buttons still move clear. Phones keep the bottom sheet.
+- Assistant: no change.
+
+### Update from Remote pulls with git (2026-11-24, ClaudeWorkTwo) - Liwonde 9f01daa / Rosalyn's 5c9779e
+- Line added for ClaudeWorkTwo (board note). Update from Remote now uses git pull, not cPanel uapi. Details in the commit message.
+
+### Dashboard Phase A: last sign-in line + End of Day day chip (2026-11-24, owner FEATURE) - commit "Dashboard Phase A" in both repos
+- Owner: dashboard "missing some very vital information that can help anyone that first logs in"; mock-up approved 2026-11-24.
+  Plan `.claude/DASHBOARD_FIRSTLOGIN_PLAN.md` (Phases B and C to follow).
+- Guides (Dashboard): under the greeting a small line "Last signed in Mon 23 Nov at 18:40, Chrome on Windows. Not you?
+  Change your password" ("First sign-in on this account." the first time). Next to the date, for people with End of Day
+  access: a green "Yesterday closed · End of Day sent HH:MM" tag, or "Yesterday's End of Day not run" linking to the report
+  ("(test)" when the send was in test mode). System Logs > Recent Logins now name Android / iOS phones instead of "Linux".
+- Assistant: no tool change. New helpers `rh_dash_prev_signin()`, `rh_dash_eod_status()` (admin/includes/dashboard-since-data.php).
+
+### Dashboard Phase B: since you were last here, guest chips, free tonight, week takings, "?" tips (2026-11-24, owner FEATURE) - commit "Dashboard Phase B" in both repos
+- Guides (Dashboard): the line under the greeting now reads "Since you were last here: N new bookings · N cancelled ·
+  MWK … received · N room moves — N things need you" (only what the person may see; each part opens the matching list).
+  Bookings and Payments accept `?since=` (the list shows a "since" notice with Clear). Arrival rows (Today's movements,
+  Week ahead) show chips: "Returning guest · Nth stay", "Request: …", "Deposit unpaid" (not for company-billed or group
+  rooms, only pending/confirmed). Rooms ring centre = rooms still free tonight (occupancy % stays in the top card). Money
+  panel headline = "Taken this week" (today stays in the Takings card). Every figure card and panel title has a "?" tip.
+- Assistant: no tool change. New helpers `rh_guest_history_stays_for()` (includes/guest-history.php),
+  `rh_fd_deposit_unpaid()`, `rh_fd_request_short()` (admin/includes/front-desk-counts.php), since readers in
+  admin/includes/dashboard-since-data.php.
+
+### Dashboard Phase C: handover notes + first-login welcome card (2026-11-24, owner FEATURE) - commit "Dashboard Phase C" in both repos
+- Guides (Dashboard): a "Handover note" button in the dashboard header lets anyone write a short note (up to 500
+  characters) for the next shift. Everyone else sees the newest unread note at the top of Needs attention ("From <name>,
+  <time>", "and N more") until they press Mark read; notes disappear after 48 hours; the writer never sees their own.
+  It does not change the Needs-attention count. System Logs shows "Wrote a handover note" / "Read a handover note" (note
+  number only, never the text). First sign-in: a welcome card shows the person's role, what it can do, up to 3 main pages
+  they can open and the guide links, until they press Got it.
+- Assistant: no tool change. New tables `shift_handover_notes`, `shift_handover_reads` (migration 091; Rosalyn's only
+  after the owner confirms), preference key `dashboard_welcome_dismissed` in `admin_user_preferences`; reader
+  `rh_dash_handover_unread()` (admin/includes/dashboard-since-data.php); endpoints admin/api/handover-notes.php,
+  admin/api/dashboard-seen.php.
 
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
@@ -828,79 +896,22 @@ Depends on the group bookings ships (Ship A group table, A8 correction after che
 - Guides: guide 08 already updated in this ship (chips example). Other guides that mention yield (recipes/menu, KB answers) should use the same example: 10 kg potatoes peeled to 8 kg = 80 %; 250 g chips plate takes 313 g raw; sack makes 32 plates, not 40; type the plate amount; rice/pasta dry amount at 100 %.
 - Assistant: if it explains yield, use the same example and rule (raw taken off = plate amount / yield).
 
-### Assistant Settings: model prices automatic, "Monthly cap" (2026-11-21, owner FEATURE)
-- Owner: "no need for us to set AI prices, you do it automatically, we just set max cap" (cap stays information only, never stops chat).
-- Guides (Assistant Settings > Models): no Price in / Price out boxes any more; prices are read automatically each day (Google's own price page; the public model price list for Anthropic, OpenAI, xAI, DeepSeek, and for Google models its page does not show) and on Test connection / Check for newer models. A model with "No price yet" cannot be ticked until a price is found. "New - set price" is gone.
-- Guides (Budgets and limits, Usage): "Monthly aim" is now "Monthly cap (US$)"; still information only.
-- Assistant: settings key unchanged (`ai_monthly_budget_usd`); if it mentions the figure, call it the monthly cap. `rh_ai_save_selection()` takes no prices.
-
-### Assistant Settings: Fit limits to the cap + layout fixes (2026-11-21, owner FEATURE)
-- Owner: "for Budgets and limits be able to auto set to the best capacity to fit budget and fix the UI in assistant settings".
-- Guides (Assistant Settings > Budgets and limits): Monthly cap now comes first. New "Fit limits to the cap" button fills Daily limit per person and Most tokens for one question so that even if every person with access plus the nightly checks used all of it every day (and went one question past the daily limit, which can happen), a month stays within the cap with 10% kept back; it shows the figures and what the current limit could cost. Click Save limits to keep it. When a person's daily limit is used up, quick lookups still work and the rest is back the next day.
-- Guides: on/off pickers now read short ("On - prepares changes", "Off - local answers only"...); the full meaning is in the help text under each. Usage table names the system row "Nightly checks". Prices show as $0.30, not $0.3.
-- Assistant: new helper `rh_ai_fit_limits()` (includes/ai/ai-catalog.php); no tool change.
-
-### Maintenance windows from the panel + hotel backups skip cp_ tables (2026-11-23, ClaudeWorkTwo) - Liwonde 46efbca / Rosalyn's 974003a
-- Line added for ClaudeWorkTwo (board note). Files: includes/licence-maintenance.php, licence.php, licence-guard.php,
-  config/database.php frontend maintenance block, db-backup.php. Details in the commit message. New panel pages
-  Maintenance + Deployments = Showcase SYNC QUEUE item.
-
-### Update from Remote, hotel side (2026-11-23, ClaudeWorkTwo) - Liwonde 3fccfba / Rosalyn's 1bad20c
-- Line added for ClaudeWorkTwo (board note). Files: includes/licence.php, scripts/deploy-check.php. Details in the commit message.
-
-### Calendar side panel opens like the Assistant chat (2026-11-23, owner ask) - commit "Calendar side panel docks" in both repos
-- Owner: "on the calendar views ... should be opening like our chat panel and not hiding page content but minimising the
-  page like how chat does and also not overlapping with our assistant icon and notice icon because it's hiding some buttons".
-- Guides (Calendar, Housekeeping, Maintenance, Room Service grids): on a laptop the booking / task panel now sits beside
-  the page (the page gets narrower, like the Assistant), and the Assistant, notice and "?" buttons move to the left of
-  the panel so Open booking / More are never covered. On a small screen with the menu open the panel still covers the
-  page, but the buttons still move clear. Phones keep the bottom sheet.
-- Assistant: no change.
-
-### Update from Remote pulls with git (2026-11-24, ClaudeWorkTwo) - Liwonde 9f01daa / Rosalyn's 5c9779e
-- Line added for ClaudeWorkTwo (board note). Update from Remote now uses git pull, not cPanel uapi. Details in the commit message.
-
-### Dashboard Phase A: last sign-in line + End of Day day chip (2026-11-24, owner FEATURE) - commit "Dashboard Phase A" in both repos
-- Owner: dashboard "missing some very vital information that can help anyone that first logs in"; mock-up approved 2026-11-24.
-  Plan `.claude/DASHBOARD_FIRSTLOGIN_PLAN.md` (Phases B and C to follow).
-- Guides (Dashboard): under the greeting a small line "Last signed in Mon 23 Nov at 18:40, Chrome on Windows. Not you?
-  Change your password" ("First sign-in on this account." the first time). Next to the date, for people with End of Day
-  access: a green "Yesterday closed · End of Day sent HH:MM" tag, or "Yesterday's End of Day not run" linking to the report
-  ("(test)" when the send was in test mode). System Logs > Recent Logins now name Android / iOS phones instead of "Linux".
-- Assistant: no tool change. New helpers `rh_dash_prev_signin()`, `rh_dash_eod_status()` (admin/includes/dashboard-since-data.php).
-
-### Dashboard Phase B: since you were last here, guest chips, free tonight, week takings, "?" tips (2026-11-24, owner FEATURE) - commit "Dashboard Phase B" in both repos
-- Guides (Dashboard): the line under the greeting now reads "Since you were last here: N new bookings · N cancelled ·
-  MWK … received · N room moves — N things need you" (only what the person may see; each part opens the matching list).
-  Bookings and Payments accept `?since=` (the list shows a "since" notice with Clear). Arrival rows (Today's movements,
-  Week ahead) show chips: "Returning guest · Nth stay", "Request: …", "Deposit unpaid" (not for company-billed or group
-  rooms, only pending/confirmed). Rooms ring centre = rooms still free tonight (occupancy % stays in the top card). Money
-  panel headline = "Taken this week" (today stays in the Takings card). Every figure card and panel title has a "?" tip.
-- Assistant: no tool change. New helpers `rh_guest_history_stays_for()` (includes/guest-history.php),
-  `rh_fd_deposit_unpaid()`, `rh_fd_request_short()` (admin/includes/front-desk-counts.php), since readers in
-  admin/includes/dashboard-since-data.php.
-
-### Dashboard Phase C: handover notes + first-login welcome card (2026-11-24, owner FEATURE) - commit "Dashboard Phase C" in both repos
-- Guides (Dashboard): a "Handover note" button in the dashboard header lets anyone write a short note (up to 500
-  characters) for the next shift. Everyone else sees the newest unread note at the top of Needs attention ("From <name>,
-  <time>", "and N more") until they press Mark read; notes disappear after 48 hours; the writer never sees their own.
-  It does not change the Needs-attention count. System Logs shows "Wrote a handover note" / "Read a handover note" (note
-  number only, never the text). First sign-in: a welcome card shows the person's role, what it can do, up to 3 main pages
-  they can open and the guide links, until they press Got it.
-- Assistant: no tool change. New tables `shift_handover_notes`, `shift_handover_reads` (migration 091; Rosalyn's only
-  after the owner confirms), preference key `dashboard_welcome_dismissed` in `admin_user_preferences`; reader
-  `rh_dash_handover_unread()` (admin/includes/dashboard-since-data.php); endpoints admin/api/handover-notes.php,
-  admin/api/dashboard-seen.php.
-
 ## Known leftovers from earlier syncs (fix during a sync, never on their own)
 - `ai_assistant_test` at Liwonde: 7 data-dependent fails (left-owing + refunds briefing, 4 alert checks, digest
   recipients); ai_review_engine "nothing to add for this person" fails on HEAD too. (Tomorrow / 4 of 3 / K1,068,000 now pass.)
 - `ai-decisions` ~1620/1777 dept-takings/VAT still on payment_date (matches Reports); "Open refunds"
   link filters Payments by payment_date.
-- Guide 14 says "AI Assistant" vs "the Assistant"; `rh_ai_t_guest_history` drops no-email bookings
-  when one email is found; `balances_due` per-row fallback (speed).
+- `rh_ai_t_guest_history` drops no-email bookings when one email is found; `balances_due` per-row fallback (speed).
+- (2026-11-24) System Logs has no words for action `drink_menu_from_stock` (admin/includes/staff-activity-lib.php, logs lead).
+- (2026-11-24) Guide 07 note box still names Block Single Date / Block Date Range (now on the List tab only).
+- (2026-11-24) Liwonde guides 01, 02, 14, 23 show "Rosalyns Beach Hotel" in <title>/brand (Liwonde only; old).
+- (2026-11-24) Manager Guide Bookings: Blocked Dates calendar + Extend / drag handles left out (page 2 full);
+  the blocks-skip-booked-nights line is in Housekeeping and Maintenance instead.
+- (2026-11-24) Import guide has no screenshots in docs/guides; none out of date there.
 
 ## Synced
+- 2026-11-24 (owner prompted), DONE: Guides + Assistant, commit "Guides + Assistant sync 2026-11-24" in both repos (entries in the 'Synced 2026-11-24' section).
+  Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed.
 - 2026-11-20 (owner prompted), DONE: Guides Rosalyn's 909510e / Liwonde 8704293; Assistant see TASKS.md SYNC 2026-11-20 (entries in the 'Synced 2026-11-20' section).
   Manager Guides: Stock, Bookings, Money and End of Day, Staff and Permissions refreshed; Daily checklist no change.
 - Through 943ca16: Rosalyn's 55827b0 / Liwonde 717b36e (and earlier 859473d / 8f7301d, 5085f61 / 2c82b0e).

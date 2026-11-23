@@ -29,6 +29,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-24: Guides + Assistant sync (owner prompted, ClaudeWorkOne)
+- Every Pending entry in `.claude/GUIDES_AI_SYNC.md` (2026-11-20 to 2026-11-24) is now in "Synced 2026-11-24";
+  Pending is empty. Commit "Guides + Assistant sync 2026-11-24" in both repos (Rosalyn's = port).
+- Staff guides: 01, 05, 06, 07, 08, 13, 22, 23, 99, faq. Assistant: stock quantities also in "bottles + shots"
+  words (ai-lookups, ai-insights, ai-agents, ai-decisions; 3 checks). Manager Guides: stock, pos-kds, bookings,
+  housekeeping, money-eod, daily-checklist, staff-access rebuilt (2 pages each, checklist 1).
+- Tests: ai_assistant_test 1253 / 1 fail / 6 skip. The fail ("staff active today", 3 logged instead of 2) is
+  test data: an "Aitest Temp" account with logged actions left by a run killed for low memory. Review: one
+  reviewer-critical pass (2 guide lines fixed inline).
+- LATER lines: GUIDES_AI_SYNC.md "Known leftovers".
+
 ## In progress 2026-11-24: dashboard first-login information (owner FEATURE, ClaudeWorkOne)
 - Owner: dashboard misses vital info for someone who first logs in; mock-up approved
   (https://claude.ai/artifact/VGrVZnzhATWGmQeJDRUXWp). Plan + spec-check fixes + owner answers:
