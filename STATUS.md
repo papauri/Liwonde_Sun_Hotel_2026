@@ -38,7 +38,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Phase A SHIPPED 2026-11-24, Liwonde 3102daa / port Rosalyn's 5d944bb (last sign-in line, End of Day day chip, Android/iOS login labels): reviewer-critical PASS;
   tests login_email 27/0, log_pager_test 125/0, dashboard_firstlogin 22/0 + --db 34/0, dashboard_figure_perms 89/0.
   LATER: timed send time read from automated_email_log.updated_at, not sent_at; a manual send during day D counts as closed.
-- Phase B SHIPPED 2026-11-24 (since line + ?since= filters on Bookings/Payments, guest chips, donut free tonight, Money
+- Phase B SHIPPED 2026-11-24, Liwonde d78bb24 / port Rosalyn's 4de91ec (since line + ?since= filters on Bookings/Payments, guest chips, donut free tonight, Money
   "Taken this week", "?" tips): reviewer-critical PASS; dashboard_attention --db 362/0, bookings_filters 253/0,
   finance_filters 168/0, dashboard_firstlogin 32/0 + --db 48/0, dashboard_figure_perms 98/0, dashboard_counts 143/0,
   guest_history 21/0. KNOWN OLD FAIL: guest_history --db "refunds shown in full (40,000)" fails on HEAD too (predates
