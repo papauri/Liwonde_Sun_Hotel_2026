@@ -57,7 +57,9 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   "All clear" hidden while a note shows and back after the last note is read or found expired; view_only.php asserts
   handover-notes.php refused / dashboard-seen.php allowed under view only, trial and licence read-only. Browser check
   test notes + 7 activity rows removed from Liwonde. reviewer-critical PASS; view_only 86/0, dashboard_attention 334/0,
-  dashboard_firstlogin 56/0. Still LATER: view-only refusal checked at the guard functions, not over HTTP.
+  dashboard_firstlogin 56/0. Gap closed 2026-11-24 (owner: "fix the small gap"): NEW scripts/tests/view_only_http.php
+  --db (Liwonde only) runs php -S + dev-router, signs in a view-only test user over HTTP: handover write -> 403 view only,
+  nothing saved; Got it still works; same write saved once view only is off; restores all state. 9/0, reviewer-critical PASS.
 
 ## Shipped 2026-11-23: calendar side panel opens like the Assistant chat (owner PATCH, layout only)
 - Owner: panel should squeeze the page like the chat panel, not cover it, and not sit under the Assistant / notice
