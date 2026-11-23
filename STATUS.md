@@ -67,7 +67,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - 2026-11-23 SHIPPED test fixes (owner: "all of them fixed, no compromise"): the six failing suites above fixed at the
   cause, no check weakened, no app code changed: Liwonde 10bc317 / Rosalyn's 69f6f31. documents_flow: one silent child
   death never captured; now retried once on lock/connection errors only, real errors printed (3 runs 103/0).
-  LATER: test runs left untracked PDFs in invoices/ (LSH-INV-2026-001005..7, STMT-*); numbers reused after rollback.
+  Untracked test PDFs in invoices/ deleted 2026-11-23 (owner). LATER: test runs still write PDFs there (numbers reused after rollback).
 - 2026-11-23 SHIPPED Phase 3 Liwonde f7fa487 / Rosalyn's a7a8340 (Extend for blocks / maintenance / housekeeping, Excel-style end handles, booking drag ->
   Change dates prefilled): critical review PASS; extend_test 35/0 + grid, clash, stay-change, timeline suites green;
   headless check of the four pages at 1280 + 390. Blocked Dates: no handle on a month's last night (run may continue
