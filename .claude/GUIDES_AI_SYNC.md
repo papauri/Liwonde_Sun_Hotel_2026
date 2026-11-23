@@ -193,6 +193,14 @@ when prompted."
 - **Assistant:** no change (no tables, settings or statuses changed).
 - **Manager Guides:** Bookings / Rooms guide may mention right-click + drag-select (check at sync).
 
+### Grid Phase 1b / Blocked Dates patch / Phase 2b / Phase 3 (2026-11-23, owner FEATURE + PATCH) - Liwonde 3addb8a, 53c7d34, 77536cd, Phase 3 (this commit)
+- **Guides (all admin lists):** right-click any list row for that row's own actions + Open / Open in new tab / Copy reference (3addb8a).
+- **Guides (blocked dates):** picks stay when changing month; Block Date Range Individual level = tick several rooms (53c7d34).
+- **Guides (bookings):** changing a stay's dates or room is refused with a plain message when a booking, block or maintenance job is in the way (77536cd).
+- **Guides (calendar, blocked dates, maintenance, housekeeping):** Extend... (right-click / bulk bar) by days, weeks, months, years or to a date; drag the end handle of a block or maintenance job to stretch or shrink it (booked nights skipped and listed; no handle on a month's last night in Blocked Dates, use Extend...); housekeeping repeat daily / weekly until a date; dragging a confirmed booking opens its Change dates prefilled, nothing saved on the calendar.
+- **Assistant:** extend_stay now refuses with the same clear clash message.
+- **Manager Guides:** Rooms guide: Extend + drag handles (check at sync).
+
 ### Grid Phase 2: blocks and room-closing maintenance never land on a booked night (2026-11-23, owner FEATURE) - Liwonde (this commit)
 - **Guides (blocked dates, calendar, maintenance):** Block (calendar grid, Block Date Range, list forms, Calendar right-click) now SKIPS nights a booking sleeps on and saves the rest; the confirm says which nights will be skipped and lists the bookings; if every night is booked nothing is saved. A room-type or All-rooms block on a night with bookings blocks only that night's free rooms one by one (keeping rooms free for bookings with no room yet); unblocking the type later does not remove those single-room blocks. Maintenance with "Block room" over a booked night is refused with the bookings and the free dates (change the dates, untick Block room, or move the booking). Auto-created, bulk-assigned and repeating jobs on a booked night are created without closing the room. Unblock is never checked.
 - **Assistant:** Block dates card (includes/ai/ai-actions.php rh_ai_pv_block_dates / rh_ai_vf_block_dates): the preview runs the same clash check, warns which nights are skipped, refuses when every night is booked, and the verify checks only the nights the save may block (plus single-room blocks), so a correct partial save is no longer an action_failed incident. Wording in its card help changed.

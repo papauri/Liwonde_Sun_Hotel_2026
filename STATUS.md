@@ -62,6 +62,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   endpoint returns the HTML page), stock_count_bigform 28/1 (420-line draft saves as approved, not submitted),
   stock_count_approval 124/1 + Menu portions Recipes check (both pre-existing), documents_flow flaky (97/6 once, clean
   once). Owner told; not fixed here.
+- 2026-11-23 SHIPPED Phase 2b (stay date/room changes lock + clear clash refusal): Liwonde 77536cd / Rosalyn's dca1e25
+  (ported as a patch: Rosalyn's RBH prefix + its database.php drift kept). Critical review PASS.
+- 2026-11-23 SHIPPED test fixes (owner: "all of them fixed, no compromise"): the six failing suites above fixed at the
+  cause, no check weakened, no app code changed: Liwonde 10bc317 / Rosalyn's 69f6f31. documents_flow: one silent child
+  death never captured; now retried once on lock/connection errors only, real errors printed (3 runs 103/0).
+  LATER: test runs left untracked PDFs in invoices/ (LSH-INV-2026-001005..7, STMT-*); numbers reused after rollback.
+- 2026-11-23 SHIPPED Phase 3 (Extend for blocks / maintenance / housekeeping, Excel-style end handles, booking drag ->
+  Change dates prefilled): critical review PASS; extend_test 35/0 + grid, clash, stay-change, timeline suites green;
+  headless check of the four pages at 1280 + 390. Blocked Dates: no handle on a month's last night (run may continue
+  into next month; Extend... instead). LATER (review): HK preview over-counts two tasks sharing room+type;
+  maintenance/HK bulk + reconcile lock in another order (deadlock rolls back safely); Extend has no undo.
 - NEXT after Phase 2 (owner OK 2026-11-23): Phase 2b, stay date changes lock + clear clash message (GRID_UNIFY_PLAN.md). Was Fable LATER:
   needs owner OK). Room picker change listener not guarded against double add (harmless).
 - 2026-11-23 (ClaudeWorkOne) Phase 1b BUILT, uncommitted, in QA: admin/includes/admin-footer.php loads admin-context-menu.js
