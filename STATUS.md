@@ -50,11 +50,14 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   first-login welcome card until Got it. reviewer-critical PASS; dashboard_firstlogin 56/0 + --db 115/0,
   system_logs_activity 120/0, dashboard_attention 330/0, dashboard_figure_perms 98/0, view_only 80/0, licence_staff 53/0,
   licence_client 247/0; browser check admin + receptionist passed.
-- BLOCKED on owner: run 091 on Rosalyn's DB (`php admin/migrations/migrate.php --run` there). Until then Rosalyn's
-  dashboard shows no handover/welcome (readers return empty, write refuses with 503, nothing logged).
-- LATER: JS counts the 500 limit in UTF-16 units (emoji-heavy note refused in the browser; server is right); "All clear"
-  shows beside a handover note when nothing else needs attention; no test asserts view-only refuses handover-notes.php;
-  two activity rows from the browser check remain in Liwonde's log (test DB).
+- 091 RUN ON ROSALYN'S 2026-11-24 (owner: "Run the migration to rosalyn now"): dry run showed 091 the only pending,
+  backup backups/2026/11/db-20261123-180341.sql.gz first, then `--run` -> 091 APPLIED, 0 pending.
+- Phase C LATER items fixed 2026-11-24 (owner: "Finish the left for later"; commit "Dashboard Phase C follow-up"):
+  browser counts the 500 limit per character like the server (emoji note of 308 chars saves; maxlength 1000);
+  "All clear" hidden while a note shows and back after the last note is read or found expired; view_only.php asserts
+  handover-notes.php refused / dashboard-seen.php allowed under view only, trial and licence read-only. Browser check
+  test notes + 7 activity rows removed from Liwonde. reviewer-critical PASS; view_only 86/0, dashboard_attention 334/0,
+  dashboard_firstlogin 56/0. Still LATER: view-only refusal checked at the guard functions, not over HTTP.
 
 ## Shipped 2026-11-23: calendar side panel opens like the Assistant chat (owner PATCH, layout only)
 - Owner: panel should squeeze the page like the chat panel, not cover it, and not sit under the Assistant / notice
