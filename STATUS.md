@@ -29,6 +29,21 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## In progress 2026-11-24: bookings list overhaul (owner FEATURE, ClaudeWorkTwo)
+- Owner: "Better sorting and filtering for bookings page and better UI ... add the calendar view too"; owner chose the
+  Room Timeline INSIDE the bookings page and "everything else" (saved filter sets, CSV, staff filter). Owner 2026-11-24:
+  a new table is fine on both hotels (not needed: saved sets use `admin_user_preferences`).
+- Plan + every decision: `.claude/BOOKINGS_LIST_PLAN.md` (spec-checked; three ships A / B / C).
+- Ship A DONE (helpers, source + made-by filters, server wiring, CSV follows the screen sort + Balance due column;
+  new default order: upcoming soonest arrival first, history newest first). Tests bookings_filters 357/0,
+  booking_created_by 27/0, bookings_bulk 116/0, bookings_list_http --db 656/0 (993/0 vs HEAD baseline), explain: no
+  full scan. reviewer-critical PASS (qa-auditor + accounting checklists).
+- NEXT: Ship B (T4-T10 + T5: filter bar + chips, tabs + More menu, Balance due column on screen, sort memory, saved
+  filter sets), then Ship C (T11-T12: embedded timeline). Each ported to Rosalyn's after Liwonde passes.
+- LATER: tentative rows owing show Balance due though `rh_receivable_status_sql` leaves tentative out; cancelled +
+  refunded but still owing shows the due (follows the badge); bookings_list_http.php deletes all admin activity-log
+  rows written during its run; company-billed "company owes" note; made-by filter cannot pick deleted staff accounts.
+
 ## Shipped 2026-11-24: Guides + Assistant sync (owner prompted, ClaudeWorkOne)
 - Every Pending entry in `.claude/GUIDES_AI_SYNC.md` (2026-11-20 to 2026-11-24) is now in "Synced 2026-11-24";
   Pending is empty. Commit "Guides + Assistant sync 2026-11-24" in both repos (Rosalyn's = port).
