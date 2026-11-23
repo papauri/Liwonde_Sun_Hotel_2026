@@ -193,6 +193,12 @@ when prompted."
 - **Assistant:** no change (no tables, settings or statuses changed).
 - **Manager Guides:** Bookings / Rooms guide may mention right-click + drag-select (check at sync).
 
+### Grid Phase 2: blocks and room-closing maintenance never land on a booked night (2026-11-23, owner FEATURE) - Liwonde (this commit)
+- **Guides (blocked dates, calendar, maintenance):** Block (calendar grid, Block Date Range, list forms, Calendar right-click) now SKIPS nights a booking sleeps on and saves the rest; the confirm says which nights will be skipped and lists the bookings; if every night is booked nothing is saved. A room-type or All-rooms block on a night with bookings blocks only that night's free rooms one by one (keeping rooms free for bookings with no room yet); unblocking the type later does not remove those single-room blocks. Maintenance with "Block room" over a booked night is refused with the bookings and the free dates (change the dates, untick Block room, or move the booking). Auto-created, bulk-assigned and repeating jobs on a booked night are created without closing the room. Unblock is never checked.
+- **Assistant:** Block dates card (includes/ai/ai-actions.php rh_ai_pv_block_dates / rh_ai_vf_block_dates): the preview runs the same clash check, warns which nights are skipped, refuses when every night is booked, and the verify checks only the nights the save may block (plus single-room blocks), so a correct partial save is no longer an action_failed incident. Wording in its card help changed.
+- **API:** POST /api/blocked-dates skips booked nights (response `skipped[]`, 409 when nothing free; `warnings` kept empty); PUT onto a booked night = 409, old block kept; an individual block of a joined room now blocks both rooms. POST/PUT /api/maintenance-schedules with block_room=1 over a booked night = 409.
+- **Manager Guides:** Rooms guide: one line "blocks skip booked nights" (check at sync).
+
 ## Synced 2026-11-20 (2) (import entries below: guides 23-import + 08-stock-orders, Manager Guide Stock line, AI import helper ai-import-suggest.php; hashes in TASKS.md) - entries kept for reference
 
 ### Import: selling price recognised in Step 2, Step 4 pager, "See projected profit" link (2026-11-20, owner fault) - hashes in TASKS.md

@@ -90,6 +90,11 @@ Owner: "Extend the right click gestures wherever we can globally to bring up sev
 ## Status
 - 2026-11-23: plan written, owner answers recorded. Phase 1 dispatched (dept-rooms-lead, Opus).
 - 2026-11-23: Phase 1 SHIPPED Liwonde 0bb811a / Rosalyn's 790990b. Blocked Dates kept its own grid (+ menu + bulk bar). Next: Phase 1b.
+- 2026-11-23: Phase 2 BUILT (uncommitted; QA + full run_tests pending). Helper includes/room-night-clash.php, engine
+  includes/block-save.php. ASSUMPTIONS: All-rooms night with bookings = single blocks on every free active room (any
+  type); R3 treats out-of-service rooms as already off sale (as getRoomTypeNightlyAvailability does); a joined type that
+  owns no rooms (shared pairs) skips its booked nights (nothing to block singly); API individual block now widens a
+  joined room to both rooms (matches the screen); generated jobs check the job's own window (now .. +1 day).
 
 ## Phase 2+3 build spec (draft for Fable check)
 Written 2026-11-23 (read-only investigation; nothing built). Line refs = Liwonde HEAD at writing.
@@ -338,3 +343,16 @@ Open questions, recommendations:
    Change dates screen prefilled (new dates + reprice shown); nothing is saved on the timeline. (Phase 3.)
 Also from the owner 2026-11-23: an Excel-style drag handle on block runs and maintenance bars to extend AND shorten
 (Phase 3; shortening a block = unblock the trimmed nights; extending goes through the clash check).
+
+## Phase 2b: stay date changes lock like booking creation (owner FEATURE 2026-11-23, next after Phase 2 ships)
+Owner 2026-11-23 (answer to the Fable LATER "changing a stay's dates takes no type/room locks, so a stay extension can
+race a block"): "Yes fix it so there is overlaping errors and its clear".
+- Every path that changes a stay's dates or room (Change dates / reprice, extend stay, timeline end-grip, room move,
+  API equivalents: find them all) takes the same locks in the same order as booking creation (Fable: [booking row] ->
+  room types -> individual_rooms) and re-checks availability (checkIndividualRoomAvailability + the Phase 2 clash
+  helper for blocks / room-closing maintenance) INSIDE the lock before saving.
+- On a clash nothing is saved and the message is clear: which night(s), which room, and what is in the way (booking
+  ref + guest, block type + reason, or maintenance job), e.g. "Not saved: Room 4 is blocked on 3-4 Jan (Maintenance:
+  roof leak). Choose other dates or another room."
+- Money untouched: the reprice path stays as it is; only locking + the clash refusal are added. Opus build,
+  qa-auditor, full run_tests.php (bookings core).

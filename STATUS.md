@@ -47,9 +47,22 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   a duplicate task/job.
 - SHIPPED 2026-11-23: Phase 1b Liwonde 3addb8a / Rosalyn's 6464350; Blocked Dates patch Liwonde 53c7d34 / Rosalyn's
   2bd5082 (both QA'd, fixes applied: copy toast escaped, class-disabled actions skipped, tap/keyboard picks store records).
-- Phase 2 BUILDING (Opus) per plan + Fable check + owner answers 2026-11-23 (in GRID_UNIFY_PLAN.md: maintenance refuse;
+- Phase 2 SHIPPED 2026-11-23 per plan + Fable check + owner answers 2026-11-23 (in GRID_UNIFY_PLAN.md: maintenance refuse;
   type block = block only the free rooms; generated jobs block_room=0 on booked nights; booking drag YES in Phase 3).
-- LATER (Fable): changing a stay's dates takes no type/room locks, so a stay extension can race a block (bookings patch,
+  2026-11-23 Phase 2 SHIPPED (see commit; QA FAIL on XSS -> fixed: clash messages shown as text) : new includes/room-night-clash.php (helper, locks,
+  maintenance check) + includes/block-save.php (one block engine; API create/move; rh_block_room_ids moved here);
+  admin/blocked-dates.php (grid_apply/preview/block_date/block_multiple via engine, Block Date Range confirm),
+  blocked-dates-grid.js + room-timeline.js confirm text, api/blocked-dates.php, admin/room-maintenance.php (add/update
+  refuse; auto + bulk block_room=0 under locks), includes/maintenance-recurring.php, api/maintenance-schedules.php,
+  includes/ai/ai-actions.php (card preview/verify). New tests room_night_clash_test, block_clash_test,
+  maintenance_clash_test, block_booking_race (+ clash_test_lib, race child), registered in run_tests.php.
+- Full suite 2026-11-23 (run twice, killed at 42/73 and 46/73 by low laptop memory; 47-73 run one by one): every grid,
+  block, booking and clash suite green (clash 26/0, block clash 22/0, maintenance clash 17/0, race 17/0, Blocked Dates
+  grid 63/0, Block Rooms 42/0). Failures OUTSIDE Phase 2 code, not caused by it: import_export_test 100/1 (xlsx
+  endpoint returns the HTML page), stock_count_bigform 28/1 (420-line draft saves as approved, not submitted),
+  stock_count_approval 124/1 + Menu portions Recipes check (both pre-existing), documents_flow flaky (97/6 once, clean
+  once). Owner told; not fixed here.
+- NEXT after Phase 2 (owner OK 2026-11-23): Phase 2b, stay date changes lock + clear clash message (GRID_UNIFY_PLAN.md). Was Fable LATER:
   needs owner OK). Room picker change listener not guarded against double add (harmless).
 - 2026-11-23 (ClaudeWorkOne) Phase 1b BUILT, uncommitted, in QA: admin/includes/admin-footer.php loads admin-context-menu.js
   + new admin/js/admin-row-context.js on every admin page (right-click a list row = that row's own buttons / More items,
