@@ -44,7 +44,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   guest_history 21/0. KNOWN OLD FAIL: guest_history --db "refunds shown in full (40,000)" fails on HEAD too (predates
   Ship M2 test update; not touched). LATER: "?" button nested inside card links; no "?" on since line/day chip;
   rh_dash_pay_scope_types duplicates the payments.php type-scope rule; $moneyShort unused.
-- Phase C SHIPPED 2026-11-24 (commit "Dashboard Phase C" in both repos): migration 091 (shift_handover_notes,
+- Phase C SHIPPED 2026-11-24, Liwonde fe55e0e / port Rosalyn's 1239b3a: migration 091 (shift_handover_notes,
   shift_handover_reads) applied on Liwonde only (backup backups/2026/11/db-20261123-172246.sql.gz); handover note button +
   top item in Needs attention (everyone until each marks read, 48 h expiry, not in the badge count, log names id only);
   first-login welcome card until Got it. reviewer-critical PASS; dashboard_firstlogin 56/0 + --db 115/0,
