@@ -19,7 +19,7 @@ Phases (owner order): A = items 2, 3, 9. B = items 1, 5, 6, 7 + "?" helpers. C =
 - [ ] Phase B: "Since you were last here" line replaces the lede; each count links to a list with exactly that many
       rows (tested); guest chips on arrival rows; donut centre = free tonight; Money headline = 7-day total;
       every figure card has a visible `?` dot
-- [ ] Phase C: migration 091 applied on Liwonde; handover notes write / show / mark read / expire, logged in System Logs;
+- [x] Phase C (shipped 2026-11-24; 091 on Rosalyn's waits for the owner): migration 091 applied on Liwonde; handover notes write / show / mark read / expire, logged in System Logs;
       welcome card shows until "Got it"
 - [ ] `php -l` clean on every changed file; the tests below pass; qa-auditor passes each phase's diff; headless browser
       check of the dashboard as admin and as a receptionist

@@ -880,6 +880,18 @@ Depends on the group bookings ships (Ship A group table, A8 correction after che
   `rh_fd_deposit_unpaid()`, `rh_fd_request_short()` (admin/includes/front-desk-counts.php), since readers in
   admin/includes/dashboard-since-data.php.
 
+### Dashboard Phase C: handover notes + first-login welcome card (2026-11-24, owner FEATURE) - commit "Dashboard Phase C" in both repos
+- Guides (Dashboard): a "Handover note" button in the dashboard header lets anyone write a short note (up to 500
+  characters) for the next shift. Everyone else sees the newest unread note at the top of Needs attention ("From <name>,
+  <time>", "and N more") until they press Mark read; notes disappear after 48 hours; the writer never sees their own.
+  It does not change the Needs-attention count. System Logs shows "Wrote a handover note" / "Read a handover note" (note
+  number only, never the text). First sign-in: a welcome card shows the person's role, what it can do, up to 3 main pages
+  they can open and the guide links, until they press Got it.
+- Assistant: no tool change. New tables `shift_handover_notes`, `shift_handover_reads` (migration 091; Rosalyn's only
+  after the owner confirms), preference key `dashboard_welcome_dismissed` in `admin_user_preferences`; reader
+  `rh_dash_handover_unread()` (admin/includes/dashboard-since-data.php); endpoints admin/api/handover-notes.php,
+  admin/api/dashboard-seen.php.
+
 ## Known leftovers from earlier syncs (fix during a sync, never on their own)
 - `ai_assistant_test` at Liwonde: 7 data-dependent fails (left-owing + refunds briefing, 4 alert checks, digest
   recipients); ai_review_engine "nothing to add for this person" fails on HEAD too. (Tomorrow / 4 of 3 / K1,068,000 now pass.)

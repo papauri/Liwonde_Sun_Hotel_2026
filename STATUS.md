@@ -44,7 +44,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   guest_history 21/0. KNOWN OLD FAIL: guest_history --db "refunds shown in full (40,000)" fails on HEAD too (predates
   Ship M2 test update; not touched). LATER: "?" button nested inside card links; no "?" on since line/day chip;
   rh_dash_pay_scope_types duplicates the payments.php type-scope rule; $moneyShort unused.
-- NEXT: Phase C (C1 migration 091 on Liwonde only, owner confirms before Rosalyn's; C2-C4 handover + welcome).
+- Phase C SHIPPED 2026-11-24 (commit "Dashboard Phase C" in both repos): migration 091 (shift_handover_notes,
+  shift_handover_reads) applied on Liwonde only (backup backups/2026/11/db-20261123-172246.sql.gz); handover note button +
+  top item in Needs attention (everyone until each marks read, 48 h expiry, not in the badge count, log names id only);
+  first-login welcome card until Got it. reviewer-critical PASS; dashboard_firstlogin 56/0 + --db 115/0,
+  system_logs_activity 120/0, dashboard_attention 330/0, dashboard_figure_perms 98/0, view_only 80/0, licence_staff 53/0,
+  licence_client 247/0; browser check admin + receptionist passed.
+- BLOCKED on owner: run 091 on Rosalyn's DB (`php admin/migrations/migrate.php --run` there). Until then Rosalyn's
+  dashboard shows no handover/welcome (readers return empty, write refuses with 503, nothing logged).
+- LATER: JS counts the 500 limit in UTF-16 units (emoji-heavy note refused in the browser; server is right); "All clear"
+  shows beside a handover note when nothing else needs attention; no test asserts view-only refuses handover-notes.php;
+  two activity rows from the browser check remain in Liwonde's log (test DB).
 
 ## Shipped 2026-11-23: calendar side panel opens like the Assistant chat (owner PATCH, layout only)
 - Owner: panel should squeeze the page like the chat panel, not cover it, and not sit under the Assistant / notice
