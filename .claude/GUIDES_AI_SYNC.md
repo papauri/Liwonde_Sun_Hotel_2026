@@ -869,6 +869,17 @@ Depends on the group bookings ships (Ship A group table, A8 correction after che
   ("(test)" when the send was in test mode). System Logs > Recent Logins now name Android / iOS phones instead of "Linux".
 - Assistant: no tool change. New helpers `rh_dash_prev_signin()`, `rh_dash_eod_status()` (admin/includes/dashboard-since-data.php).
 
+### Dashboard Phase B: since you were last here, guest chips, free tonight, week takings, "?" tips (2026-11-24, owner FEATURE) - commit "Dashboard Phase B" in both repos
+- Guides (Dashboard): the line under the greeting now reads "Since you were last here: N new bookings · N cancelled ·
+  MWK … received · N room moves — N things need you" (only what the person may see; each part opens the matching list).
+  Bookings and Payments accept `?since=` (the list shows a "since" notice with Clear). Arrival rows (Today's movements,
+  Week ahead) show chips: "Returning guest · Nth stay", "Request: …", "Deposit unpaid" (not for company-billed or group
+  rooms, only pending/confirmed). Rooms ring centre = rooms still free tonight (occupancy % stays in the top card). Money
+  panel headline = "Taken this week" (today stays in the Takings card). Every figure card and panel title has a "?" tip.
+- Assistant: no tool change. New helpers `rh_guest_history_stays_for()` (includes/guest-history.php),
+  `rh_fd_deposit_unpaid()`, `rh_fd_request_short()` (admin/includes/front-desk-counts.php), since readers in
+  admin/includes/dashboard-since-data.php.
+
 ## Known leftovers from earlier syncs (fix during a sync, never on their own)
 - `ai_assistant_test` at Liwonde: 7 data-dependent fails (left-owing + refunds briefing, 4 alert checks, digest
   recipients); ai_review_engine "nothing to add for this person" fails on HEAD too. (Tomorrow / 4 of 3 / K1,068,000 now pass.)
