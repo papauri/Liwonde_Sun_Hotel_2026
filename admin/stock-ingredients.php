@@ -13,6 +13,27 @@ require_once __DIR__ . '/../includes/form-validation.php';
 require_once __DIR__ . '/includes/stock-list-filters.php';
 require_once __DIR__ . '/includes/stock-measure-bulk-lib.php';
 require_once __DIR__ . '/includes/stock-measure-auto-lib.php';
+require_once __DIR__ . '/../includes/stale-edit.php';
+
+if (!function_exists('rh_stock_item_stale_cols')) {
+    /**
+     * Stale-edit (.claude/CONCURRENCY_PLAN.md task 9): the Edit form's own columns, used for the hash at render AND at save.
+     * Never current_quantity, cost_per_unit, updated_at or is_archived: stock-in, adjustments, sales, counts and archiving
+     * must never refuse a Save. Measure / bottle-size columns only once their migrations (088 / 089) have run.
+     */
+    function rh_stock_item_stale_cols(PDO $pdo): array
+    {
+        $cols = ['name', 'category', 'unit', 'min_quantity', 'yield_percent', 'notes', 'reorder_point', 'par_level', 'lead_time_days',
+            'preferred_supplier_id', 'pack_name', 'pack_size', 'pieces_per_unit'];
+        if (rh_stock_measure_ready($pdo)) {
+            array_push($cols, 'measure_big_name', 'measure_small_name', 'measure_per_big', 'measure_stock_side');
+        }
+        if (rh_stock_drink_ready($pdo)) {
+            $cols[] = 'volume_ml';
+        }
+        return $cols;
+    }
+}
 
 // Dashboard filter (?filter=low): exactly the items the low-stock alert counts (rh_stock_alert_summary 'attention').
 $ingFilter = rh_stock_ingredient_filter_key($_GET['filter'] ?? '');
@@ -306,11 +327,21 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST') {
                         /* A unit change does not convert anything: quantity on hand, batches, cost per
                          * unit, recipe quantities, par/reorder levels and pack sizes would all stay as
                          * numbers in the OLD unit. Only an ingredient with no stock footprint may change it. */
-                        $oldRow = $pdo->prepare("SELECT unit, current_quantity FROM stock_ingredients WHERE id = ? FOR UPDATE");
+                        $staleCols = rh_stock_item_stale_cols($pdo);
+                        $oldRow = $pdo->prepare("SELECT current_quantity, `" . implode('`, `', $staleCols) . "` FROM stock_ingredients WHERE id = ? FOR UPDATE");
                         $oldRow->execute([$editId]);
                         $old = $oldRow->fetch(PDO::FETCH_ASSOC);
                         if (!$old) {
                             throw new RuntimeException('Invalid ingredient.');
+                        }
+                        /* Stale-edit (task 9): refuse when someone else changed this item's form fields since the form was
+                         * opened (checked on the locked row; nothing has been written yet, the catch below rolls back). */
+                        $postedHash = rh_stale_posted();
+                        if ($postedHash === '') {
+                            throw new RuntimeException('This page was opened before a change to how saving works. Reload it and try again.');
+                        }
+                        if (!hash_equals(rh_stale_hash($old, $staleCols), $postedHash)) {
+                            throw new RuntimeException('This stock item was changed by someone else since you opened it, so nothing was saved. Reload the page to see the new details, then make your change again.');
                         }
                         if (mb_strtolower(trim((string)$old['unit'])) !== mb_strtolower(trim($unit))) {
                             $inUse = abs((float)$old['current_quantity']) > 0.00005;
@@ -772,6 +803,7 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach (['id', 'name', 'category', 'unit', 'min_quantity', 'yield_percent', 'notes', 'reorder_point', 'par_level', 'preferred_supplier_id', 'lead_time_days', 'pack_name', 'pack_size', 'pieces_per_unit', 'measure_big_name', 'measure_small_name', 'measure_per_big', 'measure_stock_side', 'volume_ml'] as $keepField) {
             $keep[$keepField] = (string)($_POST[$keepField] ?? '');
         }
+        $keep['_row_hash'] = rh_stale_posted(); // the reopened form carries the POSTED hash, never a fresh one
         $_SESSION['stock_ingredient_form_keep'] = ['action' => (string)$action, 'error' => $error, 'post' => $keep];
     }
     header('Location: stock-ingredients.php' . ($ingFilter !== '' ? '?filter=' . $ingFilter : '')); // back to the same list
@@ -830,7 +862,9 @@ if (!$error || strpos($error, 'Stock tables not yet') === false) {
                 // table not installed on this schema: no history there
             }
         }
+        $staleCols = rh_stock_item_stale_cols($pdo); // the same columns the Save checks
         foreach ($ingredients as &$ingFlagRow) {
+            $ingFlagRow['_row_hash'] = rh_stale_hash($ingFlagRow, $staleCols); // i.* of the base table (no JOIN); read by both Edit buttons
             $hasStockQty = abs((float)$ingFlagRow['current_quantity']) > 0.00005;
             $ingFlagRow['unit_locked'] = $hasStockQty || isset($ingUnitUsed[(int)$ingFlagRow['id']]);
             $ingFlagRow['has_history'] = $hasStockQty || isset($ingHistoryUsed[(int)$ingFlagRow['id']]);
@@ -1230,6 +1264,7 @@ $stockNounLow = $stockIsFood ? 'ingredient' : 'stock item';
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                 <input type="hidden" name="action" id="ing_action" value="add">
                 <input type="hidden" name="id" id="ing_id" value="">
+                <input type="hidden" name="_row_hash" id="ing_row_hash" value="">
                 <fieldset class="ing-section">
                     <legend>Basic details</legend>
                     <div class="ing-grid">
@@ -1838,6 +1873,8 @@ $stockNounLow = $stockIsFood ? 'ingredient' : 'stock item';
                 document.getElementById('ingredientModalTitle').textContent = (isEdit ? 'Edit ' : 'Add ') + '<?php echo $stockNoun; ?>';
                 document.getElementById('ing_action').value = isEdit ? 'update' : 'add';
                 document.getElementById('ing_id').value = data.id || '';
+                // Stale-edit hash of the row as the list loaded it (a refused Save reopens with the hash it posted).
+                document.getElementById('ing_row_hash').value = isEdit ? (data._row_hash || '') : '';
                 document.getElementById('ing_name').value = data.name || '';
                 document.getElementById('ing_category').value = data.category || '';
                 (function () {
@@ -1871,6 +1908,7 @@ $stockNounLow = $stockIsFood ? 'ingredient' : 'stock item';
                 document.getElementById('ingredientModalTitle').textContent = 'Add <?php echo $stockNoun; ?>';
                 document.getElementById('ing_action').value = 'add';
                 document.getElementById('ing_id').value = '';
+                document.getElementById('ing_row_hash').value = '';
                 setIngredientUnitLock(false, 'g');
             }
             ingredientPiecesSync();
