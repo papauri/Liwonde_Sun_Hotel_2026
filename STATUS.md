@@ -38,15 +38,18 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   new default order: upcoming soonest arrival first, history newest first). Tests bookings_filters 357/0,
   booking_created_by 27/0, bookings_bulk 116/0, bookings_list_http --db 656/0 (993/0 vs HEAD baseline), explain: no
   full scan. reviewer-critical PASS (qa-auditor + accounting checklists).
-- Ship B BUILT, UNCOMMITTED (2026-11-24 19:10): admin/bookings.php, admin/css/bookings.css, NEW
-  admin/includes/bookings-saved-filters.php, admin/api/bookings-saved-filters.php, scripts/tests/bookings_saved_filters.php,
-  scripts/tests/fixtures/bookings_list_steps.json; edited tests bookings_filters, bookings_list_http, view_only.
-  Pre-outage proof: saved_filters --db 76/0, view_only 93/0, bookings_filters 357/0, bulk 116/0, pay_state 23/0,
-  help_map 1580/0. Code review (reviewer-critical) running. STILL TO RUN when the Liwonde DB answers: browser
-  B1 (`php -S 127.0.0.1:8010 -t . scripts/tests/dev-router.php` started and stopped in the same call; grep the log for
-  "=> false", [exception], [console.error]; browser_check always exits 0), bookings_list_http --db, saved_filters --db;
-  then cleanup: DELETE FROM admin_user_preferences WHERE preference_key='bookings_saved_filters_v1' AND user_id IN
-  (1,5351) (neither had a row before) + only the activity-log rows id > 14654 written by bookings-saved-filters.
+- Ship B DONE 2026-11-24 (filter bar + quick dates + phone Filters fold, removable chips + Clear all, tab row + More
+  menu, Balance due column + "?" helpers, remembered sort per user per device, pager 10/25/50/All, saved filter sets in
+  admin_user_preferences key bookings_saved_filters_v1 via NEW admin/api/bookings-saved-filters.php). Proof:
+  bookings_list_http --db 723/0, bookings_saved_filters --db 76/0, bookings_filters 357/0, bulk 116/0, view_only 93/0,
+  booking_pay_state 23/0, browser B1 181/181 at 1920/1280/768/390, Balance due exactly once per owing row at every width
+  390-2560, no page side-scroll; test rows cleaned. reviewer-critical PASS.
+- OWNER DECISION OPEN: Balance due column shows only where it fits with 60px spare (measured bands, bookings.css ~3689);
+  1920 with the sidebar open (1343px box) needs 1401px, so the amount shows under the total there and the column header
+  (the only balance sort) is hidden. Showing it needs the older Ref / Check Out drop point moved. Bands were measured on
+  Liwonde data: check Rosalyn's at 1280 / 1920 by eye after the port.
+- LATER: 1025-1395px windows: the table scrolls inside its own box (older); chip x 28px / saved-filter delete 36px with a
+  mouse (44px on touch); two saves at the same instant can get "try again"; 390 "left to pay" cut by Mark paid (older).
 - NEXT: Ship C (T11-T12: embedded timeline), after the calendar PATCH below lands. Each ship ported to Rosalyn's after
   Liwonde passes. Owner 2026-11-24: every piece must work by touch at 390 and 768.
 

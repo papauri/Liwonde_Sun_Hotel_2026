@@ -173,6 +173,8 @@ sequential) -> T8 -> T9 -> T10 -> T12 -> T5 -> B1 -> R1 -> P1. One builder-criti
 T1-T12; ui-builder for T5 + B1.
 
 ## Orchestrator additions (2026-11-24, binding)
+- OWNER 2026-11-24: "make sure all work has mobile UI too": every ship is checked by touch at 390 and 768 (targets
+  >= 40px, no page side-scroll, menus/dialogs fit, embedded calendar uses its phone layout inside the frame).
 - THREE SHIPS, each its own fresh builder-critical, gate, commit, push and port: (A) T1, T1b, T2, T3 (helpers, server
   wiring, CSV); (B) T4, T6, T7, T8, T9, T10, T5 (list UI); (C) T11, T12 (embedded calendar). B1 steps split to match.
 - Existing deep links into bookings.php (grep 2026-11-24 over admin/, includes/, api/): params `action`, `booking_id`,
