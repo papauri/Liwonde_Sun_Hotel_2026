@@ -29,6 +29,12 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: Import step 3 shows items already on the menu + no request bursts (owner PATCH, profile Claude) - Liwonde f3a2bd4 / Rosalyn's 388027a
+- Rows already on the menu at the same price were invisible ("0 of N on the menu"); counts and groups now show them.
+  The import page sends at most 2 requests at once (host answered bursts with HTTP 508). Display only.
+- LATER: the file upload fetch skips the 2-at-once queue; a group where every row is already on the menu still shows
+  the "optional" badge.
+
 ## Shipped 2026-11-25: Import count time + later imports as regular counts (owner "Yes", profile Claude) - Liwonde 088124a / Rosalyn's c645b6f
 - 1) "When was this counted?" date+time on the import: lines use stock at that time (current - stock_adjustments since),
   snapshot_at / counted_at = that time, so sales after the physical count are not lost. 2) Once an approved opening

@@ -100,6 +100,11 @@ when prompted."
   case (e.g. "Email server and sender", "Booking alerts and guest reminders", "Online booking"), one on/off status
   block, solid "Save ..." buttons, SMTP fields two per row. Guide 19-hotel-settings: update card names and screenshots.
 
+- 2026-11-25 Liwonde f3a2bd4 / Rosalyn's 388027a (owner PATCH): Import step 3 "Put on the menu" now reads "X ticked to
+  add or change · Y already on the menu at this price" (was "0 of N on the menu"); each group says how many are
+  already on the menu, and its button says "All already on the menu" when nothing is left to add. Guide 23-import:
+  step 3 wording. Assistant: "why does it say 0 on the menu" = they are already on the menu at that price.
+
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
 ### Whole-group payment receipts show the group total and every room (2026-11-20, owner fault) - Liwonde 7d5c105 / Rosalyn's 3781b20
