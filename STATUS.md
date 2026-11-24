@@ -29,6 +29,12 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## IN PROGRESS 2026-11-25: concurrency guardrails A-E (owner FEATURE "Do all required", profile Claude session 2e30b9f7)
+- Plan + assumptions: `.claude/CONCURRENCY_PLAN.md` (18 tasks + follow-up 19 Hotel Settings). Order: tasks 1+2 (helpers) ->
+  3,4 import | 5 stock count | 6 spec-check -> 7-11 stale-edit pages | 12-14 settings | 15-18 banners. Each task is committed
+  only after its review passes. Check `git log` for which are done. Not touched: the other session's create-booking /
+  booking-settings / email files.
+
 ## Shipped 2026-11-25: Import step 3 shows items already on the menu + no request bursts (owner PATCH, profile Claude) - Liwonde f3a2bd4 / Rosalyn's 388027a
 - Rows already on the menu at the same price were invisible ("0 of N on the menu"); counts and groups now show them.
   The import page sends at most 2 requests at once (host answered bursts with HTTP 508). Display only.
