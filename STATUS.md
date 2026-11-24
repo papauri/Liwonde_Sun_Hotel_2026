@@ -39,9 +39,11 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   written). "Bottle(750ML)" / "Shot(30ML)" read as unit + size. Decimal counts suggest "in bottles". Old layout unchanged.
 - Tests: import_engine_test 699 passed, import_stock_test 277 passed; qa-auditor PASS after one fix round (double
   divide on two-price rows).
-- LATER: per-row list still says "drinks"; a size in a bought-as cell is dropped; two disagreeing prices only noted in
-  the cost note; "in crates" cost note shows code "chosen-pack-price"; old saved shots answers for "Bottle(750ML)"
-  groups are asked again; invented-value check does not cover the served-by unit on "in bottles".
+- Follow-ups shipped (owner "fix the small leftovers") Liwonde a9a3c9c / Rosalyn's f937d03: all six LATER items above
+  fixed (sizes in "Unit Bought As" kept, price-disagree question per item, plain cost note, "items" wording, old saved
+  answers kept, invented-value check on the unit word). import_engine_test 710, import_stock_test 277, qa-auditor PASS.
+- LATER: pack-rule.php new function sits between import_pack_canon and its doc comment; before the price question is
+  answered the cost note already says "your answer"; "Crate (330ML)" with no pack-size column reads 330 ml as the size.
 
 ## Shipped 2026-11-25: Hotel Settings foldable + password lock on VAT / bank / levy / service charge (owner FEATURE, profile Claude)
 - Owner: sections clearly labelled and foldable; high-value settings greyed out, need the password again to edit,

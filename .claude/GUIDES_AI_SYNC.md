@@ -87,6 +87,9 @@ when prompted."
   (each option shows the price it gives); unit cells like "Bottle(750ML)" and "Shot(30ML)" are read with their size; a
   decimal count (2.28) suggests "in bottles". Guide: import stock page (column layouts + this question). Assistant:
   "why does the import ask crates or bottles". Manager Guide: Stock.
+- 2026-11-25 Liwonde a9a3c9c / Rosalyn's f937d03 (owner PATCH): Import, a Case/Pack Price and a Unit Price that disagree
+  ask "Which price is right?" for that item (each option shows the cost it gives); "Bottle(750ML)" in Unit Bought As is
+  read with its size. Guide: import stock page (questions list). Assistant: "the import asks which price is right".
 
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
