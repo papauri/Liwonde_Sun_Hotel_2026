@@ -29,6 +29,19 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-24: Stock Items "Fill from bottle sizes" + "Shots per bottle" column (owner FEATURE, profile Claude)
+- Owner: Rosalyn's ingredients bought as bottles, sold in shots showed "2.28 bottle" (2026-11-21 import saved no count
+  measure). Spec + owner answers: `.claude/STOCK_MEASURE_AUTO_PLAN.md`. Liwonde 2cdb039 / Rosalyn's d089216 (+ docs
+  f039260 / d79e6cd). Button: preview -> tick -> Apply; N = item bottle size / Drink measures list size its menu servings
+  use (rh_smb_n_from_ml rule); new = ticked, different or sold in several measures = unticked, skips say what to set.
+  Tests: stock_measure_auto 49/0, stock_measure_bulk 65/0, stock_count_measures 103/0, stock_qty_words 39/0,
+  stock_list_filters 85/0. qa-auditor FAIL (DB error text in apply JSON) -> fixed -> shipped. Not yet run at Rosalyn's
+  (owner/staff press the button; expect many "No bottle size" skips there).
+- Follow-up PATCH (owner "do as critical"): same DB-error-text fix in the older "Set count measure" apply
+  (admin/includes/stock-measure-bulk-lib.php).
+- Open plan (not started, waits for ClaudeWorkTwo to finish + push): `.claude/HK_MAINT_LAYOUT_PLAN.md` (Housekeeping +
+  Maintenance layout, owner answers recorded).
+
 ## In progress 2026-11-24: bookings list overhaul (owner FEATURE, ClaudeWorkTwo)
 - Owner: "Better sorting and filtering for bookings page and better UI ... add the calendar view too"; owner chose the
   Room Timeline INSIDE the bookings page and "everything else" (saved filter sets, CSV, staff filter). Owner 2026-11-24:
