@@ -1261,6 +1261,11 @@ $stockNounLow = $stockIsFood ? 'ingredient' : 'stock item';
             <form method="POST" id="ingredientForm" data-busy-text="Saving...">
                 <div class="modal-body">
                 <div class="rh-form-error" id="ing_form_error" role="alert" hidden></div>
+                <?php /* "Also open right now" warning, filled by js/edit-presence.js (admin/api/presence.php?editing=stock-ingredients); openIngredientModal / closeModal set the item id. Never blocks saving. */ ?>
+                <div class="cb-presence" data-edit-presence data-key="stock-ingredients" data-id="0" data-endpoint="api/presence.php" role="status" aria-live="polite" hidden>
+                    <strong class="cb-presence__title">Also open right now</strong>
+                    <ul class="cb-presence__list"></ul>
+                </div>
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                 <input type="hidden" name="action" id="ing_action" value="add">
                 <input type="hidden" name="id" id="ing_id" value="">
@@ -1817,6 +1822,7 @@ $stockNounLow = $stockIsFood ? 'ingredient' : 'stock item';
     <?php endif; ?>
     <?php require_once 'includes/admin-footer.php'; ?>
     <script src="js/admin-form-guard.js?v=<?php echo @filemtime(__DIR__ . '/js/admin-form-guard.js'); ?>"></script>
+    <script src="js/edit-presence.js?v=<?php echo (int)@filemtime(__DIR__ . '/js/edit-presence.js'); ?>"></script>
     <script>
         const BATCHES = <?php echo json_encode($batchesByIngredient, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
         const CURRENCY = <?php echo json_encode($currency_symbol); ?>;
@@ -1825,12 +1831,21 @@ $stockNounLow = $stockIsFood ? 'ingredient' : 'stock item';
             document.getElementById(id).classList.add('active');
         }
 
+        // "Also open right now" warning (js/edit-presence.js): follows the item open in the edit modal, 0 = none.
+        function ingPresence(n) {
+            try { if (window.RHEditPresence) window.RHEditPresence.setId(n); } catch (e) { /* warning only */ }
+        }
+
         function closeModal(id) {
             document.getElementById(id).classList.remove('active');
+            if (id === 'ingredientModal') ingPresence(0);
         }
         document.querySelectorAll('.modal-overlay').forEach(m => {
             m.addEventListener('click', e => {
-                if (e.target === m) m.classList.remove('active');
+                if (e.target === m) {
+                    m.classList.remove('active');
+                    if (m.id === 'ingredientModal') ingPresence(0);
+                }
             });
         });
 
@@ -1923,6 +1938,7 @@ $stockNounLow = $stockIsFood ? 'ingredient' : 'stock item';
             }
             ucSync(data && data.id ? data : null);
             openModal('ingredientModal');
+            ingPresence(data && data.id ? data.id : 0); // an Add (no id) has nobody else to warn about
         }
 
         /* Change main unit (Step U3): offered on a saved item with a saved bottle / shot measure. The preview and the

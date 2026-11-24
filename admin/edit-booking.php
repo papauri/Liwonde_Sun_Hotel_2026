@@ -865,6 +865,12 @@ $back_url = 'booking-details.php?id=' . $booking_id;
             </span></div>
         <?php endif; ?>
 
+        <?php /* "Also open right now" warning, filled by js/edit-presence.js (admin/api/presence.php?editing=edit-booking). Never blocks saving. */ ?>
+        <div class="cb-presence" data-edit-presence data-key="edit-booking" data-id="<?php echo (int)$booking_id; ?>" data-endpoint="api/presence.php" role="status" aria-live="polite" hidden>
+            <strong class="cb-presence__title">Also open right now</strong>
+            <ul class="cb-presence__list"></ul>
+        </div>
+
         <div class="edit-form">
             <form method="POST"
                 data-admin-confirm="Save these booking changes?"
@@ -1337,4 +1343,5 @@ $back_url = 'booking-details.php?id=' . $booking_id;
     </script>
 
     <script src="js/admin-components.js"></script>
+    <script src="js/edit-presence.js?v=<?php echo (int)@filemtime(__DIR__ . '/js/edit-presence.js'); ?>"></script>
     <?php require_once 'includes/admin-footer.php'; ?>

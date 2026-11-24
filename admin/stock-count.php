@@ -2137,6 +2137,13 @@ $csrf_token = generateCsrfToken();
                 </div>
             <?php endif; ?>
 
+            <?php /* "Also open right now" warning, filled by js/edit-presence.js (admin/api/presence.php?editing=stock-count). Never blocks saving. */ ?>
+            <div class="cb-presence" data-edit-presence data-key="stock-count" data-id="<?php echo (int)$activeCount['id']; ?>" data-endpoint="api/presence.php" role="status" aria-live="polite" hidden>
+                <strong class="cb-presence__title">Also open right now</strong>
+                <ul class="cb-presence__list"></ul>
+            </div>
+            <script src="js/edit-presence.js?v=<?php echo (int)@filemtime(__DIR__ . '/js/edit-presence.js'); ?>"></script>
+
             <form method="POST" id="countForm">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                 <input type="hidden" name="count_id" value="<?php echo (int)$activeCount['id']; ?>">

@@ -161,6 +161,8 @@
                 if (job) { u.searchParams.set('job', job); } else { u.searchParams.delete('job'); ['q', 'sheet', 'cat', 'status', 'type', 'kind', 'warn', 'cost', 'stock', 'answered', 'sort', 'size', 'page', 'view'].forEach(function (k) { u.searchParams.delete(k); }); }
                 window.history.replaceState(window.history.state, '', u.pathname + u.search);
             } catch (e) { /* ignore */ }
+            // "Also open right now" warning (js/edit-presence.js): follows the open import, 0 = none open.
+            try { if (window.RHEditPresence) { window.RHEditPresence.setId(job || 0); } } catch (e) { /* warning only */ }
         }
         function scrollTo(el) {
             if (!el) { return; }

@@ -795,6 +795,13 @@ $jsV = @filemtime(__DIR__ . '/js/data-import.js');
              data-stock-page="<?php echo htmlspecialchars(import_stock_page_name(), ENT_QUOTES); ?>"
              data-page="data-import.php">
 
+            <?php /* "Also open right now" warning, filled by js/edit-presence.js (admin/api/presence.php?editing=data-import). data-id is set by setUrl() in data-import.js once an import is open. Never blocks anything. */ ?>
+            <div class="cb-presence" data-edit-presence data-key="data-import" data-id="0" data-endpoint="api/presence.php" role="status" aria-live="polite" hidden>
+                <strong class="cb-presence__title">Also open right now</strong>
+                <ul class="cb-presence__list"></ul>
+            </div>
+            <script src="js/edit-presence.js?v=<?php echo (int)@filemtime(__DIR__ . '/js/edit-presence.js'); ?>"></script>
+
             <p class="di-intro">Bring a stock list in from Excel or CSV in four steps. Nothing is saved to your stock until you press Confirm and import on the last step.</p>
 
             <ol class="di-steps" id="diSteps" aria-label="Import steps">
