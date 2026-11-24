@@ -91,6 +91,10 @@ when prompted."
   ask "Which price is right?" for that item (each option shows the cost it gives); "Bottle(750ML)" in Unit Bought As is
   read with its size. Guide: import stock page (questions list). Assistant: "the import asks which price is right".
 
+- 2026-11-25 (owner PATCH, commit "Hotel Settings tidy" in both repos): wording and layout only. Card titles in sentence
+  case (e.g. "Email server and sender", "Booking alerts and guest reminders", "Online booking"), one on/off status
+  block, solid "Save ..." buttons, SMTP fields two per row. Guide 19-hotel-settings: update card names and screenshots.
+
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
 ### Whole-group payment receipts show the group total and every room (2026-11-20, owner fault) - Liwonde 7d5c105 / Rosalyn's 3781b20
