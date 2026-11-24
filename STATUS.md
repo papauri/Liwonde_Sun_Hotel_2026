@@ -90,6 +90,23 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   booking (guarded by the header title) and a mid-run failure leaves it moved: check RBH2026757704 = VILLA 3, 27-29 Nov.
 - Guides: docs/guides/07-reception-bookings.html needs the new filter bar, tabs + More, saved filters, Calendar switch
   and the calendar selection changes (next owner-prompted Guides + Assistant sync).
+## Shipped 2026-11-24: calendar Unblock / Extend / booked count judge off-screen nights (owner PATCH, ClaudeWorkTwo)
+- Owner: "Unblock and Extend on the calendar look only at the dates on screen". Cause: offers + count read only st.data
+  (room-timeline.js 243-255, 1600-1642); calendar-data.php drops nights outside the loaded range.
+- Fix: room-timeline.js pickFacts fetches missing nights from api/calendar-timeline.php (<=31-day windows, cached until
+  st.data changes, late responses dropped); "(checking...)" with Unblock / Extend disabled; failure = "(could not check
+  every night)" + Check again. Unblock sends only a room's own-block nights (confirm names them; others left as is),
+  still via blocked-dates.php grid_apply. Blocked Dates grid: same gap fixed (reads blocked-dates.php?month=, GET only).
+  room-timeline.css: .tl-bulkbar text wraps (overflowed at 390). Unblock now offered only for a room's own block.
+- Proof: grid_select 84/0, calendar_timeline 50/0, actions 56/0, blocked_dates_grid 63/0, ops_timeline 114/0; browser
+  with real API data + injected block, grid_apply intercepted (payload only the own-block nights), bar fits 390/768.
+  The real block -> off-screen unblock round trip did NOT run (permission check refused it); owner chose to ship
+  ("commit now", 2026-11-24). reviewer-critical PASS.
+- LATER: clear st.pickFx in blockSaved / blockPicks (a failed reload keeps old checks); a block split across two loaded
+  ranges gives two Extend items (server merges); off-screen checks do not expire (another tab's change unseen until
+  reload; server re-checks).
+
+## Shipped 2026-11-24: calendar grid PATCH (owner, ClaudeWorkTwo)
 - Owner: clicking a day selects a different day; a selection (e.g. 30 nights) is lost on next days / next month so it
   cannot be extended. Cause proven: the hit test divided pointer px by JS dayW, but the portal display size zooms the
   page with CSS zoom (admin/css/page-zoom.css:8; tablets default 60%): at 90% 18/28 clicks wrong, at 60% 27/28.
