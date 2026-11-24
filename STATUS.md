@@ -38,11 +38,34 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   new default order: upcoming soonest arrival first, history newest first). Tests bookings_filters 357/0,
   booking_created_by 27/0, bookings_bulk 116/0, bookings_list_http --db 656/0 (993/0 vs HEAD baseline), explain: no
   full scan. reviewer-critical PASS (qa-auditor + accounting checklists).
-- NEXT: Ship B (T4-T10 + T5: filter bar + chips, tabs + More menu, Balance due column on screen, sort memory, saved
-  filter sets), then Ship C (T11-T12: embedded timeline). Each ported to Rosalyn's after Liwonde passes.
-- LATER: tentative rows owing show Balance due though `rh_receivable_status_sql` leaves tentative out; cancelled +
-  refunded but still owing shows the due (follows the badge); bookings_list_http.php deletes all admin activity-log
-  rows written during its run; company-billed "company owes" note; made-by filter cannot pick deleted staff accounts.
+- Ship B BUILT, UNCOMMITTED (2026-11-24 19:10): admin/bookings.php, admin/css/bookings.css, NEW
+  admin/includes/bookings-saved-filters.php, admin/api/bookings-saved-filters.php, scripts/tests/bookings_saved_filters.php,
+  scripts/tests/fixtures/bookings_list_steps.json; edited tests bookings_filters, bookings_list_http, view_only.
+  Pre-outage proof: saved_filters --db 76/0, view_only 93/0, bookings_filters 357/0, bulk 116/0, pay_state 23/0,
+  help_map 1580/0. Code review (reviewer-critical) running. STILL TO RUN when the Liwonde DB answers: browser
+  B1 (`php -S 127.0.0.1:8010 -t . scripts/tests/dev-router.php` started and stopped in the same call; grep the log for
+  "=> false", [exception], [console.error]; browser_check always exits 0), bookings_list_http --db, saved_filters --db;
+  then cleanup: DELETE FROM admin_user_preferences WHERE preference_key='bookings_saved_filters_v1' AND user_id IN
+  (1,5351) (neither had a row before) + only the activity-log rows id > 14654 written by bookings-saved-filters.
+- NEXT: Ship C (T11-T12: embedded timeline), after the calendar PATCH below lands. Each ship ported to Rosalyn's after
+  Liwonde passes. Owner 2026-11-24: every piece must work by touch at 390 and 768.
+
+## Shipped 2026-11-24: calendar grid PATCH (owner, ClaudeWorkTwo)
+- Owner: clicking a day selects a different day; a selection (e.g. 30 nights) is lost on next days / next month so it
+  cannot be extended. Cause proven: the hit test divided pointer px by JS dayW, but the portal display size zooms the
+  page with CSS zoom (admin/css/page-zoom.css:8; tablets default 60%): at 90% 18/28 clicks wrong, at 60% 27/28.
+- Fix: night under the pointer read from the drawn grid (room-timeline-select.js colOf / colsMoved; room-timeline.js
+  dayUnder / nightsMoved for move, nights handles, block extend; room-timeline-ops.js job extend); selection kept across
+  ranges / months; Shift-click, Shift+Arrow and long press ADD and grow the room's own run; room-name / day-head clicks
+  set the anchor; long press adds the pressed night and no longer runs a menu item on lift (admin-context-menu.js);
+  Blocked Dates keeps the Shift anchor across months; the bar names off-screen nights. Calendar, Blocked Dates,
+  Housekeeping, Maintenance.
+- Proof: grid_select_test 68/0, calendar_timeline 50/0, actions 56/0, ops_timeline 114/0, blocked_dates_grid 63/0;
+  browser clicks at 60/80/90/100% 112/0 wrong; owner's 30 nights -> next month -> Shift-click case + touch 390/768;
+  one real Liwonde block across two months 0 -> 7 rows -> 0. reviewer-critical PASS after one fix round.
+- LATER: Unblock / Extend / booked count use only on-screen dates (server preview still checks Block); where() merges
+  nights over 3 rooms; stale Blocked Dates anchor after a save; long-press lift moved >10px not swallowed; iPad Safari
+  zoom unchecked.
 
 ## Shipped 2026-11-24: Guides + Assistant sync (owner prompted, ClaudeWorkOne)
 - Every Pending entry in `.claude/GUIDES_AI_SYNC.md` (2026-11-20 to 2026-11-24) is now in "Synced 2026-11-24";
