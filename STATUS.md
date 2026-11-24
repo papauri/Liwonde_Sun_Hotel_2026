@@ -42,7 +42,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Open plan (not started, waits for ClaudeWorkTwo to finish + push): `.claude/HK_MAINT_LAYOUT_PLAN.md` (Housekeeping +
   Maintenance layout, owner answers recorded).
 
-## In progress 2026-11-24: bookings list overhaul (owner FEATURE, ClaudeWorkTwo)
+## Shipped 2026-11-24: bookings list overhaul (owner FEATURE, ClaudeWorkTwo)
 - Owner: "Better sorting and filtering for bookings page and better UI ... add the calendar view too"; owner chose the
   Room Timeline INSIDE the bookings page and "everything else" (saved filter sets, CSV, staff filter). Owner 2026-11-24:
   a new table is fine on both hotels (not needed: saved sets use `admin_user_preferences`).
@@ -57,16 +57,26 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   bookings_list_http --db 723/0, bookings_saved_filters --db 76/0, bookings_filters 357/0, bulk 116/0, view_only 93/0,
   booking_pay_state 23/0, browser B1 181/181 at 1920/1280/768/390, Balance due exactly once per owing row at every width
   390-2560, no page side-scroll; test rows cleaned. reviewer-critical PASS.
-- OWNER DECISION OPEN: Balance due column shows only where it fits with 60px spare (measured bands, bookings.css ~3689);
+- OWNER DECIDED 2026-11-24 ("yes move the ref and check out columns earlier"), being built with Ship C: Balance due column shows only where it fits with 60px spare (measured bands, bookings.css ~3689);
   1920 with the sidebar open (1343px box) needs 1401px, so the amount shows under the total there and the column header
   (the only balance sort) is hidden. Showing it needs the older Ref / Check Out drop point moved. Bands were measured on
   Liwonde data: check Rosalyn's at 1280 / 1920 by eye after the port.
 - LATER: 1025-1395px windows: the table scrolls inside its own box (older); chip x 28px / saved-filter delete 36px with a
   mouse (44px on touch); two saves at the same instant can get "try again"; 390 "left to pay" cut by Mark paid (older).
-- NEXT: Ship C (T11-T12: embedded timeline), after the calendar PATCH below lands. Each ship ported to Rosalyn's after
-  Liwonde passes. Owner 2026-11-24: every piece must work by touch at 390 and 768.
-
-## Shipped 2026-11-24: calendar grid PATCH (owner, ClaudeWorkTwo)
+- Ship C DONE 2026-11-24: List | Calendar switch on bookings.php shows the existing Room Timeline in a lazy same-origin
+  iframe of calendar.php?embed=1 (header/nav/SW/Assistant/global search dropped in embed, CSRF + Alert kept, every exit
+  to the top window, sign-out -> login.php?redirect=bookings.php?view=calendar, sw.js skips embed pages, List reloads
+  after a change in the frame, ?view=calendar kept on refresh/Back, mapped filters room type / room / In house etc.,
+  "list only" note for the rest). Owner column decision built: Ref + Check Out drop up to a 1462px box so Balance due
+  is a column at 1920 with the sidebar open. Proof: bookings_filters 388/0, calendar_timeline 50/0, actions 56/0,
+  ops_timeline 114/0, grid_select 68/0, calendar fixture 83 evals 0 fail at 1920/1280/768 touch/390 touch, list fixture
+  181/181, width sweep Balance due once; one Liwonde booking moved and moved back (DB checked). reviewer-critical PASS
+  after one inline fix (44px switch, no global search in the frame).
+- LATER (Ship C): tablet at 60% display size gets the 14-day desktop timeline in the frame; presence ping ignores
+  activity inside the frame; offline load of the frame goes to login; calendar fixture step 42 moves a real Liwonde
+  booking (guarded by the header title) and a mid-run failure leaves it moved: check RBH2026757704 = VILLA 3, 27-29 Nov.
+- Guides: docs/guides/07-reception-bookings.html needs the new filter bar, tabs + More, saved filters, Calendar switch
+  and the calendar selection changes (next owner-prompted Guides + Assistant sync).
 - Owner: clicking a day selects a different day; a selection (e.g. 30 nights) is lost on next days / next month so it
   cannot be extended. Cause proven: the hit test divided pointer px by JS dayW, but the portal display size zooms the
   page with CSS zoom (admin/css/page-zoom.css:8; tablets default 60%): at 90% 18/28 clicks wrong, at 60% 27/28.
