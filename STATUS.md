@@ -35,6 +35,11 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   only after its review passes. Check `git log` for which are done. Not touched: the other session's create-booking /
   booking-settings / email files.
 
+## Shipped 2026-11-25: email templates - no fixed quote note, automatic plain text, tag glossary, payment policy (owner FEATURE + PATCH, profile Claude) - Liwonde f845c7e / Rosalyn's 3df06db
+- Cause of "payment is due upon arrival" in a Rosalyn's quotation: a fixed note in create-booking.php's automatic quotation, not a template. Removed; staff type the note.
+- Plain text made from the HTML when text_body is empty; tag glossary per template; Payment policy box in Booking Settings (Cancellation card) + {{payment_policy}} tag.
+- LATER: a policy with line breaks puts `<br />` into subjects that use the tag; plain-text link text runs into the next block; no change-log label for payment_policy.
+
 ## Shipped 2026-11-25: Import step 3 shows items already on the menu + no request bursts (owner PATCH, profile Claude) - Liwonde f3a2bd4 / Rosalyn's 388027a
 - Rows already on the menu at the same price were invisible ("0 of N on the menu"); counts and groups now show them.
   The import page sends at most 2 requests at once (host answered bursts with HTTP 508). Display only.

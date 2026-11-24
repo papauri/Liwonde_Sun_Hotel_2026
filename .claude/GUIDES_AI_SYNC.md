@@ -104,6 +104,15 @@ when prompted."
   add or change · Y already on the menu at this price" (was "0 of N on the menu"); each group says how many are
   already on the menu, and its button says "All already on the menu" when nothing is left to add. Guide 23-import:
   step 3 wording. Assistant: "why does it say 0 on the menu" = they are already on the menu at that price.
+- 2026-11-25 Liwonde f845c7e / Rosalyn's 3df06db (owner FEATURE + PATCH): (1) Create Booking's automatic quotation no
+  longer adds "Payment is due upon arrival. Please bring this quotation with you."; the quotation note is only what
+  staff type. (2) Plain text: when a template's plain-text box is empty, the plain version is made from the email
+  itself (never saved); the editor shows a plain-text preview; PDF/document templates have no plain-text box. (3) Every
+  template in Email Templates lists its tags, grouped, with what each one means. (4) New "Payment policy" box in
+  Booking Settings > Cancellation card (up to 1000 characters) and a {{payment_policy}} tag for any email template;
+  when set it replaces the built-in "Payment will be made at the hotel upon arrival..." line in the emails.
+  Guides: 05/booking settings (payment policy), email templates page (tag list, plain text). Assistant: "where do I
+  set the payment policy" / "which tag do I use" / "where does the quotation note come from" (typed by staff).
 
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
