@@ -1,6 +1,8 @@
 # Fill count measures from bottle sizes + "Shots per bottle" column (FEATURE, owner 2026-11-24)
 
-Status: IN BUILD (started 2026-11-24, profile Claude). Liwonde first, then port to Rosalyn's (code only).
+Status: SHIPPED 2026-11-24: Liwonde 2cdb039, Rosalyn's d089216 (port). Change after the spec: an item sold in more than
+one measure is decided in the smallest but its row starts UNTICKED with "Also sold as ... check before ticking".
+LATER: stock-measure-bulk-lib.php:476 (Set count measure apply) shows raw exception text like the one fixed here.
 
 ## Owner words (2026-11-24)
 - Asked: "Why isn't the ingredients table for rosalyns showing the shot count per bottle if the ingredients are bought as
