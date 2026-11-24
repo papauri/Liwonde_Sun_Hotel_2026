@@ -31,6 +31,19 @@ are used):
   (~744) onto `import_cont_save`.
 - Q3 Hotel Settings (`admin/booking-settings.php`): follow-up task 19, once the other session releases the file.
 
+SPEC-CHECK AMENDMENTS (task 6 verdict 2026-11-25; these override rows 7-11 wherever they differ):
+- Task 7: name the editor from the latest `booking_audit_log` row that changed a HASHED field, not simply the latest row
+  (that can be someone else's payment).
+- Task 8: build the menu hash from the raw DB rows (~menu-management.php:633), never from the float-formatted price (~706).
+- Task 9: the stock-item test POST to update is `scripts/tests/stock_count_measures_child.php:245`, not the parent test.
+- Task 10: leave `image_url` OUT of the hash, because `admin/api/room-pictures.php:379` and `:493` write it from the edit
+  window (room-management.php:1861, 1869, 1948). Its replies then do not need a hash. `rooms_available` follows Q1 (c): post
+  the loaded value and write it only when the posted value differs from the loaded one. `rm_validate_room_input` (~244)
+  validates against the stored value when it is kept.
+- Task 11: there is a third opener, `_irMemberRooms` (individual-rooms.php ~2453, used at ~3112). Add the hash there, or
+  edits of joined-pair member rooms are always refused. `set_children_override` (1068-1082) updates BOTH rooms of a pair
+  without a reload (2996-3004): return one hash per room id, and have the JS store each one on its room's data.
+
 ## Shared rules for every builder (read once)
 - Stale-edit hash = md5 of the form's own columns from a PLAIN read of the base table (never a JOIN row: the edit-booking
   load at `admin/edit-booking.php:48-57` aliases `ir.id as individual_room_id`). The same column list and the same helper are
