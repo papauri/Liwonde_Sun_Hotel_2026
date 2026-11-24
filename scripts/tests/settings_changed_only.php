@@ -2,8 +2,9 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit("CLI only.\n"); } // never runnable over the web
 /**
  * settings_changed_only.php - settings forms save only what the person changed (concurrency guardrails 12-14,
- * includes/settings-save-changed.php; pages: Automated Emails, WhatsApp settings, Facebook settings).
- *   php scripts/tests/settings_changed_only.php [--page=helper|automated-emails|whatsapp|facebook|social]
+ * includes/settings-save-changed.php; pages: Automated Emails, WhatsApp settings, Facebook settings; task 19a: Hotel
+ * Settings -> Hotel details & policies and Review sources).
+ *   php scripts/tests/settings_changed_only.php [--page=helper|automated-emails|whatsapp|facebook|social|hotel-settings]
  * Liwonde (the test platform) only. Helper cases run on the app $pdo inside a transaction that is rolled back;
  * page cases run in page_harness.php (one never-committing transaction). Nothing is sent: no test/send action is
  * posted, and the Facebook "connect" case stops at the conflict before any Facebook address.
@@ -133,7 +134,22 @@ if ($want('helper')) {
 // ── Page harness helpers ──────────────────────────────────────────────────────
 function harness(string $page, array $cfg): array {
     global $h;
-    $cmd = 'php ' . escapeshellarg($h) . ' ' . escapeshellarg($page) . ' ' . escapeshellarg(base64_encode(json_encode($cfg))) . ' 2>&1';
+    $enc = base64_encode(json_encode($cfg));
+    $cfgFile = '';
+    if (strlen($enc) > 6000) { // a whole Hotel details form is longer than the Windows command line allows: pass it in a file
+        $cfgFile = (string)tempnam(sys_get_temp_dir(), 'scc');
+        file_put_contents($cfgFile, $enc);
+        $enc = '@' . $cfgFile;
+    }
+    try {
+        return harness_run($page, $enc);
+    } finally {
+        if ($cfgFile !== '') { @unlink($cfgFile); }
+    }
+}
+function harness_run(string $page, string $enc): array {
+    global $h;
+    $cmd = 'php ' . escapeshellarg($h) . ' ' . escapeshellarg($page) . ' ' . escapeshellarg($enc) . ' 2>&1';
     $out = shell_exec($cmd);
     if (trim((string)$out) === '') { usleep(500000); $out = shell_exec($cmd); }
     // Every harness run first locks the same two site_settings rows (page_harness.php line 106), so a run started while
@@ -149,8 +165,11 @@ function harness(string $page, array $cfg): array {
     } }
     return ['error' => 'no result', 'raw' => substr((string)$out, -400), 'rolled_back' => false];
 }
-/** The posted fields of the form holding _settings_base, as a browser would send them (csrf left to the harness). */
-function form_post(string $html): array {
+/**
+ * The posted fields of the form holding _settings_base (or the hidden input named $marker, for a page with several
+ * such forms), as a browser would send them (csrf left to the harness).
+ */
+function form_post(string $html, string $marker = '_settings_base'): array {
     if ($html === '') { return []; }
     $doc = new DOMDocument();
     $prev = libxml_use_internal_errors(true);
@@ -158,7 +177,7 @@ function form_post(string $html): array {
     libxml_clear_errors();
     libxml_use_internal_errors($prev);
     $xp = new DOMXPath($doc);
-    $form = $xp->query('//input[@name="_settings_base"]')->item(0);
+    $form = $xp->query('//input[@name="' . $marker . '"]')->item(0);
     while ($form && strtolower($form->nodeName) !== 'form') { $form = $form->parentNode; }
     if (!$form) { return []; }
     $post = [];
@@ -189,13 +208,15 @@ function form_post(string $html): array {
     }
     return $post;
 }
-/** GET render (rolled back): [result, html, posted fields, base map]. */
-function render(string $page, array $setup): array {
+/** GET render (rolled back): [result, html, posted fields, base map]. $marker: see form_post(); $session: extra session state. */
+function render(string $page, array $setup, string $marker = '_settings_base', array $session = []): array {
     $file = tempnam(sys_get_temp_dir(), 'scs');
-    $r = harness($page, ['method' => 'GET', 'setup' => $setup, 'dump_html' => $file]);
+    $cfg = ['method' => 'GET', 'setup' => $setup, 'dump_html' => $file];
+    if ($session) { $cfg['session'] = $session; }
+    $r = harness($page, $cfg);
     $html = (string)@file_get_contents($file);
     @unlink($file);
-    $post = form_post($html);
+    $post = form_post($html, $marker);
     return [$r, $html, $post, rh_settings_base_parse($post['_settings_base'] ?? null)];
 }
 function flash(array $r): string { return strtolower(implode(' | ', $r['output_flash'] ?? [])); }
@@ -353,6 +374,162 @@ if ($want('facebook')) {
         ok('Facebook: Connect with a refused setting shows the refusal and stops before Facebook', is_array($fl) && ($fl['type'] ?? '') === 'error'
             && stripos((string)($fl['msg'] ?? ''), 'not saved') !== false && (kv($r)['facebook_default_hashtags'] ?? '') === '#other', json_encode($fl) . json_encode($r['raw'] ?? ''));
         ok('Facebook: connect run rolled back', $clean($r));
+    }
+}
+
+// ── Hotel Settings (task 19a): Hotel details & policies + Review sources on admin/booking-settings.php ─────────────
+// Only these two forms are posted here (the rest of the page is task 19b). The password lock on bank details and the
+// restaurant service charge (includes/settings-lock.php) is checked before "save only what changed".
+if ($want('hotel-settings')) {
+    require_once $root . '/admin/includes/permissions.php';
+    require_once $root . '/admin/includes/hotel-details-settings.php';
+    echo "== Hotel Settings: money values compared as numbers (helper, rolled back) ==\n";
+    // VAT is saved on the accounting dashboard and the levy on this page's own form (task 19b): their keys are proven here.
+    $pdo->beginTransaction();
+    try {
+        foreach (sql_set(['vat_rate' => '16.50', 'tourism_levy_percent' => '1.00']) as $q) { $pdo->exec($q); }
+        $mSpec = ['vat_rate' => '0', 'tourism_levy_percent' => '0'];
+        $mb = rh_settings_base_map($pdo, $mSpec);
+        $dec = static function (string $k, string $v) use ($pdo, &$mb, $mSpec) { return rh_settings_base_decide($pdo, $mb, $k, $v, $mSpec[$k])['outcome']; };
+        ok('VAT rate 16.50 stored, 16.5 typed -> no change', $dec('vat_rate', '16.5') === 'skip' && $dec('vat_rate', '16.500') === 'skip');
+        ok('VAT rate 16.50 stored, 17 typed -> written', $dec('vat_rate', '17') === 'write');
+        ok('Tourism levy 1.00 stored, 1 typed -> no change; 1.5 -> written', $dec('tourism_levy_percent', '1') === 'skip' && $dec('tourism_levy_percent', '1.5') === 'write');
+        $pdo->exec(sql_set(['vat_rate' => '16.5'])[0]);
+        ok('VAT rate re-stored as 16.5 by someone else (same number) -> 17 still written, no conflict', $dec('vat_rate', '17') === 'write');
+        $pdo->exec(sql_set(['vat_rate' => '18'])[0]);
+        ok('VAT rate changed to 18 by someone else -> 17 refused', $dec('vat_rate', '17') === 'conflict');
+    } finally {
+        $pdo->rollBack();
+    }
+
+    $bs = 'admin/booking-settings.php';
+    $hdS0kv = ['restaurant_tagline' => 'ZZ tag 0', 'restaurant_receipt_footer' => 'ZZ foot 0', 'restaurant_service_charge_pct' => '5.50',
+        'bank_name' => 'ZZ Bank', 'bank_account_number' => '0012345', 'reviews_google_place_id' => 'ChIJzzSeed000001'];
+    $hdKeys = array_keys($hdS0kv);
+    $s0 = sql_set($hdS0kv);
+    $hAdmin = (int)$pdo->query("SELECT id FROM admin_users WHERE is_active = 1 AND role = 'admin' ORDER BY id LIMIT 1")->fetchColumn(); // the harness user
+    $unlock = static function (array $groups) use ($hAdmin): array {
+        $o = [];
+        foreach ($groups as $gname) { $o[$gname] = ['uid' => $hAdmin, 'exp' => time() + 600]; }
+        return ['rh_settings_lock' => $o];
+    };
+    $hdWatch = ["SELECT setting_key, setting_value FROM site_settings WHERE setting_key IN (" . sql_in($hdKeys) . ")",
+        "SELECT details FROM admin_activity_log WHERE action = 'setting_change' AND id > (SELECT MAX(id) FROM admin_activity_log WHERE action = 'zz_scs_marker')",
+        "SELECT MD5(COALESCE((SELECT setting_value FROM site_settings WHERE setting_key = 'reviews_google_places_key'), '')) h"]; // the key itself is never read out
+    $hdRun = static function (array $post, array $setup = [], array $session = []) use ($bs, $s0, $hdWatch): array {
+        unset($post['test_review_sources']); // never the live connection test
+        $cfg = ['post' => $post, 'setup' => array_merge($s0, $setup, [SCS_MARKER]), 'verify' => $hdWatch];
+        if ($session) { $cfg['session'] = $session; }
+        return harness($bs, $cfg);
+    };
+    $nChg = static function (array $r): int { return isset($r['verify'][1]) && is_array($r['verify'][1]) ? count($r['verify'][1]) : -1; };
+    $chgList = static function (array $r): string { return json_encode(array_column((array)($r['verify'][1] ?? []), 'details')); };
+    $same = static function (array $r, array $keys) use ($hdS0kv): bool {
+        $now = kv($r);
+        foreach ($keys as $k) { if (($now[$k] ?? null) !== $hdS0kv[$k]) { return false; } }
+        return true;
+    };
+
+    echo "== Hotel Settings: Hotel details & policies (admin/booking-settings.php) ==\n";
+    [$g, $html, $form, $base] = render($bs, $s0, 'save_hotel_details');
+    ok('Hotel details: form renders the opened-with copy', is_array($base) && isset($form['save_hotel_details']), json_encode($g['error'] ?? $g['raw'] ?? '') . ' bytes=' . strlen($html));
+    if (is_array($base)) {
+        ok('Hotel details: form shows the stored value (not a stale cached one)', ($form['restaurant_tagline'] ?? null) === 'ZZ tag 0' && ($form['restaurant_receipt_footer'] ?? null) === 'ZZ foot 0', json_encode([$form['restaurant_tagline'] ?? null, $form['restaurant_receipt_footer'] ?? null]));
+        ok('Hotel details: locked bank and service charge fields are not posted without an unlock', !isset($form['bank_name']) && !isset($form['restaurant_service_charge_pct']));
+        ok('Hotel details: every field the save decides is in the copy', !array_diff(array_keys(rh_hotel_details_base_spec()), array_keys($base)), json_encode(array_values(array_diff(array_keys(rh_hotel_details_base_spec()), array_keys($base)))));
+
+        // 1. skip: the whole form posted as opened.
+        $r = $hdRun($form);
+        ok('Hotel details: unchanged form -> "No changes to save", no setting_change row, nothing changed', strpos(flash($r), 'no changes to save') !== false && $nChg($r) === 0
+            && $same($r, $hdKeys), flash($r) . ' changed=' . $chgList($r) . ' ' . json_encode($r['raw'] ?? ''));
+        ok('Hotel details: unchanged run rolled back', $clean($r));
+
+        // 2. write: someone else changed the tagline; this person changed only the receipt footer.
+        $r = $hdRun(array_merge($form, ['restaurant_receipt_footer' => 'ZZ foot mine']), sql_set(['restaurant_tagline' => 'ZZ tag other']));
+        $now = kv($r);
+        ok('Hotel details: other changed tagline, person changed footer -> footer saved, tagline kept', ($now['restaurant_tagline'] ?? null) === 'ZZ tag other'
+            && ($now['restaurant_receipt_footer'] ?? null) === 'ZZ foot mine' && strpos(flash($r), '1 setting(s) saved') !== false && strpos(flash($r), 'not saved') === false
+            && $nChg($r) === 1, flash($r) . ' ' . json_encode($now) . ' changed=' . $chgList($r));
+
+        // 3. conflict: both changed the tagline.
+        $r = $hdRun(array_merge($form, ['restaurant_tagline' => 'ZZ tag mine', 'restaurant_receipt_footer' => 'ZZ foot mine']),
+            array_merge(sql_set(['restaurant_tagline' => 'ZZ tag other']), [other_log('restaurant_tagline', 'ZZ tag 0', 'ZZ tag other')]));
+        $now = kv($r);
+        ok('Hotel details: both changed tagline -> refused naming zz_other at 20 Nov 2026 09:15; footer still saved', ($now['restaurant_tagline'] ?? null) === 'ZZ tag other'
+            && ($now['restaurant_receipt_footer'] ?? null) === 'ZZ foot mine' && strpos(flash($r), 'not saved: restaurant tagline was changed by zz_other at 20 nov 2026 09:15') !== false
+            && strpos(flash($r), 'your other changes were saved (1 setting(s))') !== false, flash($r) . ' ' . json_encode($now));
+
+        // 4. no_base: no copy, a broken copy, a copy missing the footer -> the whole save refused.
+        $noBase = $form; unset($noBase['_settings_base']);
+        $partial = $base; unset($partial['restaurant_receipt_footer']);
+        foreach (['no copy' => $noBase, 'broken copy' => array_merge($form, ['_settings_base' => '{"x":"y"}']),
+                  'copy without one setting' => array_merge($form, ['_settings_base' => json_encode($partial)])] as $lbl => $p) {
+            $r = $hdRun(array_merge($p, ['restaurant_tagline' => 'ZZ tag mine', 'restaurant_receipt_footer' => 'ZZ foot mine']));
+            ok("Hotel details: $lbl -> reload message, nothing saved", strpos(flash($r), 'reload it and try again') !== false && $same($r, $hdKeys) && $nChg($r) === 0,
+                flash($r) . ' changed=' . $chgList($r));
+        }
+
+        // 5. Locked money keys: the lock check comes first (even with no copy, or a copy someone else made stale).
+        $r = $hdRun(array_merge($noBase, ['bank_name' => 'ZZ Bank mine', 'restaurant_tagline' => 'ZZ tag mine']));
+        ok('Hotel details: bank name without unlock and no copy -> unlock message (not reload), nothing saved', strpos(flash($r), 'unlock the bank') !== false
+            && strpos(flash($r), 'reload it') === false && $same($r, $hdKeys) && $nChg($r) === 0, flash($r) . ' changed=' . $chgList($r));
+        $r = $hdRun(array_merge($form, ['restaurant_service_charge_pct' => '6', 'restaurant_tagline' => 'ZZ tag mine']),
+            array_merge(sql_set(['restaurant_tagline' => 'ZZ tag other']), [other_log('restaurant_tagline', 'ZZ tag 0', 'ZZ tag other')]));
+        $now = kv($r);
+        ok('Hotel details: service charge without unlock, stale copy -> unlock message (not the conflict), nothing saved', strpos(flash($r), 'unlock the restaurant service charge') !== false
+            && strpos(flash($r), 'changed by') === false && ($now['restaurant_service_charge_pct'] ?? null) === '5.50' && ($now['restaurant_tagline'] ?? null) === 'ZZ tag other'
+            && $nChg($r) === 0, flash($r) . ' ' . json_encode($now));
+
+        // 6. Unlocked money fields: numbers compared as numbers, bank text compared trimmed, leading zeros kept.
+        $ul = $unlock(['bank', 'service_charge']);
+        [$gU, , $formU, $baseU] = render($bs, $s0, 'save_hotel_details', $ul);
+        ok('Hotel details (unlocked): bank and service charge fields are in the form and the copy', isset($formU['bank_name'], $formU['restaurant_service_charge_pct'], $formU['bank_account_number'])
+            && is_array($baseU) && isset($baseU['restaurant_service_charge_pct'], $baseU['bank_name']), json_encode(array_keys($formU)));
+        if (is_array($baseU)) {
+            $r = $hdRun($formU, [], $ul);
+            ok('Hotel details (unlocked): unchanged -> no change, 5.50 and 0012345 kept exactly', strpos(flash($r), 'no changes to save') !== false && $same($r, $hdKeys) && $nChg($r) === 0,
+                flash($r) . ' shown=' . json_encode($formU['restaurant_service_charge_pct']) . ' changed=' . $chgList($r));
+            $r = $hdRun(array_merge($formU, ['restaurant_service_charge_pct' => '5.5', 'bank_name' => ' ZZ Bank ']), [], $ul);
+            ok('Hotel details (unlocked): service charge 5.5 typed over 5.50, bank name with spaces -> no change, stored values kept', strpos(flash($r), 'no changes to save') !== false
+                && $same($r, $hdKeys) && $nChg($r) === 0, flash($r) . ' changed=' . $chgList($r));
+            $r = $hdRun(array_merge($formU, ['bank_account_number' => '12345']), [], $ul);
+            $now = kv($r);
+            ok('Hotel details (unlocked): account 0012345 -> 12345 is a real change (leading zeros count), saved', ($now['bank_account_number'] ?? null) === '12345'
+                && strpos(flash($r), '1 setting(s) saved') !== false && $nChg($r) === 1, flash($r) . ' ' . json_encode($now));
+            $r = $hdRun(array_merge($formU, ['restaurant_service_charge_pct' => '6']), sql_set(['restaurant_service_charge_pct' => '5.5']), $ul);
+            $now = kv($r);
+            ok('Hotel details (unlocked): service charge re-stored as 5.5 by someone else (same number) -> 6 saved, no conflict', ($now['restaurant_service_charge_pct'] ?? null) === '6'
+                && strpos(flash($r), 'not saved') === false && $nChg($r) === 1, flash($r) . ' ' . json_encode($now));
+            $r = $hdRun(array_merge($formU, ['restaurant_service_charge_pct' => '6']), array_merge(sql_set(['restaurant_service_charge_pct' => '7']),
+                [other_log('restaurant_service_charge_pct', '5.50', '7')]), $ul);
+            $now = kv($r);
+            ok('Hotel details (unlocked): service charge changed to 7 by someone else -> 6 refused naming zz_other, 7 kept', ($now['restaurant_service_charge_pct'] ?? null) === '7'
+                && strpos(flash($r), 'changed by zz_other at 20 nov 2026 09:15') !== false && $nChg($r) === 0, flash($r) . ' ' . json_encode($now));
+            ok('Hotel details (unlocked): runs rolled back', $clean($r));
+        }
+    }
+
+    echo "== Hotel Settings: Review sources (admin/booking-settings.php) ==\n";
+    [$g, $html, $rform, $rbase] = render($bs, $s0, 'save_review_sources');
+    ok('Review sources: form renders the opened-with copy (Place ID only, never an API key)', is_array($rbase) && array_keys($rbase) === ['reviews_google_place_id']
+        && ($rform['google_place_id'] ?? null) === 'ChIJzzSeed000001', json_encode([$rbase, $rform['google_place_id'] ?? null, $g['error'] ?? $g['raw'] ?? '']));
+    if (is_array($rbase)) {
+        $r = $hdRun($rform);
+        ok('Review sources: unchanged -> "No changes to save", nothing written', strpos(flash($r), 'no changes to save') !== false && $same($r, $hdKeys) && $nChg($r) === 0,
+            flash($r) . ' changed=' . $chgList($r));
+        $keyHash = (string)($r['verify'][2][0]['h'] ?? '');
+        $r = $hdRun(array_merge($rform, ['google_place_id' => 'ChIJzzMine0000001']));
+        ok('Review sources: Place ID changed -> saved', (kv($r)['reviews_google_place_id'] ?? null) === 'ChIJzzMine0000001' && strpos(flash($r), 'place id saved') !== false
+            && $nChg($r) === 1, flash($r));
+        $r = $hdRun(array_merge($rform, ['google_place_id' => 'ChIJzzMine0000001']),
+            array_merge(sql_set(['reviews_google_place_id' => 'ChIJzzOther000001']), [other_log('reviews_google_place_id', 'ChIJzzSeed000001', 'ChIJzzOther000001')]));
+        ok('Review sources: both changed Place ID -> refused naming zz_other at 20 Nov 2026 09:15', (kv($r)['reviews_google_place_id'] ?? null) === 'ChIJzzOther000001'
+            && strpos(flash($r), 'not saved: google place id was changed by zz_other at 20 nov 2026 09:15') !== false && $nChg($r) === 0, flash($r));
+        $rNo = $rform; unset($rNo['_settings_base']);
+        $r = $hdRun(array_merge($rNo, ['google_place_id' => 'ChIJzzMine0000001', 'google' => 'ZZDUMMYKEYzz0123456789abcdef'])); // made-up key, never sent anywhere allow-secret
+        ok('Review sources: no copy -> reload message; neither the Place ID nor a typed key is saved', strpos(flash($r), 'reload it and try again') !== false
+            && strpos(flash($r), 'key saved') === false && $same($r, $hdKeys) && (string)($r['verify'][2][0]['h'] ?? '') === $keyHash && $keyHash !== '' && $nChg($r) === 0, flash($r));
+        ok('Review sources: runs rolled back', $clean($r));
     }
 }
 

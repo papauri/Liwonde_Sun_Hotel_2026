@@ -20,7 +20,11 @@
  * and when it is saved, so "no row" reads the same both times.
  *
  * Numbers are compared in plain form ("16.50" = "16.5", the rh_settings_log_same_number rule); leading zeros are kept
- * (a phone number "0999" is not "999"). Text is trimmed and CRLF compared as LF.
+ * (a phone number "0999" is not "999"). Text is trimmed and CRLF compared as LF. A spec entry may add 'norm' =>
+ * callable(string): string for a value stored in more than one spelling (e.g. JSON re-encoded on save).
+ *
+ * rh_settings_base_decide_all() / rh_settings_base_save() decide a whole form (task 19a: Hotel details and Review
+ * sources) and write only the 'write' keys, in one transaction.
  * Reads go through the app $pdo. Tested by scripts/tests/settings_changed_only.php.
  */
 
@@ -54,13 +58,23 @@ if (!function_exists('rh_settings_base_norm')) {
         return rh_settings_log_secret_key($key) || ($value !== null && rh_settings_log_secret_value($value));
     }
 
-    /** ['default' => string, 'fallback' => string] from a spec entry (a default string or an array). */
+    /** ['default' => string, 'fallback' => string, 'norm' => ?callable] from a spec entry (a default string or an array). */
     function rh_settings_base_entry($entry): array
     {
         if (is_array($entry)) {
-            return ['default' => (string)($entry['default'] ?? ''), 'fallback' => (string)($entry['fallback'] ?? '')];
+            return ['default' => (string)($entry['default'] ?? ''), 'fallback' => (string)($entry['fallback'] ?? ''),
+                'norm' => isset($entry['norm']) && is_callable($entry['norm']) ? $entry['norm'] : null];
         }
-        return ['default' => is_scalar($entry) ? (string)$entry : '', 'fallback' => ''];
+        return ['default' => is_scalar($entry) ? (string)$entry : '', 'fallback' => '', 'norm' => null];
+    }
+
+    /** The comparable form of a value for this entry (its own 'norm' first, then the shared rule). */
+    function rh_settings_base_entry_norm($v, array $e): string
+    {
+        if ($e['norm'] !== null) {
+            $v = (string)($e['norm'])(is_scalar($v) ? (string)$v : '');
+        }
+        return rh_settings_base_norm($v);
     }
 
     /**
@@ -123,10 +137,10 @@ if (!function_exists('rh_settings_base_norm')) {
                 continue;
             }
             $value = rh_settings_base_effective($rows, $key, $entry);
-            if (rh_settings_log_secret_value($value)) {
+            if (rh_settings_base_is_secret($key, $value)) {
                 continue;
             }
-            $map[$key] = rh_settings_base_hash($value);
+            $map[$key] = md5(rh_settings_base_entry_norm($value, rh_settings_base_entry($entry)));
         }
         return $map;
     }
@@ -233,6 +247,7 @@ if (!function_exists('rh_settings_base_norm')) {
      * $new: the value the save would write (after the page's own cleaning). $opts: the key's spec entry (default
      * string or ['default', 'fallback']) plus optional 'raw' => the posted text before cleaning (a field left as it
      * was opened is a skip even if cleaning would reformat it).
+     * Also 'label' (the name used in a conflict message).
      * Returns ['outcome' => skip|write|conflict|no_base, 'current' => stored-now value (null for no_base),
      *          'message' => '' or the plain refusal for a conflict / no_base].
      */
@@ -249,19 +264,22 @@ if (!function_exists('rh_settings_base_norm')) {
             $want[] = $e['fallback'];
         }
         $current = rh_settings_base_effective(rh_settings_base_rows($pdo, $want, true), $key, $e);
-        $newN = rh_settings_base_norm($new);
+        if (rh_settings_base_is_secret($key, $current)) {
+            return ['outcome' => 'no_base', 'current' => null, 'message' => rh_settings_base_reload_message()];
+        }
+        $newN = rh_settings_base_entry_norm($new, $e);
         $raw = is_array($opts) && array_key_exists('raw', $opts) && $opts['raw'] !== null ? $opts['raw'] : null;
-        if (hash_equals($loaded, md5($newN)) || ($raw !== null && hash_equals($loaded, rh_settings_base_hash($raw)))) {
+        if (hash_equals($loaded, md5($newN)) || ($raw !== null && hash_equals($loaded, md5(rh_settings_base_entry_norm($raw, $e))))) {
             return ['outcome' => 'skip', 'current' => $current, 'message' => '']; // left as it was opened
         }
-        $curN = rh_settings_base_norm($current);
+        $curN = rh_settings_base_entry_norm($current, $e);
         if ($newN === $curN) {
             return ['outcome' => 'skip', 'current' => $current, 'message' => '']; // already stored
         }
         if (hash_equals($loaded, md5($curN))) {
             return ['outcome' => 'write', 'current' => $current, 'message' => ''];
         }
-        $label = rh_settings_log_label($key);
+        $label = isset($entry['label']) && is_string($entry['label']) && $entry['label'] !== '' ? $entry['label'] : rh_settings_log_label($key);
         $who = rh_settings_base_last_change($pdo, $key, $current);
         $message = $who !== null
             ? 'Not saved: ' . $label . ' was changed by ' . $who['name'] . ' at ' . $who['at'] . ' since you opened this page. Reload to see it.'
@@ -285,5 +303,96 @@ if (!function_exists('rh_settings_base_norm')) {
         $who = $current !== null ? rh_settings_base_last_change($pdo, $key, $current) : null;
         return 'Not saved: ' . rh_settings_log_label($key) . ' was changed by ' . ($who !== null ? $who['name'] . ' at ' . $who['at'] : 'someone else')
             . ' since you opened this page, so the pasted token may belong to another Page. Reload the page and try again. Nothing was saved.';
+    }
+
+    /**
+     * Decide every key of one form without writing. $new: [key => value to write] (keys not posted are left out);
+     * $spec: the form's spec (same as rendered); $raw: [key => posted text] for fields shown as stored; $opts:
+     * 'labels' => [key => name]. Returns ['error' => '' or the whole-save refusal, 'write' => [key => value],
+     * 'conflicts' => [plain messages], 'decisions' => [key => decision]]. Call inside a transaction.
+     */
+    function rh_settings_base_decide_all(PDO $pdo, ?array $base, array $new, array $spec, array $raw = [], array $opts = []): array
+    {
+        $out = ['error' => '', 'write' => [], 'conflicts' => [], 'decisions' => []];
+        if ($base === null) {
+            $out['error'] = rh_settings_base_reload_message();
+            return $out;
+        }
+        $spec = rh_settings_base_spec($spec);
+        foreach ($new as $key => $value) {
+            $key = (string)$key;
+            $entry = $spec[$key] ?? '';
+            $o = is_array($entry) ? $entry : ['default' => $entry];
+            if (isset($opts['labels'][$key])) {
+                $o['label'] = (string)$opts['labels'][$key];
+            }
+            if (array_key_exists($key, $raw)) {
+                $o['raw'] = $raw[$key];
+            }
+            $d = rh_settings_base_decide($pdo, $base, $key, $value, $o);
+            $out['decisions'][$key] = $d;
+            if ($d['outcome'] === 'no_base') {
+                $out['error'] = $d['message'];
+                $out['write'] = [];
+                return $out;
+            }
+            if ($d['outcome'] === 'conflict') {
+                $out['conflicts'][] = $d['message'];
+            } elseif ($d['outcome'] === 'write') {
+                $out['write'][$key] = $value;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Decide a whole form and write only the changed keys, in one transaction (its own one, unless the caller already
+     * opened one; then the caller rolls back on an error). $opts as rh_settings_base_decide_all(). Writes through
+     * updateSetting() (false = failed: nothing of this save is kept). Never throws.
+     * Returns ['error' => '' or plain text, 'written' => [key => value], 'conflicts' => [plain messages],
+     *          'decisions' => [key => decision]].
+     */
+    function rh_settings_base_save(PDO $pdo, ?array $base, array $new, array $spec, array $raw = [], array $opts = []): array
+    {
+        $res = ['error' => '', 'written' => [], 'conflicts' => [], 'decisions' => []];
+        if ($base === null) {
+            $res['error'] = rh_settings_base_reload_message();
+            return $res;
+        }
+        $own = !$pdo->inTransaction();
+        try {
+            if ($own) {
+                $pdo->beginTransaction();
+            }
+            $d = rh_settings_base_decide_all($pdo, $base, $new, $spec, $raw, $opts);
+            $res['decisions'] = $d['decisions'];
+            if ($d['error'] !== '') {
+                if ($own) {
+                    $pdo->rollBack();
+                }
+                $res['error'] = $d['error'];
+                return $res;
+            }
+            foreach ($d['write'] as $k => $v) {
+                if (updateSetting((string)$k, $v) === false) {
+                    throw new RuntimeException('Could not save ' . rh_settings_log_label((string)$k) . '.');
+                }
+                $res['written'][$k] = $v;
+            }
+            if ($own) {
+                $pdo->commit();
+            }
+            $res['conflicts'] = $d['conflicts'];
+        } catch (Throwable $e) {
+            if ($own && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('settings base save: ' . $e->getMessage());
+            $res['written'] = [];
+            $res['conflicts'] = [];
+            $res['error'] = $e instanceof RuntimeException && strpos($e->getMessage(), 'Could not save') === 0
+                ? $e->getMessage() . ' Nothing was saved.' : 'The settings could not be saved. Nothing was saved.';
+        }
+        return $res;
     }
 }
