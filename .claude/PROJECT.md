@@ -5,9 +5,9 @@ LIVE SYSTEM: yes   (test data here, but every change is ported to live Rosalyn's
 RUN / TEST / LINT: lint `php -l <file>`; tests `php scripts/run_tests.php` (here only, never in Rosalyn's); one test `php scripts/tests/<name>.php`;
   browser check `php -S 0.0.0.0:8000` + `node scripts/tests/browser_check.mjs steps.json` (stop the server after). Ship gate: .claude/DEPARTMENTS.md.
 CRITICAL AREAS:   (paths are prefixes)
-- time -> booking.php, check-availability.php, includes/booking, admin/create-booking.php, admin/edit-booking.php, admin/bookings.php, admin/check-in, admin/housekeeping, admin/individual-rooms.php, admin/room-management.php, admin/blocked, gym.php, gym-schedule.php, admin/gym, conference.php, events.php, admin/conference, admin/events
+- time -> booking.php, check-availability.php, includes/booking, admin/create-booking.php, admin/edit-booking.php, admin/bookings.php, admin/includes/bookings-, admin/api/bookings-, admin/check-in, admin/housekeeping, admin/individual-rooms.php, admin/room-management.php, admin/blocked, gym.php, gym-schedule.php, admin/gym, conference.php, events.php, admin/conference, admin/events
 - money -> admin/pos, admin/invoices.php, admin/payments, admin/end-of-day.php, admin/accounting, admin/credit, admin/receipt, admin/includes/finance-, admin/shift, invoice-view.php, invoices/, quotations/
-- quantities -> admin/stock, admin/procurement, admin/suppliers, admin/menu, admin/kds, admin/data-import.php, admin/includes/import-schema.php, admin/includes/stock-sheet-import-lib.php
+- quantities -> admin/stock, admin/procurement, admin/suppliers, admin/menu, admin/kds, admin/data-import.php, admin/includes/import-schema.php, admin/includes/stock-sheet-import-lib.php, admin/includes/stock-measure-, admin/js/stock-ingredients-measure-
 - access -> admin/admin-init.php, admin/includes/permissions.php, admin/user, admin/module-presets.php, login.php, api/
 - security -> .htaccess, config/, includes/licence
 - messages -> includes/email, admin/email-templates.php, config/email.php, PHPMailer/
