@@ -29,6 +29,20 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: Import reads "Unit" + "Total Per Unit" sheets safely (owner PATCH, profile Claude)
+- Owner fault: Rosalyn's "Bar Nov (3).xlsx" (headings Unit / Total Per Unit / Served by instead of "Unit Bought As")
+  read 94 bottles of beer as 94 crates at the crate price (beer/cider/minerals MWK 87.2M vs 3.78M, no question) and
+  asked far more questions than "Bar Nov (1).xlsx". Liwonde bd504f2 / Rosalyn's ec74e01 (includes/import/analyze,
+  pack-rule, resolve, validator, value-check + data-import.js labels).
+- Now: Unit Crate/Case/Pack + Total Per Unit > 1 + served by bottle/can/each -> one "in crates or in bottles?" question
+  per sheet, nothing ready until answered ("in bottles" = price / N; a row with its own per-one Unit Price keeps it as
+  written). "Bottle(750ML)" / "Shot(30ML)" read as unit + size. Decimal counts suggest "in bottles". Old layout unchanged.
+- Tests: import_engine_test 699 passed, import_stock_test 277 passed; qa-auditor PASS after one fix round (double
+  divide on two-price rows).
+- LATER: per-row list still says "drinks"; a size in a bought-as cell is dropped; two disagreeing prices only noted in
+  the cost note; "in crates" cost note shows code "chosen-pack-price"; old saved shots answers for "Bottle(750ML)"
+  groups are asked again; invented-value check does not cover the served-by unit on "in bottles".
+
 ## Shipped 2026-11-25: Hotel Settings foldable + password lock on VAT / bank / levy / service charge (owner FEATURE, profile Claude)
 - Owner: sections clearly labelled and foldable; high-value settings greyed out, need the password again to edit,
   greyed again after save. includes/settings-lock.php + admin/api/settings-unlock.php: own password (finance_settings

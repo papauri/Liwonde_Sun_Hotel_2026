@@ -82,6 +82,11 @@ when prompted."
   needed)" asks your own password and opens that one section for 10 minutes; saving locks it again. Only users with
   the VAT & refund settings permission. Guides: 19-hotel-settings, accounting VAT page. Assistant: "why can't I edit
   the bank details / VAT" -> unlock with your password. Manager Guide: Money and End of Day.
+- 2026-11-25 Liwonde bd504f2 / Rosalyn's ec74e01 (owner PATCH): Import, step 3 asks "Is your count in crates/cases or in
+  bottles/cans?" once per sheet when the file has a Unit of Crate/Case/Pack, a Total Per Unit and a Served by bottle/can
+  (each option shows the price it gives); unit cells like "Bottle(750ML)" and "Shot(30ML)" are read with their size; a
+  decimal count (2.28) suggests "in bottles". Guide: import stock page (column layouts + this question). Assistant:
+  "why does the import ask crates or bottles". Manager Guide: Stock.
 
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
