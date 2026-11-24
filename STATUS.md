@@ -29,6 +29,12 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: Import count time + later imports as regular counts (owner "Yes", profile Claude) - Liwonde 088124a / Rosalyn's c645b6f
+- 1) "When was this counted?" date+time on the import: lines use stock at that time (current - stock_adjustments since),
+  snapshot_at / counted_at = that time, so sales after the physical count are not lost. 2) Once an approved opening
+  count exists, imports file a REGULAR count (is_opening=0): shortages need a real reason (count stays draft).
+- Shipped and ported (status line updated by the Hotel Settings session).
+
 ## Shipped 2026-11-25: Import reads "Unit" + "Total Per Unit" sheets safely (owner PATCH, profile Claude)
 - Owner fault: Rosalyn's "Bar Nov (3).xlsx" (headings Unit / Total Per Unit / Served by instead of "Unit Bought As")
   read 94 bottles of beer as 94 crates at the crate price (beer/cider/minerals MWK 87.2M vs 3.78M, no question) and
@@ -44,6 +50,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   answers kept, invented-value check on the unit word). import_engine_test 710, import_stock_test 277, qa-auditor PASS.
 - LATER: pack-rule.php new function sits between import_pack_canon and its doc comment; before the price question is
   answered the cost note already says "your answer"; "Crate (330ML)" with no pack-size column reads 330 ml as the size.
+
+## Shipped 2026-11-25: Hotel Settings tidy, one look for every section (owner PATCH, profile Claude) - Liwonde f0b932f / Rosalyn's 597dad6
+- Wording, markup and CSS only (ui-lead, qa-quick PASS, field-name compare identical): sentence-case card titles, one
+  on/off status block, solid "Save ..." buttons, one help-text style, inline colours/margins to classes, SMTP two per
+  row. Owner 2026-11-25: SMTP and the email copy lists stay UNLOCKED (decision; don't add them to the settings lock).
+- LATER: admin-booking-settings.css rules (.settings-card h4, label small, > small.help-text) also restyle
+  whatsapp-settings / automated-emails slightly (cosmetic; scope with .bs-group if the owner minds); Email templates
+  section and cancellation-policy rows still have inline styles; .bs-warning literal colours.
+- Settings lock (5a8c3d6 / Rosalyn's 4d6a64c): settings_lock_test failed once (5 fails from a page_harness first-write
+  error) while another session ran DB tests on the same Liwonde DB; 2 later runs 33/0. Concurrent DB test runs clash.
 
 ## Shipped 2026-11-25: Hotel Settings foldable + password lock on VAT / bank / levy / service charge (owner FEATURE, profile Claude)
 - Owner: sections clearly labelled and foldable; high-value settings greyed out, need the password again to edit,
