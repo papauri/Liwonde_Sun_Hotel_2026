@@ -71,6 +71,12 @@ when prompted."
   bookings cancel + no-show, tentative holds, conference/events/gym. Assistant: cancel card already asks the reason;
   answer "why was this cancelled" -> booking History. Manager Guide: Bookings.
 
+- 2026-11-25 (owner PATCH, commit "Hotel Settings copy email help" in both repos): help text now says what adding an
+  address does: Backup staff copy emails = hidden copy (BCC) of every email the system sends, guests never see it;
+  End-of-day report CC = copy of End of Day + daily report emails; station report CC = copy of kitchen/bar/coffee bar
+  reports. Guide: 19-hotel-settings (Email + Payments & documents) and automated emails. Assistant: "who gets a copy
+  of our emails" -> these three fields.
+
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
 ### Whole-group payment receipts show the group total and every room (2026-11-20, owner fault) - Liwonde 7d5c105 / Rosalyn's 3781b20

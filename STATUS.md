@@ -29,6 +29,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: Hotel Settings says what the copy email lists do (owner PATCH, profile Claude)
+- Help text only: Email "Backup staff copy emails" (hidden BCC of every email the system sends while the switch is on;
+  guests never see them; reports are separate), Payments & documents "End-of-day report CC", Automated Emails station
+  report CC. No logic change.
+- Owner-authorised Rosalyn's LIVE settings write 2026-11-25 (that exact change only): the two owner-given
+  addresses added to email_admin_backup ('' -> both), eod_report_cc_emails ('' -> both) and
+  automated_job_station_reports_cc (existing address -> + both). Existing recipients kept; switch
+  email_bcc_admin was already on. Logged in System Logs -> Settings changes. Company statement CC not touched
+  (guests see it). Old values backed up as JSON in the session scratchpad.
+
 ## Shipped 2026-11-25: mandatory cancel / no-show reasons with ready-made lists (owner FEATURE, profile Claude)
 - Owner: cancels don't say why (Rosalyn's RBH2026633499). Cause: booking-details Cancel forms post a hidden
   "Cancelled by admin"; list cancel reason optional; a pending/tentative cancel's reason only lands in event metadata
