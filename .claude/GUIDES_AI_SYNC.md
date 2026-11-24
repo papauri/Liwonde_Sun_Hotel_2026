@@ -90,6 +90,11 @@ when prompted."
 - 2026-11-25 Liwonde a9a3c9c / Rosalyn's f937d03 (owner PATCH): Import, a Case/Pack Price and a Unit Price that disagree
   ask "Which price is right?" for that item (each option shows the cost it gives); "Bottle(750ML)" in Unit Bought As is
   read with its size. Guide: import stock page (questions list). Assistant: "the import asks which price is right".
+- 2026-11-25 Liwonde 088124a / Rosalyn's c645b6f (owner FEATURE): Import asks "When was this counted?" (date + time,
+  required) and compares the file with the stock at that time, so sales after the count are kept. Once an opening
+  count is approved, later imports make a regular stock count: shortages need a reason picked on Stock Count before it
+  is submitted, and a different manager approves it. Guide: import stock page + stock count page. Assistant: "how do I
+  import a second stock count". Manager Guide: Stock.
 
 - 2026-11-25 (owner PATCH, commit "Hotel Settings tidy" in both repos): wording and layout only. Card titles in sentence
   case (e.g. "Email server and sender", "Booking alerts and guest reminders", "Online booking"), one on/off status
