@@ -29,6 +29,24 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: mandatory cancel / no-show reasons with ready-made lists (owner FEATURE, profile Claude)
+- Owner: cancels don't say why (Rosalyn's RBH2026633499). Cause: booking-details Cancel forms post a hidden
+  "Cancelled by admin"; list cancel reason optional; a pending/tentative cancel's reason only lands in event metadata
+  (cancellation_log row only for confirmed). Build (dept-rooms-lead): required reason (min 5, "Cancelled by admin"
+  refused) on booking-details + bookings list cancel, reason shown once in History / audit / System Logs.
+  Owner addition 2026-11-24: a pick-list of drafted reasons on every cancel prompt (includes/cancel-reasons.php),
+  and the same (required + presets) for no-show, the guest website cancel ("Prefer not to say" counts), and
+  conference/events/gym cancels. ASSUMPTION: guest site gets a required pick incl. "Prefer not to say".
+  OWNER DECISION 2026-11-25: the reason stays internal; guest emails as before (rh_cancel_guest_email_reason():
+  "Cancelled by admin", holds "Tentative hold cancelled by hotel"; guest's own website reason unchanged).
+  Order: dept-rooms-lead (rooms, no-show, guest site, shared mechanism) -> dept-events-gym-lead (conference/events/gym).
+  qa-auditor PASS (after one fix round). Tests: cancel_reason_required 95/0, cancel_reason_events 83/0, booking_history
+  88/0, bookings_bulk 116/0, cancellation_policy 132/0, booking_lookup_group 48/0, linked_gym 21/0 (email_send_log 4
+  failures pre-existing: static checks on bookings.php, same at HEAD). Commit "Cancel reasons required", ported.
+  LATER: gym member_save for a brand-new member saved as Cancelled skips the reason; Edit-cancel of a member doesn't
+  void the unpaid bill (pre-existing, accounting); stale Save Notes can overwrite the appended reason line; class roster
+  removal has no reason; process-checkin cancel has no calling screen.
+
 ## Shipped 2026-11-24: Stock Items "Fill from bottle sizes" + "Shots per bottle" column (owner FEATURE, profile Claude)
 - Owner: Rosalyn's ingredients bought as bottles, sold in shots showed "2.28 bottle" (2026-11-21 import saved no count
   measure). Spec + owner answers: `.claude/STOCK_MEASURE_AUTO_PLAN.md`. Liwonde 2cdb039 / Rosalyn's d089216 (+ docs
