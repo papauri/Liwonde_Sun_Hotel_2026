@@ -39,8 +39,21 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   (owner/staff press the button; expect many "No bottle size" skips there).
 - Follow-up PATCH (owner "do as critical"): same DB-error-text fix in the older "Set count measure" apply
   (admin/includes/stock-measure-bulk-lib.php).
-- Open plan (not started, waits for ClaudeWorkTwo to finish + push): `.claude/HK_MAINT_LAYOUT_PLAN.md` (Housekeeping +
-  Maintenance layout, owner answers recorded).
+
+## Shipped 2026-11-24: Housekeeping + Maintenance layout Phase A (owner PATCH, profile Claude)
+- Plan + owner answers: `.claude/HK_MAINT_LAYOUT_PLAN.md`. Liwonde 2323967 / Rosalyn's 75d564c.
+- Both pages: KPI chips on one row, grid directly under them, compact "Needs action" / "Rooms needing work" list with a
+  per-row Assign (existing actions only), workload chip row; shared CSS `admin/css/ops-pages.css`. Maintenance list now
+  shows only rooms out of service or with an open job (was every occupied room: 15 -> 0 at Liwonde).
+- Tests: guest_left 50/0, rooms_hk_12a 34/0, maintenance_clash 17/0, ops_timeline 114/0, extend 35/0, dashboard_counts
+  143/0, dashboard_attention 334/0. qa-auditor FAIL (ticks < 44px) -> fixed -> PASS. Browser 1440 + 390, no side-scroll.
+- NEXT: Phase B (Calendar's Housekeeping / Maintenance tabs, same layout): calendar files must be free of other sessions.
+- LATER: quickAssignRoom() JS now unused; old card CSS left in room-maintenance.css; the per-row select shows
+  "Unassigned" if a task's assignee is not in the staff list.
+- PWA check 2026-11-24 (owner question, read-only): updates reach installed apps (no-cache fetches, no-cache sw files,
+  hourly update check). Gaps, not fixed: bar/coffee boards (bds.php/cds.php) never auto-reload after a deploy
+  (offline-queue.js:330 matches only kds.php) and kds.php only reloads once hidden; admin/sw.js falls back to a missing
+  admin/offline.php (built-in offline page shows instead).
 
 ## Shipped 2026-11-24: bookings list overhaul (owner FEATURE, ClaudeWorkTwo)
 - Owner: "Better sorting and filtering for bookings page and better UI ... add the calendar view too"; owner chose the

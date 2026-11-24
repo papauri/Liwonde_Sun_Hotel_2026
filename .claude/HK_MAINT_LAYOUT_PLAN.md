@@ -1,4 +1,4 @@
-# Housekeeping + Room Maintenance layout plan (READY, NOT STARTED)
+# Housekeeping + Room Maintenance layout plan (Phase A SHIPPED 2026-11-24 Liwonde 2323967 / Rosalyn's 75d564c; Phase B open)
 
 Any session/profile can pick this up. Read this file only; every fact needed is here. Label: PATCH (owner-reported
 fault: "messy, unclear, not uniform"), with owner-approved answers below. Liwonde first, then port to Rosalyn's.
