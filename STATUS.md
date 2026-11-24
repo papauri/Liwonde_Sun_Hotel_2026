@@ -29,11 +29,25 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
-## IN PROGRESS 2026-11-25: concurrency guardrails A-E (owner FEATURE "Do all required", profile Claude session 2e30b9f7)
-- Plan + assumptions: `.claude/CONCURRENCY_PLAN.md` (18 tasks + follow-up 19 Hotel Settings). Order: tasks 1+2 (helpers) ->
-  3,4 import | 5 stock count | 6 spec-check -> 7-11 stale-edit pages | 12-14 settings | 15-18 banners. Each task is committed
-  only after its review passes. Check `git log` for which are done. Not touched: the other session's create-booking /
-  booking-settings / email files.
+## Shipped 2026-11-25: concurrency guardrails A-E (owner FEATURE "Do all required", profile Claude) - Liwonde 659b381 2f1464e 82c91f3 21a89d7 dbd24f3 7338934 5f75cae 474434f 2706650 / Rosalyn's d0a5896
+- Plan: `.claude/CONCURRENCY_PLAN.md`. Two people working on the same thing can no longer overwrite each other:
+  - Save refused when someone else changed it first (names who/when where known): Edit Booking, room types, rooms,
+    menu items (food + drink), stock items. Helper `includes/stale-edit.php` (hash of the form's columns, re-read FOR UPDATE).
+  - Stock count: one open count per area + shift (named lock). Import: one open job per file, a file committed while the
+    job was open is refused, answers made on an old screen are refused (per-key hash).
+  - Settings save only what changed (`includes/settings-save-changed.php`, `_settings_base`, never secrets): Automated
+    emails, WhatsApp, Facebook, Hotel details, Review sources.
+  - "Also open right now" banner (`admin/js/edit-presence.js`, presence `?editing=`): Edit Booking, stock count, import, stock item.
+- Tests registered in run_tests.php: stale_edit_test, stale_edit_pages, stock_count_start_race, import_open_job,
+  import_lock_gaps, settings_changed_only. No DB schema change.
+- LATER (19b): email settings/templates on booking-settings.php save only what changed (owner 2026-11-25: later).
+- LATER: committed_at compared to the second; count_row does not re-check its row inside the save; WhatsApp token/phone-id
+  pair looser than Facebook's; room-type save still writes image_url/display_order; edit-booking hash read separate from
+  the $booking load; ir_stale_hashes outside a transaction; chosen-item counts compare an unsorted ID list; banner keeps
+  polling after 400/403; leave-page ping uses a relative path; data-import presence does not check rh_import_enabled;
+  settings display cache (getSetting) can differ from the base map (hotel-details-settings.php ~380); review sources: an
+  old page with an invalid Place ID skips the base check; hotel-details mirror-key save result unchecked; the unlock is
+  used even when nothing saved; availability toggles can undo someone else's switch; stock item refusals name nobody.
 
 ## Shipped 2026-11-25: email templates - no fixed quote note, automatic plain text, tag glossary, payment policy (owner FEATURE + PATCH, profile Claude) - Liwonde f845c7e / Rosalyn's 3df06db
 - Cause of "payment is due upon arrival" in a Rosalyn's quotation: a fixed note in create-booking.php's automatic quotation, not a template. Removed; staff type the note.

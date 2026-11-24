@@ -118,6 +118,16 @@ when prompted."
   longer always the POS Till. The "POS Till" app shortcut still opens the till. Guides: 15-pwa-install-guide line 50
   ("It opens on the POS Till page") is now wrong. Assistant: "why does the app open on the POS" -> fixed; close and
   reopen the app (or reinstall) if it still does. Manager Guide: POS and Kitchen Screens if it mentions the start page.
+- 2026-11-25 Liwonde 659b381..2706650 (9 commits) / Rosalyn's d0a5896 (owner FEATURE "Do all required"): two people
+  working on the same thing can no longer overwrite each other. (1) Edit Booking, room types, rooms, menu items and stock
+  items: a save after someone else changed it is refused ("changed by <name> at <time> since you opened it: reload").
+  (2) Stock count: only one open count per area + shift; a second person is sent to the open one. (3) Import: the same
+  file cannot be opened twice ("Open that import" button); answers made on an old screen are refused. (4) Automated
+  emails, WhatsApp, Facebook, Hotel details, Review sources save only the fields you changed; a field someone else changed
+  meanwhile is refused naming who/when; a page opened before the update asks for a reload. (5) "Also open right now"
+  banner names the other staff on the same booking / count / import / stock item (warning only, saving still allowed).
+  Guides: the editing pages above + settings pages. Assistant: answer "why did my save get refused / what is the yellow
+  banner". Manager Guide: Staff and Permissions (one line on working at the same time).
 
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
