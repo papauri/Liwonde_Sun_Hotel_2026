@@ -77,6 +77,12 @@ when prompted."
   reports. Guide: 19-hotel-settings (Email + Payments & documents) and automated emails. Assistant: "who gets a copy
   of our emails" -> these three fields.
 
+- 2026-11-25 (owner FEATURE, commit "Settings lock" in both repos): Hotel Settings groups and cards fold (remembered);
+  bank details, restaurant service charge, tourism levy and VAT (Accounting Dashboard) are greyed out: "Change (password
+  needed)" asks your own password and opens that one section for 10 minutes; saving locks it again. Only users with
+  the VAT & refund settings permission. Guides: 19-hotel-settings, accounting VAT page. Assistant: "why can't I edit
+  the bank details / VAT" -> unlock with your password. Manager Guide: Money and End of Day.
+
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
 ### Whole-group payment receipts show the group total and every room (2026-11-20, owner fault) - Liwonde 7d5c105 / Rosalyn's 3781b20

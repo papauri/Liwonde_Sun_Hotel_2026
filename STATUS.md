@@ -29,6 +29,18 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: Hotel Settings foldable + password lock on VAT / bank / levy / service charge (owner FEATURE, profile Claude)
+- Owner: sections clearly labelled and foldable; high-value settings greyed out, need the password again to edit,
+  greyed again after save. includes/settings-lock.php + admin/api/settings-unlock.php: own password (finance_settings
+  only) opens ONE group (vat / bank / levy / service charge) for 10 minutes; the save is refused server-side without
+  it and uses it up. 5 wrong passwords per 15 min per session; unlocks and failures in System Logs, never the password.
+  Locked: bank name/account name/number/branch + restaurant service charge (Hotel details), Tourism levy form, VAT form
+  (Accounting Dashboard). Folding: every group, card and Hotel details sub-group (admin/js/settings-fold.js), opens on
+  jump/search/#hash/save message. Tests: settings_lock_test, settings_pages, settings_change_log, hotel_details.
+- LATER: dead VAT confirm-modal JS in accounting-dashboard.php; VAT unlock used up before the save-succeeded check;
+  wrong-password limit is per session only; no warning beyond the status line when the 10 minutes run out while typing.
+  Owner to decide: lock the hidden copy email lists and the SMTP password too.
+
 ## Shipped 2026-11-25: Hotel Settings says what the copy email lists do (owner PATCH, profile Claude)
 - Help text only: Email "Backup staff copy emails" (hidden BCC of every email the system sends while the switch is on;
   guests never see them; reports are separate), Payments & documents "End-of-day report CC", Automated Emails station
