@@ -29,6 +29,15 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-26: grid arrow keys page past the edge (owner FEATURE, profile Claude) - Liwonde bb3a41c / Rosalyn's 2908d62
+- Left / Right on a night cell past the last / first day shown pages the grid (Prev / Next step) and the cursor lands on
+  the next night in the same room; Shift+Arrow keeps selecting across. Shared engine room-timeline-select.js
+  (`cfg.page`, `logic.pastEdge`), so Calendar, Housekeeping, Maintenance; not Room Service (hour columns).
+- ASSUMPTION: a full-page step (one fetch per page, like Prev / Next) rather than a one-day scroll; the API caps a
+  range at 31 days, so a one-day scroll would reload on every press. Owner can ask for the one-day scroll.
+- qa-auditor PASS after one fix round (failed load no longer locks the arrows); grid_select_test 89/89; browser check
+  calendar + housekeeping (forward, back, Shift across).
+
 ## Shipped 2026-11-26: pagers keep one place everywhere + movements card pager pinned (owner PATCH, profile Claude) - Liwonde 3d02358 / Rosalyn's 9bce3d6
 - OWNER DECISION 2026-11-26 (replaces 2026-11-22): every pager stays in one fixed bottom position on EVERY screen
   size; a short last page, a filter or an empty result never moves it up (phones too, so a short page leaves space).
