@@ -38,6 +38,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - qa-auditor PASS after one fix round (failed load no longer locks the arrows); grid_select_test 89/89; browser check
   calendar + housekeeping (forward, back, Shift across).
 
+## Shipped 2026-11-26: phone/tablet pager exception restored (owner PATCH, profile Claude) - Liwonde f33403c / Rosalyn's 177e4b0
+- OWNER DECISION 2026-11-26 (amends the one below): up to 1024px (phones + tablets) every pager follows its last row,
+  no gap under a short, filtered or empty page; above 1024px pagers keep one fixed position.
+- admin/js/admin-section-pagination.js: `pagerFollowsLastRow()` (<=1024) skips the padding in the auto pager and the
+  server pagers. admin/css/dashboard.css: the movements card's fixed 460px pane + pinned pager start at 1025px (was
+  681px); up to 1024px the list follows its rows with a 240px minimum.
+- qa-auditor PASS after one fix round (tablet card gap); browser 390/800/1024 pager directly under the last row
+  everywhere, 1280/1920 unchanged.
+- LATER: the `mid`/`narrow` width buckets in the server pager memory key are now unused (harmless).
+
 ## Shipped 2026-11-26: pagers keep one place everywhere + movements card pager pinned (owner PATCH, profile Claude) - Liwonde 3d02358 / Rosalyn's 9bce3d6
 - OWNER DECISION 2026-11-26 (replaces 2026-11-22): every pager stays in one fixed bottom position on EVERY screen
   size; a short last page, a filter or an empty result never moves it up (phones too, so a short page leaves space).
