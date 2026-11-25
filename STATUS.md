@@ -40,9 +40,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Owner 2026-11-25: all 28 Rosalyn's templates reset to defaults (backup Rosalyns-hotel-2026/backups/
   rosalyn-booking_email_templates-20261125-141445-pre-apply.json; 3 emails had custom wording: payment_invoice,
   tentative_quotation, conference_quotation).
-- LATER: invoice email check_out "F j, Y" vs PDF "j F Y"; payment_receipt default says "VAT Incl." in every VAT mode;
-  empty {{phone_main}} leaves "or ." in sentences; non-AJAX preview sample balance_due 3,500 vs amount_due with VAT;
-  LSH sample prefixes show at Rosalyn's; prearrival_payment_reminder wording not audited; Tone select hex colours.
+- 402291f / Rosalyn's f5232e5 (owner "All of them", the six LATER items): no phone set = no "or ." (template joiners
+  dropped at render, hard-coded sentences via rh_email_or_call()); invoice email {{check_out}} in the PDF's j F Y;
+  payment_receipt default row "VAT" (was "VAT Incl." in every mode); previews use the hotel's own booking / quotation /
+  credit note prefixes (rh_template_preview_refs), one sample balance, 14 days = +14 check-in; pre-arrival reminder
+  drops "as set out in our payment policy below" when no policy is set. qa-auditor PASS, email_wording_check 35/0,
+  browser: 28 previews fill every tag.
+- NOTE for the owner: the stored payment_receipt copies (both hotels) still say "VAT Incl." until that one template is
+  reset; the receipt EMAIL body is built by receipt_build_pos_style_html(), so the payment_receipt template's HTML only
+  shows in the editor preview (its subject and plain text are used).
+- LATER: Tone select hex colours; pre-arrival policy phrase not dropped from a stored text_body; preview credit note
+  period uses date('Y').
 
 ## Shipped 2026-11-25: dashboard movements card period switcher (owner FEATURE, profile Claude) - Liwonde 6006f77 / Rosalyn's 8937bde
 - "Today's movements" has ‹ period › arrows beside the title: Today → Tomorrow → Next 7 days → Next 30 days, round

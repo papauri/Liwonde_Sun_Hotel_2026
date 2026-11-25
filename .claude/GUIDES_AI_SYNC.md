@@ -70,6 +70,10 @@ when prompted."
   PDFs; template previews use the hotel's VAT rate and fill every tag. In the room invoice email {{total_amount}} is
   the balance (owner rule 2026-11-15), now said in the tag list. Guides: 12-email-templates (tag list note).
   Assistant: none.
+- 2026-11-26 Liwonde 402291f / Rosalyn's f5232e5 (owner PATCH): emails read cleanly with no phone number set (no
+  "or ."); the invoice email's check-out date matches its PDF; the receipt email's VAT row says "VAT"; template
+  previews show this hotel's own reference numbers; the pre-arrival payment reminder only mentions the payment policy
+  when one is set. Guides: none. Assistant: none.
 
 ## Synced 2026-11-25 (owner prompted "sync guides, assistants and decisions"; guides + Assistant: commit "Guides + Assistant sync 2026-11-25" in both repos · Assistant: why-cancelled answer (reason from History, staff-only), Assistant cancel card uses rh_cancel_reason_check, counts_not_approved + count-measure hint, new arrivals_to_chase read · owner decisions 2026-11-24/25 written into guides + Assistant (cancel reason internal, guest emails unchanged; SMTP + copy lists unlocked) · Manager Guides: Stock, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed; POS and Kitchen Screens no change) - entries kept for reference
 
