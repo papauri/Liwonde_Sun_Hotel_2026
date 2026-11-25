@@ -29,6 +29,14 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: booking Paid "i" + dashboard Money accuracy + "This week's movements" card (owner FEATURE + PATCH, profile Claude) - Liwonde a1fda1b / Rosalyn's 1687f9a
+- Fault found: dashboard takings took money moved onto a credit note (refund rows, payment_method credit_note) off as
+  refunds paid out; End of Day does not. Fixed in `$takingsByDay` (admin/dashboard.php) with the EOD cash rules. Liwonde:
+  all 9 payment days now equal EOD "Cash collected" (11-07, 11-09, 10-24 were short). Rosalyn's figures may move after deploy.
+- Paid "i": admin/includes/booking-paid-breakdown.php (same rows as getBookingFolioSummary; 41 Liwonde bookings, 0 mismatches).
+- ASSUMPTION (BUILD_PLAN.md): "week's movements" = money movements. qa-auditor PASS, accounting lead APPROVE, browser 1400 + 390 ok.
+- LATER: card hides with the Money card if the 7-days-before query fails; other booking types fold into Rooms on the card.
+
 ## Shipped 2026-11-25: Templates redesign + Suggest wording, payment reminders before arrival, FOH arrivals to chase, Recent activity filters (owner FEATURES, profile Claude session 04dedb99)
 - ALL SHIPPED + ported. Owner still to do at Rosalyn's: deploy, then tick automated_email_master (0 since 2026-10-05; ticking it also starts overdue/quotation/tentative/expired/unpaid jobs, which default on). Guides/Assistant Pending lines added.
 - Recent activity filters: Liwonde d9475a0 / Rosalyn's 8926fd4 (qa-auditor PASS; auto_email_log_filter_test 74/74, log_pager_test 125/0). LATER: Show after the All fallback drops All (admin/automated-emails.php ~580).
