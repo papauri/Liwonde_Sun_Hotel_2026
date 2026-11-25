@@ -38,6 +38,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - qa-auditor PASS after one fix round (failed load no longer locks the arrows); grid_select_test 89/89; browser check
   calendar + housekeeping (forward, back, Shift across).
 
+## Shipped 2026-11-26: room rate x nights without VAT and levy (owner FEATURE, profile Claude) - Liwonde ddda9f4 / Rosalyn's 537e6ce
+- Total popup ("How this total is worked out"): note line "Room rate x nights (excl. VAT & levy)", "N nights at X",
+  right above the Tourism levy line; never added, totals unchanged; not shown in exclusive mode (room line already
+  net). Levy/VAT hints now say "included in the all-in room rate (first line)".
+- Booking details > Payment breakdown: "N nights × X" (+ child charge) under Room base, only when it equals the base.
+- `rh_booking_room_net()` in config/database.php. Tests booking_total_breakdown.php 46 pass; 2 pre-existing fails
+  ("header reads Total": bookings.php header now `<th>Total</th>` since the list overhaul; test needs updating).
+- qa-auditor PASS. LATER: a row with a levy amount but tourism_levy_percent 0 splits a child charge slightly off in
+  the popup; add a group (2+ rooms) test for the "average" hint.
+
 ## Shipped 2026-11-26: phone/tablet pager exception restored (owner PATCH, profile Claude) - Liwonde f33403c / Rosalyn's 177e4b0
 - OWNER DECISION 2026-11-26 (amends the one below): up to 1024px (phones + tablets) every pager follows its last row,
   no gap under a short, filtered or empty page; above 1024px pagers keep one fixed position.
