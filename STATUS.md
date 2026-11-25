@@ -31,9 +31,8 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 
 ## Planned 2026-11-26: spreadsheet view for Stock Count + Menu (owner FEATURE, profile Claude) - not started
 Plan: `.claude/SHEET_VIEW_PLAN.md` (S1 shared sheet engine -> S2 Stock Count -> S3 Menu with price review list + price
-log + presence). No override permission, no logic change, phones unchanged (owner 2026-11-26). Open owner question:
-greyed read-only grid for people without the page permission needs new view permissions (`blocked:` in the plan).
-Next step: S1 in a fresh session, after the conference-packages session has shipped (it holds permissions.php).
+log + presence). No override permission, no logic change, phones unchanged, no new view permissions: staff without
+the page permission never see the grid (owner 2026-11-26). Next step: S1 in a fresh session.
 
 ## Shipped 2026-11-26: Guides + Assistant + Manager Guides sync (owner prompted, profile Claude) - Liwonde fe98bf6 / Rosalyn's ced7d41
 - The 12 entries pending at the start moved to "Synced 2026-11-26" in .claude/GUIDES_AI_SYNC.md (identical in both repos);

@@ -22,8 +22,8 @@ only if the owner asks. No formulas in cells.
 - Read-only cells: solid grey surface, `aria-readonly`, no caret, same look on both screens.
 - UI rules (RULES.md): plain, solid, one accent, "?" helper on every column head, no AI wording.
 - Each phase: tested, shipped (ship gate in DEPARTMENTS.md), ported to Rosalyn's on its own.
-- `admin/includes/permissions.php` and `admin/includes/admin-nav-items.php` are uncommitted by another session today:
-  any phase touching them waits until that session has shipped.
+- No phase touches `admin/includes/permissions.php` or `admin/includes/admin-nav-items.php` (access unchanged).
+  Before each phase, check `coord.mjs status`: never edit a file another live session holds uncommitted.
 
 ## Phase S1: shared sheet engine (NORMAL; owner: frontend-specialist / ui-builder, review: reviewer)
 New `admin/js/sheet-grid.js` + `admin/css/sheet-grid.css`. Honest scope: `blocked-dates-grid.js` and
@@ -86,13 +86,13 @@ Page `admin/menu-management.php` (Food / Drinks tabs), `admin/css/menu-managemen
   nothing saved; till copy price matches after save; price log row old -> new. Browser check: edit 3 prices, review
   modal lists them, save, reload; 390 px unchanged.
 
-## blocked: owner decision (asked 2026-11-26)
-- "Can see but not edit, greyed out": today a person without the `menu` permission cannot open the Menu page at all
-  (page guard in `admin/admin-init.php`), and the same for Stock Count without `stock_count`. So the greyed grid only
-  reaches people who already open the page read-only (view-only users, counts waiting for approval or approved).
-  For others to see a greyed grid, a new view permission is needed (`menu_view`, `stock_count_view`): page opens,
-  every cell grey, server refuses every save. Owner to choose: (a) add the view permissions, or (b) greyed grid only
-  for those who can already open the page. Phase S1 and the editing parts of S2/S3 do not wait on this.
+## Owner decision 2026-11-26: access stays exactly as today
+"Staff without permission should not be able to see this. That's the whole point of permissions."
+- No new view permissions. A person without `menu` / `stock_count` still cannot open the page (page guard in
+  `admin/admin-init.php`) and never sees the grid.
+- The greyed read-only grid is only for people who can already open the page but not change it: view-only users
+  (`includes/view-only.php`), and counts waiting for approval, approved or rejected.
+- So no phase touches `admin/includes/permissions.php`.
 
 ## Order
 S1 -> S2 -> S3, one session each, each shipped and ported before the next. Guides + Assistant lines in
