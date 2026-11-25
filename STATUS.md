@@ -29,6 +29,15 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: PDF template preview / test PDF no longer edge to edge (owner PATCH, profile Claude) - Liwonde 7994a1f / Rosalyn's 5c44967
+- Cause: the 7 stored *_document templates are old browser-styled copies; real sends already drop them for the print
+  kit (rh_pdf_template_is_stock), but the editor preview + "Send test" printed them raw. booking-settings.php
+  rh_template_preview_document_html() now makes the real send's choice. Invoice sample rows fixed (Invoice Total label
+  was invisible); values no longer letter-spaced. Stock check still YES for all 7 at Liwonde; qa-auditor PASS.
+- Owner: Rosalyn's stored copies could not be checked (no tests there). If one has edited wording, guests get the old
+  layout too; "Reset to defaults" in the editor fixes it. Liwonde's logo file has a baked-in checkerboard.
+- LATER: preview ignores is_active (real send prints the kit when inactive); sample "VAT (15%)" vs 17.5%.
+
 ## Shipped 2026-11-25: Bookings list Status / Payment pill popups (owner FEATURE, profile Claude) - Liwonde 8b9a348 / Rosalyn's 74b80e3
 - Hover (tap on touch) the Status or Payment pill: why and when (who, reason, settlement, hold / pay-by time) and the
   money figures, via the shared "i" popup. admin/includes/booking-status-info.php (one read-only query per log table
