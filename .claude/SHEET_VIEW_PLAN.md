@@ -110,7 +110,7 @@ Page `admin/menu-management.php` (Food / Drinks tabs), `admin/css/menu-managemen
    below); plus the phase's new tests and a headless browser check. Liwonde test data only, then port.
 7. Review: qa-auditor (Opus) on every phase with logic; dept-accounting-lead on every money column; final-review
    (Fable) after Opus passes on S9 (stock + money: RULES.md Fable rule).
-8. One phase per session; the next starts only after the previous is shipped and ported.
+8. Work is bundled (see "Build sequence" at the end); a bundle starts only after the bundle it depends on has shipped.
 
 ## Later phases (owner 2026-11-26: "can we do it all in phases"), in this order, lowest risk first
 S4. Stock Items grid (`admin/stock-ingredients.php`, action `update`). Editable: the Edit form's plain fields (name,
@@ -134,6 +134,30 @@ S11. Reports, read-only grid (`admin/reports.php` tables): sort, filter, copy a 
 Not in any phase (owner agreed 2026-11-26): rooms (room prices, rate plans, room screens), bookings, payments, invoices, receipts, refunds, credit notes, the till,
 staff permissions, small lists (tables, gym packages, deals).
 
-## Order
-S1 -> S2 -> S3 -> S4 ... S9 -> S11 (no S10), one session each, each shipped and ported before the next. Guides + Assistant lines in
-`.claude/GUIDES_AI_SYNC.md` at each ship (sync itself only when the owner prompts).
+## Build sequence: BUNDLES (owner 2026-11-26: "bundle what can be done together"; replaces one phase per session)
+Grouped by owning lead (RULES.md: a planned bundle groups by owning lead, reuse that lead with SendMessage). Each
+lead reads its area once and builds all its screens; one QA gate per ship; one commit per screen inside a ship.
+
+BUNDLE A: shared parts (ui-builder for the grid; backend-specialist for the helper; gate qa-auditor Opus). Ships first,
+everything else builds on it.
+- S1 sheet engine (`admin/js/sheet-grid.js`, `admin/css/sheet-grid.css`).
+- The shared "review changes" modal (one component, used by every money column in B and C).
+- One shared old -> new change-log helper (`admin/includes/value-change-log.php`: who, when, screen, item, field,
+  old, new; admin_activity_log, same pattern as `includes/settings-change-log.php`), so B and C never build their own.
+- Fixture page + browser check for keyboard, paste, undo, read-only skip, review modal.
+
+BUNDLE B: stock (dept-stock-lead, ONE lead reused with SendMessage; gate qa-auditor Opus; accounting lead on cost
+and budget columns). Starts after A ships. Two ships by the same lead, because a seven-screen stock diff is too big
+to review properly in one pass:
+- Ship B1 (screens that do not add or remove stock): S2 Stock Count, S4 Stock Items, S5 Reorder list, S6 Budget.
+- Ship B2 (screens that move stock or set cost): S7 Wastage, S8 Recipes, S9 Receiving. Fable final review after Opus.
+  If the lead's context passes ~200k after B1, B2 starts with a fresh dept-stock-lead (RULES.md), not a resume.
+
+BUNDLE C: menu + reports (dept-restaurant-lead for S3, accounting lead reviews prices; ui-builder for S11; gate
+qa-auditor Opus). Starts after A ships and may run AT THE SAME TIME as B (different files; max 2 specialists at once).
+- S3 Menu grid + presence keys `menu-food` / `menu-drink`.
+- S11 Reports read-only grid. `admin/reports.php` is uncommitted by another session today: S11 waits until that
+  session has shipped; if it still holds it when S3 is ready, S3 ships alone and S11 follows.
+
+Totals: 4 ships (A, B1, B2, C) instead of 10 phases. Every ship: rails 1-8 above, then ported to Rosalyn's.
+Guides + Assistant lines in `.claude/GUIDES_AI_SYNC.md` at each ship (the sync itself only when the owner prompts).
