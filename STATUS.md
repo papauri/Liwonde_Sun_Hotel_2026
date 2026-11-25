@@ -29,6 +29,13 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: Bookings list Status / Payment pill popups (owner FEATURE, profile Claude) - Liwonde 8b9a348 / Rosalyn's 74b80e3
+- Hover (tap on touch) the Status or Payment pill: why and when (who, reason, settlement, hold / pay-by time) and the
+  money figures, via the shared "i" popup. admin/includes/booking-status-info.php (one read-only query per log table
+  per page). qa-auditor PASS after 2 fixes (JSON tentative-log reason hidden, 44px tap area); browser 1920 + 390 ok.
+- LATER: a tentative hold auto-expired by config/database.php `_expireStaleTentativeBookings` writes no log row, so its
+  popup reads the derived "hold ran out" wording with System (automatic).
+
 ## Shipped 2026-11-25: booking Paid "i" + dashboard Money accuracy + "This week's movements" card (owner FEATURE + PATCH, profile Claude) - Liwonde a1fda1b / Rosalyn's 1687f9a
 - Fault found: dashboard takings took money moved onto a credit note (refund rows, payment_method credit_note) off as
   refunds paid out; End of Day does not. Fixed in `$takingsByDay` (admin/dashboard.php) with the EOD cash rules. Liwonde:
