@@ -34,6 +34,22 @@ when prompted."
 - Manager Guides left out 2026-11-25 (pages full): Stock: the import crates/bottles and "Which price is right?" questions;
   Staff and Permissions: the VAT/bank password line; Housekeeping and Maintenance: one "Rooms needing work" sentence.
   The staff guides cover all three.
+- 2026-11-25 Liwonde a1fda1b / Rosalyn's 1687f9a (owner FEATURE + accuracy PATCH): (1) Booking details: an "i" next to
+  Paid (top strip and payment panel) lists each payment and refund on the booking: date, deposit / part / full payment,
+  method, receipt, time recorded, amount; refunds on the day paid out, money moved to guest credit labelled; pending rows
+  shown but not counted; adds up to Paid. (2) Dashboard Money "Taken this week" / Takings today now equal End of Day
+  "Cash collected": money moved onto a credit note is guest credit, not a refund, so it is no longer taken off.
+  (3) New dashboard card "This week's movements": money in by source, refunds paid out, Net taken (= Taken this week),
+  change on the 7 days before, money moved to guest credit apart (dashboard_takings permission).
+  Guides: 07-reception-bookings (Paid "i"), 99-admin-dashboard + 13-finance-payments (Money rule, new card).
+  Assistant: "when did the guest pay / part payments" -> the Paid "i"; "why does the dashboard differ from End of Day"
+  -> it no longer should; credit-note moves are guest credit. Manager Guide: Money and End of Day.
+- 2026-11-25 Liwonde 8b9a348 / Rosalyn's 74b80e3 (owner FEATURE): Bookings list: hover (or tap on a phone) the Status
+  or Payment pill for a short popup. Status: when, by whom and why (expired: hold ran out / not paid in time, room
+  released; cancelled: reason, how it was settled, fee kept, refund; no-show; checked in / out), or for open bookings
+  the hold time, pending lapse time, arrival and pay-by deadline. Payment: total, paid so far, balance due, credit,
+  latest payment, deposit, arrangement. Guides: 07-reception-bookings (Bookings list). Assistant: "why did this
+  booking expire / who cancelled it" -> hover the Status pill. Manager Guide: Bookings (one line).
 
 ## Synced 2026-11-25 (owner prompted "sync guides, assistants and decisions"; guides + Assistant: commit "Guides + Assistant sync 2026-11-25" in both repos · Assistant: why-cancelled answer (reason from History, staff-only), Assistant cancel card uses rh_cancel_reason_check, counts_not_approved + count-measure hint, new arrivals_to_chase read · owner decisions 2026-11-24/25 written into guides + Assistant (cancel reason internal, guest emails unchanged; SMTP + copy lists unlocked) · Manager Guides: Stock, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed; POS and Kitchen Screens no change) - entries kept for reference
 
@@ -159,24 +175,6 @@ when prompted."
 - 2026-11-25 Liwonde d9475a0 / Rosalyn's 8926fd4 (owner FEATURE): Automated Emails > Recent activity has filters (job,
   sent/skipped/failed, dates, search) and 10/25/50/All pages instead of the last 100; every column has a "?". Guides:
   Automated Emails page. Assistant: "did the reminder go to X / why was it skipped". Manager Guide: no change.
-
-- 2026-11-25 Liwonde a1fda1b / Rosalyn's 1687f9a (owner FEATURE + accuracy PATCH): (1) Booking details: an "i" next to
-  Paid (top strip and payment panel) lists each payment and refund on the booking: date, deposit / part / full payment,
-  method, receipt, time recorded, amount; refunds on the day paid out, money moved to guest credit labelled; pending rows
-  shown but not counted; adds up to Paid. (2) Dashboard Money "Taken this week" / Takings today now equal End of Day
-  "Cash collected": money moved onto a credit note is guest credit, not a refund, so it is no longer taken off.
-  (3) New dashboard card "This week's movements": money in by source, refunds paid out, Net taken (= Taken this week),
-  change on the 7 days before, money moved to guest credit apart (dashboard_takings permission).
-  Guides: 07-reception-bookings (Paid "i"), 99-admin-dashboard + 13-finance-payments (Money rule, new card).
-  Assistant: "when did the guest pay / part payments" -> the Paid "i"; "why does the dashboard differ from End of Day"
-  -> it no longer should; credit-note moves are guest credit. Manager Guide: Money and End of Day.
-
-- 2026-11-25 Liwonde 8b9a348 / Rosalyn's 74b80e3 (owner FEATURE): Bookings list: hover (or tap on a phone) the Status
-  or Payment pill for a short popup. Status: when, by whom and why (expired: hold ran out / not paid in time, room
-  released; cancelled: reason, how it was settled, fee kept, refund; no-show; checked in / out), or for open bookings
-  the hold time, pending lapse time, arrival and pay-by deadline. Payment: total, paid so far, balance due, credit,
-  latest payment, deposit, arrangement. Guides: 07-reception-bookings (Bookings list). Assistant: "why did this
-  booking expire / who cancelled it" -> hover the Status pill. Manager Guide: Bookings (one line).
 
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 
