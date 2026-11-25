@@ -47,9 +47,21 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   ("header reads Total": bookings.php header now `<th>Total</th>` since the list overhaul; test needs updating).
 - qa-auditor PASS. The LATERs (no stored levy/VAT % -> rates from the row's own amounts; group "average" test;
   Total header test) DONE 2026-11-26 in Liwonde 851815e / Rosalyn's ae8a150; tests 52/52, qa-auditor PASS.
-- LATER (older, not from this work): in exclusive mode `rh_doc_stay_lines` gives child/package amounts already net,
-  but `rh_booking_room_net` still divides them by (1+v+l)/(1+v). Only affects the booking-details "N nights x X"
-  text in exclusive mode (hidden when it doesn't match the room base). No test for a package on a no-stored-% row.
+- The exclusive-mode "double division" LATER was a false alarm (child/package are stored all-in in every mode);
+  package tests added. The real fault was in documents, fixed below.
+
+## Shipped 2026-11-26: exclusive VAT mode document split (owner PATCH, profile Claude) - Liwonde f78065e / Rosalyn's 599503d
+- Exclusive mode only: invoices, quotes, quotation PDF, confirmation email and group room list printed the child
+  charge and packages all-in and shrank the room line (totals were right). Now child /(1+v+l), packages /(1+v), from
+  the row's stored rates or rates from its own amounts (`rh_doc_row_rates`, includes/pricing.php); invoice package
+  rows, room description extras and the rate-plan discount add-back on the same net basis. Inclusive/off unchanged
+  (asserted). Both hotels run inclusive, so nothing changes on their documents today.
+- ASSUMPTION: a legacy row whose all-in child exceeds the net lines but whose child net fits is no longer folded into
+  the room line in exclusive mode (same split as inclusive).
+- booking_total_breakdown.php 75/75 (incl. a read-only invoice render); qa-auditor PASS.
+- LATER (exclusive mode only): invoice room description mixes the all-in nightly rate ("VAT and levy included") with
+  net extras; `{{booked_rate}}` template text, surcharge info row / rh_inv_surcharge_note and the breakdown "Discount
+  already taken off" note still all-in; custom-template group path has no render test.
 
 ## Shipped 2026-11-26: phone/tablet pager exception restored (owner PATCH, profile Claude) - Liwonde f33403c / Rosalyn's 177e4b0
 - OWNER DECISION 2026-11-26 (amends the one below): up to 1024px (phones + tablets) every pager follows its last row,
