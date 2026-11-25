@@ -59,6 +59,17 @@ when prompted."
   and are view-only (arrivals confirmed/pending, departures due out, events on any day). Room service only under Today.
   Guides: 99-admin-dashboard. Assistant: "who arrives tomorrow / next week" -> the arrows on the movements card.
   Manager Guide: Daily checklist (one line).
+- 2026-11-26 Liwonde 46cc606 / Rosalyn's e8728f2 (owner FEATURE): Email Templates "Suggest wording" has a Tone choice
+  beside it: Mixed (default, three styles, each card says which), Friendly, Concise, Firm, Formal, Apologetic (three
+  versions in that tone). Firm stays polite: a version adding a threat, deadline or cancelling talk is never shown.
+  Suggestions only use tags that email really fills; the pre-arrival payment reminder now gets suggestions too. PDF
+  templates still get none (on purpose). Guides: 12-email-templates (a ready paragraph is in this session's
+  scratchpad guide-tone-para.diff; re-write it if gone). Assistant: "how do I make the reminder sound firmer" -> Tone.
+- 2026-11-26 Liwonde 4a2b04f / Rosalyn's f05cd8f (owner PATCH): the check-in reminder no longer shows guests a literal
+  "{{site_name}}"; VAT rates print as set (17.5, never "18" or "17.0") in the quotation email, invoice, receipt and
+  PDFs; template previews use the hotel's VAT rate and fill every tag. In the room invoice email {{total_amount}} is
+  the balance (owner rule 2026-11-15), now said in the tag list. Guides: 12-email-templates (tag list note).
+  Assistant: none.
 
 ## Synced 2026-11-25 (owner prompted "sync guides, assistants and decisions"; guides + Assistant: commit "Guides + Assistant sync 2026-11-25" in both repos · Assistant: why-cancelled answer (reason from History, staff-only), Assistant cancel card uses rh_cancel_reason_check, counts_not_approved + count-measure hint, new arrivals_to_chase read · owner decisions 2026-11-24/25 written into guides + Assistant (cancel reason internal, guest emails unchanged; SMTP + copy lists unlocked) · Manager Guides: Stock, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed; POS and Kitchen Screens no change) - entries kept for reference
 

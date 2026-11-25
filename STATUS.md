@@ -29,6 +29,21 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-26: Suggest wording Tone picker + email/PDF wording fixes (owner FEATURE + PATCH, profile Claude session 8966213c)
+- 46cc606 / Rosalyn's e8728f2: Tone choice (Mixed/Friendly/Concise/Firm/Formal/Apologetic) for Suggest wording; tone in
+  payload + cache key; Firm never adds threats; versions only use tags the sender fills. PDFs stay excluded (reworded
+  PDF HTML stops being "stock" and would print edge to edge). qa-auditor PASS, 115 tests, browser 1366 + 390.
+- 4a2b04f / Rosalyn's f05cd8f: reminder literal {{site_name}} fixed; rh_rate_label() for every VAT rate (was "18" /
+  "17.0"); previews at the hotel's VAT rate, all 28 fill every tag. qa-auditor PASS, email_wording_check 16/0.
+- OWNER DECISION KEPT: room invoice email {{total_amount}} = balance (a148654). A builder's switch to the invoice
+  total was reverted, not shipped.
+- Owner 2026-11-25: all 28 Rosalyn's templates reset to defaults (backup Rosalyns-hotel-2026/backups/
+  rosalyn-booking_email_templates-20261125-141445-pre-apply.json; 3 emails had custom wording: payment_invoice,
+  tentative_quotation, conference_quotation).
+- LATER: invoice email check_out "F j, Y" vs PDF "j F Y"; payment_receipt default says "VAT Incl." in every VAT mode;
+  empty {{phone_main}} leaves "or ." in sentences; non-AJAX preview sample balance_due 3,500 vs amount_due with VAT;
+  LSH sample prefixes show at Rosalyn's; prearrival_payment_reminder wording not audited; Tone select hex colours.
+
 ## Shipped 2026-11-25: dashboard movements card period switcher (owner FEATURE, profile Claude) - Liwonde 6006f77 / Rosalyn's 8937bde
 - "Today's movements" has ‹ period › arrows beside the title: Today → Tomorrow → Next 7 days → Next 30 days, round
   again. Title, dates, tab counts and empty text follow the period. Later periods start tomorrow (Next 7 days = the
