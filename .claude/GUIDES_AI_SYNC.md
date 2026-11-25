@@ -25,6 +25,10 @@ when prompted."
 
 ## Pending (oldest first)
 
+- 7994a1f / Rosalyn's 5c44967 (2026-11-25): Email & PDF templates: the preview and "Send test" of a PDF template now
+  show the layout guests actually get (a stored copy of the old default is replaced by the current layout; edited
+  wording shows as typed). Guide 12 / Assistant only if they say the test PDF can look different from the real one.
+
 - LATER (sync review 2026-11-25): includes/ai/ai-desk.php ~1821: a bare "pre-arrival reminders" question gets the
   payment-reminder answer, but the pre-arrival reminder is a separate job; require "payment" in that pattern.
 - LATER (sync review 2026-11-25): guides 13 + 19 leave out the reservations-email fallback for the arrivals-to-chase
