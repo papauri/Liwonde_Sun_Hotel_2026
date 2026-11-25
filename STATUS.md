@@ -80,9 +80,15 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   credit note prefixes (rh_template_preview_refs), one sample balance, 14 days = +14 check-in; pre-arrival reminder
   drops "as set out in our payment policy below" when no policy is set. qa-auditor PASS, email_wording_check 35/0,
   browser: 28 previews fill every tag.
-- NOTE for the owner: the stored payment_receipt copies (both hotels) still say "VAT Incl." until that one template is
-  reset; the receipt EMAIL body is built by receipt_build_pos_style_html(), so the payment_receipt template's HTML only
-  shows in the editor preview (its subject and plain text are used).
+- b145620 / Rosalyn's e2b0b3b (owner "Fix receipt template" 2026-11-26): the payment_receipt template, switched on, IS
+  the receipt email; {{receipt_details_html}} (receipt_email_details_html) prints the receipt from the same pieces as
+  the POS body (receipt_email_parts); missing tag = added at the end; off = POS body unchanged (byte-identical, 48
+  cases). Tests receipt_email_template_check 43/0, email_wording_check 35/0; 28 previews fill every tag.
+- Owner "reset" 2026-11-26: ONLY payment_receipt reset to the new default at both hotels (is_active kept at 1). Backups:
+  backups/payment_receipt-template-*-pre-apply.json in each repo. qa-auditor's one blocker (old stored default would
+  print two totals with a tip) is closed by that reset. Until Rosalyn's deploys, its editor preview shows the tag raw;
+  guests unaffected (the live code still sends the POS body).
+- LATER: Suggest wording (Assistant) still skips payment_receipt; an owner-edited copy keeps its own summary rows.
 - LATER: Tone select hex colours; pre-arrival policy phrase not dropped from a stored text_body; preview credit note
   period uses date('Y').
 
