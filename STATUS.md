@@ -29,6 +29,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-26: Guides + Assistant + Manager Guides sync (owner prompted, profile Claude) - Liwonde fe98bf6 / Rosalyn's ced7d41
+- The 12 entries pending at the start moved to "Synced 2026-11-26" in .claude/GUIDES_AI_SYNC.md (identical in both repos);
+  ddda9f4 (room rate excl. VAT & levy) arrived mid-sync and stays Pending.
+- Guides 06, 07, 12, 13, 19, 99 (+ Liwonde-only brand fix in 01/02/14/23, guide 07 Blocked Dates note). Assistant: Paid
+  "i", dashboard = End of Day rule, Tone, arrow keys, pre-arrival question, Status pill pointers, movements arrows.
+- qa-auditor: one blocker (expiry questions caught "is milk expired" / gym memberships), fixed once. ai_assistant_test:
+  1056 pass / 1 data-dependent fail (staff activity) before the run was stopped for low memory; not re-run.
+- Manager Guides: Money and End of Day, Bookings, Daily checklist rebuilt. LATER lines + one owner question (Suggest
+  wording for the Receipt Email?) in GUIDES_AI_SYNC.md Pending.
+
 ## Shipped 2026-11-26: grid arrow keys page past the edge (owner FEATURE, profile Claude) - Liwonde bb3a41c / Rosalyn's 2908d62
 - Left / Right on a night cell past the last / first day shown pages the grid (Prev / Next step) and the cursor lands on
   the next night in the same room; Shift+Arrow keeps selecting across. Shared engine room-timeline-select.js
