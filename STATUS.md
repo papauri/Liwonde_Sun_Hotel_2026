@@ -45,8 +45,11 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Booking details > Payment breakdown: "N nights × X" (+ child charge) under Room base, only when it equals the base.
 - `rh_booking_room_net()` in config/database.php. Tests booking_total_breakdown.php 46 pass; 2 pre-existing fails
   ("header reads Total": bookings.php header now `<th>Total</th>` since the list overhaul; test needs updating).
-- qa-auditor PASS. LATER: a row with a levy amount but tourism_levy_percent 0 splits a child charge slightly off in
-  the popup; add a group (2+ rooms) test for the "average" hint.
+- qa-auditor PASS. The LATERs (no stored levy/VAT % -> rates from the row's own amounts; group "average" test;
+  Total header test) DONE 2026-11-26 in Liwonde 851815e / Rosalyn's ae8a150; tests 52/52, qa-auditor PASS.
+- LATER (older, not from this work): in exclusive mode `rh_doc_stay_lines` gives child/package amounts already net,
+  but `rh_booking_room_net` still divides them by (1+v+l)/(1+v). Only affects the booking-details "N nights x X"
+  text in exclusive mode (hidden when it doesn't match the room base). No test for a package on a no-stored-% row.
 
 ## Shipped 2026-11-26: phone/tablet pager exception restored (owner PATCH, profile Claude) - Liwonde f33403c / Rosalyn's 177e4b0
 - OWNER DECISION 2026-11-26 (amends the one below): up to 1024px (phones + tablets) every pager follows its last row,
