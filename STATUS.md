@@ -29,6 +29,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: Guides + Assistant + Manager Guides sync (owner prompted, profile Claude) - Liwonde e48fc69 / Rosalyn's 2b2f603
+- The 21 entries pending at the start moved to "Synced 2026-11-25" in .claude/GUIDES_AI_SYNC.md (identical in both repos
+  again); the Paid "i" (a1fda1b) and Status/Payment pill (8b9a348) entries arrived mid-sync and stay Pending.
+- Guides: Hotel Settings card names, lock on VAT / bank / levy / service charge, cancel reasons, payment reminders +
+  arrivals to chase, import questions, concurrency notes, PWA start page, stock count approval. Assistant: why-cancelled
+  answer (staff-only), cancel card uses rh_cancel_reason_check, counts_not_approved, new read arrivals_to_chase.
+- Owner decisions written in: cancel reason internal, guest emails unchanged; SMTP + copy lists stay unlocked.
+- Manager Guides: Stock, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and
+  Permissions rebuilt (page counts kept). qa-auditor PASS. LATER lines in GUIDES_AI_SYNC.md Pending.
+
 ## Shipped 2026-11-25: PDF template preview / test PDF no longer edge to edge (owner PATCH, profile Claude) - Liwonde 7994a1f / Rosalyn's 5c44967
 - Cause: the 7 stored *_document templates are old browser-styled copies; real sends already drop them for the print
   kit (rh_pdf_template_is_stock), but the editor preview + "Send test" printed them raw. booking-settings.php
