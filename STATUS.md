@@ -29,6 +29,21 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-26: pagers keep one place everywhere + movements card pager pinned (owner PATCH, profile Claude) - Liwonde 3d02358 / Rosalyn's 9bce3d6
+- OWNER DECISION 2026-11-26 (replaces 2026-11-22): every pager stays in one fixed bottom position on EVERY screen
+  size; a short last page, a filter or an empty result never moves it up (phones too, so a short page leaves space).
+- Shared auto pager (admin/js/admin-section-pagination.js): holds a full page of all rows (filter ignored), kept through
+  filters; "All" not padded. Empty dashboard periods/days show "Showing 0 of 0" with the message inside the list.
+- Server pagers (Bookings, Payments, Receipts, Credit notes, Reviews, Stock reports, Visitor analytics, System Logs,
+  gym visit log): short page padded to the last full page of that list seen in this tab (sessionStorage), else
+  rows-missing x row height. Call `AdminAutoSectionPagination.holdServerPagers()` after a script re-renders a pager.
+- Movements card above 680px: list scrolls inside the card, pager pinned at its bottom, page change keeps the window
+  still. Room service tab keeps its space outside Today (card height now constant, was 628 vs 576).
+- The movements LATER items are closed: (a) fixed above; (b) no per-row query (rows have billing_account_id > 0, the
+  schema probe is cached, accounts load once).
+- qa-auditor PASS after one fix round (short-page window scroll); browser 1920 + 390.
+- LATER: server pager memory key uses the pager's position on the page (shifts if a pager only renders sometimes).
+
 ## Shipped 2026-11-26: Suggest wording Tone picker + email/PDF wording fixes (owner FEATURE + PATCH, profile Claude session 8966213c)
 - 46cc606 / Rosalyn's e8728f2: Tone choice (Mixed/Friendly/Concise/Firm/Formal/Apologetic) for Suggest wording; tone in
   payload + cache key; Firm never adds threats; versions only use tags the sender fills. PDFs stay excluded (reworded
@@ -60,8 +75,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - Card size: above 680px the list area is a fixed 460px with its own scroll (card height measured constant in every
   period and tab). Phones: full-width switcher with 44px arrows, list follows its rows at 10 per page, 240px minimum.
 - qa-auditor PASS; browser 1920 + 390 ok; counts matched a read-only Liwonde count (week 3/3, month 35/21).
-- LATER: above 680px the pager sits inside the scroll area and scrolls the window (Today's pager too); company-billed
-  arrivals with an unpaid deposit read billing once per row (now up to 500 more rows).
+- LATER items closed 2026-11-26 by 3d02358 (see above).
 
 ## Shipped 2026-11-25: Guides + Assistant + Manager Guides sync (owner prompted, profile Claude) - Liwonde e48fc69 / Rosalyn's 2b2f603
 - The 21 entries pending at the start moved to "Synced 2026-11-25" in .claude/GUIDES_AI_SYNC.md (identical in both repos
