@@ -29,7 +29,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
-## Shipped 2026-11-25: dashboard movements card period switcher (owner FEATURE, profile Claude)
+## Shipped 2026-11-25: dashboard movements card period switcher (owner FEATURE, profile Claude) - Liwonde 6006f77 / Rosalyn's 8937bde
 - "Today's movements" has ‹ period › arrows beside the title: Today → Tomorrow → Next 7 days → Next 30 days, round
   again. Title, dates, tab counts and empty text follow the period. Later periods start tomorrow (Next 7 days = the
   Week ahead days): arrivals confirmed/pending, departures in house or still to arrive, events on any day of the

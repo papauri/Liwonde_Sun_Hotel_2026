@@ -54,7 +54,7 @@ when prompted."
   the hold time, pending lapse time, arrival and pay-by deadline. Payment: total, paid so far, balance due, credit,
   latest payment, deposit, arrangement. Guides: 07-reception-bookings (Bookings list). Assistant: "why did this
   booking expire / who cancelled it" -> hover the Status pill. Manager Guide: Bookings (one line).
-- 2026-11-25 (owner FEATURE): Dashboard "Today's movements" card: the ‹ › arrows beside the title switch between Today,
+- 2026-11-25 Liwonde 6006f77 / Rosalyn's 8937bde (owner FEATURE): Dashboard "Today's movements" card: the ‹ › arrows beside the title switch between Today,
   Tomorrow, Next 7 days and Next 30 days (round and round); counts, title and lists follow. Later periods start tomorrow
   and are view-only (arrivals confirmed/pending, departures due out, events on any day). Room service only under Today.
   Guides: 99-admin-dashboard. Assistant: "who arrives tomorrow / next week" -> the arrows on the movements card.
