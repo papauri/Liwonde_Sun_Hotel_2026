@@ -29,6 +29,17 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-25: dashboard movements card period switcher (owner FEATURE, profile Claude)
+- "Today's movements" has ‹ period › arrows beside the title: Today → Tomorrow → Next 7 days → Next 30 days, round
+  again. Title, dates, tab counts and empty text follow the period. Later periods start tomorrow (Next 7 days = the
+  Week ahead days): arrivals confirmed/pending, departures in house or still to arrive, events on any day of the
+  period; rows are View-only. Room service (live orders) shows under Today only. Today's own lists are unchanged.
+- Card size: above 680px the list area is a fixed 460px with its own scroll (card height measured constant in every
+  period and tab). Phones: full-width switcher with 44px arrows, list follows its rows at 10 per page, 240px minimum.
+- qa-auditor PASS; browser 1920 + 390 ok; counts matched a read-only Liwonde count (week 3/3, month 35/21).
+- LATER: above 680px the pager sits inside the scroll area and scrolls the window (Today's pager too); company-billed
+  arrivals with an unpaid deposit read billing once per row (now up to 500 more rows).
+
 ## Shipped 2026-11-25: Guides + Assistant + Manager Guides sync (owner prompted, profile Claude) - Liwonde e48fc69 / Rosalyn's 2b2f603
 - The 21 entries pending at the start moved to "Synced 2026-11-25" in .claude/GUIDES_AI_SYNC.md (identical in both repos
   again); the Paid "i" (a1fda1b) and Status/Payment pill (8b9a348) entries arrived mid-sync and stay Pending.
