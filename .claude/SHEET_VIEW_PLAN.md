@@ -109,7 +109,7 @@ Page `admin/menu-management.php` (Food / Drinks tabs), `admin/css/menu-managemen
 6. Before and after each phase, the area's existing test suites run and must give the same result (named per phase
    below); plus the phase's new tests and a headless browser check. Liwonde test data only, then port.
 7. Review: qa-auditor (Opus) on every phase with logic; dept-accounting-lead on every money column; final-review
-   (Fable) after Opus passes on S9 and S10 (stock + money, booking prices: RULES.md Fable rule).
+   (Fable) after Opus passes on S9 (stock + money: RULES.md Fable rule).
 8. One phase per session; the next starts only after the previous is shipped and ported.
 
 ## Later phases (owner 2026-11-26: "can we do it all in phases"), in this order, lowest risk first
@@ -127,16 +127,13 @@ S8. Recipes grid (`admin/stock-recipes.php`, action `save_recipe`): amounts per 
 S9. Receiving a delivery (`admin/purchase-orders.php`, action `receive` via `rh_po_read_receive_post`): type quantity
     received and price per line from the supplier's invoice. Adds stock and sets cost, so: review list, all-or-none,
     existing receive code only. Tests: stock_receiving, stock_expiry_fifo, stock_packs. CRITICAL + Fable final review.
-S10. Room prices grid (`admin/room-management.php` price fields: price per night, single/double/triple) and the rate
-    plan list (`admin/rate-plans.php`, action `save`, with its `preview`). Room price history already logged. A
-    per-DATE rate calendar is NOT included: there is no per-date price in the system, so it would be new pricing
-    logic (owner: logic stays the same). Tests: rate_plan_rules_rp3, rate_plan_room_adjustments,
-    rate_plan_surcharge_display, booked_rate_line_test. CRITICAL + Fable final review.
+S10. DROPPED (owner 2026-11-26: "Lets leave rooms out of this. Too high risk"). No room prices, rate plans or any
+    rooms screen in the grid. Do not bring it back without the owner's words.
 S11. Reports, read-only grid (`admin/reports.php` tables): sort, filter, copy a selection to Excel. No editing.
 
-Not in any phase (owner agreed 2026-11-26): bookings, payments, invoices, receipts, refunds, credit notes, the till,
+Not in any phase (owner agreed 2026-11-26): rooms (room prices, rate plans, room screens), bookings, payments, invoices, receipts, refunds, credit notes, the till,
 staff permissions, small lists (tables, gym packages, deals).
 
 ## Order
-S1 -> S2 -> S3 -> S4 ... S11, one session each, each shipped and ported before the next. Guides + Assistant lines in
+S1 -> S2 -> S3 -> S4 ... S9 -> S11 (no S10), one session each, each shipped and ported before the next. Guides + Assistant lines in
 `.claude/GUIDES_AI_SYNC.md` at each ship (sync itself only when the owner prompts).

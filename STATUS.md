@@ -33,7 +33,8 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 Plan: `.claude/SHEET_VIEW_PLAN.md` (S1 shared sheet engine -> S2 Stock Count -> S3 Menu with price review list + price
 log + presence). No override permission, no logic change, phones unchanged, no new view permissions: staff without
 the page permission never see the grid (owner 2026-11-26). Later phases S4-S11 added (Stock Items, reorder, budget,
-wastage, recipes, receiving, room prices, read-only reports) with safety rails. Next step: S1 in a fresh session.
+wastage, recipes, receiving, read-only reports) with safety rails; rooms left out entirely (owner 2026-11-26: too
+high risk). Next step: S1 in a fresh session.
 
 ## Shipped 2026-11-26: Guides + Assistant + Manager Guides sync (owner prompted, profile Claude) - Liwonde fe98bf6 / Rosalyn's ced7d41
 - The 12 entries pending at the start moved to "Synced 2026-11-26" in .claude/GUIDES_AI_SYNC.md (identical in both repos);
