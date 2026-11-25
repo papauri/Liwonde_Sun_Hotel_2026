@@ -59,9 +59,12 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 - ASSUMPTION: a legacy row whose all-in child exceeds the net lines but whose child net fits is no longer folded into
   the room line in exclusive mode (same split as inclusive).
 - booking_total_breakdown.php 75/75 (incl. a read-only invoice render); qa-auditor PASS.
-- LATER (exclusive mode only): invoice room description mixes the all-in nightly rate ("VAT and levy included") with
-  net extras; `{{booked_rate}}` template text, surcharge info row / rh_inv_surcharge_note and the breakdown "Discount
-  already taken off" note still all-in; custom-template group path has no render test.
+- Leftovers DONE 2026-11-26 (Liwonde 7b84947 / Rosalyn's ac2df56): in exclusive mode the invoice nightly rate
+  ("excl. VAT and levy"), `{{booked_rate}}`, custom group "Booked at" line, surcharge row/note and the breakdown
+  discount/surcharge notes are on the net basis (`doc_basis` option, includes/booked-rate.php). Inclusive/off
+  byte-identical (45 renders). Tests 85/85 incl. custom-template group render; qa-auditor PASS. CLOSED.
+- Deliberately all-in (no net lines beside them): credit-note `{{booked_rate}}`, receipt, email booked-rate block,
+  template-editor sample. Minor test LATERs: off-mode surcharge path untested; `&&!btb_has` spacing.
 
 ## Shipped 2026-11-26: phone/tablet pager exception restored (owner PATCH, profile Claude) - Liwonde f33403c / Rosalyn's 177e4b0
 - OWNER DECISION 2026-11-26 (amends the one below): up to 1024px (phones + tablets) every pager follows its last row,
