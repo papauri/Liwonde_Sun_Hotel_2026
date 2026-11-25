@@ -94,6 +94,49 @@ Page `admin/menu-management.php` (Food / Drinks tabs), `admin/css/menu-managemen
   (`includes/view-only.php`), and counts waiting for approval, approved or rejected.
 - So no phase touches `admin/includes/permissions.php`.
 
+## Safety rails for EVERY phase (owner 2026-11-26: "without breaking any logic or messing up any finances or stock")
+1. The grid never writes to the database. It only fills and submits the screen's EXISTING save action. Server-side
+   changes are limited to: moving an existing save block into a function with no behaviour change, the presence keys,
+   and new old -> new log lines. Anything else = stop and ask the owner.
+2. Read-only, always: quantity on hand, anything computed (difference, value, totals, VAT), and anything that has its
+   own guarded flow (Change unit, opening stock, approval). Those stay on their existing buttons.
+3. Every money cell (price, cost per unit, budget, room price) goes through the review list before saving and is logged
+   old -> new (room prices already are, `includes/price-history.php`; menu and stock cost get the same).
+4. Saves are all-or-none in one transaction, with the screen's stale check; a refused save names the rows and saves
+   nothing.
+5. The grid is built by JS on top of today's list. If the grid script fails, the list is still there and works.
+   Phones keep the list only.
+6. Before and after each phase, the area's existing test suites run and must give the same result (named per phase
+   below); plus the phase's new tests and a headless browser check. Liwonde test data only, then port.
+7. Review: qa-auditor (Opus) on every phase with logic; dept-accounting-lead on every money column; final-review
+   (Fable) after Opus passes on S9 and S10 (stock + money, booking prices: RULES.md Fable rule).
+8. One phase per session; the next starts only after the previous is shipped and ported.
+
+## Later phases (owner 2026-11-26: "can we do it all in phases"), in this order, lowest risk first
+S4. Stock Items grid (`admin/stock-ingredients.php`, action `update`). Editable: the Edit form's plain fields (name,
+    category, location, supplier, reorder/par levels, barcode). Cost per unit: review list + log (rail 3). Read-only:
+    quantity, unit (own Change unit flow), batches. Tests: stock_list_filters, stock_change_unit, stock_core_8c.
+    Owner: dept-stock-lead. CRITICAL (cost).
+S5. Reorder list grid (`admin/stock-reorder.php` -> `purchase-orders.php` action `create_from_reorder`): adjust the
+    suggested amounts, then the existing "create order" button. Nothing is stock until received. NORMAL+stock review.
+S6. Stock budget grid (`admin/stock-budget.php`, action `set`): month x category. Review list + log. Test: stock_budget.
+S7. Wastage, several lines at once (`admin/stock-wastage.php`, its existing save in one transaction, ~76-174): one
+    row per item, same reasons, same checks. Tests: stock_loss, stock_expiry_fifo. CRITICAL (stock).
+S8. Recipes grid (`admin/stock-recipes.php`, action `save_recipe`): amounts per dish, shown with the cost of one sale
+    as today. Changes only future sales. Tests: menu_portions, pos_kds_stock_accounting. CRITICAL.
+S9. Receiving a delivery (`admin/purchase-orders.php`, action `receive` via `rh_po_read_receive_post`): type quantity
+    received and price per line from the supplier's invoice. Adds stock and sets cost, so: review list, all-or-none,
+    existing receive code only. Tests: stock_receiving, stock_expiry_fifo, stock_packs. CRITICAL + Fable final review.
+S10. Room prices grid (`admin/room-management.php` price fields: price per night, single/double/triple) and the rate
+    plan list (`admin/rate-plans.php`, action `save`, with its `preview`). Room price history already logged. A
+    per-DATE rate calendar is NOT included: there is no per-date price in the system, so it would be new pricing
+    logic (owner: logic stays the same). Tests: rate_plan_rules_rp3, rate_plan_room_adjustments,
+    rate_plan_surcharge_display, booked_rate_line_test. CRITICAL + Fable final review.
+S11. Reports, read-only grid (`admin/reports.php` tables): sort, filter, copy a selection to Excel. No editing.
+
+Not in any phase (owner agreed 2026-11-26): bookings, payments, invoices, receipts, refunds, credit notes, the till,
+staff permissions, small lists (tables, gym packages, deals).
+
 ## Order
-S1 -> S2 -> S3, one session each, each shipped and ported before the next. Guides + Assistant lines in
+S1 -> S2 -> S3 -> S4 ... S11, one session each, each shipped and ported before the next. Guides + Assistant lines in
 `.claude/GUIDES_AI_SYNC.md` at each ship (sync itself only when the owner prompts).
