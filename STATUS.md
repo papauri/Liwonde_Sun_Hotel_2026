@@ -12,6 +12,14 @@ Deeper trackers to read next:
 - `.claude/BUILD_PLAN.md`
 - Rosalyn's `.claude/TASKS.md`, the live task tracker shared by both hotels
 
+## Shipped 2026-11-27: icon picker + Room Packages window (owner, profile Claude session f0fab372) - Liwonde fc8e45a / Rosalyn's 9f95094
+- "Choose icon" on every input[data-icon-preview] (Room/Conference Packages, Gym, Page Management, Section Headers
+  badges at Liwonde): searchable grid of 1,895 Font Awesome Free 6.7.2 icons from admin/js/fa-icons.js (regenerate with
+  `node scripts/build-fa-icons.mjs`), lazy-loaded; bare "coffee" saved in the field's format; re-runs on in-app
+  navigation. Room Packages modal now on the shared modal layer (was under the sidebar). qa-auditor PASS after 1 fix.
+- LATER: a tablet tap that closes the picker not yet checked against closing the window behind it; Section Headers
+  loads slowly locally (file scan ~line 146).
+
 ## IN PROGRESS 2026-11-27: emails, resumed after two sessions were cut off (profile Claude)
 - DB access restored 2026-11-27 (the 3306 timeout cleared on its own).
 - A) DONE: Liwonde 1404789 (shipped + ported by the Rosalyn's-window session 3bae2dc0). Gym/event-inquiry quotation
