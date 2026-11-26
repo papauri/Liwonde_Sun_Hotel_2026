@@ -771,14 +771,18 @@ $page_title = 'Section Headers Management';
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES) ?>">
                     <p class="sh-toolbar__note">
                         The three small badges under the home page hero. They advertise the booking flow, so they appear on the home hero only.
-                        Clear a label to remove that badge. Icons use <a href="https://fontawesome.com/search?o=r&m=free" target="_blank" rel="noopener">Font Awesome</a> class names, e.g. <code>fa-bolt</code>.
+                        Clear a label to remove that badge. For each icon, type a name or press Choose icon.
                     </p>
                     <?php foreach ($hero_chips as $slot => $chip): ?>
                     <div class="sh-form__grid">
                         <div class="sh-field">
                             <label>Badge <?= (int)$slot ?> icon</label>
-                            <input type="text" name="hero_chip_<?= (int)$slot ?>_icon" value="<?= htmlspecialchars($chip['icon']) ?>"
-                                placeholder="fa-bolt" pattern="[A-Za-z0-9\- ]*" title="Font Awesome class, e.g. fa-bolt" class="sh-input">
+                            <div class="icon-preview-wrap">
+                                <span class="icon-preview-badge"><i class="fas fa-bolt" id="heroChipIconPreview<?= (int)$slot ?>"></i></span>
+                                <input type="text" name="hero_chip_<?= (int)$slot ?>_icon" value="<?= htmlspecialchars($chip['icon']) ?>"
+                                    placeholder="fa-bolt" pattern="[A-Za-z0-9\- ]*" title="Font Awesome class, e.g. fa-bolt" class="sh-input"
+                                    data-icon-preview="heroChipIconPreview<?= (int)$slot ?>" data-icon-prefix="fas" data-icon-fallback="fas fa-bolt">
+                            </div>
                         </div>
                         <div class="sh-field">
                             <label>Badge <?= (int)$slot ?> label</label>
