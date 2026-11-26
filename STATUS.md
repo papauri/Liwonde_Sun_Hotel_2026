@@ -13,16 +13,11 @@ Deeper trackers to read next:
 - Rosalyn's `.claude/TASKS.md`, the live task tracker shared by both hotels
 
 ## IN PROGRESS 2026-11-27: emails, resumed after two sessions were cut off (profile Claude)
-- BLOCKER: this laptop cannot reach the MySQL host (promanaged-it.com:3306 times out; 443 works). No test, browser
-  check or ship gate can run until the owner restores access (cPanel Remote MySQL allow-list for the current IP, or
-  another network/VPN).
-- A) READY, UNCOMMITTED (from session 94b37144): gym + event-inquiry quotation emails print the Total at 2 dp as the
-  PDF does (config/email.php ~4412, ~4625); duplicate admin-components.js tag removed from admin/conference-packages.php
-  (~516; the footer already loads it); test added to scripts/tests/deposit_line_test.php. php -l OK. Next: run
-  deposit_line_test + email_template_escape_test, qa-auditor, browser check Conference Packages at 1280/390 (icon
-  preview + package picker), commit (stage the 3 files by name), diff Rosalyn's copies before porting, mark the two
-  LATER lines below DONE. Ship A BEFORE B touches config/email.php.
-- B) OWNER-APPROVED, NOT STARTED (owner 2026-11-26 "fix the left for later"): the five email-wording LATER items
+- DB access restored 2026-11-27 (the 3306 timeout cleared on its own).
+- A) DONE: Liwonde 1404789 (shipped + ported by the Rosalyn's-window session 3bae2dc0). Gym/event-inquiry quotation
+  email + WhatsApp Total = the PDF figure (rh_pdf_money / rh_quote_email_total; event quotation WhatsApp stays 0 dp like
+  its PDF); Conference Packages loads admin-components.js once. deposit_line_test 158/0, qa-auditor PASS, browser clean.
+- B) OWNER-APPROVED, BUILDING 2026-11-27 (fresh dept-rooms-lead, nothing committed until QA passes) (owner 2026-11-26 "fix the left for later"): the five email-wording LATER items
   (bulk sends, Create booking, Edit booking `booking_modified` template, tentative Convert, quick Confirm menu item).
   Full builder brief: `.claude/EMAIL_WORDING_LATER_BRIEF.md`. The first builder only read code; nothing was written.
   Next: after A ships and the DB is back, a FRESH dept-rooms-lead with that brief.
@@ -77,8 +72,7 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   - Manual venue price + conference email total = PDF + subject never blank DONE: Liwonde e4bf933 / Rosalyn's 60d5cc7.
   - email_send_log_test brought up to date (test only): Liwonde 88a0728 / Rosalyn's 49d22ae.
   - Icon preview (Conference Packages, Gym, Page Management) + booked rates on any room move + gym/event quotation email total = PDF DONE: Liwonde 4aa3d3b / Rosalyn's ffc4f2c.
-  - LATER: gym/event quotation emails print the total with 0 decimals (email.php ~4412, ~4625; the PDF shows cents);
-  - LATER: conference-packages.php ~516 loads admin-components.js twice (listener registered twice, harmless).
+  - Gym/event quotation email (+ WhatsApp) total = PDF, and Conference Packages script loaded once: DONE Liwonde 1404789.
 
 ## Planned 2026-11-26: spreadsheet view for Stock Count + Menu (owner FEATURE, profile Claude) - not started
 Plan: `.claude/SHEET_VIEW_PLAN.md` (S1 shared sheet engine -> S2 Stock Count -> S3 Menu with price review list + price
