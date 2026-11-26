@@ -29,6 +29,14 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-26: edit a booking email's wording before it goes out (owner FEATURE, profile Claude session 6247c72b) - Liwonde e54c663 / Rosalyn's 6571a9c
+- "Edit wording" on the Resend email window and the single Confirm / Cancel dialogs. Money/payment fields locked (same
+  count and place), typed prices and unsafe HTML refused, one send only, never saved, audit line in booking History.
+  Seam: getBookingEmailTemplateConfig() override (config/database.php) + includes/email-wording.php. Test:
+  scripts/tests/email_wording_test.php 100/0. QA PASS after one fix round.
+- LATER: bulk sends, Create/Edit booking emails, tentative Convert on Booking details, All Bookings quick Confirm.
+  Not browser-checked: Booking details Confirm (no pending booking on Liwonde at the time).
+
 ## Shipped 2026-11-26: Dashboard cards + modal scroll lock (owner PATCH x2, profile Claude session 3ce0dc2a)
 - Liwonde af2a4a7 / Rosalyn's b00586f: Dashboard figure cards open again after leaving the page and coming back
   (stale document listeners from an earlier in-place visit swallowed the click). qa-auditor PASS, headless check.
