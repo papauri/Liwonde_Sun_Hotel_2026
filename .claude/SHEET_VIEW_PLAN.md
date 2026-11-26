@@ -159,5 +159,24 @@ qa-auditor Opus). Starts after A ships and may run AT THE SAME TIME as B (differ
 - S11 Reports read-only grid. `admin/reports.php` is uncommitted by another session today: S11 waits until that
   session has shipped; if it still holds it when S3 is ready, S3 ships alone and S11 follows.
 
+## Autonomous run (owner 2026-11-26: "do it all in 1 session", "when we reach our 5hr limit and it resets it
+## continues building always automatically", "bypass RULES.md this time around")
+- One session builds A -> B1 -> B2 -> C (+ S11) end to end. Waived for THIS run only: RULES.md "one feature per
+  session, /clear after each ship" and the short-updates-only wait for owner replies between ships (each ship
+  continues straight into the next).
+- NOT waived (they protect money, stock and Rosalyn's live guests; the hooks enforce most of them anyway): Rosalyn's
+  is LIVE (no tests, scripts or DB writes there; ports by copy + `php -l` only), no destructive SQL, secrets never
+  staged, no hook bypass (`--no-verify`), no paid AI calls from the shell, the ship gate (tests, qa-auditor, browser
+  check), safety rails 1-8 above, Fable final review on B2.
+- Auto-continue: the build session's FIRST step creates a session cron (CronCreate, recurring, every ~20 min, off the
+  :00/:30 marks) with this prompt: "Sheet view auto-continue: read the 'Sheet view build log' block in STATUS.md.
+  If an agent of this run is still working, or a step is mid-review, do nothing. Otherwise carry on with the next
+  unfinished step of .claude/SHEET_VIEW_PLAN.md. When C has shipped and been ported, delete this cron job." A fire
+  that lands during the 5-hour usage limit fails; the first fire after the reset picks the work up again.
+  Limits: the cron lives only while that Claude window stays open (closing it or /clear ends it) and expires after
+  30 days. If the window was closed, a new session reads STATUS.md and continues by hand.
+- The build session keeps a "Sheet view build log" block in STATUS.md, updated at every step (step, agent running,
+  last commit), so the cron and any new session know exactly where it stopped.
+
 Totals: 4 ships (A, B1, B2, C) instead of 10 phases. Every ship: rails 1-8 above, then ported to Rosalyn's.
 Guides + Assistant lines in `.claude/GUIDES_AI_SYNC.md` at each ship (the sync itself only when the owner prompts).
