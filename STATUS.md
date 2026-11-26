@@ -12,6 +12,21 @@ Deeper trackers to read next:
 - `.claude/BUILD_PLAN.md`
 - Rosalyn's `.claude/TASKS.md`, the live task tracker shared by both hotels
 
+## IN PROGRESS 2026-11-27: emails, resumed after two sessions were cut off (profile Claude)
+- BLOCKER: this laptop cannot reach the MySQL host (promanaged-it.com:3306 times out; 443 works). No test, browser
+  check or ship gate can run until the owner restores access (cPanel Remote MySQL allow-list for the current IP, or
+  another network/VPN).
+- A) READY, UNCOMMITTED (from session 94b37144): gym + event-inquiry quotation emails print the Total at 2 dp as the
+  PDF does (config/email.php ~4412, ~4625); duplicate admin-components.js tag removed from admin/conference-packages.php
+  (~516; the footer already loads it); test added to scripts/tests/deposit_line_test.php. php -l OK. Next: run
+  deposit_line_test + email_template_escape_test, qa-auditor, browser check Conference Packages at 1280/390 (icon
+  preview + package picker), commit (stage the 3 files by name), diff Rosalyn's copies before porting, mark the two
+  LATER lines below DONE. Ship A BEFORE B touches config/email.php.
+- B) OWNER-APPROVED, NOT STARTED (owner 2026-11-26 "fix the left for later"): the five email-wording LATER items
+  (bulk sends, Create booking, Edit booking `booking_modified` template, tentative Convert, quick Confirm menu item).
+  Full builder brief: `.claude/EMAIL_WORDING_LATER_BRIEF.md`. The first builder only read code; nothing was written.
+  Next: after A ships and the DB is back, a FRESH dept-rooms-lead with that brief.
+
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
 250-470k context, main sessions up to 600k. Now enforced by config, not just rules:
