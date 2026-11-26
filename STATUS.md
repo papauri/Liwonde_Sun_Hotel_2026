@@ -20,15 +20,18 @@ Deeper trackers to read next:
 - LATER: a tablet tap that closes the picker not yet checked against closing the window behind it; Section Headers
   loads slowly locally (file scan ~line 146).
 
-## IN PROGRESS 2026-11-27: emails, resumed after two sessions were cut off (profile Claude)
-- DB access restored 2026-11-27 (the 3306 timeout cleared on its own).
-- A) DONE: Liwonde 1404789 (shipped + ported by the Rosalyn's-window session 3bae2dc0). Gym/event-inquiry quotation
-  email + WhatsApp Total = the PDF figure (rh_pdf_money / rh_quote_email_total; event quotation WhatsApp stays 0 dp like
-  its PDF); Conference Packages loads admin-components.js once. deposit_line_test 158/0, qa-auditor PASS, browser clean.
-- B) OWNER-APPROVED, BUILDING 2026-11-27 (fresh dept-rooms-lead, nothing committed until QA passes) (owner 2026-11-26 "fix the left for later"): the five email-wording LATER items
-  (bulk sends, Create booking, Edit booking `booking_modified` template, tentative Convert, quick Confirm menu item).
-  Full builder brief: `.claude/EMAIL_WORDING_LATER_BRIEF.md`. The first builder only read code; nothing was written.
-  Next: after A ships and the DB is back, a FRESH dept-rooms-lead with that brief.
+## Shipped 2026-11-27: emails, resumed after two sessions were cut off (profile Claude session f0fab372)
+- Quotation totals = PDF (email + WhatsApp) + Conference Packages script once: Liwonde 1404789 / Rosalyn's 3f78c5d
+  (built and ported by the Rosalyn's-window session 3bae2dc0).
+- Edit email wording LATER items (owner 2026-11-26 "fix the left for later"): Liwonde d570ccc / Rosalyn's 266ea3c.
+  Bulk sends (one wording per key, invoice fixed), New booking (refused before create), Edit booking via the new
+  `booking_modified` template (seeded insert-if-missing at runtime, so Rosalyn's live DB gets the row on first use;
+  change list locked; all *_html/*_block tokens locked), Booking details Convert, "Confirm and edit email" row item.
+  Unasked fix kept: quick Modify emails only real changes. Tests 133/126/114/116/116, 0 failed; qa-auditor PASS after
+  one fix (wording-data endpoint: New booking access reads booking_id 0 only). Brief: `.claude/EMAIL_WORDING_LATER_BRIEF.md`.
+  Test booking LSH2026576536 (@example.invalid) left on Liwonde.
+- LATER: the booking_modified email no longer shows the VAT and levy rows; room swaps / reprices still send no email
+  (as before); wording posted to update_status from a status other than pending/tentative is silently ignored.
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
