@@ -17,8 +17,9 @@ Deeper trackers to read next:
   badges at Liwonde): searchable grid of 1,895 Font Awesome Free 6.7.2 icons from admin/js/fa-icons.js (regenerate with
   `node scripts/build-fa-icons.mjs`), lazy-loaded; bare "coffee" saved in the field's format; re-runs on in-app
   navigation. Room Packages modal now on the shared modal layer (was under the sidebar). qa-auditor PASS after 1 fix.
-- LATER: a tablet tap that closes the picker not yet checked against closing the window behind it; Section Headers
-  loads slowly locally (file scan ~line 146).
+- DONE 159c07e / Rosalyn's ddf1e2f: the picker's closing tap no longer closes the window behind (click, not mousedown,
+  + 450 ms guard); Section Headers caches its file scan in cache/section_headers_scan.json (rescans when any scanned
+  file changes). qa-auditor PASS.
 
 ## Shipped 2026-11-27: emails, resumed after two sessions were cut off (profile Claude session f0fab372)
 - Quotation totals = PDF (email + WhatsApp) + Conference Packages script once: Liwonde 1404789 / Rosalyn's 3f78c5d
@@ -29,9 +30,15 @@ Deeper trackers to read next:
   change list locked; all *_html/*_block tokens locked), Booking details Convert, "Confirm and edit email" row item.
   Unasked fix kept: quick Modify emails only real changes. Tests 133/126/114/116/116, 0 failed; qa-auditor PASS after
   one fix (wording-data endpoint: New booking access reads booking_id 0 only). Brief: `.claude/EMAIL_WORDING_LATER_BRIEF.md`.
-  Test booking LSH2026576536 (@example.invalid) left on Liwonde.
-- LATER: the booking_modified email no longer shows the VAT and levy rows; room swaps / reprices still send no email
-  (as before); wording posted to update_status from a status other than pending/tentative is silently ignored.
+- Leftovers (owner 2026-11-27 "complete the small things"): Liwonde ae6ec67 / Rosalyn's 2491031. booking_modified
+  gets a locked {{tax_rows_html}} (VAT/levy note only, no amounts; appended at build time to stored rows lacking it);
+  opt-in "Email the guest about this change" tick (default off) on room assign, Add/take off nights, Change checkout
+  (send after save; failed send kept + logged to History); update_status refuses edited wording unless Confirm
+  (pending/tentative) or Cancel with guest email on. Test booking LSH2026576536 cancelled via the app (no email).
+  Tests 173/126/114/116/116, 0 failed; qa-auditor PASS.
+- LATER: Calendar / Individual Rooms moves have no email tick; nights + checkout dialogs browser-unchecked (code +
+  tests only); nights-dialog tick row under 44px; update_status never compares posted wording key with $wsKey (safe:
+  confirm/cancel paths check it); group booking change list "Total" is one room's amount.
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
