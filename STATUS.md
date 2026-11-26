@@ -29,6 +29,14 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   `MSP/usage-reports/<date>.md` + a row in `MSP/usage-reports/HISTORY.md`. COST_LOG.md is retired.
   Baseline 10-16 Nov: 22,793 calls, 50 per hotel commit, 95% Opus, 53 agent runs past today's caps.
 
+## Shipped 2026-11-26: Dashboard cards + modal scroll lock (owner PATCH x2, profile Claude session 3ce0dc2a)
+- Liwonde af2a4a7 / Rosalyn's b00586f: Dashboard figure cards open again after leaving the page and coming back
+  (stale document listeners from an earlier in-place visit swallowed the click). qa-auditor PASS, headless check.
+- Liwonde 492bc02 / Rosalyn's 2ec4e0c: admin-spa.js _cleanup() drops body.modal-open, so leaving a page with a
+  window open (browser Back) no longer leaves the next page unable to scroll. qa-auditor PASS, headless check.
+- LATER: Dashboard .ck-menu click listener and clock interval still stack per in-place visit (harmless today);
+  bookings.php modals shown with inline display:flex are not hidden by _cleanup() (overlay blocks the case).
+
 ## Shipped 2026-11-26: room + conference packages, deposit lines, email escaping (owner, profile Claude session 94b37144)
 - Room packages follow stay changes (PATCH): Liwonde d9a3bb8 / Rosalyn's 5559e09. Plan: Liwonde `.claude/ROOM_PACKAGES_FIX_PLAN.md`.
 - Conference packages (FEATURE): Liwonde 823e9bd / Rosalyn's c5753bf. Plan: Liwonde `.claude/CONF_PACKAGES_PLAN.md`.
