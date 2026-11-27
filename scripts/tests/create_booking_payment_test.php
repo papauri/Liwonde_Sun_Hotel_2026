@@ -33,6 +33,31 @@ $cpp = '';
 if (preg_match('/function checkPartialPayment\(\) \{(.*?)\n        \}/s', $src, $m)) { $cpp = $m[1]; }
 check($cpp !== '', 'checkPartialPayment found');
 check(strpos($cpp, "removeAttribute('data-auto')") === false, 'checkPartialPayment does not clear data-auto');
+// Step-by-step screen (plan Phase A, 2026-11-28): the amount follows the price check (the save's own total minus the
+// guest credit) while it is auto-filled; a typed or disabled amount is never touched; paid / part paid / paid more
+// are judged against that total with the save's 0.01 tolerance.
+$cfa = '';
+if (preg_match('/function cbFillAmount\(q\) \{(.*?)\n        \}/s', $src, $m)) { $cfa = $m[1]; }
+check($cfa !== '', 'cbFillAmount found');
+check(strpos($cfa, "if (!amt || amt.disabled) return false;") !== false
+    && strpos($cfa, "if (amt.value && amt.getAttribute('data-auto') !== '1') return false;") !== false, 'a typed or disabled amount is never changed by the price check');
+check(strpos($cfa, 'q.totals && q.totals.total_with_vat') !== false && strpos($cfa, 'Math.min(eligible, total)') !== false, 'the amount is the server total minus the eligible credit, capped at the total');
+check(strpos($src, "if (!cbQ.quote && !amtEl.disabled && (!amtEl.value || amtEl.getAttribute('data-auto') === '1'))") !== false, 'before the first price check the amount follows the page estimate, as before');
+check(strpos($src, 'const CB_TOL = 0.01;') !== false && strpos($cpp, 'overBy > CB_TOL') !== false && strpos($cpp, 'grand - CB_TOL') !== false, 'paid / part paid / over use the 0.01 tolerance');
+check(strpos($cpp, "q ? (Number(q.totals.total_with_vat) || 0) : (cbQ.est || 0)") !== false, 'judged against the price check total (the page estimate only before the first check)');
+
+// 2b. Tentative: the payment fields are cleared and disabled, so the browser does not post them (the save ignores
+// them unless payment_received is '1').
+check(strpos($src, "const payFields = [hid, el('paymentMethod'), amt, overCb];") !== false
+    && strpos($src, "payFields.forEach(function (f) { if (f) f.disabled = true; });") !== false, 'tentative disables payment_received, method, amount and the overpay tick');
+check(strpos($src, "\$payment_received     = isset(\$_POST['payment_received']) && \$_POST['payment_received'] === '1';") !== false, 'the save treats a missing payment_received as not paid');
+
+// 2c. One step at a time: the browser's own checks are replaced by the page's step checks; Create still posts the form.
+check(strpos($src, '<form method="POST" id="createBookingForm" data-offline-queue="1" novalidate>') !== false, 'the form has novalidate (the step checks run instead)');
+check(strpos($src, 'IntersectionObserver') === false, 'no scroll observer: one step on screen at a time');
+check(strpos($src, "el('overCollectedCb').required") === false && strpos($src, 'Tick "The guest paid more than owed" to confirm') !== false, 'the overpay tick is enforced by the step 4 check, not a hidden required');
+check(strpos($src, "body.set('response', 'wizard');") !== false && strpos($src, "body.set('dry_run', '1');") !== false, 'the price check posts the form with response=wizard and dry_run=1');
+check(strpos($src, 'if (submitOk) { submitOk = false; return; }') !== false && strpos($src, "window.addEventListener('submit', function (e) {") !== false, 'only the checked Create submit reaches the offline queue and the server');
 
 // 3. A refused save brings back the room types and payment, never the overpay tick.
 check(strpos($src, "\$_SERVER['REQUEST_METHOD'] === 'POST' && \$error !== ''") !== false, 'repost only after a refused POST');
@@ -42,6 +67,7 @@ check(strpos($src, 'payCb.checked = true;') !== false && strpos($src, '!payCb.di
 $rp = '';
 if (preg_match('/\$cb_repost = \[(.*?)\];/s', $src, $m)) { $rp = $m[1]; }
 check($rp !== '' && strpos($rp, 'confirm_overpay') === false, 'the overpay tick is never brought back');
+check($rp !== '' && strpos($rp, "'step'       => isset(\$cbStep) ? (int)\$cbStep : 0,") !== false && strpos($rp, "'message'    => (string)\$error,") !== false, 'a refused save reopens the step it belongs to (read-only stage marker)');
 check(preg_match("/in_array\(\\\$cbRpMethod, \['cash', 'bank_transfer', 'mobile_money', 'card', 'cheque', 'other'\], true\)/", $src) === 1, 'payment method is whitelisted');
 
 echo "\n$pass passed, $fail failed\n";
