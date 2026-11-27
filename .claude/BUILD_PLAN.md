@@ -983,6 +983,14 @@ Ordered by what blocks production. Owner actions are marked; everything else is 
 
 ## Parked / failed-twice
 
+- [ ] **Bulk Check out (PARKED by the owner 2026-11-28, until the New Booking step-by-step work in another session ships).**
+  Proposal discussed, not approved: a "Check out" button on the Bookings bulk bar using the existing preview-then-apply
+  pattern (each ticked room listed with what happens or why it is skipped, same per-room rules as the single Check out:
+  balance gate / checkout_with_balance, early departure skipped, not in-house skipped, optional final-invoice email);
+  Housekeeping > Needs action ticks hand the rooms to that same preview for users with bookings + checkout_guest.
+  Open owner decision: overdue rooms in bulk get one choice ("left on the booked date", no extra nights / "stayed on",
+  extra nights at the booked rate with per-room amounts shown) or are skipped to the single Check out. Money: spec-check
+  before building.
 - [x] **Conference half-day / multi-day pricing (2026-10-08)** — migration 061 + code shipped (8775853 / Rosalyn a51e6c9); 061 and 062 (stock count) applied to both live DBs 2026-10-09.
 - ASSUMPTION (2026-11-28, timeline cell picks -> bulk): the owner's "calendar" meant the Housekeeping and Room Maintenance timelines (the owner's example was housekeeping); the bookings Calendar page is unchanged (picked cells there still mean New booking). Picked cells act only on tasks/jobs drawn on screen under the current filters; past days are pickable for bulk, New task/job only from today.
 - ASSUMPTION (2026-10-08): planned maintenance blocks a room from `start_date` (fallback `due_date`); recurring-maintenance scheduler job runs every 6 h, ON by default (Admin → Automated Emails toggle).
