@@ -78,6 +78,33 @@ Do NOT copy the pricing into a new function. Add a dry-run mode to the existing 
   before `beginTransaction`. Totals equal to a real save of the same form for: double with no tier price, triple,
   child supplement, rate plan, joined room, manager override, 2 room types, tentative.
 
+### Spec-check corrections (2026-11-27, these OVERRIDE the Phase B / C text where they differ)
+1. Side effect (d): `admin/includes/activity-hook.php:132-156` writes an admin_activity_log row on every POST; a dry
+   run calls `rh_sa_hook_mark_refused()` (:95). The no-write proof runs over HTTP (the hook is off in CLI) and also
+   counts admin_activity_log, and system-log rows with source create-booking only (presence/scheduler write always).
+2. Idempotency in dry run: no GET_LOCK, but KEEP the read-only `idem_find_existing_booking` (~354): if the uuid already
+   made a booking, answer `{ok:true, duplicate:true, redirect}` and set NO flash (else a quote after a Create that saved
+   would count that booking against the room).
+3. Create (Phase C) posts `quote_total` (the total_with_vat staff saw). The save refuses at step 5 when its own grand
+   total differs by more than BALANCE_TOLERANCE ("The price changed since you checked it: <old> -> <new>. Check the
+   Review again.") — rate plans count from today (includes/pricing.php:118) and the joined pair is picked at save time.
+   Only when `response=wizard`; the Assistant's `response=json` and no-JS posts are unchanged.
+4. Step mapping: availability -> 2, but past / blocked dates (config/database.php:5556-5616) -> 1; wording (~782) -> 5;
+   CSRF, booking disabled, lock conflict (~335/363/1495) -> step 0 = shown where staff are. The split basic validation
+   must still throw the SAME combined text for non-wizard posts (response=json unchanged).
+5. `credit.will_apply` = max(0, min(eligible, total_with_vat - cash)) using cash AFTER ~769-773 (0 when no payment).
+6. Add `net` (ex VAT, ex levy) per row and in totals (total_amount includes levy, ~718). `payment.status` stays
+   cash-only (as the save sets it); add `final_status` from still_owed (credit application re-derives it,
+   config/credit-notes.php:445).
+7. Phase C wording: after the commit (~1088+) a failure is NOT "nothing was saved"; and admin/includes/offline-queue.js
+   :270-292 may catch the submit (form ~2274). Non-JSON / network reply says "It may have saved. Check Bookings before
+   pressing Create again" — the same client_uuid makes a re-press safe. `dry_run` is honoured ONLY together with
+   `response=wizard`, added by the JS (never a form field).
+8. Credit threshold: the save skips credit at <=0.005 (~1159/1188) but applyCreditNote refuses at <=0.01
+   (credit-notes.php:274/321): the shared eligibility helper uses the same 0.01 so preview = applied.
+9. Static tests to keep green: scripts/tests/ai_assistant_test.php:1557 (exactly 4 json exits),
+   scripts/tests/email_wording_test.php:240-242.
+
 ## Phase A (admin): the step-by-step screen
 - Show one step at a time; remove the IntersectionObserver that sets the active step from the scroll.
 - Step bar: back to any earlier step; forward only to steps already passed; forward always runs the check.
