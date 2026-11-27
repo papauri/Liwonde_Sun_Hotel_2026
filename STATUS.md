@@ -48,8 +48,20 @@ Deeper trackers to read next:
   cancel dialog still offers "Edit wording" when no covered room is confirmed; a tier price saved as 0.00 (not NULL)
   is priced 0 by the save but nightly by the page; a refused New Booking save brings back room types only (not
   occupancy, quantity, price override).
-- NEXT (owner 2026-11-27): New Booking page step-by-step rebuild, plan `.claude/CREATE_BOOKING_WIZARD_PLAN.md`
-  (waiting for the owner's go on the plan).
+- DONE 22cefb1 / Rosalyn's 100498e (owner 2026-11-27): Bookings list + details show who checked the guest in and
+  when; "Checked in" tab + "Checked in on" date type. Read-only. Tests: `checkin_who_when_test.php` 75/0,
+  `bookings_filters.php` 390/0. qa-auditor PASS.
+- DONE c270eb9 / Rosalyn's 26c7805 (live fault): guest booking page no longer shows another party's total after
+  going back; price only from the server's answer for the exact room/dates/party, older replies dropped, Confirm
+  waits. qa-auditor PASS, headless 1280/390. Not replayed on an actual rate-plan room (none active in Liwonde for the
+  tested dates); the mechanism (change party, go back) was.
+- LATER (QA 2026-11-28): booking.js catch path leaves "Checking price…" beside the error (Confirm stays disabled);
+  guest count prefilled from the home-page form (booking.js ~769) starts no new check; "Checked in on" filter reads
+  the timeline only, the list line also the audit log (old audit-only rows disagree).
+- NEXT (owner 2026-11-27, approved A/B/C, "status and payment one step"): New Booking step by step, plan
+  `.claude/CREATE_BOOKING_WIZARD_PLAN.md` (+ its "Spec-check corrections"). Nothing built yet: Phase B first, in a
+  fresh session, ONE builder-critical at a time (the 2026-11-27 run hit the 5-hour limit with 3 Opus agents at once).
+  Guest-booking G0 investigation was cut off; its stale-price finding shipped as c270eb9.
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
