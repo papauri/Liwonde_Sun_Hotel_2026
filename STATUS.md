@@ -36,9 +36,20 @@ Deeper trackers to read next:
   (send after save; failed send kept + logged to History); update_status refuses edited wording unless Confirm
   (pending/tentative) or Cancel with guest email on. Test booking LSH2026576536 cancelled via the app (no email).
   Tests 173/126/114/116/116, 0 failed; qa-auditor PASS.
-- LATER: Calendar / Individual Rooms moves have no email tick; nights + checkout dialogs browser-unchecked (code +
-  tests only); nights-dialog tick row under 44px; update_status never compares posted wording key with $wsKey (safe:
-  confirm/cancel paths check it); group booking change list "Total" is one room's amount.
+- Small items one at a time (owner 2026-11-27): DONE 794e49c / Rosalyn's c6feea8 (email tick rows 44px+, nights
+  dialog browser-checked); DONE 9b81189 / Rosalyn's a200f4c (update_status compares the wording key; cancel with
+  edited wording refused when no covered room is confirmed).
+- DONE e9ecb8d / Rosalyn's b9a44fd (owner fault 2026-11-27): New Booking "Payment Received Now" refused a full payment
+  as "more than the balance due". Root cause: the page priced a double/triple room with no tier price at x1.2 / x1.4,
+  the save at the nightly price. Also: auto amount now follows the total; a refused save keeps room types + payment
+  (never the overpay tick). Test booking LSH2026135715 cancelled via the app (no email). qa-auditor PASS.
+  Test: `php scripts/tests/create_booking_payment_test.php` (17/0, no DB).
+- LATER: Calendar / Individual Rooms moves have no email tick; group booking change list "Total" is one room's amount;
+  cancel dialog still offers "Edit wording" when no covered room is confirmed; a tier price saved as 0.00 (not NULL)
+  is priced 0 by the save but nightly by the page; a refused New Booking save brings back room types only (not
+  occupancy, quantity, price override).
+- NEXT (owner 2026-11-27): New Booking page step-by-step rebuild, plan `.claude/CREATE_BOOKING_WIZARD_PLAN.md`
+  (waiting for the owner's go on the plan).
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
