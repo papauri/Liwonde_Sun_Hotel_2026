@@ -1,58 +1,133 @@
-# New Booking page: step by step (plan, owner 2026-11-27)
+# Booking pages step by step: New Booking (admin) + guest booking (plan + build spec)
 
-Owner's words: "make a plan for the make a booking page. It needs to be more directional and step by step. No time
-wasting bugs." FEATURE. Status: PLAN ONLY, waiting for the owner's go. Page: `admin/create-booking.php` (~4.8k lines,
-form `#createBookingForm`, step JS ~4600-4750).
+Owner 2026-11-27: "make a plan for the make a booking page. It needs to be more directional and step by step. No time
+wasting bugs." Then: "Status and Payment be one step. build A, B and C straight through. Its important we get this
+correct especially because it has a lot to do with finances so use highest effort thinking and do same for guest
+booking." FEATURE, approved. Agents on this work run at effort max (owner's words). Order: B -> A -> C (admin), then
+G0 -> G-B -> G-A -> G-C (guest). One builder at a time on a given page. Every ship: Liwonde first, then port.
+Rosalyn's is LIVE: no DB tests, writing scripts or test emails there. Test bookings on Liwonde are cancelled via the
+app with the guest email off.
 
-## How it works today (the causes of wasted time)
-1. One long page: all six cards (Stay, Rooms, Guest, Status, Payment, Review) are shown at once. "Next" only scrolls,
-   and the step bar just follows the scroll, so staff can scroll past a step without it being checked.
-2. Checks run only on "Next" and on the final submit. A browser "required" field (e.g. the overpay tick) makes the
-   browser jump somewhere on the long page with no clear message.
-3. The total on the page is worked out in JavaScript; the save works it out again in PHP. When they differ (the x1.2
-   fault fixed in e9ecb8d), the save refuses a payment the page said was right.
-4. A refused save reloads the whole page at the top. e9ecb8d now keeps the room types and payment, but occupancy,
-   quantity, price override and the step staff were on are lost.
-5. Order: Payment depends on Status (Tentative switches payment off), but they are separate steps, and guest credit,
-   notes and the email ticks are spread over Payment and Review.
+## Why it wastes time today (admin/create-booking.php, ~4.8k lines)
+1. One long page with six stacked cards; "Next" only scrolls; the step bar follows the scroll, so steps get skipped.
+2. Checks only on "Next" and on submit. A browser `required` field on a far card (overpay tick, credit reason,
+   quotation fields) makes submit jump or silently do nothing.
+3. The page total is JavaScript; the save is PHP. When they differ (x1.2 fault, fixed e9ecb8d) a right payment is refused.
+4. A refused save reloads the page at the top (e9ecb8d keeps room types + payment; occupancy, quantity, override and
+   the current step are still lost).
+5. Status and Payment are separate though Tentative switches payment off; credit, notes, ticks are scattered.
 
-## Target
-One step on screen at a time, in this order, each with one clear "Continue" button:
-1. **Dates and guests**: check-in, check-out, adults, children, special requests.
-2. **Rooms**: only rooms free for those dates; cannot continue until every guest is seated and nothing is over-booked.
+## Target screen (admin)
+One step on screen at a time, one "Continue" button each:
+1. **Dates and guests**: check-in, check-out, total guests, children, special requests.
+2. **Rooms**: room lines (type, quantity, occupancy, override for admin/manager, guest name per room), auto/pick room.
+   Continue disabled while availability is loading; changing dates re-checks the rooms already picked.
 3. **Guest**: returning-guest search first, then name, email, phone, country, address.
-4. **Status and payment**: Confirmed / Pending / Tentative as three plain choice cards. Confirmed or Pending ->
-   "Payment received now?" + method + amount + guest credit. Tentative -> quotation options instead of payment.
-5. **Review and create**: read-only summary of steps 1-4, each with a "Change" link; internal notes, group
-   reference, guest email tick + Edit wording; one "Create booking" button.
+4. **Status and payment**: Confirmed / Pending / Tentative as three plain choice cards.
+   Confirmed/Pending -> "Payment received now?", method, amount (filled from the SERVER total), overpay tick, guest
+   credit. Tentative -> quotation options (send quotation PDF, valid for, note); payment fields cleared, not posted.
+5. **Review and create**: read-only summary of 1-4 from the server quote (per room: rate, nights, plan, child
+   charge; totals: before VAT, VAT, levy, total; paid now; credit to apply; still owed), each block with "Change";
+   group reference, internal notes, guest email tick + Edit wording; one "Create booking" button.
+Summary panel always visible (rooms, nights, total, paid, still owed): right column on desktop, bottom bar on phone.
 
-Always visible: a summary panel (rooms, nights, total, paid, still owed): right column on a computer, a bar at the
-bottom on a phone.
+## Phase B (admin): dry run of the real save ("price check")
+Goal: the figures staff see in step 4 and Review are produced by the save's own code, so they cannot differ.
+Do NOT copy the pricing into a new function. Add a dry-run mode to the existing POST handler
+(`if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_booking']))`, line ~332).
 
-## Rules that stop the time-wasting bugs
-- The step bar lets you go back, or forward only to steps already passed. Going forward always runs the check.
-- Each check names the field and puts the cursor on it, inside the current step. No browser pop-up jumps.
-- The total staff see on Review is the one the save will use (Phase B). The payment amount is filled from it.
-- A refused save never reloads the page: staff stay on the step that needs fixing with everything as they left it.
-- The "Create booking" button is disabled while saving (no double booking from a double click).
-- Field names and the POST stay the same, so the save logic, the Assistant's `response=json` replay and the Calendar
-  "New booking here" links keep working.
+- Trigger: POST with `create_booking=1`, `csrf_token`, all normal fields, `dry_run=1`, `response=wizard`.
+  CSRF checked as today. Same session/permission gate as the page.
+- Run every line up to the end of the totals loop (~752), then STOP before the transaction (~785). Inserts,
+  payments, assignments, emails, credit application never run.
+- Side effects to switch off in dry run (verify by grep of everything above ~785 for INSERT/UPDATE/DELETE,
+  rh_log_event, logBookingAudit, $_SESSION writes, GET_LOCK, header('Location')):
+  a. idempotency block ~338-360 (no GET_LOCK, no existing-booking redirect, uuid neither reserved nor consumed);
+  b. blocked price-override log ~392 (still refuse with the same message, just not logged);
+  c. catch-block logging ~1496 (no rh_log_event for a dry-run refusal);
+  d. anything else the grep finds.
+- Availability: the locked check (~796-825) runs inside the transaction. Move its body into one local closure used
+  in both places; in dry run call it without the transaction/lock so "no longer free" shows at step 4/Review.
+- The overpay check (~755) and the email wording check (~779-783) do NOT throw in dry run: they come back as
+  `warnings` with their step, alongside the full quote.
+- Credit: applied after commit (~1125-1200). Move the eligibility filter (~1141-1175: status, expiry, balance, email
+  match / audited override with reason) into ONE helper used by the save and the dry run. Preview: `will_apply` =
+  min(sum of eligible balances, total_with_vat - cash collected), 0 when tentative. The save keeps applying per
+  booking row exactly as now.
+- Error -> step: keep a stage marker as the handler advances (1 stay, 2 rooms, 3 guest, 4 status/payment, 5 review/
+  save) instead of matching message text. Split the combined basic validation (~430-438) so each message carries its
+  own step (rooms -> 2, guest name/email/phone -> 3, dates/guests -> 1).
+- `response=json` (the Assistant's replay) stays byte-for-byte as it is. `response=wizard` is new.
+- JSON shape (dry run):
+  ```
+  { "ok": true|false, "step": 1-5 (when ok=false), "message": "...", "field": "<input id or ''>",
+    "quote": { "nights": n, "currency": "MWK", "vat_mode": "...", "vat_rate": x, "levy_rate": y,
+      "lines": [ { "room_id": id, "name": "...", "qty": q, "occupancy": "double",
+                   "rows": [ { "room_price", "list_rate", "rate_plan_label", "child_supplement", "total_amount",
+                               "vat_amount", "levy_amount", "total_with_vat", "price_source" } ],
+                   "line_total_with_vat": t } ],
+      "totals": { "total_with_vat", "vat", "levy", "child_supplement" },
+      "payment": { "received": bool, "amount": a, "status": "paid|partial|unpaid", "over_by": o },
+      "credit": { "will_apply": c, "notes": [ { "id", "number", "balance", "override" } ] },
+      "still_owed": s, "email_key": "..." },
+    "warnings": [ { "step": 4, "message": "..." } ] }
+  ```
+  Every figure is the `$saved` value the save would store (2 dp), summed the same way.
+- Proof: no-write test on Liwonde: count rows in bookings, payments, booking audit/history, system log, credit_notes,
+  credit applications before and after 10 dry runs (incl. refused ones): identical. Static test that dry run returns
+  before `beginTransaction`. Totals equal to a real save of the same form for: double with no tier price, triple,
+  child supplement, rate plan, joined room, manager override, 2 room types, tentative.
 
-## Phases (one ship each, Liwonde first, then port to Rosalyn's)
-| Phase | What | Who | Review |
-|---|---|---|---|
-| A | Wizard shell: one step visible, order above (Status + Payment merged into step 4), step bar rules, in-step error messages, summary panel. JS + markup + CSS only; no change to what is posted. | frontend-specialist (`model: opus`, booking flow JS) then ui-designer | qa-auditor |
-| B | Server total on Review: move the save's pricing (create-booking.php ~640-760: rates, plans, child supplement, joined rooms, VAT/levy, credit) into one function used by BOTH the save and a new read-only "price check" call. Review and the amount use its answer. | dept-rooms-lead (Opus), money reviewed by dept-accounting-lead | qa-auditor |
-| C | Save without reload: the form posts in the background; a refusal returns the message plus the step it belongs to; success opens Booking details with the usual message. Double-click guard. | dept-rooms-lead (Opus) | qa-auditor |
-| D | Guides + Assistant lines (only when the owner prompts the sync) | guides-kb-lead / dept-ai-lead | - |
+## Phase A (admin): the step-by-step screen
+- Show one step at a time; remove the IntersectionObserver that sets the active step from the scroll.
+- Step bar: back to any earlier step; forward only to steps already passed; forward always runs the check.
+- `novalidate` on the form; `validateSection(n)` covers every rule a hidden `required` used to enforce (overpay tick,
+  credit override reason, quotation fields, wording). Errors show inside the step, name the field, focus it.
+- Step 4 fetches the dry-run quote on entry; Review fetches it again; any change to steps 1-4 marks it stale and
+  Review refuses to create from a stale quote (fetches again). Amount collected is filled from `quote.totals.
+  total_with_vat - credit.will_apply` until staff type their own; paid/partial/over is judged against the quote with
+  BALANCE_TOLERANCE 0.01, exactly like the save.
+- Changing status or payment after the email wording was edited clears the edited wording (with a plain note), so the
+  9b81189 key check never refuses at the end.
+- Tentative clears and disables the payment fields (not posted).
+- Start step: Calendar prefill -> step 1 filled, rooms prefilled; refused save (no-JS fallback) -> the step of the error.
+- Update `scripts/tests/create_booking_payment_test.php` strings to the new code; keep every check's meaning.
+
+## Phase C (admin): create without reload
+- "Create booking" posts in the background with `response=wizard` (not dry run). Button disabled while saving.
+  The same `client_uuid` is reused on a retry so the idempotency code returns the existing booking.
+- Success: `{ok:true, redirect:"booking-details.php?id=N"}`; the success flash message is kept (unlike response=json).
+  Duplicate -> same as success. Still saving (409) -> JSON message.
+- Refusal: `{ok:false, step, message, field}` -> open that step, show the message, nothing lost.
+- Non-JSON reply (expired session / login page, CSRF, PHP fatal, network): "Nothing was saved. <reason>. Sign in again
+  in a new tab, then press Create again." The button comes back; the form is untouched.
+- No JavaScript: the normal POST and the e9ecb8d restore still work.
+
+## Guest booking (booking.php 1.8k lines + js/booking.js 2.8k; no payment taken online)
+Today: sections When / Who / Room / Guest / Rooms & requests / Booking type / rate plan / packages / submit on one
+page; JS shows a total (partly from check-availability.php `split_pricing`); the save prices again (~432-620:
+applyDynamicPricing, rh_stay_totals room + child, packages rh_stay_totals(...,'price', false)).
+booking.php differs from Rosalyn's in ~31 lines (branding); js/booking.js identical. Port by patch, not copy.
+- **G0 (first, read-only)**: on Liwonde, compare the total the guest page shows with what the save stores for: double
+  with no tier price, single, child, rate plan, package, two rooms, joined room, tentative. A mismatch is a LIVE fault
+  at Rosalyn's: ship it first as a PATCH.
+- **G-B**: dry run of the guest save, same rules as Phase B, plus: public CSRF (`includes/public-csrf.php`), its own
+  light rate limit (not the booking-attempt counter ~61), no existing-booking redirect (~50), no logging, no email.
+  Review shows the server's figures.
+- **G-A**: steps on screen one at a time: 1 When, 2 Who, 3 Room (and rate plan / packages), 4 Your details (+ booking
+  type standard/tentative), 5 Review and book. Editorial design system (`css/sections/ballena.css`,
+  `css/components/editorial.css`), honours prefers-reduced-motion, phone first.
+- **G-C**: background submit; refusal returns to its step with everything kept; success -> booking-confirmation.php;
+  double-click guard; non-JSON reply handled.
+- Builder: dept-guest-site-lead (`model: opus`, bookings). Review: qa-auditor; final-review on G-B and G-C.
 
 ## Test cases (headless browser on Liwonde, every phase)
-1 room 2 nights pay in full; pay part (Partially Paid); pay over without tick (stopped in step 4 with a message) and
-with tick (credit note); group of 2 room types; child supplement; rate plan room; joined room; Tentative with
-quotation; guest credit applied; returning guest; Calendar prefill link; refused save (stays on the step, nothing
-lost); change dates after paying (amount follows); phone width 390; reduced motion. Test bookings cancelled via the
-app with the guest email off. Never on Rosalyn's.
+1 room 2 nights pay in full; pay part (Partially Paid); pay over without tick (stopped in step 4) and with tick
+(credit note); 2 room types; child supplement; rate plan; joined room; manager override; under-tier refusal for front
+desk; Tentative with quotation; guest credit applied (own + override with reason); returning guest; Calendar prefill
+link; refused save (stays on its step, nothing lost); change dates after paying (quote stale -> refreshed, amount
+follows); expired session at Create; double click; phone width 390; reduced motion. Guest: the same where they apply.
 
-## Owner decisions needed before Phase A
-1. Merge "Status" into the Payment step (step 4), as above? (Recommended: yes, payment depends on it.)
-2. Run all three phases A -> B -> C one after another, or ship A first and look at it before B and C?
+## Reviews
+spec-check before Phase B and G-B (money). qa-auditor (Opus) on every phase; dept-accounting-lead reads B's money
+paths; final-review on B, C, G-B, G-C after qa-auditor passes. One fix round; non-blockers -> LATER lines.
