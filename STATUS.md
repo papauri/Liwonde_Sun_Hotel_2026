@@ -62,6 +62,32 @@ Deeper trackers to read next:
   `.claude/CREATE_BOOKING_WIZARD_PLAN.md` (+ its "Spec-check corrections"). Nothing built yet: Phase B first, in a
   fresh session, ONE builder-critical at a time (the 2026-11-27 run hit the 5-hour limit with 3 Opus agents at once).
   Guest-booking G0 investigation was cut off; its stale-price finding shipped as c270eb9.
+- IN PROGRESS 2026-11-28 (owner "do phase B and then C", profile Claude session 985e249d): order B -> A -> C (A, the
+  step screen, is needed before C's background Create). Phase B (dry run) with builder-critical; uncommitted until it
+  passes qa-auditor + accounting read + final-review. Owner 2026-11-28: guest phases G0 -> G-B -> G-A -> G-C ARE part
+  of this run (after admin C); "do not mess up any logic like emails or money": every real save (admin + guest) must
+  keep today's emails, amounts, statuses and credit exactly; each phase proves it.
+  - Phase B SHIPPED 2026-11-28: Liwonde 500b072 / Rosalyn's da06005. Dry run (response=wizard + dry_run=1) of the
+    real save; credit eligibility in admin/includes/finance-booking-credit.php; availability one closure. qa-auditor,
+    accounting lead, final-review PASS. Tests: create_booking_dryrun_test 59/0, create_booking_dryrun_http (no
+    writes, 196 tables; quote = stored x8), payment 17/0, email_wording 175/0, credit 45/0 + 79/0, linked_rooms
+    127/0, concurrent 53/0. Test bookings LSH2026608252/669045/642748/884990/954728/488752/531075/150509/207673
+    cancelled via the app, email off. LATER: preview credit can be up to 0.01/row above applied; final_status whole-booking; override with
+    no reason drops notes silently in preview (needs a warning); save credit threshold 0.005 vs 0.01; register both
+    dry-run tests in run_tests.php; HTTP test needs a quiet DB; page_harness leaves orphan receipt PDFs.
+  - Phase A SHIPPED 2026-11-28: Liwonde 4d77606 / Rosalyn's 730af50. Five steps, Status and payment one step,
+    figures from the dry run, Edit wording on Review (cleared with a note when status/payment change after editing),
+    summary panel, refused save reopens its step; new admin/css/create-booking-steps.css. Same fields posted on
+    Create (old-vs-new capture) except Tentative no longer posts payment fields (server ignores them for tentative).
+    qa-auditor PASS. Tests: payment 31/0, dryrun 59/0, email_wording 175/0, scripts/tests/create_booking_steps_browser.mjs
+    full run 1280 + 390 (fixed cases re-run 52/0 + 21/0). ~29 Liwonde test bookings, all cancelled via the app, email
+    off. NOTE: Liwonde test-mode email is REDIRECTED to the configured test recipient, not muted (14 emails in the run).
+    Test credit note LSH-CN-2026-000005 (5,000.00) left active on the test guest. LATER: json_encode of $cb_repost
+    (~create-booking.php:4916) add JSON_INVALID_UTF8_SUBSTITUTE; submitNow re-enables the button before requestSubmit
+    (Phase C replaces it); when credit covers the whole total the amount is empty so staff must untick payment; a
+    refused save comes back with the guest email ticked and status not restored (as before); quotation PDF send not
+    tested live.
+  - Phase C IN PROGRESS: Create without reload.
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
