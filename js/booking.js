@@ -2527,7 +2527,9 @@
         // One step on screen at a time: 1 When, 2 Who, 3 Room, 4 Your details, 5 Review and book.
         // Continue runs that step's checks. Room's Continue and Review ask booking.php for a price check (a dry run of
         // the save, response=wizard); Review shows only the server's quote. Any change in steps 1-4 makes the quote
-        // stale and Review asks again. Book stays a normal form POST, enabled only while the quote is fresh.
+        // stale and Review asks again. Book (G-C) posts the same form in the background (response=wizard + quote_total
+        // = the Review total shown), enabled only while the quote is fresh; the reply opens the confirmation or the step
+        // the save refused. Without JavaScript Book is the normal form POST, unchanged.
         // Without JavaScript the whole form shows at once (the steps are hidden only under .js-steps).
         var gbCurrent = 1;
         var gbReached = 1;
@@ -2543,6 +2545,9 @@
         var gbCheckCtl = null;
         var gbSubmitting = false;
         var gbBusy = false;
+        var gbUnclear = false;       // the last Book got no clear answer (it may have been saved)
+        var GB_REDIRECT_RE = /^booking-confirmation\.php\?ref=[A-Za-z0-9_-]+$/;
+        var GB_UNCLEAR_MSG = 'We could not confirm your booking. It may have been saved: check your email or contact us before booking again.';
 
         function gbForm() { return document.getElementById('bookingForm'); }
         function gbStepEl(n) { return document.getElementById('gbStep' + n); }
@@ -2724,21 +2729,20 @@
                 if (btn.innerHTML !== html) btn.innerHTML = html;
             }
 
+            // Review asks again when the choices changed under it (once per version of the form). The status line
+            // says "checking again" only when that check really runs.
+            const fpNow = (gbCurrent === 5 && state === 'stale' && !gbSubmitting) ? gbFingerprint() : '';
+            const willAsk = fpNow !== '' && gbAutoFp !== fpNow;
             const status = document.getElementById('gbQuoteStatus');
             if (status) {
                 const text = state === 'pending' ? 'Checking the price with the hotel…'
-                    : (state === 'stale' && gbCurrent === 5) ? 'Your choices changed: checking the price again…'
+                    : willAsk ? 'Your choices changed: checking the price again…'
                     : '';
                 if (status.textContent !== text) status.textContent = text;
             }
-
-            // Review asks again when the choices changed under it (once per version of the form).
-            if (gbCurrent === 5 && state === 'stale' && !gbSubmitting) {
-                const fp = gbFingerprint();
-                if (gbAutoFp !== fp) {
-                    gbAutoFp = fp;
-                    setTimeout(gbReviewCheck, 0);
-                }
+            if (willAsk) {
+                gbAutoFp = fpNow;
+                setTimeout(gbReviewCheck, 0);
             }
         }
 
@@ -2781,8 +2785,11 @@
                     const tokenInput = form.querySelector('input[name="csrf_token"]');
                     if (tokenInput) tokenInput.value = j.csrf_token;
                 }
-                if (j.duplicate && typeof j.redirect === 'string' && /^booking-confirmation\.php\?ref=[A-Za-z0-9_-]+$/.test(j.redirect)) {
-                    window.location.href = j.redirect; // this booking was already made (same booking id)
+                if (j.duplicate && typeof j.redirect === 'string' && GB_REDIRECT_RE.test(j.redirect)) {
+                    // This booking was already made (same booking id). Book's own request answers the same and lets
+                    // this browser see the booking's confirmation page.
+                    finish();
+                    gbSend();
                     return null;
                 }
                 finish();
@@ -2811,13 +2818,90 @@
             });
         }
 
-        function gbReviewCheck() {
+        function gbReviewCheck(opts) {
             if (gbCurrent !== 5 || gbSubmitting) return;
+            const keep = !!(opts && opts.keep);
             gbPriceCheck(5).then(function (j) {
                 if (j && !j.ok) { gbShowRefusal(j); return; }
-                // An accepted check clears an earlier Review message (e.g. a broken reply), even after a script's change.
-                const p = j && j.ok ? (gbStepEl(5) || document).querySelector('.gb-step__error') : null;
+                // An accepted check clears an earlier Review message (e.g. a broken reply), even after a script's change;
+                // not the message of a refused Book (keep).
+                const p = j && j.ok && !keep ? (gbStepEl(5) || document).querySelector('.gb-step__error') : null;
                 if (p) { p.textContent = ''; p.hidden = true; }
+            });
+        }
+
+        // ── Book (G-C): the save, posted in the background ──
+        // Same form, response=wizard, quote_total = the Review total on screen. One request at a time (gbSubmitting);
+        // a retry keeps the form's booking id (client_uuid), so the server never makes the booking twice.
+        function gbSend(retried) {
+            const form = gbForm();
+            if (!form) return;
+            gbSubmitting = true;
+            gbSyncQuoteState();
+            const fp = gbFingerprint();
+            const fd = new FormData(form);
+            ['response', 'dry_run', 'dry_run_upto', 'quote_total'].forEach(function (k) { fd.delete(k); });
+            fd.append('response', 'wizard');
+            const seen = gbQuote && gbQuote.totals ? Number(gbQuote.totals.total_with_vat) : NaN;
+            if (isFinite(seen)) fd.append('quote_total', seen.toFixed(2));
+
+            fetch(form.action, {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            }).then(function (res) {
+                return res.text();
+            }).then(function (text) {
+                let j = null;
+                try { j = JSON.parse(text); } catch (e) { j = null; }
+                return (j && typeof j === 'object' && typeof j.ok === 'boolean') ? j : null;
+            }).catch(function () {
+                return null; // network failure, blocked request
+            }).then(function (j) {
+                if (j && typeof j.csrf_token === 'string' && j.csrf_token !== '') {
+                    const tokenInput = form.querySelector('input[name="csrf_token"]');
+                    if (tokenInput) tokenInput.value = j.csrf_token;
+                }
+                if (j && j.ok === true && typeof j.redirect === 'string' && GB_REDIRECT_RE.test(j.redirect)) {
+                    gbUnclear = false;
+                    window.location.assign(j.redirect); // Book stays busy until the confirmation page opens
+                    return;
+                }
+                if (!j || j.ok === true) {
+                    // No clear answer: the booking may exist. Book comes back; the form and its booking id stay as they are.
+                    gbUnclear = true;
+                    gbSubmitting = false;
+                    gbClearErrors();
+                    gbStepError(5, GB_UNCLEAR_MSG);
+                    gbSyncQuoteState();
+                    gbFocus(gbStepEl(5));
+                    return;
+                }
+                const step = parseInt(j.step, 10) || 0;
+                if (step === 0 && gbUnclear && !retried) {
+                    // After an unclear answer the old token may be used up: send once more with the new one, so a
+                    // booking that was saved opens its confirmation instead of asking the guest to refresh.
+                    gbSend(true);
+                    return;
+                }
+                gbUnclear = false;
+                gbSubmitting = false;
+                if (j.quote && typeof j.quote === 'object' && j.quote.totals) {
+                    // The save's own figures (the price changed): Review shows them and Book uses them next time.
+                    gbQuote = j.quote;
+                    gbQuoteFp = fp;
+                    gbQuoteUpto = 5;
+                    gbLastError = '';
+                    gbErrorFp = '';
+                }
+                gbClearErrors();
+                gbShowRefusal(j);
+                if (step === 5 && !j.quote && gbCurrent === 5) {
+                    gbReviewCheck({ keep: true }); // the refusal came without figures: check the price again
+                } else {
+                    gbSyncQuoteState();
+                }
             });
         }
 
@@ -3175,14 +3259,14 @@
                 gbSyncQuoteState();
             });
 
-            // Book: a normal form POST, only from Review with a fresh server quote. Enter elsewhere = Continue.
+            // Book: the save in the background, only from Review with a fresh server quote; a second press while it
+            // runs sends nothing. Enter elsewhere = Continue.
             form.addEventListener('submit', function (e) {
+                e.preventDefault();
                 if (gbCurrent === 5 && gbQuoteState() === 'fresh' && !gbSubmitting) {
-                    gbSubmitting = true;
-                    setTimeout(gbSyncQuoteState, 0);
+                    gbSend();
                     return;
                 }
-                e.preventDefault();
                 if (gbCurrent < 5 && !gbBusy) gbNext();
             });
 

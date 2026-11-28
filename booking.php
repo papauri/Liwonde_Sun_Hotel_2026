@@ -45,7 +45,37 @@ $gbReply = static function (array $reply): void {
     echo json_encode($reply, JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 };
-if ($gbDry && !isBookingEnabled()) {
+// Book from the steps page (G-C): the same save posted in the background with response=wizard (no dry_run) and
+// quote_total = the Review total the guest saw. It runs the very same save, emails and session steps as a plain
+// POST and answers JSON instead of a redirect / re-rendered page. Any POST without response=wizard is unchanged.
+$gbWizard = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST'
+    && (string)($_POST['response'] ?? '') === 'wizard'
+    && !$gbDry;
+$gbSaved = false;    // true from the moment the booking rows are committed
+$gbSavedRef = '';    // their reference (lead row)
+// Before anything is written: the save's own grand total must match the total the guest saw on Review.
+$gbQuoteGate = static function (array $quote) use ($gbReply): void {
+    $seen = $_POST['quote_total'] ?? null;
+    $grand = round((float)($quote['totals']['total_with_vat'] ?? 0), 2);
+    if (!is_string($seen) || !is_numeric(trim($seen))) {
+        $gbReply(['ok' => false, 'step' => 5, 'field' => '', 'quote' => $quote,
+            'message' => 'The price was not checked before booking. Please review the total below and press Confirm Booking again.']);
+    }
+    if (round(abs($grand - (float)trim($seen)), 2) > BALANCE_TOLERANCE) {
+        $cur = (string)($quote['currency'] ?? '');
+        $gbReply(['ok' => false, 'step' => 5, 'field' => '', 'quote' => $quote, 'price_changed' => true,
+            'message' => 'The price changed since you checked it: ' . $cur . number_format((float)trim($seen), 2) . ' is now '
+                . $cur . number_format($grand, 2) . '. Please review the new total below and press Confirm Booking again.']);
+    }
+};
+// The rows are committed but a later step (log, email) failed: the booking exists, so the guest goes to it.
+$gbSavedReply = static function (string $ref) use ($gbReply): void {
+    unset($_SESSION['booking_form_uuid']);
+    pub_confirm_remember('booking', $ref);
+    $gbReply(['ok' => true, 'saved' => true, 'step' => 5, 'redirect' => 'booking-confirmation.php?ref=' . urlencode($ref),
+        'message' => 'Your booking was saved.']);
+};
+if (($gbDry || $gbWizard) && !isBookingEnabled()) {
     $gbReply(['ok' => false, 'step' => 0, 'message' => 'Online booking is unavailable right now.']);
 }
 
@@ -77,6 +107,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'message' => 'This booking has already been made.']);
             }
             pub_confirm_remember('booking', (string)$__existing['booking_reference']);
+            if ($gbWizard) {
+                // Book pressed again for a booking already made (same booking id): it counts as done.
+                $gbReply(['ok' => true, 'duplicate' => true, 'step' => 5,
+                    'redirect' => 'booking-confirmation.php?ref=' . urlencode((string)$__existing['booking_reference'])]);
+            }
             header('Location: booking-confirmation.php?ref=' . urlencode((string)$__existing['booking_reference']));
             exit;
         }
@@ -320,8 +355,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            if ($gbDry) {
+            $mxPrep = null;
+            if ($gbDry || $gbWizard) {
                 // Price check: the same checks and prices as rh_mixed_create(), the stock re-check without the lock.
+                // Book (wizard): the same prices, compared with the Review total, then handed to rh_mixed_create()
+                // so the rows it stores are exactly the ones compared.
                 $mxPrep = rh_mixed_prepare($pdo, [
                     'chosen_id' => (int)$sanitized_data['room_id'],
                     'extra_ids' => $extraTypeIds,
@@ -338,9 +376,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $gbStep = 3;
                 $gbField = 'room_id';
-                $mxRecheck = rh_mixed_recheck($mxPrep['resolved'], $mxPrep['priced'], $mxCheckIn, $mxCheckOut);
-                if ($mxRecheck !== '') {
-                    throw new Exception($mxRecheck);
+                if ($gbDry) {
+                    // (Book re-checks the stock under the lock inside rh_mixed_create().)
+                    $mxRecheck = rh_mixed_recheck($mxPrep['resolved'], $mxPrep['priced'], $mxCheckIn, $mxCheckOut);
+                    if ($mxRecheck !== '') {
+                        throw new Exception($mxRecheck);
+                    }
                 }
                 $mxTentativeQuote = isset($_POST['booking_type']) && $_POST['booking_type'] === 'tentative' && getSetting('tentative_bookings_enabled', '1') !== '0';
                 $gbRows = [];
@@ -354,8 +395,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ] + rh_guest_row_amounts($p['stay'], ($i === 0) ? (float)$mxPackageTotal : 0.0),
                     ];
                 }
-                $gbReply(['ok' => true, 'step' => $gbUpto,
-                    'quote' => rh_guest_build_quote($gbRows, $mxPackageRows, (float)$mxPackageTotal, (int)$mxPrep['nights'], $mxTentativeQuote)]);
+                $mxQuote = rh_guest_build_quote($gbRows, $mxPackageRows, (float)$mxPackageTotal, (int)$mxPrep['nights'], $mxTentativeQuote);
+                if ($gbDry) {
+                    $gbReply(['ok' => true, 'step' => $gbUpto, 'quote' => $mxQuote]);
+                }
+                $gbStep = 5;
+                $gbField = '';
+                $gbQuoteGate($mxQuote);
             }
 
             $mxPrefix = rh_booking_reference_prefix();
@@ -390,11 +436,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'package_total' => $mxPackageTotal,
                 'package_rows' => $mxPackageRows,
                 'validation_data' => $sanitized_data,
+                'prepared' => $gbWizard ? $mxPrep : null,
             ]);
             if (empty($mxCreated['success'])) {
                 throw new Exception($mxCreated['error'] ?: 'These rooms cannot seat your party.');
             }
-            rh_mixed_finish([
+            $gbSaved = true;
+            $gbSavedRef = (string)($mxCreated['references'][0] ?? $mxReference);
+            $mxRef = rh_mixed_finish([
                 'created' => $mxCreated,
                 'lead_room' => $selected_room,
                 'guest_name' => $sanitized_data['guest_name'],
@@ -411,7 +460,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'is_tentative' => $mxTentative ? 1 : 0,
                 'is_tentative_booking' => $mxTentative,
                 'tentative_expires_at' => $mxExpires,
-            ]);
+            ], $gbWizard);
+            // Only Book (wizard) gets here: a plain POST was redirected inside rh_mixed_finish().
+            $gbReply(['ok' => true, 'step' => 5, 'redirect' => 'booking-confirmation.php?ref=' . urlencode($mxRef)]);
         }
 
         // One shared rule set (includes/guest-allocation.php): rooms needed, per-room
@@ -438,7 +489,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $validation_payload['number_of_guests'] = ga_max_guests_in_one_room($bookingAllocation);
         $validation_result = validateBookingWithAvailability($validation_payload);
 
-        if (!$validation_result['valid'] && $gbDry) {
+        if (!$validation_result['valid'] && ($gbDry || $gbWizard)) {
             [$gbStep, $gbField] = rh_guest_availability_step($validation_result, (int)$sanitized_data['room_id'], $sanitized_data['check_in_date'], $sanitized_data['check_out_date']);
         }
         if (!$validation_result['valid']) {
@@ -637,11 +688,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         };
 
-        if ($gbDry) {
+        if ($gbDry || $gbWizard) {
             // Price check: every room priced by the same helper the insert loop below uses.
+            // Book (wizard): the same figures, compared with the Review total before anything is written.
             $gbStep = 3;
             $gbField = 'room_id';
-            $gbRecheck();
+            if ($gbDry) {
+                $gbRecheck(); // (Book re-checks the stock under the lock below.)
+            }
             $gbRows = [];
             for ($i = 0; $i < $roomsNeeded; $i++) {
                 $allocationPart = $bookingAllocation[$i];
@@ -653,8 +707,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         (int)$allocationPart['children'], $childRule, ($i === 0) ? (float)$packageTotal : 0.0),
                 ];
             }
-            $gbReply(['ok' => true, 'step' => $gbUpto,
-                'quote' => rh_guest_build_quote($gbRows, $packageRowsToInsert, (float)$packageTotal, (int)$number_of_nights, (bool)$is_tentative_booking)]);
+            $gbQuote = rh_guest_build_quote($gbRows, $packageRowsToInsert, (float)$packageTotal, (int)$number_of_nights, (bool)$is_tentative_booking);
+            if ($gbDry) {
+                $gbReply(['ok' => true, 'step' => $gbUpto, 'quote' => $gbQuote]);
+            }
+            $gbStep = 5;
+            $gbField = '';
+            $gbQuoteGate($gbQuote);
         }
 
         // Generate unique booking reference (guaranteed unique)
@@ -874,6 +933,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Commit transaction - booking + packages secured atomically
             $pdo->commit();
+            $gbSaved = true;
+            $gbSavedRef = (string)($createdReferences[0] ?? $booking_reference);
 
             // Log booking creation to timeline
             foreach ($createdBookingIds as $index => $bookingId) {
@@ -1005,16 +1066,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
 
             pub_confirm_remember('booking', (string)($createdReferences[0] ?? $booking_reference));
+            if ($gbWizard) {
+                $gbReply(['ok' => true, 'step' => 5, 'redirect' => 'booking-confirmation.php?ref=' . urlencode($createdReferences[0] ?? $booking_reference)]);
+            }
             header('Location: booking-confirmation.php?ref=' . urlencode($createdReferences[0] ?? $booking_reference));
             exit;
         } catch (Exception $e) {
             // Rollback on insert error
-            if ($pdo->inTransaction()) {
+            if ($pdo->inTransaction() && !($gbWizard && $gbSaved)) {
                 $pdo->rollBack();
             }
             throw $e;
         }
     } catch (Exception $e) {
+        if ($gbWizard && $gbSaved) {
+            // Book: the rows are committed, a later step failed. Never "nothing was saved": go to the booking.
+            error_log('Guest booking ' . $gbSavedRef . ' saved; a later step failed: ' . $e->getMessage());
+            $gbSavedReply($gbSavedRef);
+        }
         // Rollback transaction on any error
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -1024,9 +1093,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $gbStep = 0;
             $gbField = '';
         }
-        if ($gbDry) {
+        if ($gbDry || $gbWizard) {
             $gbReply(['ok' => false, 'step' => rh_is_lock_conflict($e) ? 0 : $gbStep, 'message' => $error_message, 'field' => $gbField]);
         }
+    } catch (Throwable $e) {
+        // A PHP error (not an Exception). A plain POST behaves exactly as before (the error is not caught here).
+        if (!$gbWizard) {
+            throw $e;
+        }
+        if ($gbSaved) {
+            error_log('Guest booking ' . $gbSavedRef . ' saved; a later step failed: ' . $e->getMessage());
+            $gbSavedReply($gbSavedRef);
+        }
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('Guest booking (Book) failed before saving: ' . $e->getMessage());
+        $gbReply(['ok' => false, 'step' => 5, 'field' => '',
+            'message' => 'Something went wrong and your booking was not saved. Please try again in a moment.']);
     }
 }
 

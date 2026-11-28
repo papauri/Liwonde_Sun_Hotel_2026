@@ -499,7 +499,8 @@ if (!function_exists('rh_mixed_load_room')) {
      *      total_guests, child_guests, check_in, check_out, special_requests, status ('pending'|'tentative'),
      *      is_tentative (0|1), tentative_expires_at (?string), reference (base), client_uuid (?string, normalised),
      *      package_total (float, charged on the lead row), package_rows[] (written against the lead row),
-     *      validation_data (the sanitised booking fields validateBookingWithAvailability() reads).
+     *      validation_data (the sanitised booking fields validateBookingWithAvailability() reads),
+     *      prepared (optional rh_mixed_prepare() result for these inputs; see below).
      * @return array {success, error, ids[], references[], rows[], group{total, vat, total_with_vat, child_supplement, levy}}
      */
     function rh_mixed_create(PDO $pdo, array $in): array
@@ -508,7 +509,11 @@ if (!function_exists('rh_mixed_load_room')) {
         $ci = (string)$in['check_in'];
         $co = (string)$in['check_out'];
 
-        $prep = rh_mixed_prepare($pdo, $in);
+        // prepared (optional): a successful rh_mixed_prepare() result for these same inputs, made by the caller just
+        // before (booking.php's Book compares its total with the guest's Review first); otherwise prepared here.
+        $prep = (isset($in['prepared']) && is_array($in['prepared']) && !empty($in['prepared']['ok']))
+            ? $in['prepared']
+            : rh_mixed_prepare($pdo, $in);
         if (!$prep['ok']) {
             return $fail($prep['error']);
         }
@@ -653,8 +658,10 @@ if (!function_exists('rh_mixed_load_room')) {
      * $c: created (the rh_mixed_create result), lead_room (rooms row of the chosen type), guest_name, guest_email,
      *     guest_phone, check_in, check_out, nights, total_guests, adult_guests, child_guests, special_requests,
      *     status, is_tentative, is_tentative_booking, tentative_expires_at, reference
+     * $returnRef: true = do everything except the redirect and return the lead reference (booking.php's Book answers
+     *     JSON); false (default) = redirect to the confirmation page and stop, as before.
      */
-    function rh_mixed_finish(array $c): void
+    function rh_mixed_finish(array $c, bool $returnRef = false): string
     {
         $created = $c['created'];
         $rows = $created['rows'];
@@ -754,6 +761,9 @@ if (!function_exists('rh_mixed_load_room')) {
             'all_references' => $created['references'],
         ];
         pub_confirm_remember('booking', (string)$lead['reference']);
+        if ($returnRef) {
+            return (string)$lead['reference'];
+        }
         header('Location: booking-confirmation.php?ref=' . urlencode((string)$lead['reference']));
         exit;
     }

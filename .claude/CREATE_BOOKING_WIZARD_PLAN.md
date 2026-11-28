@@ -203,6 +203,28 @@ G-A build choices (dept-guest-site-lead, 2026-11-28):
 - ASSUMPTION: guard test package cases: the page's price checks are answered with the reply the PHP side got under
   the same seeded package (the real server does not know it); the page still has to tick the package.
 
+G-C build choices (dept-guest-site-lead, 2026-11-28):
+- ASSUMPTION: the quote_total gate runs on wizard posts only, after the field / availability checks and before the
+  reference and the transaction, with the same pricing helpers as the save. Single room: the save re-prices under the
+  lock as before (a change in those milliseconds is not gated). Mixed: the gated prepared rows are passed to
+  rh_mixed_create ('prepared'), so the stored rows are exactly the gated ones. Tolerance: round(abs(diff), 2) >
+  BALANCE_TOLERANCE refuses; the page sends the Review total with toFixed(2).
+- ASSUMPTION: a missing or non-numeric quote_total is a step 5 refusal with the save's quote; a plain POST ignores
+  quote_total entirely (byte-for-byte as before, test-checked: rows, emails, session).
+- ASSUMPTION: a price-changed refusal counts as one booking attempt (rate limit 5 / 10 min) and uses up the CSRF token;
+  the reply carries the new token. The wizard skips the pre-lock stock recheck (it still runs under the lock).
+- ASSUMPTION: booking switched off answers a wizard post with JSON step 0 (not the HTML 503).
+- ASSUMPTION: a failure after commit (emails etc.) replies ok:true, saved:true with the redirect, burns the booking id
+  and remembers the reference, but sets no booking_success. Not tested (needs code injection). A Throwable before
+  commit on a wizard post rolls back and replies step 5 "not saved"; plain posts rethrow as before.
+- ASSUMPTION: a transaction-time refusal keeps step 5 without a quote; the page then runs a Review price check, which
+  routes the guest to the right step. "Checking the price again" shows only while that check really runs.
+- ASSUMPTION: a duplicate booking id answers a wizard post ok + redirect and remembers the reference (the dry run
+  still changes nothing). A dry run that finds a duplicate makes the page send Book itself (no quote_total, never writes: the duplicate check is
+  first) so this browser may open the confirmation.
+- ASSUMPTION: after an unclear Book answer (not JSON, network), the next Book that gets step 0 (token used up) is sent
+  once more with the reply's new token, same booking id.
+
 ## Test cases (headless browser on Liwonde, every phase)
 1 room 2 nights pay in full; pay part (Partially Paid); pay over without tick (stopped in step 4) and with tick
 (credit note); 2 room types; child supplement; rate plan; joined room; manager override; under-tier refusal for front

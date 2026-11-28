@@ -10,12 +10,18 @@
 // a date change on Review makes the quote stale (Book disabled) and it refreshes to the new reply, a server refusal
 // (a past check-in, which the page's own checks do not catch) opens step 1 with its message, no horizontal scroll at
 // 390, no console errors.
+// Book (G-C), answered in the browser with canned replies: three presses send one request (Book off meanwhile), a
+// non-JSON reply and a network failure show "We could not confirm your booking..." with Book back, a retry keeps the
+// booking id, a step-3 refusal opens step 3 with its message and the typed text kept (its csrf_token replaces the used
+// one), a price-changed refusal shows the new total with Book on, success opens the redirect (a canned page too).
 //
 // Safety: refuses unless this checkout is Liwonde, its database is not in .claude/LIVE_TARGETS, the site name says
 // Liwonde and the site is the test platform. Database reads are SELECT / availability reads only. Own php -S
 // (dev-router.php) and own headless Chrome (temp profile) on their own ports, refused if either port already answers;
-// both stopped at the end. Book is never pressed; every form POST to booking.php is failed in the browser, and the only
-// POSTs let through are the page's own price checks (dry_run=1, read-only). The service worker is bypassed. Before the
+// both stopped at the end. No booking is ever saved: Book's background POST (response=wizard, no dry_run) is answered
+// inside the browser (CDP Fetch) and never reaches the server, any other form POST to booking.php is failed in the
+// browser, the confirmation page Book opens is a canned page too, and the only POSTs let through are the page's own
+// price checks (dry_run=1, read-only). The service worker is bypassed. Before the
 // run the public price check rate limit of 127.0.0.1 / ::1 is cleared (cache entry + temp file), as the total guard does.
 // The page loads log site_visitors / session_logs rows (HeadlessChrome) like any visit.
 // Env: GBSB_HTTP_PORT (8795), GBSB_CDP_PORT (9395).
@@ -133,21 +139,35 @@ if (!up || !pageTarget || server.exitCode !== null || chrome.exitCode !== null) 
 // ── CDP ─────────────────────────────────────────────────────────────────────────
 ws = new WebSocket(pageTarget.webSocketDebuggerUrl);
 await new Promise(r => ws.addEventListener('open', r));
-let msgId = 0; const pending = new Map(); let consoleErrors = []; let postsBlocked = 0; let dryReplies = []; let htmlNext = false;
+let msgId = 0; const pending = new Map(); let consoleErrors = []; let postsBlocked = 0; let dryReplies = []; let htmlNext = false; let navLog = [];
 function send(method, params = {}) {
   const i = ++msgId; ws.send(JSON.stringify({ id: i, method, params }));
   return new Promise(r => { pending.set(i, r); setTimeout(() => { if (pending.has(i)) { pending.delete(i); r({ error: { message: 'no reply to ' + method } }); } }, 15000); });
 }
 const isDryBody = (body) => /name="dry_run"\r?\n\r?\n1\r?\n/.test(body) && /name="response"\r?\n\r?\nwizard\r?\n/.test(body);
+// Book (G-C): the background save. Answered here per scenario (bookMode), never continued to the server.
+const isBookBody = (body) => /name="response"\r?\n\r?\nwizard\r?\n/.test(body) && !/name="dry_run"\r?\n/.test(body);
+const formVal = (body, k) => { const m = body.match(new RegExp('name="' + k + '"\\r?\\n\\r?\\n([^\\r\\n]*)\\r?\\n')); return m ? m[1] : null; };
+const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
+const fulfil = (requestId, type, text) => send('Fetch.fulfillRequest', { requestId, responseCode: 200,
+  responseHeaders: [{ name: 'Content-Type', value: type + '; charset=utf-8' }], body: b64(text) });
+let bookMode = null, bookBodies = [], heldBook = null, confirmGets = [], netFailAllowed = false;
 ws.addEventListener('message', async (ev) => {
   const m = JSON.parse(ev.data);
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }
   if (m.method === 'Runtime.exceptionThrown') consoleErrors.push('exception: ' + (m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text || '').split('\n')[0]);
   if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') consoleErrors.push('console.error: ' + (m.params.args || []).map(a => a.value ?? a.description ?? '').join(' ').slice(0, 200));
+  if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error' && netFailAllowed && m.params.entry.source === 'network' && /\/booking\.php/.test(m.params.entry.url || '')) return; // the network failure we cause
   if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') consoleErrors.push('log: ' + String(m.params.entry.text).slice(0, 200) + (m.params.entry.url ? ' (' + m.params.entry.url + ')' : ''));
   if (m.method === 'Page.javascriptDialogOpening') { consoleErrors.push('dialog: ' + m.params.message); send('Page.handleJavaScriptDialog', { accept: true }); }
+  if (m.method === 'Page.frameNavigated' && !m.params.frame.parentId) navLog.push((Date.now() % 100000) + ' ' + m.params.frame.url.replace(BASE, ''));
   if (m.method !== 'Fetch.requestPaused') return;
   const p = m.params;
+  if (p.responseStatusCode === undefined && /\/booking-confirmation\.php(\?|$)/.test(p.request.url)) { // the page Book opens: canned
+    confirmGets.push(p.request.url);
+    fulfil(p.requestId, 'text/html', '<!doctype html><html lang="en"><head><title>Zz canned confirmation</title><link rel="icon" href="data:,"></head><body><p>Zz canned confirmation</p></body></html>');
+    return;
+  }
   const isPost = p.request.method === 'POST' && /\/booking\.php(\?|$)/.test(p.request.url);
   const body = String(p.request.postData || '');
   if (p.responseStatusCode !== undefined) { // response stage: keep each price check reply
@@ -161,6 +181,16 @@ ws.addEventListener('message', async (ev) => {
       } catch (e) { dryReplies.push({ upto: null, ok: false, broken: true }); }
     }
     send('Fetch.continueRequest', { requestId: p.requestId });
+    return;
+  }
+  if (isPost && p.resourceType !== 'Document' && isBookBody(body)) { // Book: answered here, never sent on
+    bookBodies.push({ uuid: formVal(body, 'client_uuid') || '', quote: formVal(body, 'quote_total'), token: formVal(body, 'csrf_token') || '' });
+    const mode = bookMode;
+    if (mode === 'hold') { heldBook = p.requestId; return; }
+    if (mode === 'fail') { send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'InternetDisconnected' }); return; }
+    if (mode && typeof mode === 'object') { fulfil(p.requestId, mode.html !== undefined ? 'text/html' : 'application/json', mode.html !== undefined ? mode.html : JSON.stringify(mode.json)); return; }
+    postsBlocked++; // no scenario set: fail it like any other form POST
+    send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Aborted' });
     return;
   }
   if (isPost && (p.resourceType === 'Document' || !isDryBody(body))) { // never submit
@@ -191,7 +221,8 @@ async function waitFor(expr, ms = 30000) {
 await send('Runtime.enable'); await send('Page.enable'); await send('Log.enable');
 await send('Network.enable'); await send('Network.setCacheDisabled', { cacheDisabled: true });
 await send('Network.setBypassServiceWorker', { bypass: true });
-await send('Fetch.enable', { patterns: [{ urlPattern: '*booking.php*', requestStage: 'Request' }, { urlPattern: '*booking.php*', requestStage: 'Response' }] });
+await send('Fetch.enable', { patterns: [{ urlPattern: '*booking.php*', requestStage: 'Request' }, { urlPattern: '*booking.php*', requestStage: 'Response' },
+  { urlPattern: '*booking-confirmation.php*', requestStage: 'Request' }] });
 await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
 
 // ── Page helpers ────────────────────────────────────────────────────────────────
@@ -230,7 +261,7 @@ async function noScroll(where) { const s = await state(); if (s.scroll > s.inner
 const one = (s, n) => s.visible.length === 1 && s.visible[0] === n && s.bar === n && s.step === n;
 
 // ── Run ─────────────────────────────────────────────────────────────────────────
-const watchdog = setTimeout(async () => { console.log('run timed out (GBSB_RUN_MS)'); await stopAll(); process.exit(1); }, Number(process.env.GBSB_RUN_MS || 420000));
+const watchdog = setTimeout(async () => { console.log('run timed out (GBSB_RUN_MS)'); await stopAll(); process.exit(1); }, Number(process.env.GBSB_RUN_MS || 600000));
 const R = data;
 for (const W of WIDTHS) {
   console.log(`\n== width ${W} (reduced motion)`);
@@ -356,6 +387,68 @@ for (const W of WIDTHS) {
     await setField('special_requests', '');
     check(await waitFor(fresh, 45000) && (await state()).book, `${W}: the next edit asks again and Review is fresh, Book on`);
     check(await js(`!document.querySelector('#gbStep5 .gb-step__error:not([hidden])')`), `${W}: the accepted check clears the Review message`);
+
+    // ── Book (G-C): canned replies inside the browser; nothing reaches the server ──
+    const bookState = () => js(`(() => { const e = document.querySelector('#gbStep5 .gb-step__error:not([hidden])'); const b = document.querySelector('.btn-submit');
+      return { step: gbCurrent, book: !!b && !b.disabled, submitting: gbSubmitting, msg: e ? e.textContent.trim() : '' }; })()`);
+    const UNCLEAR = /could not confirm your booking\. It may have been saved: check your email or contact us before booking again/i;
+    const uuid0 = await js(`(document.querySelector('#bookingForm [name="client_uuid"]') || {}).value || ''`);
+    const t0 = (await state()).total;
+    bookBodies = [];
+    // Three presses (two clicks + a form submit): one request, Book off while it runs; then a non-JSON reply
+    bookMode = 'hold'; heldBook = null;
+    await js(`(() => { const b = document.querySelector('.btn-submit'); b.click(); b.click(); document.getElementById('bookingForm').requestSubmit(); return 1; })()`);
+    await sleep(800);
+    let bs = await bookState();
+    check(bookBodies.length === 1 && !!heldBook && !bs.book && bs.submitting, `${W}: Book pressed three times sends one request, Book off while it runs`, JSON.stringify({ requests: bookBodies.length, held: !!heldBook, bs }));
+    const bk0 = bookBodies[0] || {};
+    check(uuid0 !== '' && bk0.uuid === uuid0 && t0 > 0 && bk0.quote === t0.toFixed(2), `${W}: Book sends response=wizard, the form's booking id and quote_total = the Review total`, JSON.stringify({ uuid: bk0.uuid === uuid0, quote: bk0.quote, review: t0 }));
+    bookMode = null;
+    if (heldBook) await fulfil(heldBook, 'text/html', '<!doctype html><html><body>Fatal error</body></html>');
+    await waitFor(`!gbSubmitting`, 8000);
+    bs = await bookState();
+    check(bs.step === 5 && UNCLEAR.test(bs.msg) && bs.book, `${W}: a non-JSON Book reply shows "We could not confirm your booking... may have been saved", Book comes back`, JSON.stringify(bs));
+    // A network failure: the same message, Book back; the retry keeps the booking id
+    bookMode = 'fail'; netFailAllowed = true;
+    let nb = bookBodies.length;
+    await click('.btn-submit');
+    await waitFor(`!gbSubmitting`, 8000); await sleep(400);
+    netFailAllowed = false; bookMode = null;
+    bs = await bookState();
+    check(bookBodies.length === nb + 1 && bs.step === 5 && UNCLEAR.test(bs.msg) && bs.book, `${W}: a network failure on Book shows the same message, Book comes back`, JSON.stringify({ requests: bookBodies.length - nb, bs }));
+    check((bookBodies[nb] || {}).uuid === uuid0, `${W}: pressing Book again keeps the same booking id (client_uuid)`);
+    await noScroll('Book unclear');
+    // A step-3 refusal: step 3 opens with its message, the typed text kept, the reply's csrf_token replaces the used one
+    await setField('special_requests', 'Zz kept words');
+    check(await waitFor(`${fresh} && !gbSubmitting`, 45000), `${W}: an edit on Review refreshes the quote before the next Book`);
+    const tokReal = await formToken();
+    await js(`(document.querySelector('#bookingForm [name="csrf_token"]').value = 'zz-used-token', 1)`);
+    bookMode = { json: { ok: false, step: 3, field: 'room_id', message: 'Zz canned: this room is no longer free for these dates.', csrf_token: tokReal } };
+    nb = bookBodies.length;
+    await click('.btn-submit');
+    const at3 = await waitFor(`gbCurrent === 3 && !gbSubmitting`, 8000);
+    bookMode = null;
+    s = await noScroll('Book step 3 refusal');
+    check(at3 && bookBodies.length === nb + 1 && s.errs.some(e => e.step === 3 && /Zz canned: this room/.test(e.text)) && s.activeStep === 3,
+      `${W}: a step-3 refusal of Book opens step 3 with its message, focus there`, JSON.stringify({ step: s.step, errs: s.errs, active: s.active }));
+    const kept = await js(`({ name: document.getElementById('guest_name').value, email: document.getElementById('guest_email').value, req: document.getElementById('special_requests').value, room: String(selectedRoomId), co: document.getElementById('check_out_date').value })`);
+    check(kept.name === 'Zz Steps Browser' && kept.email === 'zz.steps.browser@example.invalid' && kept.req === 'Zz kept words' && kept.room === String(R.room_id) && kept.co === R.co2,
+      `${W}: the refusal keeps everything typed`, JSON.stringify(kept));
+    check(await formToken() === tokReal && (bookBodies[nb] || {}).token === 'zz-used-token', `${W}: the refusal's csrf_token replaces the used one in the form`);
+    // Back to Review through the step bar, then a price-changed refusal with the save's new figures
+    await click('#gbStepBar [data-gb-go="5"]');
+    check(await waitFor(`${onStep(5)} && ${fresh}`, 60000), `${W}: the step bar goes back to Review with a fresh quote`, JSON.stringify((await state()).errs));
+    const q = await js(`JSON.parse(JSON.stringify(gbQuote))`);
+    const tOld = Number(q.totals.total_with_vat); q.totals.total_with_vat = tOld + 1000;
+    bookMode = { json: { ok: false, step: 5, field: '', price_changed: true, message: 'Zz canned: the price changed since you checked it.', quote: q, csrf_token: await formToken() } };
+    const beforeP = dryReplies.length;
+    await click('.btn-submit');
+    await waitFor(`!gbSubmitting`, 8000); await sleep(500);
+    bookMode = null;
+    s = await noScroll('Book price changed'); bs = await bookState();
+    check(s.step === 5 && s.total === tOld + 1000 && money(s.shown) === tOld + 1000 && s.quote === 'fresh' && s.book && /Zz canned: the price changed/.test(bs.msg),
+      `${W}: a price-changed refusal shows the new total on Review with its message, Book on`, JSON.stringify({ step: s.step, total: s.total, shown: s.shown, quote: s.quote, book: s.book, msg: bs.msg }));
+    check(dryReplies.length === beforeP && await js(`(document.getElementById('gbQuoteStatus') || {}).textContent === ''`), `${W}: no price check and no "checking again" after a refusal that carries the figures`, `${dryReplies.length - beforeP} check(s)`);
     // A server refusal: a past check-in (the page's own checks do not catch it) opens step 1 with the server message
     const beforeX = dryReplies.length;
     await js(`(() => { const el = document.getElementById('check_in_date'); el.value = ${JSON.stringify(R.yesterday)}; el.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
@@ -365,14 +458,36 @@ for (const W of WIDTHS) {
     check(refused && lastX.ok === false && lastX.step === 1 && s.errs.some(e => e.step === 1 && e.text === String(lastX.message).replace(/<\/?[^>]+(>|$)/g, '').trim()) && s.activeStep === 1 && !s.book,
       `${W}: a past check-in refused by the server opens step 1 with its message, focus there, Book off`, JSON.stringify({ step: s.step, errs: s.errs, reply: lastX, active: s.active }));
     await noScroll('step 1 refusal');
+    // Book success, last: good dates again, Review, Book → the redirect opens (a canned page)
+    await js(`(checkInCalendar.setDate(${JSON.stringify(R.ci)}, true), checkOutCalendar.setDate(${JSON.stringify(R.co2)}, true), 1)`);
+    await waitFor(`!gbBusy && !availabilityCheckPending`, 20000);
+    for (let st = 1; st <= 4; st++) {
+      if (!(await waitFor(onStep(st), 3000))) break;
+      await click(`#gbStep${st} [data-gb-next]`);
+      if (!(await waitFor(onStep(st + 1), 45000))) break;
+    }
+    const sR = await state();
+    check(await waitFor(`${onStep(5)} && ${fresh}`, 45000), `${W}: good dates again reach Review with a fresh quote`, JSON.stringify({ step: sR.step, ci: sR.ci, co: sR.co, quote: sR.quote, errs: sR.errs }));
+    const tS = (await state()).total;
+    const ref = 'ZZGCBROWSER' + W;
+    bookMode = { json: { ok: true, step: 5, message: '', field: '', redirect: 'booking-confirmation.php?ref=' + ref, csrf_token: await formToken() } };
+    nb = bookBodies.length; confirmGets = [];
+    await js('window.__gbNav = 1');
+    await click('.btn-submit');
+    const went = await waitFor(`!window.__gbNav && location.pathname.endsWith('/booking-confirmation.php') && document.readyState === 'complete'`, 15000);
+    bookMode = null;
+    const href = await js('location.href');
+    check(went && href === `${BASE}/booking-confirmation.php?ref=${ref}` && confirmGets.length === 1, `${W}: a successful Book opens its redirect`, JSON.stringify({ href, gets: confirmGets.length }));
+    check(bookBodies.length === nb + 1 && (bookBodies[nb] || {}).quote === Number(tS).toFixed(2) && (bookBodies[nb] || {}).uuid === uuid0,
+      `${W}: that Book sent quote_total = the Review total on screen and the same booking id`, JSON.stringify({ sent: (bookBodies[nb] || {}).quote, review: tS }));
   } catch (e) {
-    check(false, `${W}: run`, String(e.message || e));
+    check(false, `${W}: run`, String(e.message || e) + " | last navigations: " + navLog.slice(-6).join(" ; ") + " | now " + (Date.now() % 100000));
   }
   if (W < 600) check(maxScroll.w === 0, `${W}: no horizontal scroll on any step`, JSON.stringify(maxScroll));
   check(consoleErrors.length === 0, `${W}: no console errors`, consoleErrors.slice(0, 5).join(' | '));
 }
 clearTimeout(watchdog);
-check(postsBlocked === 0, 'no form POST was attempted (Book never pressed)', `${postsBlocked} blocked`);
+check(postsBlocked === 0, 'no form POST reached the server (Book answered in the browser only)', `${postsBlocked} blocked`);
 check(phpErrors.length === 0, 'no PHP errors from php -S', phpErrors.slice(0, 3).join(' | '));
 console.log(`\nguest booking steps: ${pass} passed, ${fail} failed`);
 await stopAll();
