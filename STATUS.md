@@ -12,6 +12,17 @@ Deeper trackers to read next:
 - `.claude/BUILD_PLAN.md`
 - Rosalyn's `.claude/TASKS.md`, the live task tracker shared by both hotels
 
+## Shipped 2026-11-28: Calendar timeline sideways scroll + drag past the edge (owner FEATURE, profile Claude session 1096f749) - Liwonde ad886a7 / Rosalyn's 7df141f
+- Booking Room Timeline: 3/7/14/30 = days per screen; a 31..93-day window is drawn and refills near its edges
+  (API cap 93). Prev/Next and Alt+PageUp/PageDown move one screen; arrow keys scroll the focused grid. Dragging a
+  confirmed stay near the edge auto-scrolls; the drop still opens the booking's Change dates (nothing saved there).
+- Tests: calendar_timeline 49/0, grid_select 96/0, timeline_scroll_browser pass; actions 55/1 (pre-existing check
+  "(a) bookings.php reads booking_id + individual_room_id", admin/bookings.php untouched). qa-auditor PASS.
+- Owner decisions open: save on drop instead of opening Change dates? Allow dates-drag on pending/tentative?
+- LATER: same scroll for the HK/Maintenance timelines (room-timeline-ops.js); HK timeline sometimes overflows on
+  first paint until a resize (pre-existing); QA: window resize still redraws during a drag (pre-existing), the
+  ResizeObserver path skips blockBusy/picks.busy, st.refillLater unused, auto-scroll runs every frame at the window end.
+
 ## Shipped 2026-11-27: icon picker + Room Packages window (owner, profile Claude session f0fab372) - Liwonde fc8e45a / Rosalyn's 9f95094
 - "Choose icon" on every input[data-icon-preview] (Room/Conference Packages, Gym, Page Management, Section Headers
   badges at Liwonde): searchable grid of 1,895 Font Awesome Free 6.7.2 icons from admin/js/fa-icons.js (regenerate with
