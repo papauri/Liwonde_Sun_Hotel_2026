@@ -103,6 +103,15 @@ Deeper trackers to read next:
     no change needed (activity hook logs every POST; only the dry run is marked refused). qa-auditor, accounting lead,
     final-review PASS. Tests dryrun 82/0, payment 37/0, email_wording 175/0, guest_credit_ship_m 45/0,
     group_credit_move 79/0. NEXT: guest phases G0 -> G-B -> G-A -> G-C (plan .claude/CREATE_BOOKING_WIZARD_PLAN.md).
+  - G0 DONE 2026-11-28 (session cut off mid-run, resumed by session 28ad065e): guest page total vs stored total,
+    `php scripts/tests/guest_booking_total_compare.php` (+ .mjs browser helper; every save rolled back, emails to a
+    local capture server). 11/11 match, no live fault, no PATCH needed: double no tier, single, child (hotel rule +
+    seeded 50%), rate plan "Christmas Rates 2026", two rooms, joined room, tentative, packages per night / per stay /
+    per person per night (seeded). VAT inclusive 17.5%, levy 1%. Counts unchanged, 0 connections left. Helper must
+    bypass the site's service worker (js/pwa-install.js) or the package injection is never seen. qa-auditor FAIL (fixed
+    ports could drive another Chrome / read another server) -> free ports + refuse if busy -> PASS. Test-only, Liwonde
+    only (refuses elsewhere): not ported. LATER: page visits leave site_visitors/session_logs HeadlessChrome rows on
+    Liwonde; tiny race between the port check and start-up. NEXT: G-B (spec-check first, money).
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
