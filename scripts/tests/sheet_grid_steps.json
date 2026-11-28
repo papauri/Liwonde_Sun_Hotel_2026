@@ -1,0 +1,498 @@
+[
+ {
+  "init": "try{localStorage.clear()}catch(e){}\nwindow.__t={\n cell:function(r,c){return document.querySelector('.rh-sheet td[data-r=\"'+r+'\"][data-c=\"'+c+'\"]')},\n txt:function(r,c){var t=__t.cell(r,c);return t?t.textContent:null},\n msg:function(){var m=document.querySelector('.rh-sheet__msg');return !m||m.hidden?'':m.querySelector('.rh-sheet__msg-text').textContent},\n n:function(){return window.__grid.getChanges().length},\n marked:function(){return document.querySelectorAll('.rh-sheet td.is-changed').length},\n key:function(k,o){var t=document.activeElement;t.dispatchEvent(new KeyboardEvent('keydown',Object.assign({key:k,bubbles:true,cancelable:true},o||{})));return t.tagName},\n down:function(r,c,o){var td=__t.cell(r,c);td.dispatchEvent(new MouseEvent('mousedown',Object.assign({bubbles:true,cancelable:true,button:0},o||{})));document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}))},\n paste:function(text){var dt=new DataTransfer();dt.setData('text/plain',text);document.activeElement.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));return __t.msg()},\n copy:function(){var dt=new DataTransfer();document.activeElement.dispatchEvent(new ClipboardEvent('copy',{clipboardData:dt,bubbles:true,cancelable:true}));return dt.getData('text/plain')},\n menu:function(r,c){var td=__t.cell(r,c),b=td.getBoundingClientRect();td.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:b.x+5,clientY:b.y+5}));return Array.prototype.map.call(document.querySelectorAll('.rh-ctx [role=menuitem]'),function(x){return x.textContent+(x.disabled?'(off)':'')})},\n menuRun:function(label){var it=Array.prototype.filter.call(document.querySelectorAll('.rh-ctx [role=menuitem]'),function(x){return x.textContent.indexOf(label)===0})[0];if(!it)return 'no item';it.click();return 'ran'},\n hscroll:function(){return document.documentElement.scrollWidth>window.innerWidth}\n};"
+ },
+ {
+  "viewport": [
+   1920,
+   1080
+  ]
+ },
+ {
+  "nav": "{base}/scripts/tests/fixtures/sheet-grid-fixture.html",
+  "after": 1500
+ },
+ {
+  "label": "d1920 setup: grid built, 10 rows, every head has a ? helper, 1 read-only row (Tonic water) on page 1, no h-scroll",
+  "eval": "(()=>{const th=document.querySelectorAll('.rh-sheet__head');return {grid:!!window.__grid,rows:document.querySelectorAll('.rh-sheet tbody tr').length,heads:th.length,helps:document.querySelectorAll('.rh-sheet__head .help[data-tip]').length,roRows:document.querySelectorAll('tr.is-ro-row').length,roAria:document.querySelectorAll('td[aria-readonly=true]').length,role:document.querySelector('.rh-sheet__table').getAttribute('role'),save:document.querySelector('[data-sheet-save]').disabled,pageHScroll:__t.hscroll(),summary:document.querySelector('.rh-sheet__summary').textContent}})()"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"0\"][data-c=\"3\"]"
+ },
+ {
+  "key": "F2"
+ },
+ {
+  "type": "7.5"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "key": "1"
+ },
+ {
+  "type": "2"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "key": "4"
+ },
+ {
+  "key": "Tab"
+ },
+ {
+  "key": "2"
+ },
+ {
+  "type": "500"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "key": "9"
+ },
+ {
+  "label": "d1920 read-only cell refuses typing",
+  "eval": "({active:document.activeElement.tagName,editor:!!document.querySelector('.rh-sheet__editor'),msg:__t.msg()})"
+ },
+ {
+  "key": "ArrowDown"
+ },
+ {
+  "key": "1"
+ },
+ {
+  "type": "600"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"5\"][data-c=\"6\"]"
+ },
+ {
+  "key": "F2"
+ },
+ {
+  "type": "Top shelf"
+ },
+ {
+  "key": "Tab"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"6\"][data-c=\"3\"]"
+ },
+ {
+  "key": "5"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "key": "8"
+ },
+ {
+  "type": ",5"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "label": "d1920 refused typed value keeps the editor open with the reason",
+  "eval": "({editorOpen:!!document.querySelector('.rh-sheet__editor.is-invalid'),msg:__t.msg()})"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "label": "d1920 after keyboard: expect 6 changes, values shown",
+  "eval": "({n:__t.n(),marked:__t.marked(),gin:__t.txt(0,3),ginValue:__t.txt(0,5),rum:__t.txt(1,3),vodka:[__t.txt(2,3),__t.txt(2,4)],brandy:__t.txt(4,4),notes:__t.txt(5,6),white:__t.txt(6,3),changes:__grid.getChanges().map(c=>c.item+'.'+c.key+'='+c.new).join(', ')})"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"6\"][data-c=\"3\"]"
+ },
+ {
+  "label": "d1920 paste 6x2 at White wine (Tonic water read-only, '8,5' refused, blank skipped, 2 rows past the page)",
+  "eval": "({msg:__t.paste('9\\t1,100.00\\n1\\t2\\n8,5\\t1300\\n\\t1400\\n5\\t1500\\n6\\t1600\\n'),n:__t.n(),white:[__t.txt(6,3),__t.txt(6,4)],tonic:[__t.txt(7,3),__t.txt(7,4)],soda:[__t.txt(8,3),__t.txt(8,4)],cola:[__t.txt(9,3),__t.txt(9,4)]})"
+ },
+ {
+  "label": "d1920 Ctrl+Z undoes the whole paste, Ctrl+Y puts it back",
+  "eval": "(()=>{__t.key('z',{ctrlKey:true});const a=__t.n(),w=__t.txt(6,3);__t.key('y',{ctrlKey:true});return {afterUndo:a,whiteAfterUndo:w,afterRedo:__t.n(),whiteAfterRedo:__t.txt(6,3)}})()"
+ },
+ {
+  "label": "d1920 page size All",
+  "eval": "(()=>{const s=document.querySelector('[data-sheet-size]');s.value='0';s.dispatchEvent(new Event('change',{bubbles:true}));return {rows:document.querySelectorAll('.rh-sheet tbody tr').length,summary:document.querySelector('.rh-sheet__summary').textContent}})()"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"20\"][data-c=\"3\"]"
+ },
+ {
+  "label": "d1920 paste 20x2 block at Wheat flour (rows 20-39): expect 40 cells pasted, no skips",
+  "eval": "(()=>{let t='';for(let i=0;i<20;i++)t+=(i+0.25)+'\\t'+(500+i*10)+'.00\\r\\n';const m=__t.paste(t);return {msg:m,n:__t.n(),first:[__t.txt(20,3),__t.txt(20,4),__t.txt(20,5)],last:[__t.txt(39,3),__t.txt(39,4)],row40:__t.txt(40,3)}})()"
+ },
+ {
+  "label": "d1920 undo the 20x2 paste then redo",
+  "eval": "(()=>{const b=__t.n();__t.key('z',{ctrlKey:true});const a=__t.n();__t.key('y',{ctrlKey:true});return {before:b,afterUndo:a,afterRedo:__t.n()}})()"
+ },
+ {
+  "label": "d1920 Ctrl+C of a 2x2 block gives Excel text",
+  "eval": "(()=>{__t.down(20,3);__t.down(21,4,{shiftKey:true});return JSON.stringify(__t.copy())})()"
+ },
+ {
+  "label": "d1920 right-click on a Location range: menu items",
+  "eval": "(()=>{__t.down(40,2);__t.down(42,2,{shiftKey:true});return {before:[__t.txt(40,2),__t.txt(41,2),__t.txt(42,2)]}})()"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "label": "d1920 menu items on a 3-row selection",
+  "eval": "__t.menu(41,2)"
+ },
+ {
+  "label": "d1920 Fill down from the menu",
+  "eval": "({run:__t.menuRun('Fill down'),after:[__t.txt(40,2),__t.txt(41,2),__t.txt(42,2)],focus:document.activeElement.tagName,msg:__t.msg()})"
+ },
+ {
+  "label": "d1920 Delete clears an editable cell, leaves a read-only row",
+  "eval": "(()=>{__t.down(44,3);__t.key('Delete');const a=__t.txt(44,3);__t.down(14,3);__t.key('Delete');return {cheese:a,sparklingCounted:__t.txt(14,3),msg:__t.msg(),n:__t.n()}})()"
+ },
+ {
+  "label": "d1920 column filter \"Not filled in\" on Counted + filter box",
+  "eval": "(()=>{const s=document.querySelector('select[data-filter-key=counted]');s.value='\\u0000blank';s.dispatchEvent(new Event('change'));const a=document.querySelectorAll('.rh-sheet tbody tr').length;s.value='';s.dispatchEvent(new Event('change'));const f=document.querySelector('.rh-sheet input[type=search]');f.value='beer';f.dispatchEvent(new Event('input'));const b=document.querySelectorAll('.rh-sheet tbody tr').length;f.value='zzz';f.dispatchEvent(new Event('input'));const e=document.querySelector('.rh-sheet__state').textContent;f.value='';f.dispatchEvent(new Event('input'));return {notCounted:a,beer:b,empty:e,back:document.querySelectorAll('.rh-sheet tbody tr').length}})()"
+ },
+ {
+  "shot": "tmp/sheet-grid-d1920.png"
+ },
+ {
+  "label": "d1920 remember the expected changes",
+  "eval": "(()=>{window.__expect=JSON.stringify(__grid.getChanges().map(c=>({id:c.id,key:c.key,old:c.old,new:c.new})));return __grid.getChanges().length})()"
+ },
+ {
+  "clickSel": "[data-sheet-save]"
+ },
+ {
+  "label": "d1920 review list: count line, money first, flagged prices",
+  "eval": "(()=>{const m=document.querySelector('.rh-review');if(!m)return 'NO MODAL';const items=[...m.querySelectorAll('.rh-review__item')];const firstText=items.findIndex(li=>!li.classList.contains('is-money'));const lastMoney=items.map(li=>li.classList.contains('is-money')).lastIndexOf(true);const box=m.querySelector('.modal__container').getBoundingClientRect();return {count:m.querySelector('.rh-review__count').textContent,items:items.length,moneyFirst:firstText===-1||lastMoney<firstText,flagged:m.querySelectorAll('.rh-review__flag').length,vodka:(items.find(li=>li.textContent.indexOf('Vodka')===0&&li.classList.contains('is-money'))||{}).textContent,focus:document.activeElement.textContent,fits:box.left>=0&&box.right<=innerWidth,role:m.querySelector('[role=dialog]').getAttribute('aria-modal')}})()"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "label": "d1920 Esc = cancel: nothing saved, every change still marked",
+  "eval": "({modal:!!document.querySelector('.rh-review'),saved:document.getElementById('saved').textContent,n:__t.n(),msg:__t.msg(),focus:document.activeElement.getAttribute('data-sheet-save')!==null})"
+ },
+ {
+  "clickSel": "[data-sheet-save]"
+ },
+ {
+  "shot": "tmp/sheet-review-d1920.png"
+ },
+ {
+  "clickSel": "[data-review-save]"
+ },
+ {
+  "label": "d1920 saved JSON matches the grid's changes; marks gone",
+  "eval": "(()=>{const s=document.getElementById('saved').textContent;return {match:s===window.__expect,saved:JSON.parse(s||'[]').length,nAfter:__t.n(),marked:__t.marked(),saveDisabled:document.querySelector('[data-sheet-save]').disabled,msg:__t.msg()}})()"
+ },
+ {
+  "label": "d1920 read-only grid: grey, typing refused",
+  "eval": "(()=>{__grid.setReadOnly(true);__t.down(0,3);__t.key('5');const r={ro:document.querySelectorAll('td.is-ro').length,all:document.querySelectorAll('td.rh-sheet__cell').length,editor:!!document.querySelector('.rh-sheet__editor'),msg:__t.msg()};__grid.setReadOnly(false);return r})()"
+ },
+ {
+  "viewport": [
+   1280,
+   800
+  ]
+ },
+ {
+  "nav": "{base}/scripts/tests/fixtures/sheet-grid-fixture.html",
+  "after": 1500
+ },
+ {
+  "label": "d1280 setup: grid built, 10 rows, every head has a ? helper, 1 read-only row (Tonic water) on page 1, no h-scroll",
+  "eval": "(()=>{const th=document.querySelectorAll('.rh-sheet__head');return {grid:!!window.__grid,rows:document.querySelectorAll('.rh-sheet tbody tr').length,heads:th.length,helps:document.querySelectorAll('.rh-sheet__head .help[data-tip]').length,roRows:document.querySelectorAll('tr.is-ro-row').length,roAria:document.querySelectorAll('td[aria-readonly=true]').length,role:document.querySelector('.rh-sheet__table').getAttribute('role'),save:document.querySelector('[data-sheet-save]').disabled,pageHScroll:__t.hscroll(),summary:document.querySelector('.rh-sheet__summary').textContent}})()"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"0\"][data-c=\"3\"]"
+ },
+ {
+  "key": "F2"
+ },
+ {
+  "type": "7.5"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "key": "1"
+ },
+ {
+  "type": "2"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "key": "4"
+ },
+ {
+  "key": "Tab"
+ },
+ {
+  "key": "2"
+ },
+ {
+  "type": "500"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "key": "9"
+ },
+ {
+  "label": "d1280 read-only cell refuses typing",
+  "eval": "({active:document.activeElement.tagName,editor:!!document.querySelector('.rh-sheet__editor'),msg:__t.msg()})"
+ },
+ {
+  "key": "ArrowDown"
+ },
+ {
+  "key": "1"
+ },
+ {
+  "type": "600"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"5\"][data-c=\"6\"]"
+ },
+ {
+  "key": "F2"
+ },
+ {
+  "type": "Top shelf"
+ },
+ {
+  "key": "Tab"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"6\"][data-c=\"3\"]"
+ },
+ {
+  "key": "5"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "key": "8"
+ },
+ {
+  "type": ",5"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "label": "d1280 refused typed value keeps the editor open with the reason",
+  "eval": "({editorOpen:!!document.querySelector('.rh-sheet__editor.is-invalid'),msg:__t.msg()})"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "label": "d1280 after keyboard: expect 6 changes, values shown",
+  "eval": "({n:__t.n(),marked:__t.marked(),gin:__t.txt(0,3),ginValue:__t.txt(0,5),rum:__t.txt(1,3),vodka:[__t.txt(2,3),__t.txt(2,4)],brandy:__t.txt(4,4),notes:__t.txt(5,6),white:__t.txt(6,3),changes:__grid.getChanges().map(c=>c.item+'.'+c.key+'='+c.new).join(', ')})"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"6\"][data-c=\"3\"]"
+ },
+ {
+  "label": "d1280 paste 6x2 at White wine (Tonic water read-only, '8,5' refused, blank skipped, 2 rows past the page)",
+  "eval": "({msg:__t.paste('9\\t1,100.00\\n1\\t2\\n8,5\\t1300\\n\\t1400\\n5\\t1500\\n6\\t1600\\n'),n:__t.n(),white:[__t.txt(6,3),__t.txt(6,4)],tonic:[__t.txt(7,3),__t.txt(7,4)],soda:[__t.txt(8,3),__t.txt(8,4)],cola:[__t.txt(9,3),__t.txt(9,4)]})"
+ },
+ {
+  "label": "d1280 Ctrl+Z undoes the whole paste, Ctrl+Y puts it back",
+  "eval": "(()=>{__t.key('z',{ctrlKey:true});const a=__t.n(),w=__t.txt(6,3);__t.key('y',{ctrlKey:true});return {afterUndo:a,whiteAfterUndo:w,afterRedo:__t.n(),whiteAfterRedo:__t.txt(6,3)}})()"
+ },
+ {
+  "label": "d1280 page size All",
+  "eval": "(()=>{const s=document.querySelector('[data-sheet-size]');s.value='0';s.dispatchEvent(new Event('change',{bubbles:true}));return {rows:document.querySelectorAll('.rh-sheet tbody tr').length,summary:document.querySelector('.rh-sheet__summary').textContent}})()"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"20\"][data-c=\"3\"]"
+ },
+ {
+  "label": "d1280 paste 20x2 block at Wheat flour (rows 20-39): expect 40 cells pasted, no skips",
+  "eval": "(()=>{let t='';for(let i=0;i<20;i++)t+=(i+0.25)+'\\t'+(500+i*10)+'.00\\r\\n';const m=__t.paste(t);return {msg:m,n:__t.n(),first:[__t.txt(20,3),__t.txt(20,4),__t.txt(20,5)],last:[__t.txt(39,3),__t.txt(39,4)],row40:__t.txt(40,3)}})()"
+ },
+ {
+  "label": "d1280 undo the 20x2 paste then redo",
+  "eval": "(()=>{const b=__t.n();__t.key('z',{ctrlKey:true});const a=__t.n();__t.key('y',{ctrlKey:true});return {before:b,afterUndo:a,afterRedo:__t.n()}})()"
+ },
+ {
+  "label": "d1280 Ctrl+C of a 2x2 block gives Excel text",
+  "eval": "(()=>{__t.down(20,3);__t.down(21,4,{shiftKey:true});return JSON.stringify(__t.copy())})()"
+ },
+ {
+  "label": "d1280 right-click on a Location range: menu items",
+  "eval": "(()=>{__t.down(40,2);__t.down(42,2,{shiftKey:true});return {before:[__t.txt(40,2),__t.txt(41,2),__t.txt(42,2)]}})()"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "label": "d1280 menu items on a 3-row selection",
+  "eval": "__t.menu(41,2)"
+ },
+ {
+  "label": "d1280 Fill down from the menu",
+  "eval": "({run:__t.menuRun('Fill down'),after:[__t.txt(40,2),__t.txt(41,2),__t.txt(42,2)],focus:document.activeElement.tagName,msg:__t.msg()})"
+ },
+ {
+  "label": "d1280 Delete clears an editable cell, leaves a read-only row",
+  "eval": "(()=>{__t.down(44,3);__t.key('Delete');const a=__t.txt(44,3);__t.down(14,3);__t.key('Delete');return {cheese:a,sparklingCounted:__t.txt(14,3),msg:__t.msg(),n:__t.n()}})()"
+ },
+ {
+  "label": "d1280 column filter \"Not filled in\" on Counted + filter box",
+  "eval": "(()=>{const s=document.querySelector('select[data-filter-key=counted]');s.value='\\u0000blank';s.dispatchEvent(new Event('change'));const a=document.querySelectorAll('.rh-sheet tbody tr').length;s.value='';s.dispatchEvent(new Event('change'));const f=document.querySelector('.rh-sheet input[type=search]');f.value='beer';f.dispatchEvent(new Event('input'));const b=document.querySelectorAll('.rh-sheet tbody tr').length;f.value='zzz';f.dispatchEvent(new Event('input'));const e=document.querySelector('.rh-sheet__state').textContent;f.value='';f.dispatchEvent(new Event('input'));return {notCounted:a,beer:b,empty:e,back:document.querySelectorAll('.rh-sheet tbody tr').length}})()"
+ },
+ {
+  "shot": "tmp/sheet-grid-d1280.png"
+ },
+ {
+  "label": "d1280 remember the expected changes",
+  "eval": "(()=>{window.__expect=JSON.stringify(__grid.getChanges().map(c=>({id:c.id,key:c.key,old:c.old,new:c.new})));return __grid.getChanges().length})()"
+ },
+ {
+  "clickSel": "[data-sheet-save]"
+ },
+ {
+  "label": "d1280 review list: count line, money first, flagged prices",
+  "eval": "(()=>{const m=document.querySelector('.rh-review');if(!m)return 'NO MODAL';const items=[...m.querySelectorAll('.rh-review__item')];const firstText=items.findIndex(li=>!li.classList.contains('is-money'));const lastMoney=items.map(li=>li.classList.contains('is-money')).lastIndexOf(true);const box=m.querySelector('.modal__container').getBoundingClientRect();return {count:m.querySelector('.rh-review__count').textContent,items:items.length,moneyFirst:firstText===-1||lastMoney<firstText,flagged:m.querySelectorAll('.rh-review__flag').length,vodka:(items.find(li=>li.textContent.indexOf('Vodka')===0&&li.classList.contains('is-money'))||{}).textContent,focus:document.activeElement.textContent,fits:box.left>=0&&box.right<=innerWidth,role:m.querySelector('[role=dialog]').getAttribute('aria-modal')}})()"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "label": "d1280 Esc = cancel: nothing saved, every change still marked",
+  "eval": "({modal:!!document.querySelector('.rh-review'),saved:document.getElementById('saved').textContent,n:__t.n(),msg:__t.msg(),focus:document.activeElement.getAttribute('data-sheet-save')!==null})"
+ },
+ {
+  "clickSel": "[data-sheet-save]"
+ },
+ {
+  "shot": "tmp/sheet-review-d1280.png"
+ },
+ {
+  "clickSel": "[data-review-save]"
+ },
+ {
+  "label": "d1280 saved JSON matches the grid's changes; marks gone",
+  "eval": "(()=>{const s=document.getElementById('saved').textContent;return {match:s===window.__expect,saved:JSON.parse(s||'[]').length,nAfter:__t.n(),marked:__t.marked(),saveDisabled:document.querySelector('[data-sheet-save]').disabled,msg:__t.msg()}})()"
+ },
+ {
+  "label": "d1280 read-only grid: grey, typing refused",
+  "eval": "(()=>{__grid.setReadOnly(true);__t.down(0,3);__t.key('5');const r={ro:document.querySelectorAll('td.is-ro').length,all:document.querySelectorAll('td.rh-sheet__cell').length,editor:!!document.querySelector('.rh-sheet__editor'),msg:__t.msg()};__grid.setReadOnly(false);return r})()"
+ },
+ {
+  "viewport": [
+   1280,
+   800
+  ]
+ },
+ {
+  "nav": "{base}/scripts/tests/fixtures/sheet-grid-fixture.html?fail=save",
+  "after": 1500
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"1\"][data-c=\"3\"]"
+ },
+ {
+  "key": "9"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "clickSel": "[data-sheet-save]"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "label": "states: save refused -> error message, change kept and marked, Save enabled again",
+  "eval": "({msg:__t.msg(),n:__t.n(),marked:__t.cell(1,3).classList.contains('is-changed'),saveEnabled:!document.querySelector('[data-sheet-save]').disabled,error:document.querySelector('.rh-sheet__msg').classList.contains('is-error')})"
+ },
+ {
+  "label": "states: loading, then empty",
+  "eval": "(()=>{const d=document.createElement('div');document.body.appendChild(d);const g=RhSheetGrid.create(d,{columns:[{key:'a',label:'A',help:'x'}],rows:null});const a=d.querySelector('.rh-sheet__state').textContent;g.setRows([]);const b=d.querySelector('.rh-sheet__state').textContent;g.destroy();d.remove();return {loading:a,empty:b}})()"
+ },
+ {
+  "viewport": [
+   390,
+   844
+  ]
+ },
+ {
+  "nav": "{base}/scripts/tests/fixtures/sheet-grid-fixture.html",
+  "after": 1500
+ },
+ {
+  "label": "phone: no grid built, list shown, switch hidden, no page h-scroll",
+  "eval": "({grid:!!window.__grid,gridNodes:document.querySelectorAll('.rh-sheet').length,list:!document.getElementById('list-view').hidden,switchHidden:document.querySelector('.rh-sheet-switch').hidden,hscroll:__t.hscroll()})"
+ },
+ {
+  "shot": "tmp/sheet-list-phone.png"
+ },
+ {
+  "nav": "{base}/scripts/tests/fixtures/sheet-grid-fixture.html?force=grid",
+  "after": 1500
+ },
+ {
+  "label": "phone (grid forced): no page h-scroll, grid scrolls inside its box, 44px buttons",
+  "eval": "(()=>{const sc=document.querySelector('.rh-sheet__scroll');const b=document.querySelector('[data-sheet-save]').getBoundingClientRect();const cell=__t.cell(0,3).getBoundingClientRect();return {hscroll:__t.hscroll(),boxScrolls:sc.scrollWidth>sc.clientWidth,boxRight:Math.round(sc.getBoundingClientRect().right),inner:innerWidth,saveH:Math.round(b.height),cellH:Math.round(cell.height)}})()"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"1\"][data-c=\"3\"]"
+ },
+ {
+  "key": "3"
+ },
+ {
+  "key": "Enter"
+ },
+ {
+  "clickSel": ".rh-sheet td[data-r=\"1\"][data-c=\"4\"]"
+ },
+ {
+  "label": "phone: paste a price",
+  "eval": "__t.paste('MK 9,999.50')"
+ },
+ {
+  "clickSel": "[data-sheet-save]"
+ },
+ {
+  "label": "phone: review list fits the screen",
+  "eval": "(()=>{const m=document.querySelector('.rh-review .modal__container');if(!m)return 'NO MODAL';const r=m.getBoundingClientRect();return {left:Math.round(r.left),right:Math.round(r.right),inner:innerWidth,hscroll:__t.hscroll(),count:document.querySelector('.rh-review__count').textContent}})()"
+ },
+ {
+  "shot": "tmp/sheet-review-phone.png"
+ },
+ {
+  "clickSel": "[data-review-save]"
+ },
+ {
+  "label": "phone: saved",
+  "eval": "document.getElementById('saved').textContent"
+ }
+]

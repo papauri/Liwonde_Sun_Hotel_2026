@@ -9,9 +9,11 @@
  * the sources are merged in PHP (no SQL UNION of text columns, so no collation clashes).
  *
  * Never shown: old/new values, passwords, tokens, card data, request bodies, context_json. Sentences are built from
- * names, references, amounts and field NAMES only. The one exception: 'setting_change' rows (settings screens, owner
+ * names, references, amounts and field NAMES only. Two exceptions: 'setting_change' rows (settings screens, owner
  * 2026-11-14) read "Changed Tourism levy % from 1 to 1.5"; their values were cleaned and secrets masked when written
- * (includes/settings-change-log.php).
+ * (includes/settings-change-log.php). 'value_change' rows (item values saved on a screen such as prices and costs,
+ * owner 2026-11-26) read "Changed Chicken curry Price from 8,500.00 to 9,000.00"; item values only, cleaned when
+ * written (admin/includes/value-change-log.php).
  *
  * The hook that writes the 'page_action' rows is admin/includes/activity-hook.php.
  */
@@ -28,6 +30,8 @@ if (!defined('RH_SA_PER_PAGE')) {
 require_once __DIR__ . '/log-pager.php';
 // Settings change rows ('setting_change'): their sentence and page. Loading it connects to nothing and logs nothing.
 require_once __DIR__ . '/../../includes/settings-change-log.php';
+// Value change rows ('value_change'): their sentence and page. Loading it connects to nothing and logs nothing.
+require_once __DIR__ . '/value-change-log.php';
 
 if (!function_exists('rh_sa_parse_filters')) {
 
@@ -43,6 +47,7 @@ if (!function_exists('rh_sa_parse_filters')) {
             'stock' => 'Stock',
             'settings' => 'Settings & users',
             'setting_changes' => 'Settings changes',
+            'value_changes' => 'Price & value changes',
             'other' => 'Other',
         ];
     }
@@ -72,6 +77,7 @@ if (!function_exists('rh_sa_parse_filters')) {
     {
         return [
             'setting_changes' => '^(setting_change)',
+            'value_changes' => '^(value_change)',
             'signins' => '^(login|logout)',
             'payments' => '^(refund|payment|receipt|invoice|credit_note)',
             'till' => '^(pos|shift|till|menu_items)',
@@ -924,6 +930,13 @@ if (!function_exists('rh_sa_parse_filters')) {
                     $row['type'] = 'setting_changes';
                     $row['what'] = rh_settings_log_sentence((string)($r['details'] ?? ''));
                     $row['where'] = rh_settings_log_page_name($stParsed !== null ? $stParsed['page'] : 'booking-settings.php');
+                } elseif ($action === 'value_change') {
+                    // One row per item value that really changed on a screen (prices, costs): old -> new, cleaned when written.
+                    $vcParsed = rh_value_log_parse((string)($r['details'] ?? ''));
+                    $vcPage = $vcParsed !== null ? $vcParsed['page'] : '';
+                    $row['type'] = 'value_changes';
+                    $row['what'] = rh_value_log_sentence((string)($r['details'] ?? ''));
+                    $row['where'] = $vcPage === '' ? 'A screen' : (isset(rh_sa_pages()[$vcPage]) ? rh_sa_page_title($vcPage) : $vcPage);
                 } else {
                     $row['type'] = rh_sa_action_type($action);
                     $row['what'] = rh_sa_named_action_text($action, (string)($r['details'] ?? ''));
@@ -1042,8 +1055,8 @@ if (!function_exists('rh_sa_parse_filters')) {
                     }
                 } elseif ($act === 'page_action') {
                     $people[$k]['counts']['saves'] += (int)$r['n'];
-                } elseif ($act === 'setting_change') {
-                    // Not counted: the same save is already one "Screen saves" (its page_action row on that settings screen).
+                } elseif ($act === 'setting_change' || $act === 'value_change') {
+                    // Not counted: the same save is already one "Screen saves" (its page_action row on that screen).
                 } else {
                     $type = rh_sa_action_type($act);
                     if (in_array($type, ['settings', 'stock', 'till'], true) && $act !== 'refund_created') {

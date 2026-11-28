@@ -1,0 +1,405 @@
+/* Shared spreadsheet grid (admin/js/sheet-grid.js) and its review list (admin/js/sheet-review.js).
+   SHEET_VIEW_PLAN Phase S1. Plain solid surfaces, one accent, no gradients or glows (RULES.md UI).
+   Every token has a fallback so the grid also reads right where admin-styles.css is not loaded. */
+
+.rh-sheet {
+    --sg-accent: var(--admin-accent, #766550);
+    --sg-surface: var(--admin-surface, #fffdfb);
+    --sg-head: var(--admin-table-head, #f2f5fa);
+    --sg-border: var(--tbl-border, #e8e0d6);
+    --sg-text: var(--admin-text, #1f2a37);
+    --sg-muted: var(--admin-muted, #5f6b7c);
+    --sg-ro-bg: #eceef1;
+    --sg-sel-bg: color-mix(in srgb, var(--sg-accent) 14%, #ffffff);
+    --sg-sel-ro-bg: color-mix(in srgb, var(--sg-accent) 12%, #eceef1);
+    --sg-error-bg: var(--color-error-bg, #FBEAE8);
+    --sg-error-text: var(--color-error-text, #8B2D24);
+    --sg-warn-border: var(--admin-warning-border, #9a7c53);
+    --sg-warn-bg: #f7f1e6;
+    --sg-warn-text: var(--admin-warning-text, #4f3f2a);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+    color: var(--sg-text);
+    font-size: 14px;
+}
+
+/* Admin pages already size boxes this way (admin-styles.css); kept here so the grid and its list never overflow. */
+.rh-sheet,
+.rh-sheet *,
+.rh-sheet-switch,
+.rh-sheet-switch *,
+.rh-review,
+.rh-review * {
+    box-sizing: border-box;
+}
+
+/* ---- toolbar */
+.rh-sheet__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px 12px;
+}
+.rh-sheet__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.rh-sheet__field--search { flex: 1 1 220px; }
+.rh-sheet__field--inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+.rh-sheet__field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sg-muted);
+}
+.rh-sheet__input {
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid var(--admin-surface-border, #d7dde6);
+    border-radius: 8px;
+    background: var(--sg-surface);
+    color: var(--sg-text);
+    font: inherit;
+    max-width: 100%;
+}
+.rh-sheet__input:focus-visible {
+    outline: 2px solid var(--sg-accent);
+    outline-offset: 1px;
+}
+.rh-sheet__extra:empty { display: none; }
+.rh-sheet__extra { min-width: 0; }
+.rh-sheet__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.rh-sheet__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-sizing: border-box;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 14px;
+    border: 1px solid var(--admin-surface-border, #d7dde6);
+    border-radius: 8px;
+    background: var(--admin-surface, #fffdfb);
+    color: var(--admin-text, #1f2a37);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.rh-sheet__btn[hidden] { display: none; }
+.rh-sheet__btn:hover:not(:disabled) { background: var(--admin-hover-bg, #edf2f8); }
+.rh-sheet__btn:focus-visible {
+    outline: 2px solid var(--admin-accent, #766550);
+    outline-offset: 2px;
+}
+.rh-sheet__btn--primary {
+    background: var(--admin-accent, #766550);
+    border-color: var(--admin-accent, #766550);
+    color: #ffffff;
+}
+.rh-sheet__btn--primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--admin-accent, #766550) 86%, #000000);
+}
+.rh-sheet__btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* ---- message line (skipped cells, saved, errors) */
+.rh-sheet__msg {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--sg-border);
+    border-left: 4px solid var(--sg-accent);
+    border-radius: 8px;
+    background: var(--sg-surface);
+    overflow-wrap: anywhere;
+}
+.rh-sheet__msg[hidden] { display: none; }
+.rh-sheet__msg.is-warn {
+    border-left-color: var(--sg-warn-border);
+    background: var(--sg-warn-bg);
+    color: var(--sg-warn-text);
+}
+.rh-sheet__msg.is-error {
+    border-left-color: var(--sg-error-text);
+    background: var(--sg-error-bg);
+    color: var(--sg-error-text);
+}
+.rh-sheet__msg-text { flex: 1 1 auto; min-width: 0; }
+.rh-sheet__msg-close {
+    flex: 0 0 auto;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 4px 10px;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+/* ---- the grid */
+.rh-sheet__scroll {
+    position: relative;
+    max-width: 100%;
+    max-height: 70vh;
+    overflow: auto;
+    border: 1px solid var(--sg-border);
+    border-radius: 8px;
+    background: var(--sg-surface);
+    scroll-padding-top: 44px;
+    overscroll-behavior: contain;
+}
+.rh-sheet__table {
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+.rh-sheet__head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    box-sizing: border-box;
+    height: 44px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--sg-border);
+    border-right: 1px solid var(--sg-border);
+    background: var(--sg-head);
+    color: var(--sg-text);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+}
+.rh-sheet__head.is-num { text-align: right; }
+.rh-sheet__head.rh-sheet__first {
+    left: 0;
+    z-index: 3;
+}
+.rh-sheet__cell {
+    box-sizing: border-box;
+    height: 36px;
+    min-width: 90px;
+    max-width: 320px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--sg-border);
+    border-right: 1px solid var(--sg-border);
+    background: var(--sg-surface);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: cell;
+    user-select: none;
+    -webkit-user-select: none;
+}
+/* Touch screens (tablets at the stock count): every cell and editor is a 44px tap target. */
+@media (pointer: coarse) {
+    .rh-sheet .rh-sheet__cell,
+    .rh-sheet .rh-sheet__editor { height: 44px; }
+}
+.rh-sheet__cell.is-num { text-align: right; }
+.rh-sheet__cell.rh-sheet__first {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    font-weight: 600;
+}
+.rh-sheet__cell:focus { outline: none; }
+.rh-sheet__cell.is-selected { background: var(--sg-sel-bg); }
+.rh-sheet__cell.is-active,
+.rh-sheet__cell:focus-visible {
+    outline: 2px solid var(--sg-accent);
+    outline-offset: -2px;
+}
+/* Read-only: solid grey, no caret, same on every screen. */
+.rh-sheet__cell.is-ro {
+    background: var(--sg-ro-bg);
+    color: var(--sg-muted);
+    cursor: default;
+    caret-color: transparent;
+}
+.rh-sheet__cell.is-ro.is-selected { background: var(--sg-sel-ro-bg); }
+/* Changed, not saved yet: a solid accent edge on the left. */
+.rh-sheet__cell.is-changed { box-shadow: inset 4px 0 0 var(--sg-accent); }
+.rh-sheet.is-readonly .rh-sheet__cell { cursor: default; }
+.rh-sheet.is-saving .rh-sheet__scroll { opacity: 0.7; }
+
+.rh-sheet__cell.is-editing {
+    padding: 0;
+    overflow: visible;
+}
+.rh-sheet__editor {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    min-width: 120px;
+    height: 36px;
+    margin: 0;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 0;
+    outline: 2px solid var(--sg-accent);
+    outline-offset: -2px;
+    background: #ffffff;
+    color: var(--sg-text);
+    font: inherit;
+    text-align: inherit;
+}
+.rh-sheet__editor.is-invalid {
+    outline-color: var(--sg-error-text);
+    background: var(--sg-error-bg);
+    color: var(--sg-error-text);
+}
+
+.rh-sheet__state {
+    padding: 24px 16px;
+    color: var(--sg-muted);
+    text-align: center;
+    background: var(--sg-surface);
+    white-space: normal;
+}
+
+/* The "?" dot on each column head. help-tooltips.css styles it on admin pages; this keeps the same look where
+   that sheet is not loaded. */
+.rh-sheet__head .help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    margin: -3px 0 -3px 6px;
+    border-radius: 50%;
+    background: color-mix(in srgb, currentColor 14%, transparent);
+    color: inherit;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 1;
+    vertical-align: middle;
+    cursor: help;
+}
+.rh-sheet__head .help:focus-visible {
+    outline: 2px solid var(--sg-accent);
+    outline-offset: 1px;
+}
+
+/* ---- pager */
+.rh-sheet__pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+.rh-sheet__summary {
+    color: var(--sg-muted);
+    margin-right: auto;
+}
+
+/* ---- Grid / List view switch */
+.rh-sheet-switch {
+    display: inline-flex;
+    gap: 0;
+    border: 1px solid var(--admin-surface-border, #d7dde6);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.rh-sheet-switch[hidden] { display: none; }
+.rh-sheet-switch .rh-sheet__btn {
+    border: 0;
+    border-radius: 0;
+}
+.rh-sheet-switch .rh-sheet__btn + .rh-sheet__btn { border-left: 1px solid var(--admin-surface-border, #d7dde6); }
+.rh-sheet-switch .rh-sheet__btn[aria-pressed="true"] {
+    background: var(--admin-accent, #766550);
+    color: #ffffff;
+}
+
+/* ---- review list (modal from admin-components.css; these are only the missing parts) */
+.rh-review__count {
+    margin: 0 0 4px;
+    font-weight: 600;
+}
+.rh-review__count-check { color: var(--admin-warning-text, #4f3f2a); }
+.rh-review__note {
+    margin: 0 0 12px;
+    color: var(--admin-muted, #5f6b7c);
+    font-size: 13px;
+}
+.rh-review__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--tbl-border, #e8e0d6);
+    border-radius: 8px;
+}
+.rh-review__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--tbl-border, #e8e0d6);
+    overflow-wrap: anywhere;
+}
+.rh-review__item:last-child { border-bottom: 0; }
+.rh-review__item.is-flagged { box-shadow: inset 4px 0 0 var(--admin-warning-border, #9a7c53); }
+.rh-review__name {
+    flex: 1 1 160px;
+    font-weight: 600;
+}
+.rh-review__field { color: var(--admin-muted, #5f6b7c); }
+.rh-review__values { font-variant-numeric: tabular-nums; }
+.rh-review__arrow { color: var(--admin-muted, #5f6b7c); }
+.rh-review__new { font-weight: 600; }
+.rh-review__flag {
+    padding: 2px 8px;
+    border: 1px solid var(--admin-warning-border, #9a7c53);
+    border-radius: 6px;
+    background: #f7f1e6;
+    color: var(--admin-warning-text, #4f3f2a);
+    font-size: 12px;
+    font-weight: 600;
+}
+.rh-review__error {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--color-error-bg, #FBEAE8);
+    color: var(--color-error-text, #8B2D24);
+}
+.rh-review__error[hidden] { display: none; }
+.rh-review .modal__footer { flex-wrap: wrap; }
+
+@media (max-width: 600px) {
+    .rh-sheet__field--search { flex-basis: 100%; }
+    .rh-sheet__actions { margin-left: 0; width: 100%; }
+    .rh-sheet__actions .rh-sheet__btn--primary { flex: 1 1 auto; }
+    .rh-review .modal__footer .rh-sheet__btn { flex: 1 1 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rh-sheet__btn { transition: none; }
+}

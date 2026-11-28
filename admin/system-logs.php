@@ -302,6 +302,8 @@ if (rh_logs_table_exists($pdo, 'admin_activity_log')) {
 
 // Settings changes (owner 2026-11-14): one 'setting_change' row per setting that changed on a settings screen
 // (includes/settings-change-log.php). Page filter st_screen: one of rh_settings_log_pages(), else every page.
+// 'value_change' rows (admin/includes/value-change-log.php: item prices/costs) have no panel of their own: they show in
+// Staff activity under "Price & value changes" (rh_sa_types) and, as raw escaped details, in Admin activity above.
 $settingChanges = [];
 $stScreen = (string)($_GET['st_screen'] ?? '');
 if (!isset(rh_settings_log_pages()[$stScreen])) {

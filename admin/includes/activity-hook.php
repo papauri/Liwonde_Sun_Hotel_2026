@@ -10,9 +10,10 @@
  * What is stored: the page file name and the action name(s) only ("page=bookings.php; action=update_status").
  * Never a request body, a value, a password, a token or an id. An action value is stored only when it looks like a
  * plain code word (letters, digits, - and _ up to 40 characters); anything else is stored as "other".
- * The one deliberate exception in admin_activity_log is not written here: 'setting_change' rows (Hotel Settings,
+ * The two deliberate exceptions in admin_activity_log are not written here: 'setting_change' rows (Hotel Settings,
  * includes/settings-change-log.php) store a setting's old and new value, non-secret settings only (passwords, API
- * keys, tokens, SMTP credentials and encrypted values are stored as "(hidden)").
+ * keys, tokens, SMTP credentials and encrypted values are stored as "(hidden)"); 'value_change' rows
+ * (admin/includes/value-change-log.php) store an item value's old and new value (prices, costs), never a secret.
  *
  * What is skipped: every GET; pure reads that pages send as POST (the same read rule as the licence guard); background
  * presence / navigation / search / lookup endpoints; the Assistant chat; a request refused by a permission, module or

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sheet grid fixture (test only)</title>
+<!-- Static test page for admin/js/sheet-grid.js + admin/js/sheet-review.js (SHEET_VIEW_PLAN Bundle A).
+     Fake stock-like rows, no server, nothing saved: onSave writes the changes into #saved.
+     ?force=grid builds the grid at any width (phone layout check); ?fail=save makes the save fail. Used by scripts/tests/sheet_grid_steps.json. -->
+<link rel="stylesheet" href="/admin/css/admin-components.css">
+<link rel="stylesheet" href="/admin/css/sheet-grid.css">
+<style>
+    body { margin: 0; padding: 16px; background: #f4f2ef; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f2a37; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .fx-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .fx-list { list-style: none; margin: 0; padding: 0; border: 1px solid #e8e0d6; border-radius: 8px; background: #fffdfb; }
+    .fx-list li { padding: 10px 12px; border-bottom: 1px solid #e8e0d6; overflow-wrap: anywhere; }
+    #saved { white-space: pre-wrap; word-break: break-all; background: #fffdfb; border: 1px solid #e8e0d6; padding: 8px; min-height: 20px; }
+</style>
+</head>
+<body>
+<div class="fx-head">
+    <h1>Stock count (test fixture)</h1>
+    <div id="switch-slot"></div>
+</div>
+<div id="grid-slot"></div>
+<ul class="fx-list" id="list-view" hidden></ul>
+<h2 style="font-size:16px;">Saved changes</h2>
+<pre id="saved"></pre>
+
+<script src="/admin/js/admin-context-menu.js"></script>
+<script src="/admin/js/sheet-grid.js"></script>
+<script src="/admin/js/sheet-review.js"></script>
+<script>
+(function () {
+    'use strict';
+    var NAMES = ['Gin', 'Rum', 'Vodka', 'Whisky', 'Brandy', 'Red wine', 'White wine', 'Tonic water', 'Soda water', 'Cola',
+        'Lemonade', 'Orange juice', 'Mango juice', 'Still water', 'Sparkling water', 'Beer lager', 'Beer stout', 'Cider', 'Rice', 'Maize flour',
+        'Wheat flour', 'Sugar', 'Salt', 'Cooking oil', 'Butter', 'Milk', 'Eggs', 'Chicken', 'Beef', 'Pork',
+        'Fish chambo', 'Tomatoes', 'Onions', 'Garlic', 'Potatoes', 'Cabbage', 'Carrots', 'Peppers', 'Lemons', 'Limes',
+        'Tea leaves', 'Coffee beans', 'Cocoa', 'Bread', 'Cheese', 'Yoghurt', 'Cream', 'Honey', 'Jam', 'Peanut butter',
+        'Toilet paper', 'Soap', 'Shampoo', 'Bleach', 'Detergent', 'Matches', 'Candles', 'Napkins', 'Straws', 'Ice'];
+    var CATS = [{ value: 'bar', label: 'Bar' }, { value: 'kitchen', label: 'Kitchen stores' }, { value: 'housekeeping', label: 'Housekeeping' }];
+    var LOCS = ['Bar store', 'Main store', 'Kitchen', 'Cold room'];
+    var rows = NAMES.map(function (n, i) {
+        var cat = i < 18 ? 'bar' : (i < 50 ? 'kitchen' : 'housekeeping');
+        var row = {
+            id: 100 + i,
+            cells: {
+                name: n,
+                category: cat,
+                location: LOCS[i % LOCS.length],
+                counted: i % 3 === 0 ? null : (i % 7) + 1,
+                unit_cost: 1000 + i * 125,
+                notes: i === 4 ? 'Shelf 2' : ''
+            }
+        };
+        if (i === 7 || i === 14) row.readOnly = true;       // two rows fully read-only (Tonic water, Sparkling water)
+        if (i === 3) row.readOnly = ['unit_cost'];            // one read-only cell (Whisky cost)
+        return row;
+    });
+    var columns = [
+        { key: 'name', label: 'Item', help: 'The stock item name, as it is in Stock Items.', type: 'text', width: 160, readOnly: true },
+        { key: 'category', label: 'Category', help: 'Which stock group the item belongs to.', type: 'select', options: CATS, filter: true },
+        { key: 'location', label: 'Location', help: 'Where the item is kept.', type: 'text', filter: true },
+        { key: 'counted', label: 'Counted', help: 'What you physically counted today, in the item\'s own unit. Blank = not counted yet.', type: 'number', min: 0, step: 0.01, filter: true },
+        { key: 'unit_cost', label: 'Unit cost', help: 'Cost of one unit in MWK, from the last delivery.', type: 'money', min: 0 },
+        { key: 'value', label: 'Value', help: 'Counted x unit cost for this count. Worked out, cannot be typed.', type: 'money', readOnly: true },
+        { key: 'notes', label: 'Notes', help: 'Your own note for this line.', type: 'text', width: 180 }
+    ];
+    function computed(c) {
+        var v = (c.counted === null || c.counted === undefined || c.counted === '' || c.unit_cost === null || c.unit_cost === undefined) ? null
+            : Math.round(Number(c.counted) * Number(c.unit_cost) * 100) / 100;
+        return { value: v };
+    }
+    function onSave(changes) {
+        // ?fail=save: the page's save is refused (the error path every grid page must handle).
+        if (/[?&]fail=save\b/.test(location.search)) return Promise.reject(new Error('Test: server refused'));
+        return new Promise(function (resolve) {
+            window.RhSheetReview.open({
+                title: 'Check your changes',
+                changes: changes.map(function (c) { return { item: c.item, field: c.field, old: c.old, new: c.new, kind: c.kind }; }),
+                onConfirm: function () {
+                    document.getElementById('saved').textContent = JSON.stringify(changes.map(function (c) {
+                        return { id: c.id, key: c.key, old: c.old, new: c.new };
+                    }));
+                    resolve(true);
+                },
+                onCancel: function () { resolve(false); }
+            });
+        });
+    }
+
+    var grid = null;
+    var list = document.getElementById('list-view');
+    function showGrid() {
+        list.hidden = true;
+        if (!grid) {
+            grid = window.RhSheetGrid.create(document.getElementById('grid-slot'), {
+                columns: columns, rows: rows, rowLabelKey: 'name', computed: computed, onSave: onSave, label: 'Stock count'
+            });
+            var presence = document.createElement('span');
+            presence.className = 'fx-presence';
+            presence.textContent = 'Also open right now: nobody else';
+            grid.toolbar.appendChild(presence);
+            window.__grid = grid;
+        }
+        document.getElementById('grid-slot').hidden = false;
+    }
+    function showList() {
+        document.getElementById('grid-slot').hidden = true;
+        if (!list.firstChild) {
+            rows.forEach(function (r) {
+                var li = document.createElement('li');
+                li.textContent = r.cells.name + ' - counted: ' + (r.cells.counted === null ? 'not yet' : r.cells.counted);
+                list.appendChild(li);
+            });
+        }
+        list.hidden = false;
+    }
+    if (/[?&]force=grid\b/.test(location.search)) {
+        showGrid();
+    } else {
+        var sw = window.RhSheetGrid.viewSwitch('rh-sheet-fixture-view', { onGrid: showGrid, onList: showList });
+        document.getElementById('switch-slot').appendChild(sw.el);
+        window.__switch = sw;
+    }
+})();
+</script>
+</body>
+</html>
