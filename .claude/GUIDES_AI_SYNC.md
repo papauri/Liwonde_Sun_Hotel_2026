@@ -157,13 +157,21 @@ when prompted."
   owes nothing unless it carries the group no-show / expiry charge. Its page shows Balance 0, no Record payment, and the
   note "Expired before it was confirmed: nothing is owed"; a group invoice leaves such a room out. Guides: booking
   details (payment box) + statuses (Expired). Assistant: 'why can't I take a payment on this expired booking' -> it owes
-  nothing; make a new booking (Reactivate is planned, .claude/REACTIVATE_EXPIRED_PLAN.md).
+  nothing; make a new booking, or Reactivate it (entry below).
 - 2026-11-29 Liwonde 3d80a94 + 4e734b1 / Rosalyn's fc08ac9 + 983a72e (owner FEATURE): Bookings list main tabs now All,
   Current, Arriving today, Leaving today, Checked in, Pending, Unpaid, Expired, Online, Front desk (More: Tentative,
   Checked out, Cancelled, No-show, Groups, Deleted). Current = pending, tentative, confirmed, checked in. Online = made by
   the guest on the website or a booking link; Front desk = every other booking (Online + Front desk = All). Expired also
   in the Status drop-down. Each tab has a hover saying what it holds. Guides: bookings list (tabs). Assistant: 'show
   bookings made on the website' -> Online tab; 'active / current bookings' -> Current tab.
+- 2026-11-29 Liwonde 5823058 / Rosalyn's f4d72d5 (owner FEATURE): an expired booking's page has a Reactivate button
+  (permission "Reactivate expired bookings", admin + manager) when check-in is today or later, nothing was paid, the
+  guest has not booked the same again and its rooms are still free. It goes back to pending with the same reference,
+  priced again at TODAY's rate (old vs new total shown first), the group no-show / expiry charge voided, its room or
+  joined pair given back (a single room already taken = left unassigned, assign one as usual); a group comes back
+  whole. The pending hold time restarts from the reactivation; no email is sent. Needs migration 093 (hidden until
+  then). Guides: booking details (actions) + statuses (Expired). Assistant: 'can I bring back an expired booking' ->
+  Reactivate on its page, the rules above.
 
 ## Synced 2026-11-26 (owner prompted "assistant and guide sync"; guides + Assistant: commit "Guides + Assistant sync 2026-11-26" in both repos · guides 06, 07, 12, 13, 19, 99 (+ Liwonde-only brand fix in 01, 02, 14, 23; guide 07 Blocked Dates note) · Assistant: when-did-they-pay -> Paid "i", dashboard vs End of Day rule, email Tone, calendar arrow keys, bare pre-arrival question gets its own answer (payment chase needs "payment"), expired / cancelled / no-show answers point to the Status pill, movements arrows for tomorrow / next week, receipt comment per b145620, expiry questions never catch stock or gym questions · Manager Guides: Money and End of Day, Bookings, Daily checklist refreshed; others no change) - entries kept for reference
 

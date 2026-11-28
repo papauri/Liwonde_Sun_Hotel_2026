@@ -12,6 +12,16 @@ Deeper trackers to read next:
 - `.claude/BUILD_PLAN.md`
 - Rosalyn's `.claude/TASKS.md`, the live task tracker shared by both hotels
 
+## Shipped 2026-11-29: Reactivate an expired booking, re-priced at today's rate (owner FEATURE, profile Claude session eccc298f) - Liwonde 5823058 / Rosalyn's f4d72d5
+- Booking details: Reactivate on an eligible expired booking (check-in today+, no payment, no repeat booking, rooms
+  free); preview old vs new total, then save under row locks; group all-or-nothing; group fee voided; rooms restored.
+  includes/booking-reactivate.php; permission reactivate_booking (admin + manager). Spec + ASSUMPTIONs:
+  `.claude/REACTIVATE_EXPIRED_PLAN.md`, BUILD_PLAN.md. Test scripts/tests/reactivate_booking_test.php 55/0 (Liwonde only).
+- Migration 093 (bookings.reactivated_at) RUN on Liwonde. **Rosalyn's: owner to apply 093** (`php admin/migrations/migrate.php`
+  dry run, then `--run`); until then the button is hidden and pending expiry works as before.
+- LATER: a reactivated booking that lapses again is not charged the group fee a second time; no test for a single
+  room taken since expiry; the column probe runs on each page load until 093 is applied.
+
 ## Shipped 2026-11-29: expired-booking balance PATCH + Bookings tabs Current / Online / Front desk / Expired (owner, profile Claude session ee1cd211)
 - PATCH Liwonde 6cd9af3 / Rosalyn's dc14b7f: expired bookings without the group no-show / expiry charge owe nothing
   (getBookingFolioSummary + recalculateBookingFinancials; every expiry path recalcs; booking page hides Record payment;
@@ -19,8 +29,6 @@ Deeper trackers to read next:
   older expired rows stays until the next recalc (the page and list already read 0; no live data script run).
 - FEATURE Liwonde 3d80a94 + 4e734b1 / Rosalyn's fc08ac9 + 983a72e: Bookings main tabs All, Current, Arriving today,
   Leaving today, Checked in, Pending, Unpaid, Expired, Online, Front desk. Test scripts/tests/bookings_tabs_valid_online.php.
-- Planned, not started: Reactivate an expired booking, re-priced at today's rate (owner 2026-11-29):
-  `.claude/REACTIVATE_EXPIRED_PLAN.md`. Own fresh session, CRITICAL (spec-check first).
 - LATER: a single (non-group) untagged expired booking's invoice would print stay lines with total 0 (no caller builds
   invoices for expired today); admin/tentative-bookings.php expiry sweep never adds the group charge.
 
