@@ -252,7 +252,8 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 ## Sheet view build log (run started 2026-11-29, session 66bedc76, owner "Lets do it in this session")
 - Cron 29e75167 (session-only, :17/:37/:57) auto-continues; if this window closed, continue by hand from the step below.
 - Step: B1 BUILDING (dept-stock-lead running: S2 Stock Count, S4 Stock Items, S5 Reorder, S6 Budget; one ship) and
-  C BUILDING in parallel (dept-restaurant-lead running: S3 Menu grid; S11 Reports after). Rule: only dept-stock-lead
+  C: S3 Menu grid BUILT (menu_grid_save 39/39, baseline suites unchanged), MID-REVIEW (qa-auditor + accounting lead).
+  S3 ships right AFTER B1's commit (its browser check ran on B1's working-tree engine). S11 Reports after. Rule: only dept-stock-lead
   edits admin/js/sheet-grid.js / sheet-review.js until B1 ships. Do NOT start another B1 or C agent.
 - ai-desk value_change counts: left for the next owner-prompted Guides + Assistant sync (Pending line exists); it only
   affects the Assistant's staff-activity figures, not money or stock.
