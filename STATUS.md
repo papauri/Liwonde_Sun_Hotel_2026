@@ -251,9 +251,9 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 
 ## Sheet view build log (run started 2026-11-29, session 66bedc76, owner "Lets do it in this session")
 - Cron 29e75167 (session-only, :17/:37/:57) auto-continues; if this window closed, continue by hand from the step below.
-- Step: Bundle A building. Agents: ui-builder (engine + review modal + fixture + tests), backend-specialist
-  (admin/includes/value-change-log.php + staff-activity wiring). Then one qa-auditor on the combined diff, browser
-  check 1920/1280/390, commit, port to Rosalyn's.
+- Step: Bundle A MID-REVIEW (qa-auditor on the combined uncommitted diff). Built: engine (sheet_grid_test 91/0,
+  builder's browser check 1920/1280/390 clean) + value-change-log (74/0, settings_change_log 104/0). After PASS:
+  browser check, commit, port to Rosalyn's.
 - Last commit: none yet. Done: nothing.
 - B1 prerequisite (LATER for dept-ai-lead, via GUIDES_AI_SYNC): includes/ai/ai-desk.php:236/:301 special-case
   'setting_change' in staff counts; the new 'value_change' action needs the same treatment before B/C write rows.
