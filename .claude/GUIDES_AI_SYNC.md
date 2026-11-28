@@ -358,6 +358,13 @@ when prompted."
   guest-booking description or screenshot of the one-page form (front desk "how guests book online"). Assistant:
   "how do guests book online / what does the guest see" = five steps, total checked before Book. Manager Guide:
   Bookings guide if it shows the guest form.
+- 2026-11-29 Liwonde e604f09 / Rosalyn's 3764a85 (owner FEATURE, guest phase G-C): pressing Book on the guest page saves
+  without reloading. If the price changed since Review, nothing is saved and the guest sees the new total; a problem
+  opens the step it belongs to with everything kept; if the reply cannot be read the guest is told the booking may have
+  been saved (check email / contact the hotel) and pressing Book again never makes a second booking. Emails unchanged.
+  Guides: front desk "how guests book online" (a guest who says the price changed before booking saw a live re-check).
+  Assistant: "guest says the price changed when booking" = the total is re-checked at Book, nothing saved until they
+  accept the new one. Manager Guide: no change.
 
 ## Synced 2026-11-24 (owner prompted; guides + Assistant: commit "Guides + Assistant sync 2026-11-24" in both repos · Manager Guides: Stock, POS and Kitchen Screens, Bookings, Housekeeping and Maintenance, Money and End of Day, Daily checklist, Staff and Permissions refreshed) - entries kept for reference
 

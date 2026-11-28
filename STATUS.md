@@ -145,6 +145,22 @@ Deeper trackers to read next:
     copied. LATER: summaryRoomList keeps per-night amounts in the non-fresh state; a refused save that opens at step
     5 says "checking the price again" with no check running; without JS Back/Continue do nothing and novalidate drops
     browser field checks; the steps test failed once (46/1) then ran 81/0 three times. NEXT: G-C (background submit).
+  - G-C SHIPPED 2026-11-29 (Liwonde e604f09 / Rosalyn's 3764a85): Book posts in the background (response=wizard +
+    quote_total). Before any write the save refuses at Review when its total differs beyond BALANCE_TOLERANCE and shows
+    the new quote; refusals open their step with everything kept + fresh CSRF; success runs the same emails /
+    booking_success / pub_confirm_remember, then booking-confirmation.php; failure after commit still answers saved;
+    duplicate client_uuid = success + remembered reference (closes G-B LATER); non-JSON reply = "may have been saved",
+    re-press reuses the uuid; double click sends one save. Plain no-JS posts unchanged; rh_mixed_finish($c, $returnRef)
+    redirects unless asked to return. New test scripts/tests/guest_booking_submit_page.php 21/0 (bookings 156 before and
+    after); steps browser 111/0; compare 0 mismatches, price check 0/11 failed; mixed_room_booking 46/0. qa-auditor +
+    final-review PASS. Rosalyn's booking.php by 3-way merge (+/- lines identical), mixed-booking.php + booking.js copied.
+    LATER: a refusal under the lock (stock / mixed lock conflict) answers step 5 not 3 / 0 (the follow-up price check
+    routes the guest); js:2791 check gbSubmitting before gbSend(); steps test race "gbCurrent is not defined" just after
+    a page load (2 of 5 runs; guard state() in the .mjs); a log failure after commit skips the guest/admin emails;
+    smtp_debug > 0 breaks the JSON reply; not tested: a failure after commit, the auto-retry after an unclear reply.
+    Observed 2026-11-29: Liwonde has a 4-room booking dated 2026-11-27 19:42 (LSH2026075323..671439) with a real-looking
+    gmail address, not @example.invalid: a real guest on the Liwonde site, or a mirror gap. Owner to check.
+    ALL GUEST PHASES (G0, G-B, G-A, G-C) DONE. Guides + Assistant sync pending (owner prompts).
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
