@@ -70,5 +70,24 @@ check($rp !== '' && strpos($rp, 'confirm_overpay') === false, 'the overpay tick 
 check($rp !== '' && strpos($rp, "'step'       => isset(\$cbStep) ? (int)\$cbStep : 0,") !== false && strpos($rp, "'message'    => (string)\$error,") !== false, 'a refused save reopens the step it belongs to (read-only stage marker)');
 check(preg_match("/in_array\(\\\$cbRpMethod, \['cash', 'bank_transfer', 'mobile_money', 'card', 'cheque', 'other'\], true\)/", $src) === 1, 'payment method is whitelisted');
 
+// 4. Later items (2026-11-28). A refused save brings back the status and the guest email tick as staff left them
+// (whitelisted status; a fresh page keeps the markup defaults: Confirmed, email ticked).
+check($rp !== '' && strpos($rp, "'status'     => in_array(\$_POST['booking_status'] ?? '', ['confirmed', 'pending', 'tentative', 'checked-in'], true) ? (string)\$_POST['booking_status'] : '',") !== false
+    && strpos($rp, "'send_email' => isset(\$_POST['send_email']),") !== false, 'repost carries the whitelisted status and the email tick');
+$ibf = '';
+if (preg_match('/function initBookingForm\(\) \{(.*?)\n        \}/s', $src, $m)) { $ibf = $m[1]; }
+$posRestore = strpos($ibf, 'if (cbRepost) { // a refused save');
+check($posRestore !== false && $posRestore < strpos($ibf, 'onBookingStatusChange();') && strpos($ibf, "if (el('sendEmail')) el('sendEmail').checked = !!cbRepost.send_email;") !== false
+    && strpos($ibf, 'if (st && !st.disabled) st.checked = true;') !== false, 'the status and the email tick are set before the status handler runs, only after a refused save');
+check(strpos($src, '<input type="radio" name="booking_status" value="confirmed" checked') !== false && strpos($src, '<input type="checkbox" name="send_email" id="sendEmail" checked>') !== false,
+    'a fresh page keeps its defaults (Confirmed, guest email ticked)');
+check(strpos($src, 'JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE); ?>;' . "\n\n        function initBookingForm()") !== false, 'repost JSON survives invalid UTF-8 (substituted, not an empty page script)');
+// Guest credit covering the whole total unticks "Payment received now" once, through the same change event as a
+// staff click, with a plain note; a staff tick afterwards is left alone.
+check(strpos($cfa, "if (next === '' && credit > 0 && !cbQ.creditUnticked && payCb && payCb.checked && !payCb.disabled && cbStatus() !== 'tentative') {") !== false
+    && strpos($cfa, "payCb.dispatchEvent(new Event('change', { bubbles: true }));") !== false && strpos($cfa, 'cbQ.creditUnticked = true;') !== false,
+    'credit covers the total: payment unticked once, via the change event');
+check(strpos($src, '<p class="cb-quote-note" id="cbCreditCoversNote" hidden>Credit covers the total; no payment needed.</p>') !== false, 'the plain note is in the page, hidden until used');
+
 echo "\n$pass passed, $fail failed\n";
 exit($fail ? 1 : 0);

@@ -106,6 +106,16 @@ $pdo->beginTransaction();
 $pdo->exec("INSERT INTO site_settings (setting_key, setting_value) VALUES ('cache_global_enabled','0'),('automated_email_master','0') ON DUPLICATE KEY UPDATE setting_value='0'"); // master off: the web scheduler (which can send emails) never runs
 $GLOBALS['__h_marker'] = '__harness_marker_' . bin2hex(random_bytes(6)); // leak probe, see __h_finish()
 $pdo->prepare("INSERT INTO site_settings (setting_key, setting_value) VALUES (?, '1')")->execute([$GLOBALS['__h_marker']]);
+// Receipt PDFs: a rolled-back payment's receipt file would stay in invoices/receipts/ under a number the next real
+// receipt reuses. Noted here: the files there now, the last payment id and the database clock; __h_finish() removes
+// only the receipt files this run's own (rolled-back) payments point at, never one that existed before.
+$GLOBALS['__h_rcpt'] = ['dir' => $root . '/invoices/receipts', 'before' => [], 'max_id' => 0, 'since' => ''];
+foreach ((array)@scandir($GLOBALS['__h_rcpt']['dir']) as $__hf) { if (is_string($__hf) && $__hf !== '.' && $__hf !== '..') { $GLOBALS['__h_rcpt']['before'][$__hf] = true; } }
+try {
+    $GLOBALS['__h_rcpt']['max_id'] = (int)$pdo->query('SELECT COALESCE(MAX(id), 0) FROM payments')->fetchColumn();
+    $GLOBALS['__h_rcpt']['since'] = (string)$pdo->query('SELECT NOW()')->fetchColumn();
+} catch (Throwable $e) { /* no payments table: nothing to clean */ }
+unset($__hf);
 
 function __h_finish(): void
 {
@@ -155,8 +165,41 @@ function __h_finish(): void
     } catch (Throwable $e) {
         $res['leak_check_error'] = $e->getMessage();
     }
+    // Receipt files written for this run's payments (seen inside the transaction, before it is rolled back).
+    $rcpt = $GLOBALS['__h_rcpt'] ?? null;
+    $rcptPaths = [];
+    if (is_array($rcpt) && $rcpt['since'] !== '') {
+        try {
+            $st = $pdo->prepare("SELECT DISTINCT receipt_path FROM payments WHERE receipt_path LIKE 'invoices/receipts/%' AND (id > ? OR receipt_generated_at >= ?)");
+            $st->execute([$rcpt['max_id'], $rcpt['since']]);
+            $rcptPaths = $st->fetchAll(PDO::FETCH_COLUMN);
+        } catch (Throwable $e) {
+            $res['receipt_cleanup_error'] = $e->getMessage();
+        }
+    }
     $pdo->harnessRollback();
     $res['rolled_back'] = !$pdo->inTransaction();
+    $res['receipts_removed'] = [];
+    $rcptDir = is_array($rcpt) ? realpath($rcpt['dir']) : false;
+    foreach ($rcptPaths as $rel) {
+        $name = basename((string)$rel);
+        $file = is_array($rcpt) ? $rcpt['dir'] . '/' . $name : '';
+        // Only a file this run made: not there before, inside invoices/receipts, and no saved payment points at it.
+        if ($name === '' || isset($rcpt['before'][$name]) || !is_file($file) || $rcptDir === false || dirname((string)realpath($file)) !== $rcptDir) {
+            continue;
+        }
+        try {
+            $kept = $pdo->prepare('SELECT COUNT(*) FROM payments WHERE receipt_path = ?');
+            $kept->execute([(string)$rel]);
+            if ((int)$kept->fetchColumn() > 0) {
+                continue;
+            }
+        } catch (Throwable $e) {
+            continue;
+        }
+        for ($i = 0; $i < 10 && is_file($file) && !@unlink($file); $i++) { usleep(300000); clearstatcache(true, $file); } // a synced folder can hold a new file open
+        if (!is_file($file)) { $res['receipts_removed'][] = $name; }
+    }
     fwrite(STDOUT, "\n@@RESULT@@" . json_encode($res) . "\n");
 }
 register_shutdown_function('__h_finish');

@@ -382,7 +382,7 @@ window.__t = window.__t || (function () {
       focus: document.activeElement ? (document.activeElement.id || document.activeElement.name || '') : ''
     };
   }
-  return { sleep, $, fire, set, until, lines, availReady, next, settle, setStatus, fill, busy, probe, ui, review, reviewReady, editWording, state, money, pickGuest, emailTick };
+  return { sleep, $, fire, set, until, lines, availReady, next, settle, setStatus, fill, busy, probe, ui, review, reviewReady, editWording, state, money, pickGuest, pickCredit, emailTick };
 })();
 true;`;
 
@@ -914,9 +914,11 @@ async function fullRun() {
         await sleep(800);
         const flash = await js(`document.body.innerText.replace(/\\s+/g, ' ')`);
         const ref = group(id)[0].booking_reference;
-        // The save keeps $_SESSION['flash_message'] exactly as after a plain post (static check in create_booking_dryrun_test).
-        // No admin page renders that key today (admin/includes/admin-flash.php reads other keys), for the plain post too.
-        console.log(`   booking page ${flash.indexOf('created successfully') !== -1 ? 'shows' : 'does not show'} "Booking ${ref} ... created successfully" (same as after a plain post: flash_message is not rendered by admin-flash.php)`);
+        // The save keeps $_SESSION['flash_message'] exactly as after a plain post; booking-details.php shows it (later
+        // items 2026-11-28), as plain text, once.
+        check(flash.indexOf(`Booking ${ref} created successfully`) !== -1, `${ctx.label}: the booking page shows "Booking ${ref} created successfully"`, flash.slice(0, 300));
+        await nav(BASE + '/admin/booking-details.php?id=' + id);
+        check((await js(`document.body.innerText`)).indexOf('created successfully') === -1, `${ctx.label}: the message is shown once (gone after a reload)`);
         check(dialogs.length === 0, `${ctx.label}: no leave-page dialog`, dialogs.join(' | '));
         verify(ctx, id, rv, c);
         const again = await js(`(async function () { var r = await fetch('/admin/create-booking.php', { method: 'POST', credentials: 'same-origin',
@@ -1136,6 +1138,116 @@ async function fullRun() {
           }
           console.log(`   ${s.tag}: bookings ${JSON.stringify(snaps.plain.bookings.map(b => ({ total_with_vat: b.total_with_vat, amount_paid: b.amount_paid, status: b.status, payment_status: b.payment_status })))}; payments ${JSON.stringify(snaps.plain.payments.map(p => p.amount))}; credit ${JSON.stringify(snaps.plain.credit.map(a => a.amount_applied))}; emails ${JSON.stringify(snaps.plain.emails)}`);
         }
+      });
+
+      // ── Later items (2026-11-28) ──
+      // The form as Create posts it (csrf_token / client_uuid masked; Create adds only response and quote_total).
+      const formNow = () => js(`Array.from(new FormData(document.getElementById('createBookingForm')).entries()).filter(function (e) { return e[0] !== 'csrf_token' && e[0] !== 'client_uuid'; }).map(function (e) { return [e[0], typeof e[1] === 'string' ? e[1] : '(file)']; })`);
+      const quoteNow = async () => { await sleep(1500); await waitFor('cbQ.fresh && !__t.busy()', 60000, 'price check'); await sleep(300); return js(`({ received: !!cbQ.quote.payment.received, final: cbQ.quote.payment.final_status, will: Number(cbQ.quote.credit && cbQ.quote.credit.will_apply) || 0, total: Number(cbQ.quote.totals.total_with_vat), owed: Number(cbQ.quote.still_owed), paid: document.getElementById('paymentReceivedCheck').checked, amount: document.getElementById('amountCollected').value, note: !document.getElementById('cbCreditCoversNote').hidden, warn4: document.getElementById('cbWarn4').hidden ? '' : document.getElementById('cbWarn4').textContent.trim() })`); };
+
+      // Guest credit covering the total unticks "Payment received now" once, with a plain note; the form then posts the
+      // same fields as a manual untick; staff can tick it again. The override ticked with no reason gets a step 4
+      // warning from the price check. The credit comes from an overpay booking (one credit note email, to the test
+      // recipient); the covered booking itself is never created.
+      await runCase('cover', W, shared, async (ctx) => {
+        if (W < 500) return;
+        const guest = { name: 'Steps cover ' + RUN, email: `steps.cover.${RUN}@example.invalid`, phone: '+265 999 000 170' };
+        const srcC = mk(ctx, 70, 1, Object.assign({ paid: true, method: 'cash', amount: 'over', overBy: 1000000, stop4: true }, guest));
+        await open(BASE + '/admin/create-booking.php');
+        await js(`__t.fill(${JSON.stringify(srcC)})`);
+        await js(`(async function () { document.getElementById('overCollectedCb').click(); await __t.settle(); await __t.next(4); return true; })()`);
+        await waitFor('__t.reviewReady()', 60000, ctx.label + ': Review (credit source)');
+        ctx.emails = 1; // the credit note email for the 1,000,000.00 extra
+        const srcId = await createOk(ctx);
+        if (!srcId) return;
+        const note = select('SELECT id, credit_note_number, original_amount - amount_used AS bal FROM credit_notes WHERE booking_id = ? ORDER BY id', [srcId])[0];
+        check(!!note && near(note.bal, 1000000), `${ctx.label}: credit source ${note ? note.credit_note_number : '(none)'} with ${note ? f2(note.bal) : '-'}`);
+        if (!note) return;
+        const c = mk(ctx, 73, 1, Object.assign({ paid: true, method: 'cash', stop4: true }, guest));
+        await open(BASE + '/admin/create-booking.php');
+        await js(`__t.fill(${JSON.stringify(c)})`);
+        const s0 = await quoteNow();
+        check(s0.paid && near(s0.amount, s0.total) && !s0.note && s0.received, `${ctx.label}: before the credit: payment ticked, amount ${s0.amount} = total, no note`, JSON.stringify(s0));
+        await js(`__t.pickCredit(${note.id})`);
+        const s1 = await quoteNow();
+        check(!s1.paid && s1.amount === '' && s1.note, `${ctx.label}: credit covers the total: "Payment received now" unticked, amount empty, note "Credit covers the total; no payment needed." shown`, JSON.stringify(s1));
+        check(!s1.received && s1.final === 'paid' && near(s1.will, s1.total) && near(s1.owed, 0), `${ctx.label}: the price check: no payment, ${f2(s1.will)} credit applied, nothing owed, "paid"`, JSON.stringify(s1));
+        const auto = await formNow();
+        await js(`(async function () { __t.$('paymentReceivedCheck').click(); return true; })()`);
+        const s2 = await quoteNow();
+        check(s2.paid && !s2.note, `${ctx.label}: staff can tick it again (left ticked, the note hides)`, JSON.stringify(s2));
+        await js(`(async function () { __t.$('paymentReceivedCheck').click(); return true; })()`);
+        const s3 = await quoteNow();
+        const manual = await formNow();
+        const diffs = [...new Set([...auto, ...manual].map(([k]) => k))].filter(k => JSON.stringify(auto.filter(e => e[0] === k)) !== JSON.stringify(manual.filter(e => e[0] === k)));
+        check(!s3.paid && diffs.length === 0 && JSON.stringify(auto) === JSON.stringify(manual), `${ctx.label}: the form posts the same ${auto.length} fields after the automatic untick as after a manual untick (csrf/uuid masked)`, JSON.stringify(diffs.map(k => [k, auto.filter(e => e[0] === k), manual.filter(e => e[0] === k)])));
+        check(s3.received === s1.received && s3.final === s1.final && near(s3.will, s1.will) && near(s3.owed, s1.owed), `${ctx.label}: the price check answers the same for both`, JSON.stringify({ s1, s3 }));
+        console.log(`   posted fields (auto untick): ${JSON.stringify(auto.filter(([k]) => /pay|amount|credit|status|email/.test(k)))}`);
+        // Override ticked, the guest's own note picked through it, no reason: the price check warns on step 4.
+        await js(`(async function () { __t.$('creditOverrideCheck').click(); await __t.sleep(200); __t.set(__t.$('creditOverrideEmail'), ${JSON.stringify(guest.email)}); return true; })()`);
+        await js(`__t.pickCredit(${note.id})`);
+        const s4 = await quoteNow();
+        check(s4.warn4.indexOf('Credit from a different account is used only with a reason.') !== -1, `${ctx.label}: override without a reason: step 4 warns "${s4.warn4}"`, JSON.stringify(s4));
+        const e4 = await js(`(async function () { await __t.next(4); return { step: cbNav.current, err: (__t.$('cbErr4').textContent || '').trim() }; })()`);
+        check(e4.step === 4 && /Enter the reason/.test(e4.err), `${ctx.label}: Continue still stops on step 4 until a reason is entered`, JSON.stringify(e4));
+        await js(`(async function () { __t.set(__t.$('creditOverrideReason'), 'Steps run reason'); return true; })()`);
+        const s5 = await quoteNow();
+        check(s5.warn4 === '', `${ctx.label}: with a reason the warning goes`, JSON.stringify(s5));
+        check(forGuest(guest.email) === 1, `${ctx.label}: only the credit source booking stored (the covered booking was never created)`, String(forGuest(guest.email)));
+      });
+
+      // A refused plain save (the page reloads) brings back the status and the guest email tick as staff left them; a
+      // fresh page keeps its defaults (Confirmed, guest email ticked).
+      await runCase('repost', W, shared, async (ctx) => {
+        await open(BASE + '/admin/create-booking.php');
+        const d = await js(`({ st: (document.querySelector('input[name="booking_status"]:checked') || {}).value || '', mail: document.getElementById('sendEmail').checked })`);
+        check(d.st === 'confirmed' && d.mail === true, `${ctx.label}: a fresh page starts on Confirmed with the guest email ticked`, JSON.stringify(d));
+        const c = mk(ctx, 80, 1, { status: 'pending', paid: true, method: 'cash', amount: 'over', stop4: true });
+        await js(`__t.fill(${JSON.stringify(c)})`);
+        await js(`(async function () { document.getElementById('overCollectedCb').click(); await __t.settle(); await __t.next(4); return true; })()`);
+        await waitFor('__t.reviewReady()', 60000, ctx.label + ': Review');
+        const before = await js(`({ st: (document.querySelector('input[name="booking_status"]:checked') || {}).value || '', mail: document.getElementById('sendEmail').checked })`);
+        fetchMode = 'no-overpay'; lastPost = null; postBlocked = '';
+        await js(`window.__cbCreate = 1; HTMLFormElement.prototype.submit.call(document.getElementById('createBookingForm')); true`);
+        const r = await awaitCreate(ctx.label);
+        fetchMode = null;
+        if (r.id) track(ctx, r.id);
+        check(!r.id && !!lastPost && !lastPost.some(([k]) => k === 'confirm_overpay') && /more than/i.test(String(r.refused)), `${ctx.label}: the plain post without the tick was refused, the page reloaded ("${String(r.refused || '').slice(0, 80)}")`, r.id ? 'booking ' + r.id : String(r.refused));
+        if (r.id) return;
+        await sleep(800);
+        const after = await js(`({ st: (document.querySelector('input[name="booking_status"]:checked') || {}).value || '', mail: document.getElementById('sendEmail').checked, name: document.getElementById('guestName').value, repost: typeof cbRepost !== 'undefined' && !!cbRepost })`);
+        check(before.st === 'pending' && !before.mail && after.repost && after.st === 'pending' && after.mail === false && after.name === c.name,
+          `${ctx.label}: after the refusal: status Pending and the guest email unticked, as staff left them`, JSON.stringify({ before, after }));
+        check(forGuest(c.email) === 0, `${ctx.label}: nothing stored for the guest`, String(forGuest(c.email)));
+      });
+
+      // Tentative with the guest email and the quotation ticked: the quotation email with its PDF goes to the test
+      // recipient (the test platform redirect), the booking records it, then it is cancelled.
+      await runCase('tquote', W, shared, async (ctx) => {
+        if (W < 500) return;
+        const c = mk(ctx, 84, 2, { status: 'tentative', validDays: 7, quoteNote: 'Steps run quotation email', sendEmail: true });
+        await open(BASE + '/admin/create-booking.php');
+        const rv = await toReview(ctx, c);
+        checkReview(ctx, rv);
+        const s = await js(`({ q: document.getElementById('sendQuotationCheck').checked, mail: document.getElementById('sendEmail').checked })`);
+        check(s.q && s.mail, `${ctx.label}: guest email and quotation ticked`, JSON.stringify(s));
+        ctx.emails = 'some';
+        const e0 = maxId('email_send_log');
+        const id = await createOk(ctx);
+        if (!id) return;
+        const p = new Map(lastPost || []);
+        check(p.get('send_quotation') === '1' && p.has('send_email') && p.get('booking_status') === 'tentative', `${ctx.label}: Create posted send_quotation=1 with the guest email ticked`);
+        verify(ctx, id, rv, c, { paid: 0 });
+        await sleep(800);
+        const page = await js(`document.body.innerText.replace(/\\s+/g, ' ')`);
+        check(page.indexOf('created successfully') !== -1 && page.indexOf('Quotation PDF sent.') !== -1, `${ctx.label}: the booking page says the booking was created and "Quotation PDF sent."`, page.slice(0, 300));
+        const em = select("SELECT e.email_kind, e.status, (e.to_email = (SELECT s.setting_value FROM site_settings s WHERE s.setting_key = 'automated_email_test_recipient')) AS to_test FROM email_send_log e WHERE e.id > ? ORDER BY e.id", [e0]);
+        console.log('   email log: ' + em.map(g => `${g.email_kind}/${g.status}${Number(g.to_test) === 1 ? ' (test recipient)' : ' (OTHER recipient)'}`).join(', '));
+        check(em.some(g => g.email_kind === 'tentative_quotation' && g.status === 'sent'), `${ctx.label}: email_send_log has the tentative_quotation email as sent`);
+        check(em.filter(isSend).length > 0 && em.filter(isSend).every(g => Number(g.to_test) === 1), `${ctx.label}: every email sent went to the test recipient`);
+        const b = select('SELECT last_quotation_sent_at FROM bookings WHERE id = ?', [id])[0];
+        check(!!(b && b.last_quotation_sent_at), `${ctx.label}: bookings.last_quotation_sent_at recorded`, JSON.stringify(b));
+        console.log(`   tquote booking id ${id}`);
       });
     }
   } finally {

@@ -239,15 +239,20 @@ $afterSaveCall = substr($h, (int)($callPos[1] ?? 0));
 check(isset($callPos[1]) && strpos($afterSaveCall, '$line') === strpos($afterSaveCall, 'foreach ($room_lines as $line) {') + strlen('foreach ($room_lines as '),
     'after the save\'s check, $line is first set by the insert loop (never read with the old block\'s leftover value)');
 
-// ── 5. credit: ONE eligibility helper, used by the save (its old 0.005) and the dry run (0.01, correction 8) ──
+// ── 5. credit: ONE eligibility helper, used by the save and the dry run, both at 0.01 (correction 8; the save was 0.005 before 2026-11-28) ──
 check(substr_count($src, 'rh_cb_credit_queue(') === 2, 'the credit helper is called twice (save + dry run)');
 check(strpos($dryBlock, "rh_cb_credit_queue(\$pdo, \$cbRawCreditIds, (string)\$guest_email, !empty(\$_POST['apply_credit_override']),") !== false
     && strpos($dryBlock, "trim((string)(\$_POST['apply_credit_override_reason'] ?? '')), BALANCE_TOLERANCE)['notes'];") !== false
     && strpos($dryBlock, 'if (!$is_tentative && is_array($cbRawCreditIds) && !empty($cbRawCreditIds)) {') !== false,
     'the dry run uses it at BALANCE_TOLERANCE, with the save\'s own inputs, never when tentative');
-$posSaveCredit = strpos($h, "\$cnQueue = rh_cb_credit_queue(\$pdo, \$rawCreditIds, (string)\$guest_email, \$credit_override, \$credit_override_reason, 0.005)['notes'];");
+// 2026-11-28 (one threshold): the save now passes BALANCE_TOLERANCE too; the proof that this stores the same is below
+// (the old loop at 0.005 against the new one at 0.01, both through an applyCreditNote stand-in).
+$posSaveCredit = strpos($h, "\$cnQueue = rh_cb_credit_queue(\$pdo, \$rawCreditIds, (string)\$guest_email, \$credit_override, \$credit_override_reason, BALANCE_TOLERANCE)['notes'];");
 check($posSaveCredit !== false && $posSaveCredit > $posBegin && strpos($h, 'if (!$is_tentative && is_array($rawCreditIds) && !empty($rawCreditIds)) {') < $posSaveCredit,
-    'the save uses it at its old 0.005 threshold, after the commit, same condition as before');
+    'the save uses it at BALANCE_TOLERANCE, after the commit, same condition as before');
+check(strpos($h, "if (\$due <= BALANCE_TOLERANCE) {\n                            break;\n                        }\n                        if (\$cnq['balance'] <= BALANCE_TOLERANCE) {\n                            continue;\n                        }") !== false
+    && substr_count($src, '0.005') === 1 && strpos($src, 'if (tax > 0.005)') !== false, 'the save loop skips at BALANCE_TOLERANCE; no 0.005 credit threshold is left (only the page\'s tax display)');
+check(strpos($src, "AND balance > 0.01\n") !== false, 'the guest credit list shows only notes above 0.01 (the ones that can be applied)');
 check(strpos($src, 'FROM credit_notes WHERE id = ?') === false, 'the old inline credit filter is gone (no second copy of the rule)');
 $credSrc = (string)file_get_contents($root . '/admin/includes/finance-booking-credit.php');
 check(!preg_match('/INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|REPLACE\s+INTO|rh_log_event|\$_SESSION/i', $credSrc), 'the credit helper only reads');
@@ -309,11 +314,11 @@ foreach ($combos as [$ovr, $reasonRaw]) {
     $new = rh_cb_credit_pick($rows, 'guest@example.invalid', $ovr, $reason, $today, 0.005);
     if ($old !== $new['notes'] || $new['override_active'] !== ($ovr && $reason !== '')) { $same = false; $why = json_encode([$ovr, $reason, $old, $new]); }
 }
-check($same, 'real save: the helper at 0.005 returns exactly the old queue (same notes, order, casts, override flag) for every override/reason case', $why);
+check($same, 'the helper at the old 0.005 returns exactly the old queue (same notes, order, casts, override flag) for every override/reason case', $why);
 $ids = static fn(array $r) => array_column($r['notes'], 'id');
 $dry = rh_cb_credit_pick($rows, 'guest@example.invalid', false, '', $today, BALANCE_TOLERANCE);
 check($ids($dry) === [1, 2, 7, 10, 12], 'dry run (0.01): own active/partial notes, expiring today included; used, expired, void, 0.00 and 0.01 left out', json_encode($ids($dry)));
-check($ids(rh_cb_credit_pick($rows, 'guest@example.invalid', false, '', $today, 0.005)) === [1, 2, 7, 8, 10, 12], 'the save (0.005) still queues the 0.01 note as before (applyCreditNote then refuses it: nothing applied either way)');
+check($ids(rh_cb_credit_pick($rows, 'guest@example.invalid', false, '', $today, 0.005)) === [1, 2, 7, 8, 10, 12], 'at the old 0.005 the 0.01 note was still queued (applyCreditNote then refused it: nothing applied either way, so 0.01 stores the same)');
 check(!in_array(11, $ids(rh_cb_credit_pick($rows, 'guest@example.invalid', true, '', $today, BALANCE_TOLERANCE)), true)
     && !in_array(11, $ids(rh_cb_credit_pick($rows, 'guest@example.invalid', true, '   ', $today, BALANCE_TOLERANCE)), true)
     && !in_array(11, $ids(rh_cb_credit_pick($rows, 'guest@example.invalid', false, 'reason', $today, BALANCE_TOLERANCE)), true),
@@ -323,6 +328,120 @@ $n11 = array_values(array_filter($ov['notes'], static fn($n) => $n['id'] === 11)
 check($ov['override_active'] && count($n11) === 1 && $n11[0]['override'] === true && $n11[0]['cn_email'] === 'someone.else@example.invalid'
     && $ov['notes'][0]['override'] === false && $ov['notes'][1]['override'] === false, 'with tick + reason it is included and flagged as an override; the guest\'s own notes are not');
 check($ov['notes'][0]['balance'] === 100.0 && $ov['notes'][0]['id'] === 1 && $ov['notes'][0]['number'] === 'CN-T-1', 'figures are cast as the save used them (int id, float balance)');
+
+// ── 5b. the save's money, row by row: old loop (0.005) = new loop (0.01) = the dry run's simulation ──
+// Fixtures: the save's cash split (create-booking.php "Payment record") and its credit loop as it was at HEAD 7402470,
+// with $th for its two skip thresholds. applyCreditNote() is replaced by a stand-in with its own refusals (a note with
+// 0.01 or less, an account owing 0.01 or less) and its cap min(amount, note balance, account due).
+function cbt_save_money(array $rowTotals, float $amount_collected, float $grand_total_with_vat, array $cnQueue, float $th): array
+{
+    $created_bookings = [];
+    foreach ($rowTotals as $i => $t) { $created_bookings[] = ['id' => $i + 1, 'total_with_vat' => $t]; }
+    $paid = array_fill(1, count($rowTotals), 0.0);
+    if ($amount_collected > 0) {
+        $total_distributed = 0.0;
+        foreach ($created_bookings as $bi => $cb) {
+            $cb_total = (float)($cb['total_with_vat'] ?? 0);
+            $is_last  = ($bi === count($created_bookings) - 1);
+            $this_amount = $is_last
+                ? round($amount_collected - $total_distributed, 2)
+                : ($grand_total_with_vat > 0
+                    ? round($amount_collected * ($cb_total / $grand_total_with_vat), 2)
+                    : round($amount_collected / count($created_bookings), 2));
+            $total_distributed += $this_amount;
+            $paid[$cb['id']] = $this_amount;
+        }
+    }
+    $amountDue = [];
+    foreach ($created_bookings as $cb) { $amountDue[$cb['id']] = max(0, round((float)$cb['total_with_vat'] - $paid[$cb['id']], 2)); } // recalculateBookingFinancials
+    $balances = [];
+    foreach ($cnQueue as $n) { $balances[$n['id']] = (float)$n['balance']; }
+    $apply = static function (int $cnId, int $bookingId, float $amt) use (&$balances, &$amountDue): array { // applyCreditNote() stand-in
+        $avail = round($balances[$cnId], 2);
+        if ($avail <= 0.01) { return ['success' => false]; }
+        if ($amountDue[$bookingId] <= 0.01) { return ['success' => false]; }
+        $amt = round(min($amt, $avail, $amountDue[$bookingId]), 2);
+        if ($amt <= 0) { return ['success' => false]; }
+        $balances[$cnId] = round($avail - $amt, 2);
+        $amountDue[$bookingId] = round($amountDue[$bookingId] - $amt, 2);
+        return ['success' => true, 'remaining_balance' => max(0.0, $balances[$cnId]), 'applied' => $amt];
+    };
+    $applied = [];
+    foreach ($created_bookings as $cb) {
+        if (empty($cnQueue)) {
+            break;
+        }
+        $due = round((float)$amountDue[$cb['id']], 2);
+        foreach ($cnQueue as &$cnq) {
+            if ($due <= $th) {
+                break;
+            }
+            if ($cnq['balance'] <= $th) {
+                continue;
+            }
+            $amt = round(min($due, $cnq['balance']), 2);
+            $res = $apply($cnq['id'], $cb['id'], $amt);
+            if (!empty($res['success'])) {
+                $due = round($due - $amt, 2);
+                $cnq['balance'] = (float)$res['remaining_balance'];
+                $applied[] = [$cb['id'], $cnq['id'], $res['applied']];
+            }
+        }
+        unset($cnq);
+    }
+    return ['applied' => $applied, 'due' => $amountDue, 'paid' => $paid, 'balances' => $balances];
+}
+require_once $root . '/includes/booking-pay-state.php';
+$q = static fn(array $bals) => array_map(static fn($i, $b) => ['id' => $i + 1, 'number' => 'CN-' . ($i + 1), 'balance' => (float)$b, 'override' => false, 'cn_email' => 'g@example.invalid'], array_keys($bals), $bals);
+$moneyCases = [
+    'one room, note 0.01 only'                       => [[100.00], 0.0, [0.01]],
+    'one room, note 0.01 then a big note'            => [[100.00], 0.0, [0.01, 500.00]],
+    'one room owes 0.01 after cash, big note'        => [[100.00], 99.99, [500.00]],
+    'one room owes 0.02 after cash, big note'        => [[100.00], 99.98, [500.00]],
+    'one room, part paid + credit covers the rest'   => [[250.00], 100.00, [40.00, 500.00]],
+    'one room, credit short of the total'            => [[250.00], 0.0, [40.00, 60.00]],
+    'one room, overpaid (credit not needed)'         => [[250.00], 300.00, [500.00]],
+    'one room, paid in full'                         => [[250.00], 250.00, [500.00]],
+    'two rooms: room 1 owes 0.01, room 2 owes much'  => [[100.00, 300.00], 399.95, [0.02, 1000.00]],
+    'two rooms, note spent across both'              => [[100.00, 300.00], 0.0, [150.00, 0.01, 400.00]],
+    'three rooms, rounding in the cash split'        => [[33.33, 33.33, 33.34], 50.00, [10.00, 0.01, 0.02, 100.00]],
+    'three rooms, credit runs out in room 2'         => [[120.00, 120.00, 120.00], 0.0, [130.00, 50.00]],
+    'two rooms, total 0 (equal cash split)'          => [[0.00, 0.00], 0.0, [50.00]],
+    'two rooms, 0.01 note in the middle'             => [[80.00, 80.00], 10.00, [70.00, 0.01, 0.01, 200.00]],
+];
+$oldNewSame = true; $simSame = true; $whyM = '';
+foreach ($moneyCases as $label => [$totals, $cash, $bals]) {
+    $grand = round(array_sum($totals), 2);
+    $old = cbt_save_money($totals, $cash, $grand, $q($bals), 0.005);
+    $new = cbt_save_money($totals, $cash, $grand, $q($bals), BALANCE_TOLERANCE);
+    if ($old !== $new) { $oldNewSame = false; $whyM .= $label . ' old/new ' . json_encode([$old, $new]) . ' '; }
+    $sim = rh_cb_credit_simulate($totals, $cash, $grand, $q($bals), BALANCE_TOLERANCE);
+    $perRow = array_fill(1, count($totals), 0.0);
+    foreach ($new['applied'] as [$bid, , $a]) { $perRow[$bid] = round($perRow[$bid] + $a, 2); }
+    foreach ($sim['rows'] as $i => $r) {
+        $bid = $i + 1;
+        $expStatus = rh_pay_state_key($new['paid'][$bid] + $perRow[$bid], $new['due'][$bid], false, (float)$totals[$i], false); // recalculateBookingFinancials' rule
+        if (abs($r['cash'] - $new['paid'][$bid]) > 0.001 || abs($r['credit'] - $perRow[$bid]) > 0.001 || abs($r['owed'] - $new['due'][$bid]) > 0.001 || $r['status'] !== $expStatus) {
+            $simSame = false; $whyM .= $label . ' row ' . $bid . ' ' . json_encode([$r, $new['paid'][$bid], $perRow[$bid], $new['due'][$bid], $expStatus]) . ' ';
+        }
+    }
+    if (abs($sim['will_apply'] - round(array_sum($perRow), 2)) > 0.001 || abs($sim['still_owed'] - round(array_sum($new['due']), 2)) > 0.001) {
+        $simSame = false; $whyM .= $label . ' totals ' . json_encode($sim) . ' ';
+    }
+}
+check($oldNewSame, 'one threshold: the save loop at 0.01 stores exactly what it stored at 0.005 (same applications, note balances, amounts due) in all ' . count($moneyCases) . ' cases', $whyM);
+check($simSame, 'the dry run\'s simulation = the save, row by row: cash share, credit applied, still owed, payment status; will_apply and still_owed are their sums', $whyM);
+$s1 = rh_cb_credit_simulate([100.00], 99.99, 100.00, $q([500.00]), BALANCE_TOLERANCE);
+check($s1['will_apply'] === 0.0 && $s1['rows'][0]['status'] === 'paid', 'edge: a row owing 0.01 after cash gets no credit (applyCreditNote refuses) and shows Paid (within the tolerance)', json_encode($s1));
+$s2 = rh_cb_credit_simulate([100.00, 300.00], 399.95, 400.00, $q([0.02, 1000.00]), BALANCE_TOLERANCE);
+check($s2['rows'][0]['credit'] === 0.0 && $s2['rows'][1]['credit'] === 0.04 && $s2['will_apply'] === 0.04,
+    'edge: two rooms, cash 399.95: room 1 owes 0.01 (no credit), room 2 owes 0.04 (credit 0.02 + 0.02); the old min() estimate said 0.05', json_encode($s2));
+check(strpos($dryBlock, '$cbSim       = rh_cb_credit_simulate($cbRowTotals, (float)$amount_collected, (float)$grand_total_with_vat, $cbCreditNotes, BALANCE_TOLERANCE);') !== false
+    && strpos($dryBlock, '$cbWillApply = $cbSim[\'will_apply\'];') !== false && strpos($dryBlock, '$cbStillOwed = $cbSim[\'still_owed\'];') !== false
+    && strpos($dryBlock, "'rows'         => \$cbSim['rows'],") !== false,
+    'the dry run takes will_apply, still_owed and the per-row payment from the simulation');
+check(strpos($dryBlock, "if (!empty(\$_POST['apply_credit_override']) && trim((string)(\$_POST['apply_credit_override_reason'] ?? '')) === '') {\n                    \$cbWarnings[] = ['step' => 4,") !== false
+    && strpos($dryBlock, 'rh_log_event') === false, 'override ticked with no reason: the dry run warns at step 4 (inside the save\'s own credit condition); nothing logged');
 
 // ── 6. basic validation split: same messages, same order; a real save throws the same combined text ──
 $origMsgs = ['Please select at least one room.', 'Guest name is required.', 'Valid email is required.', 'Phone number is required.',
@@ -366,11 +485,21 @@ foreach (['nights', 'currency', 'vat_mode', 'vat_rate', 'levy_rate', 'lines', 't
           'over_by', 'final_status', 'will_apply', 'notes'] as $k) {
     if (strpos($dryBlock, "'" . $k . "'") === false) { check(false, "quote key '$k' is in the dry-run reply"); }
 }
-check(strpos($dryBlock, "'status'       => \$payment_status_val,") !== false && strpos($dryBlock, "'final_status' => rh_pay_state_key(\$cbCash + \$cbWillApply, \$cbStillOwed, false, \$grand_total_with_vat, false),") !== false,
-    'payment.status is the cash-only status the save stores; final_status follows what is still owed after credit');
-check(strpos($dryBlock, '$cbWillApply = $cbOwed > BALANCE_TOLERANCE ? round(max(0.0, min($cbEligible, $cbOwed)), 2) : 0.0;') !== false
-    && strpos($dryBlock, '$cbCash     = round($amount_collected, 2);') !== false,
-    'will_apply = max(0, min(eligible, total - cash)) with cash after the payment normalisation; 0 when 0.01 or less is owed (applyCreditNote refuses)');
+check(strpos($dryBlock, "'status'       => \$payment_status_val,") !== false
+    && strpos($dryBlock, ": rh_pay_state_key(\$cbCash + \$cbWillApply, \$cbStillOwed, false, \$grand_total_with_vat, false),") !== false
+    && strpos($dryBlock, "'final_status' => (!empty(\$cbSim['rows']) && !array_filter(\$cbSim['rows'], static fn(\$cbR) => (\$cbR['status'] ?? '') !== 'paid'))") !== false,
+    'payment.status is the cash-only status the save stores; final_status follows what is still owed after credit, and reads paid when every room row is paid');
+check(strpos($dryBlock, '$cbCash     = round($amount_collected, 2);') !== false,
+    'payment.amount is the cash after the payment normalisation (will_apply: section 5b)');
+
+// ── 8. later items (2026-11-28) ──
+check(strpos($h, "if (\$cbPriceChanged) { // nothing was attempted") !== false && strpos($h, "rh_log_event('create-booking', 'info', 'Booking not created: price changed since review'") !== false
+    && strpos($h, "\$cbPriceChanged = true;\n                throw new Exception('The price changed since you checked it: '") !== false,
+    'a price-changed refusal at Create is logged as info, not as "Booking creation failed"');
+$bd = (string)file_get_contents($root . '/admin/booking-details.php');
+check(strpos($bd, "\$flash_success_message = trim(strip_tags(html_entity_decode((string)(\$_SESSION['flash_message']['text'] ?? ''), ENT_QUOTES, 'UTF-8')));") !== false
+    && strpos($bd, "unset(\$_SESSION['success_message'], \$_SESSION['error_message'], \$_SESSION['flash_message']);") !== false,
+    'booking-details shows New Booking\'s flash_message once, as plain text (the toast escapes it), then drops it');
 
 echo "\n$pass passed, $fail failed\n";
 exit($fail > 0 ? 1 : 0);
