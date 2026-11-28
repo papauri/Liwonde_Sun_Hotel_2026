@@ -112,6 +112,18 @@ Deeper trackers to read next:
     ports could drive another Chrome / read another server) -> free ports + refuse if busy -> PASS. Test-only, Liwonde
     only (refuses elsewhere): not ported. LATER: page visits leave site_visitors/session_logs HeadlessChrome rows on
     Liwonde; tiny race between the port check and start-up. NEXT: G-B (spec-check first, money).
+  - IN PROGRESS 2026-11-28 (owner "do G-B and all remaining", session 28ad065e): G-B spec-check done (corrections
+    1-8 pasted into the plan); G0 harness gained a two-room-types (mixed) case, 2,450,600.00 match.
+  - G-B SHIPPED 2026-11-28 (hashes in the commit "STATUS + GUIDES_AI_SYNC: guest G-B"): price check (dry run) of the
+    guest save: POST dry_run=1 + response=wizard (+ dry_run_upto 1-5) returns the save's own figures as JSON, writes
+    nothing, CSRF compared not consumed (pub_csrf_check), own IP limit booking_quote 60/10 min. Per-room maths in
+    includes/guest-booking-quote.php shared by save + dry run; rh_mixed_create split into rh_mixed_prepare /
+    rh_mixed_recheck. Guard: 12/12 stored totals identical to before, quote = stored 12/12, dry runs 0 emails, 11/11
+    step/CSRF checks; licence_client 247/0, mixed_room_booking 46/0, inhouse_move 25/0, joined_on_demand 92/0.
+    qa-auditor, accounting lead, final-review PASS. Rosalyn's booking.php ported by 3-way merge (keeps its room-thumb
+    placeholder, comments, joined-rooms message, column order). LATER: step-5 duplicate check probe-able 60/10 min;
+    joined messages on one step; catch(Exception) misses TypeError (non-JSON); duplicate-uuid reply skips
+    pub_confirm_remember (G-C); rare step-3 refusal filed as step 4; compare test hardcodes 0.01. NEXT: G-A.
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with

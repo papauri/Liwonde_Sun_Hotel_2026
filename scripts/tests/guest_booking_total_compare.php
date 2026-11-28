@@ -21,6 +21,12 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit("CLI only.\n"); }
  *   rolled-back save; the browser gets the same package added to the page's own check-availability answer, and the
  *   seeded child charge is quoted by check-availability.php run through the harness under the same seed (that reply
  *   is exactly what the page shows when no package is ticked). Those rows are labelled.
+ * Price check (phase G-B): before each save the same fields are posted twice with response=wizard + dry_run=1
+ *   (dry_run_upto 3, then 5), the second chained on the session token the first left. Each reply's quote total must
+ *   equal the stored total; a dry run must capture no email, change no row count (bookings, packages, payments, logs,
+ *   emails, see $noWriteTables) and write none of the booking session keys. The real save then runs on the token the
+ *   dry runs left (cfg.keep_csrf: the driver does not re-seed it), proving they did not use it up. After the cases:
+ *   dry_run=1 WITHOUT response=wizard is a normal save, and the refusal cases answer the right step and field.
  * Refuses unless this checkout is Liwonde, its database is not in .claude/LIVE_TARGETS and it is the test platform.
  */
 $root = dirname(__DIR__, 2);
@@ -88,6 +94,12 @@ if ($plan) {
     $dPlan = $free((int)$kids['id'], $start, 2, 1, false, $until);
 }
 if (!$dNoTier || !$dKids || !$dJoined) { exit("no free dates found for a case\n"); }
+// Both types free on the same nights (mixed case).
+$dMixed = null;
+for ($probe = new DateTime($far), $i = 0; $i < 60 && !$dMixed; $i++, $probe->modify('+1 day')) {
+    $a = $free((int)$noTier['id'], $probe->format('Y-m-d'), 2);
+    if ($a && $a[0] === $probe->format('Y-m-d') && $free((int)$kids['id'], $a[0], 2) === $a) { $dMixed = $a; }
+}
 
 $K = (int)$kids['id'];
 $pkgInject = function (string $type, float $amount): array {
@@ -103,6 +115,11 @@ $cases = [
     ['key' => 'two_rooms', 'label' => "two rooms, 3 guests ({$kids['name']})", 'room_id' => $K, 'dates' => $dKids, 'guests' => 3, 'children' => 0],
     ['key' => 'joined', 'label' => "joined room ({$joined['name']})", 'room_id' => (int)$joined['id'], 'dates' => $dJoined, 'guests' => min(4, (int)$joined['max_guests']), 'children' => 0],
     ['key' => 'tentative', 'label' => 'tentative', 'room_id' => $K, 'dates' => $dKids, 'guests' => 2, 'children' => 0, 'booking_type' => 'tentative'],
+    // Two room types for one party (the mixed path, rh_mixed_create): the chosen type is made adults only inside the
+    // rolled-back seed, the party brings a child, so the child's room is an added type that takes children.
+    ['key' => 'mixed', 'label' => "two room types: {$noTier['name']} adults only + {$kids['name']} [seeded, server quote]", 'room_id' => (int)$noTier['id'],
+        'dates' => $dMixed, 'guests' => 3, 'children' => 1, 'extras' => [$K],
+        'seed' => ["UPDATE rooms SET children_allowed = 0 WHERE id = " . (int)$noTier['id']], 'server_quote' => true],
 ];
 foreach (['per_night' => 30000, 'per_stay' => 45000, 'per_person_per_night' => 12500] as $type => $amt) {
     $cases[] = ['key' => 'package_' . $type, 'label' => "package $type [seeded]", 'room_id' => $K, 'dates' => $dKids, 'guests' => 2, 'children' => 0,
@@ -180,10 +197,12 @@ for ($i = 0; $i < 50 && !is_file($spool . '.ready'); $i++) { usleep(100000); }
 if (!is_resource($smtp) || !is_file($spool . '.ready')) { exit("capture SMTP server did not start: nothing run\n"); }
 $mailCount = function () use ($spool): int { return is_file($spool) ? count(array_filter(file($spool, FILE_IGNORE_NEW_LINES) ?: [], 'strlen')) : 0; };
 $resetLimit = function (): void {
-    $key = 'iprl_booking_form_' . substr(hash('sha256', '127.0.0.1|booking_form'), 0, 24);
-    if (function_exists('deleteCache')) { @deleteCache($key); }
-    $f = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $key . '.json';
-    if (is_file($f)) { @unlink($f); }
+    foreach (['booking_form', 'booking_quote'] as $action) {
+        $key = 'iprl_' . $action . '_' . substr(hash('sha256', '127.0.0.1|' . $action), 0, 24);
+        if (function_exists('deleteCache')) { @deleteCache($key); }
+        $f = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $key . '.json';
+        if (is_file($f)) { @unlink($f); }
+    }
 };
 
 $harness = function (string $page, array $cfg) use ($root, $tmp, $runLimited): array {
@@ -198,6 +217,47 @@ $harness = function (string $page, array $cfg) use ($root, $tmp, $runLimited): a
     return $res;
 };
 $noWa = "INSERT INTO site_settings (setting_key, setting_value) VALUES ('whatsapp_enabled','0'),('whatsapp_notifications_enabled','0') ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
+
+// ── Price check (dry run) helpers ─────────────────────────────────────────────
+// Row counts taken inside the harness transaction right after the seed and compared after the page ran.
+$existingTables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+$noWriteTables = array_values(array_intersect(['bookings', 'booking_packages', 'booking_rooms', 'booking_payments', 'payments', 'booking_charges',
+    'booking_notes', 'booking_timeline_logs', 'booking_audit_log', 'booking_status_log', 'booking_financial_audit', 'system_event_log',
+    'admin_activity_log', 'email_send_log', 'automated_email_log', 'guest_communication_log', 'tentative_booking_log', 'housekeeping_assignments',
+    'cancellation_log', 'credit_notes', 'payment_audit_log', 'demand_log'], $existingTables));
+$snapSetup = array_map(fn($t) => "SET @gbc_$t = (SELECT COUNT(*) FROM `$t`)", $noWriteTables);
+$snapVerify = 'SELECT ' . implode(', ', array_map(fn($t) => "(SELECT COUNT(*) FROM `$t`) - @gbc_$t AS `$t`", $noWriteTables));
+$sessKeys = ['_csrf_pub_booking', 'booking_attempts', 'booking_success', '_confirm_refs', 'booking_form_uuid'];
+// One booking.php POST with the session token $sessToken already in the session (the driver does not re-seed it).
+$postPage = function (array $post, ?string $sessToken, array $setup, array $vars, array $verify = []) use ($harness, $port, $mailCount, $snapSetup, $snapVerify, $sessKeys, $resetLimit): array {
+    $resetLimit();
+    $mb = $mailCount();
+    $r = $harness('scripts/tests/mixed_booking_post_page.php', ['post' => $post, 'setup' => array_merge($setup, $snapSetup), 'vars' => $vars,
+        'fake_smtp' => $port, 'keep_csrf' => true, 'session' => $sessToken === null ? [] : ['_csrf_pub_booking' => $sessToken],
+        'session_keys' => $sessKeys, 'verify' => array_merge([$snapVerify], $verify)]);
+    $r['emails'] = $mailCount() - $mb;
+    $diff = $r['verify'][0][0] ?? null;
+    $r['changed'] = is_array($diff) ? array_filter($diff, fn($v, $k) => is_string($k) && (int)$v !== 0, ARRAY_FILTER_USE_BOTH) : ['verify' => 'missing'];
+    $r['session_written'] = array_keys(array_filter(array_diff_key((array)($r['session'] ?? []), ['_csrf_pub_booking' => 1]), fn($v) => $v !== null));
+    $r['bad_harness'] = !empty($r['timed_out']) || !empty($r['leak']) || !empty($r['marker_lost']) || empty($r['rolled_back']);
+    return $r;
+};
+$dry = function (array $post, int $upto, ?string $sessToken, array $setup, array $vars) use ($postPage): array {
+    return $postPage($post + ['response' => 'wizard', 'dry_run' => '1', 'dry_run_upto' => (string)$upto], $sessToken, $setup, $vars);
+};
+// A dry run left nothing behind: no email, no row, no booking session key, the token still there.
+$dryClean = function (array $r, string $token): array {
+    $why = [];
+    if ($r['emails'] !== 0) { $why[] = $r['emails'] . ' email(s)'; }
+    if ($r['changed']) { $why[] = 'rows ' . json_encode($r['changed']); }
+    if ($r['session_written']) { $why[] = 'session ' . implode(',', $r['session_written']); }
+    if (($r['session']['_csrf_pub_booking'] ?? null) !== $token) { $why[] = 'token used up'; }
+    if ($r['bad_harness']) { $why[] = 'harness problem'; }
+    if (!isset($r['json'])) { $why[] = 'no JSON reply: ' . substr(strip_tags((string)($r['raw'] ?? '')), -200); }
+    return $why;
+};
+$dryProblems = [];
+$casePosts = [];
 
 $rowsOut = [];
 $harnessProblems = [];
@@ -219,15 +279,25 @@ foreach ($cases as $c) {
     // The POST: the page's own fields (browser), or, for a server-quote case, the same party typed in.
     $post = [];
     if (!empty($c['server_quote'])) {
-        $q = $harness('check-availability.php', ['anon' => true, 'method' => 'GET', 'setup' => $setup,
-            'get' => ['room_id' => (string)$c['room_id'], 'check_in' => $ci, 'check_out' => $co, 'child_guests' => (string)$c['children'],
-                'adult_guests' => (string)($c['guests'] - $c['children']), 'number_of_guests' => (string)$c['guests'], 'rooms_needed' => '1']]);
-        $sp = $q['json']['split_pricing'] ?? null;
-        $line['shown'] = is_array($sp) && !empty($sp['valid']) ? (float)$sp['total_with_vat'] : null;
-        $line['shown_detail'] = is_array($sp) ? ['child_supplement_total' => $sp['child_supplement_total'] ?? null, 'rate' => $sp['room_rate_total_per_night'] ?? null] : ($q['raw'] ?? '');
+        $get = ['room_id' => (string)$c['room_id'], 'check_in' => $ci, 'check_out' => $co, 'child_guests' => (string)$c['children'],
+            'adult_guests' => (string)($c['guests'] - $c['children']), 'number_of_guests' => (string)$c['guests'], 'rooms_needed' => '1'];
+        if (!empty($c['extras'])) { $get['mode'] = 'mixed'; $get['extra_room_types'] = implode(',', $c['extras']); }
+        $q = $harness('check-availability.php', ['anon' => true, 'method' => 'GET', 'setup' => $setup, 'get' => $get]);
+        if (!empty($c['extras'])) {
+            // The page's mixed panel shows the server's mixed answer (js/booking.js loadMixed, mixedResult.total_with_vat).
+            $j = $q['json'] ?? [];
+            $line['shown'] = (!empty($j['ok']) && isset($j['total_with_vat'])) ? (float)$j['total_with_vat'] : null;
+            $line['shown_detail'] = is_array($j) && $j ? ['why' => $j['why'] ?? null, 'ok' => $j['ok'] ?? null, 'message' => $j['message'] ?? null,
+                'rows' => array_map(fn($r) => ($r['room_name'] ?? '') . ' ' . ($r['occupancy_type'] ?? '') . ' ' . ($r['total_with_vat'] ?? ''), $j['rows'] ?? [])] : ($q['raw'] ?? '');
+        } else {
+            $sp = $q['json']['split_pricing'] ?? null;
+            $line['shown'] = is_array($sp) && !empty($sp['valid']) ? (float)$sp['total_with_vat'] : null;
+            $line['shown_detail'] = is_array($sp) ? ['child_supplement_total' => $sp['child_supplement_total'] ?? null, 'rate' => $sp['room_rate_total_per_night'] ?? null] : ($q['raw'] ?? '');
+        }
         if (!empty($q['leak']) || !empty($q['marker_lost']) || empty($q['rolled_back'])) { $harnessProblems[] = $c['key'] . ' (quote)'; }
         $post = ['room_id' => (string)$c['room_id'], 'check_in_date' => $ci, 'check_out_date' => $co, 'number_of_guests' => (string)$c['guests'],
             'child_guests' => (string)$c['children'], 'booking_type' => 'standard', 'guest_country' => '', 'guest_address' => '', 'special_requests' => ''];
+        if (!empty($c['extras'])) { $post['extra_room_types'] = array_map('strval', $c['extras']); }
     } else {
         $s = $shown[$c['key']] ?? null;
         if (!$s) { $line['note'] = 'could not measure: the browser gave no result (run limit)'; $rowsOut[] = $line; continue; }
@@ -248,13 +318,29 @@ foreach ($cases as $c) {
     }
     $email = 'zz.g0.' . $c['key'] . '.' . bin2hex(random_bytes(3)) . '@example.invalid';
     $uuid = sprintf('%s-%s-4%s-a%s-%s', bin2hex(random_bytes(4)), bin2hex(random_bytes(2)), substr(bin2hex(random_bytes(2)), 1), substr(bin2hex(random_bytes(2)), 1), bin2hex(random_bytes(6)));
-    $post = array_merge($post, ['csrf_token' => 'gbtc' . bin2hex(random_bytes(16)), 'client_uuid' => $uuid, 'guest_name' => 'Zz Gzero Compare',
+    $token = 'gbtc' . bin2hex(random_bytes(16));
+    $post = array_merge($post, ['csrf_token' => $token, 'client_uuid' => $uuid, 'guest_name' => 'Zz Gzero Compare',
         'guest_email' => $email, 'guest_phone' => '+265999000111']);
+    $casePosts[$c['key']] = ['post' => $post, 'setup' => $setup, 'vars' => $vars];
+
+    // Price check twice (Room step, then Review), the second on the token the first left behind.
+    $d3 = $dry($post, 3, $token, $setup, $vars);
+    $d5 = $dry($post, 5, array_key_exists('_csrf_pub_booking', (array)($d3['session'] ?? [])) ? $d3['session']['_csrf_pub_booking'] : null, $setup, $vars);
+    $line['quote3'] = isset($d3['json']['quote']['totals']['total_with_vat']) ? (float)$d3['json']['quote']['totals']['total_with_vat'] : null;
+    $line['quote5'] = isset($d5['json']['quote']['totals']['total_with_vat']) ? (float)$d5['json']['quote']['totals']['total_with_vat'] : null;
+    $line['quote_detail'] = isset($d5['json']['quote']) ? ['totals' => $d5['json']['quote']['totals'], 'lines' => array_map(fn($l) => $l['name'] . ' x' . $l['qty'] . ' ' . $l['line_total_with_vat'], $d5['json']['quote']['lines']),
+        'status' => $d5['json']['quote']['status']] : ['reply3' => $d3['json'] ?? null, 'reply5' => $d5['json'] ?? null];
+    foreach (['upto 3' => $d3, 'upto 5' => $d5] as $dl => $dr) {
+        if ($why = $dryClean($dr, $token)) { $dryProblems[] = $c['key'] . " dry $dl: " . implode('; ', $why); }
+    }
+    $savedToken = array_key_exists('_csrf_pub_booking', (array)($d5['session'] ?? [])) ? $d5['session']['_csrf_pub_booking'] : null;
+
     $resetLimit();
     $mailsBefore = $mailCount();
     $qe = $pdo->quote($email);
     $r = $harness('scripts/tests/mixed_booking_post_page.php', ['post' => $post, 'setup' => $setup, 'vars' => $vars, 'fake_smtp' => $port,
         'dump_html' => "$tmp/page.html", 'session_keys' => ['booking_success'],
+        'keep_csrf' => true, 'session' => $savedToken === null ? [] : ['_csrf_pub_booking' => $savedToken],
         'verify' => [
             "SELECT id, booking_reference, room_id, number_of_guests, adult_guests, child_guests, occupancy_type, status, is_tentative, total_amount, total_with_vat, amount_due,
                 vat_amount, tourism_levy_amount, child_supplement_total, package_total, rate_plan_id, rate_plan_discount FROM bookings WHERE guest_email = $qe ORDER BY id",
@@ -282,18 +368,95 @@ foreach ($cases as $c) {
         'confirmation_total' => $r['session']['booking_success']['total'] ?? null];
     if (abs($line['stored'] - $line['stored_detail']['amount_due']) > GBTC_TOL) { $line['note'] .= 'amount_due differs from total_with_vat. '; }
     if ($line['shown'] !== null) { $line['match'] = abs($line['shown'] - $line['stored']) <= GBTC_TOL ? 'yes' : 'NO'; }
+    $line['quote_match'] = ($line['quote3'] !== null && $line['quote5'] !== null
+        && abs($line['quote3'] - $line['stored']) <= GBTC_TOL && abs($line['quote5'] - $line['stored']) <= GBTC_TOL) ? 'yes' : 'NO';
     $rowsOut[] = $line;
+}
+
+// ── dry_run=1 without response=wizard: a normal save ──────────────────────────
+$extraOut = [];
+$base = $casePosts['single'] ?? (reset($casePosts) ?: null);
+$baseStored = null;
+foreach ($rowsOut as $l) { if (isset($casePosts['single']) && strpos($l['case'], 'single') === 0) { $baseStored = $l['stored']; } }
+if ($base) {
+    $p = $base['post'];
+    $p['guest_email'] = 'zz.gb.nowizard.' . bin2hex(random_bytes(3)) . '@example.invalid';
+    $p['client_uuid'] = sprintf('%s-%s-4%s-a%s-%s', bin2hex(random_bytes(4)), bin2hex(random_bytes(2)), substr(bin2hex(random_bytes(2)), 1), substr(bin2hex(random_bytes(2)), 1), bin2hex(random_bytes(6)));
+    $p['dry_run'] = '1';
+    $p['dry_run_upto'] = '3';
+    $qe = $pdo->quote($p['guest_email']);
+    $r = $postPage($p, $p['csrf_token'], $base['setup'], $base['vars'], ["SELECT COALESCE(SUM(total_with_vat), 0) AS t, COUNT(*) AS n FROM bookings WHERE guest_email = $qe"]);
+    $got = $r['verify'][1][0] ?? [];
+    $ok = !isset($r['json']) && (int)($got['n'] ?? 0) >= 1 && $r['emails'] === 2 && !empty($r['session']['booking_success'])
+        && ($baseStored === null || abs((float)$got['t'] - $baseStored) <= GBTC_TOL) && $r['session']['_csrf_pub_booking'] === null && !$r['bad_harness'];
+    $extraOut[] = ['dry_run=1 without response=wizard = normal save', $ok,
+        'rows ' . ($got['n'] ?? '?') . ', total ' . ($got['t'] ?? '?') . ' (single stored ' . ($baseStored ?? '?') . '), emails ' . $r['emails'] . ', token ' . ($r['session']['_csrf_pub_booking'] === null ? 'used up' : 'kept')];
+}
+
+// ── Refusals: the right step and field, nothing written ───────────────────────
+if ($base) {
+    $bp = $base['post'];
+    [$rci, $rco] = [$bp['check_in_date'], $bp['check_out_date']];
+    $rid = (int)$bp['room_id'];
+    $fresh = function (array $p): array {
+        $p['client_uuid'] = sprintf('%s-%s-4%s-a%s-%s', bin2hex(random_bytes(4)), bin2hex(random_bytes(2)), substr(bin2hex(random_bytes(2)), 1), substr(bin2hex(random_bytes(2)), 1), bin2hex(random_bytes(6)));
+        $p['guest_email'] = 'zz.gb.ref.' . bin2hex(random_bytes(3)) . '@example.invalid';
+        return $p;
+    };
+    $seedBooking = function (string $email, ?string $uuid) use ($pdo, $rid, $rci, $rco): string {
+        $n = (int)(new DateTime($rci))->diff(new DateTime($rco))->days;
+        return "INSERT INTO bookings (booking_reference, room_id, guest_name, guest_email, guest_phone, check_in_date, check_out_date, number_of_nights, number_of_guests, total_amount, status, client_uuid)
+            VALUES ('ZZGB" . strtoupper(bin2hex(random_bytes(3))) . "', $rid, 'Zz Gb Seed', " . $pdo->quote($email) . ", '+265999000111', " . $pdo->quote($rci) . ", " . $pdo->quote($rco) . ", $n, 1, 1000, 'pending', " . ($uuid === null ? 'NULL' : $pdo->quote($uuid)) . ")";
+    };
+    $yesterday = (new DateTime('yesterday'))->format('Y-m-d');
+    $tomorrow = (new DateTime('tomorrow'))->format('Y-m-d');
+    $refusals = [];
+    $p = $fresh($bp); $p['check_in_date'] = $yesterday; $p['check_out_date'] = $tomorrow;
+    $refusals[] = ['past date', $p, 5, [], ['ok' => false, 'step' => 1, 'field' => 'check_in_date']];
+    $p = $fresh($bp); $p['number_of_guests'] = '2'; $p['child_guests'] = '2';
+    $refusals[] = ['too many children', $p, 5, [], ['ok' => false, 'step' => 2, 'field' => 'child_guests']];
+    $p = $fresh($bp);
+    $refusals[] = ['room unavailable (seeded: no rooms of the type)', $p, 5, ["UPDATE rooms SET total_rooms = 0 WHERE id = $rid"], ['ok' => false, 'step' => 3, 'field' => 'room_id']];
+    $p = $fresh($bp);
+    $refusals[] = ['blocked date (seeded)', $p, 5, ["INSERT INTO blocked_dates (room_id, block_date, block_type, reason) VALUES ($rid, " . $pdo->quote($rci) . ", 'manual', 'zz G-B test')"], ['ok' => false, 'step' => 1, 'field' => 'check_in_date']];
+    $p = $fresh($bp); $p['guest_email'] = '';
+    $refusals[] = ['missing email, upto=5', $p, 5, [], ['ok' => false, 'step' => 4, 'field' => 'guest_email']];
+    $refusals[] = ['missing email, upto=3', $p, 3, [], ['ok' => true]];
+    $p = $fresh($bp);
+    $refusals[] = ['duplicate booking, upto=5 (seeded)', $p, 5, [$seedBooking($p['guest_email'], null)], ['ok' => false, 'step' => 5]];
+    $refusals[] = ['duplicate booking, upto=3 (not checked yet)', $p, 3, [$seedBooking($p['guest_email'], null)], ['ok' => true]];
+    $p = $fresh($bp); $usedUuid = $p['client_uuid'];
+    $refusals[] = ['used client_uuid (seeded)', $p, 5, [$seedBooking('zz.gb.other.' . bin2hex(random_bytes(3)) . '@example.invalid', $usedUuid)], ['ok' => true, 'duplicate' => true]];
+    $p = $fresh($bp); $p['csrf_token'] = 'gbtcwrong' . bin2hex(random_bytes(8));
+    $refusals[] = ['wrong token', $p, 5, [], ['ok' => false, 'step' => 0]];
+    foreach ($refusals as [$label, $p, $upto, $seed, $want]) {
+        $sessTok = $label === 'wrong token' ? 'gbtc' . bin2hex(random_bytes(16)) : $p['csrf_token'];
+        $r = $dry($p, $upto, $sessTok, array_merge($base['setup'], $seed), $base['vars']);
+        $j = $r['json'] ?? null;
+        $ok = is_array($j);
+        foreach ($want as $k => $v) { $ok = $ok && (($j[$k] ?? null) === $v); }
+        if ($label === 'used client_uuid (seeded)') {
+            $ok = $ok && strpos((string)($j['redirect'] ?? ''), 'booking-confirmation.php?ref=ZZGB') === 0 && ($r['session']['_confirm_refs'] ?? null) === null;
+        }
+        $why = $dryClean($r, $sessTok);
+        $ok = $ok && !$why;
+        $extraOut[] = [$label . ' (upto=' . $upto . ')', $ok, is_array($j)
+            ? json_encode(array_intersect_key($j, array_flip(['ok', 'step', 'field', 'message', 'duplicate', 'redirect']))) . ($j['ok'] && isset($j['quote']['totals']) ? ' quote ' . $j['quote']['totals']['total_with_vat'] : '')
+            : 'no JSON: ' . substr(strip_tags((string)($r['raw'] ?? '')), -200), $why];
+    }
 }
 if (is_resource($smtp)) { proc_terminate($smtp); proc_close($smtp); }
 $resetLimit();
 
 // ── Report ────────────────────────────────────────────────────────────────────
 $fmt = fn($v) => $v === null ? '—' : number_format((float)$v, 2);
-echo "\n" . str_pad('case', 52) . str_pad('shown', 16) . str_pad('stored', 16) . "match\n";
+echo "\n" . str_pad('case', 52) . str_pad('shown', 16) . str_pad('stored', 16) . str_pad('quote', 16) . "match quote\n";
 foreach ($rowsOut as $l) {
-    echo str_pad(substr($l['case'], 0, 51), 52) . str_pad($fmt($l['shown']), 16) . str_pad($fmt($l['stored']), 16) . $l['match'] . (isset($l['dates']) ? "   {$l['dates']}" : '') . "\n";
+    echo str_pad(substr($l['case'], 0, 51), 52) . str_pad($fmt($l['shown']), 16) . str_pad($fmt($l['stored']), 16) . str_pad($fmt($l['quote5'] ?? null), 16)
+        . str_pad($l['match'], 6) . ($l['quote_match'] ?? 'n/a') . (isset($l['dates']) ? "   {$l['dates']}" : '') . "\n";
     if (!empty($l['shown_detail'])) { echo "    shown:  " . json_encode($l['shown_detail']) . "\n"; }
     if (!empty($l['stored_detail'])) { echo "    stored: " . json_encode($l['stored_detail']) . "\n"; }
+    if (!empty($l['quote_detail'])) { echo "    quote:  upto3 " . $fmt($l['quote3'] ?? null) . ' | ' . json_encode($l['quote_detail']) . "\n"; }
     if (isset($l['emails_captured'])) { echo "    emails captured locally: {$l['emails_captured']}\n"; }
     if ($l['note'] !== '') { echo "    note: {$l['note']}\n"; }
 }
@@ -308,4 +471,13 @@ if ($harnessProblems) { echo 'HARNESS PROBLEM (leak / not rolled back): ' . impl
 if (!empty($shownAll['php_errors'])) { echo "php -S errors: " . implode(' | ', array_slice($shownAll['php_errors'], 0, 5)) . "\n"; }
 $bad = count(array_filter($rowsOut, fn($l) => $l['match'] === 'NO'));
 echo "\nmismatches: $bad\n";
-exit(($bad || $harnessProblems || $after !== $before) ? 1 : 0);
+$quoteBad = count(array_filter($rowsOut, fn($l) => ($l['quote_match'] ?? 'NO') === 'NO' && $l['stored'] !== null));
+echo "price check: quote vs stored mismatches $quoteBad of " . count(array_filter($rowsOut, fn($l) => $l['stored'] !== null)) . "\n";
+foreach ($dryProblems as $dp) { echo "    DRY RUN LEFT SOMETHING: $dp\n"; }
+$extraBad = 0;
+foreach ($extraOut as $x) {
+    $extraBad += $x[1] ? 0 : 1;
+    echo '  ' . ($x[1] ? 'PASS ' : 'FAIL ') . $x[0] . ': ' . $x[2] . (!empty($x[3]) ? '  [' . implode('; ', $x[3]) . ']' : '') . "\n";
+}
+echo "price check checks failed: $extraBad of " . count($extraOut) . "\n";
+exit(($bad || $quoteBad || $dryProblems || $extraBad || $harnessProblems || $after !== $before) ? 1 : 0);

@@ -148,6 +148,51 @@ booking.php differs from Rosalyn's in ~31 lines (branding); js/booking.js identi
   double-click guard; non-JSON reply handled.
 - Builder: dept-guest-site-lead (`model: opus`, bookings). Review: qa-auditor; final-review on G-B and G-C.
 
+### G-B spec-check corrections (2026-11-28, OVERRIDE the G-B / G-C text where they differ)
+1. CSRF: `pub_csrf_validate` unsets the token on success (includes/public-csrf.php:40). Dry run compares WITHOUT
+   consuming (hash_equals, no unset). Every `response=wizard` reply (dry or real) returns
+   `csrf_token: pub_csrf_generate('booking')`; the JS swaps it into the form (a refused real submit used it up and no
+   page re-render replaces it).
+2. Name/email/phone are required (booking.php:77-106) and the duplicate checks (:242, :479) need the email. Dry run
+   takes `dry_run_upto` (1-5, default 5): field errors of steps above it are skipped; the duplicate check runs only at 5.
+   The page quotes at step 3 (Room) with upto=3 and at Review with upto=5.
+3. The stored per-room values are computed inside the transaction (:586-621, interleaved with INSERTs); the headline
+   figures (:429-476) are not what is saved. Move :586-621 into ONE per-room helper used by the insert loop and the
+   dry run; sum like :704-708, round like :799-800; child supplement stored unrounded (:664), round only for display.
+   Keep $room_price / $total_amount / $occupancy_type as used by emails and timeline (:757, :806-810).
+4. Mixed: `rh_mixed_create` (includes/mixed-booking.php:404) only reads up to :458 -> split into a prepare step shared
+   with the dry run (returns a step number too); split the under-lock re-check :466-492 so the dry run calls it
+   without the lock; row maths :515-522 one helper. `rh_mixed_price_plan` totals (:293-296) are unrounded and exclude
+   packages: NOT the quote. Dry run branches at booking.php:259 and never calls `rh_mixed_finish` (emails, session,
+   redirect :623-724).
+5. Not dry-run side effects (ignore in the no-write proof): expiry sweeps config/database.php:190-199 every request
+   (counts rows, not statuses); getSetting setCache (:1117); pub_ip_rate_limit cache + temp file (public-csrf.php:113-115;
+   the dry run uses its own key). `requireBookingEnabled` (booking.php:30) answers HTML 503/redirect = non-JSON = step 0.
+6. Quote vs save may rightly differ: rate plans count from today (includes/pricing.php:118); joined pair re-picked at
+   save (:376/:589); a package switched off (pricing.php:964); assignRoomCombinationToBooking may refuse after insert
+   (:683, mixed :553). G-C posts `quote_total` and the save refuses at step 5 beyond BALANCE_TOLERANCE (wizard only).
+   Inventory refusal :541 -> step 3.
+7. Steps (`field` = the $validation_errors key): 1 dates; 2 guest counts / occupancy / children counts (:310-313);
+   3 room, availability, joined (:378, :397), packages (:471), children not allowed (:426, :447); 4 name, email, phone,
+   country, address, requests; 5 duplicate booking; 0 CSRF, rate limit, lock conflict (:889). Non-wizard posts keep
+   the combined message at :195 exactly.
+8. G-C: `rh_mixed_finish` redirects + exits (mixed-booking.php:723-724) -> flag to return instead; the JSON success
+   must still send the emails, set booking_success and call pub_confirm_remember. public-sw.js:82 does not intercept
+   POST; js/booking.js has no offline queue.
+
+G-B build choices (dept-guest-site-lead, 2026-11-28):
+- ASSUMPTION: price-check rate limit is its own per-IP key `booking_quote`, 60 per 10 minutes; it never counts as a
+  booking attempt (session `booking_attempts` untouched).
+- ASSUMPTION: `dry_run_upto` 1-2 with valid fields replies `ok:true`, `quote:null` (nothing to price before a room).
+- ASSUMPTION: for upto < 4 the absent details get stand-ins (Guest / guest@example.invalid / 00000000) so the shared
+  availability check can run; never saved (the dry run stops before any write; duplicate check only at 5).
+- ASSUMPTION: capacity refusals of validateBookingWithAvailability -> step 3; availability refusals -> step 1 when the
+  check-in is past or the type has blocked dates in the stay, else step 3. ga_plan refusals -> step 2 (field
+  `child_guests` for children_not_allowed / children_max, else `number_of_guests`).
+- ASSUMPTION: online booking switched off -> dry run answers JSON step 0 "Online booking is unavailable right now."
+- ASSUMPTION: a used client_uuid answers `{ok:true, duplicate:true, step:5, redirect}` without pub_confirm_remember
+  (no session write); G-C must remember the reference before following the redirect.
+
 ## Test cases (headless browser on Liwonde, every phase)
 1 room 2 nights pay in full; pay part (Partially Paid); pay over without tick (stopped in step 4) and with tick
 (credit note); 2 room types; child supplement; rate plan; joined room; manager override; under-tier refusal for front
