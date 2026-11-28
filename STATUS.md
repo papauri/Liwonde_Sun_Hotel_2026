@@ -124,6 +124,15 @@ Deeper trackers to read next:
     placeholder, comments, joined-rooms message, column order). LATER: step-5 duplicate check probe-able 60/10 min;
     joined messages on one step; catch(Exception) misses TypeError (non-JSON); duplicate-uuid reply skips
     pub_confirm_remember (G-C); rare step-3 refusal filed as step 4; compare test hardcodes 0.01. NEXT: G-A.
+  - G-A SHIPPED 2026-11-28 (Liwonde c1a858a / Rosalyn's 1e1dc73): the public booking page is five steps (dates,
+    guests, room, details, review). Each Continue runs the G-B price check up to that step; a refusal opens its step
+    with the server's message; Review shows the server's quote. Book still posts the normal form (unchanged save,
+    emails, amounts). New test scripts/tests/guest_booking_steps_browser.mjs (Liwonde only, never presses Book) 81/0;
+    G0 guard 12/12. qa-auditor FAIL on literal font values + new primary button -> tokens + .editorial-btn-primary ->
+    qa-quick PASS. Rosalyn's booking.php + booking.css by 3-way merge (+/- lines identical to Liwonde's), booking.js
+    copied. LATER: summaryRoomList keeps per-night amounts in the non-fresh state; a refused save that opens at step
+    5 says "checking the price again" with no check running; without JS Back/Continue do nothing and novalidate drops
+    browser field checks; the steps test failed once (46/1) then ran 81/0 three times. NEXT: G-C (background submit).
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
