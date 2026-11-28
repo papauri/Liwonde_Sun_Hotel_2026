@@ -87,7 +87,17 @@ Deeper trackers to read next:
     (Phase C replaces it); when credit covers the whole total the amount is empty so staff must untick payment; a
     refused save comes back with the guest email ticked and status not restored (as before); quotation PDF send not
     tested live.
-  - Phase C IN PROGRESS: Create without reload.
+  - Phase C SHIPPED 2026-11-28: Liwonde 7402470 / Rosalyn's 80c985b. Create saves in the background
+    (response=wizard), refusal opens its step, quote_total check before any write (wizard only), post-commit failure
+    says "saved", non-JSON reply says "It may have saved", double click guarded. qa-auditor FAIL (lock-conflict text
+    after commit) -> fixed -> accounting lead + final-review PASS. Tests dryrun 72/0, payment 31/0, email_wording
+    175/0, browser cases 0 failed, plain vs background save identical. 20 test bookings cancelled, email off.
+    Builders switched to effort HIGH (owner 2026-11-28).
+  - LATER batch IN PROGRESS (owner "complete any later items"): the 13 B/A/C later items (credit preview = applied,
+    per-row status, override-without-reason warning, one 0.01 credit threshold only if before/after identical, tests
+    in run_tests.php, harness receipt cleanup, JSON_INVALID_UTF8_SUBSTITUTE, credit covers total -> untick payment,
+    refused save restores status + email tick, quotation PDF test, flash on booking-details, price-mismatch log level,
+    background saves count as activity). Then guest phases G0 -> G-B -> G-A -> G-C.
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
