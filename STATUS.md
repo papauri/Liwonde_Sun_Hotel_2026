@@ -114,7 +114,7 @@ Deeper trackers to read next:
     Liwonde; tiny race between the port check and start-up. NEXT: G-B (spec-check first, money).
   - IN PROGRESS 2026-11-28 (owner "do G-B and all remaining", session 28ad065e): G-B spec-check done (corrections
     1-8 pasted into the plan); G0 harness gained a two-room-types (mixed) case, 2,450,600.00 match.
-  - G-B SHIPPED 2026-11-28 (hashes in the commit "STATUS + GUIDES_AI_SYNC: guest G-B"): price check (dry run) of the
+  - G-B SHIPPED 2026-11-28 (Liwonde 9da2f3a / Rosalyn's abeab84): price check (dry run) of the
     guest save: POST dry_run=1 + response=wizard (+ dry_run_upto 1-5) returns the save's own figures as JSON, writes
     nothing, CSRF compared not consumed (pub_csrf_check), own IP limit booking_quote 60/10 min. Per-room maths in
     includes/guest-booking-quote.php shared by save + dry run; rh_mixed_create split into rh_mixed_prepare /
