@@ -34,7 +34,7 @@ $GLOBALS['stub_calls'] = 0;
 $GLOBALS['stub_page'] = null; // Google's price page: null = cannot be read
 $GLOBALS['stub_page_calls'] = 0;
 rh_ai_set_transport(static function ($method, $url, $headers, $body, $timeout) {
-    if ($method === 'GET' && strpos($url, 'ai.google.dev/gemini-api/docs/pricing') !== false) {
+    if ($method === 'GET' && $url === 'https://aistudio.google.com/docs/pricing') { // moved from ai.google.dev (fault 2026-11-29)
         $GLOBALS['stub_page_calls']++;
         return $GLOBALS['stub_page'] !== null ? ['http' => 200, 'body' => $GLOBALS['stub_page'], 'error' => ''] : ['http' => 503, 'body' => '', 'error' => 'unavailable'];
     }
@@ -182,6 +182,52 @@ try {
         'price list: the "xai/" and "gemini/" prefixes are dropped; a Responses model counts; a US$0/US$0 free tier is not a price; a broken list reads as nothing');
     check(rh_ai_price_page_url('google') !== rh_ai_price_page_url('anthropic') && strpos(rh_ai_price_page_url('anthropic'), 'model_prices_and_context_window.json') !== false
         && rh_ai_price_page_url('nobody') === '', 'price sources: Google its page, every other provider the public list, an unknown provider none');
+
+    // Fault 2026-11-29 (the price page never read since 2026-11-20): the page moved to aistudio.google.com and is now an
+    // app shell whose text is Markdoc, HTML-escaped, inside <noscript><pre>. The fixture is a trimmed copy of the real
+    // page (the shell with its inline style/JSON emptied, seven model sections verbatim, in page order).
+    $aisPage = (string)file_get_contents($root . '/scripts/tests/fixtures/ai/google_pricing_aistudio.html');
+    $ais = rh_ai_price_page_parse($aisPage);
+    $aisIds = array_keys($ais);
+    sort($aisIds);
+    check($aisIds === ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.1-flash-live-preview', 'gemini-3.1-pro-preview', 'gemini-3.1-pro-preview-customtools', 'gemini-3.5-transcribe-live',
+        'gemini-3.8-flash', 'gemini-3.8-live', 'gemini-3.8-live-extended-thinking', 'gemini-4-carbon'],
+        'new price page: exactly the ids from each section\'s link block (ids named in a note never count)', json_encode($aisIds));
+    check(($ais['gemini-4-carbon']['label'] ?? '') === 'Gemini 4 Carbon' && strpos((string)($ais['gemini-3.8-live']['label'] ?? ''), '{%') === false,
+        'new price page: the label is the section name without its {% id %} tag', json_encode(array_column($ais, 'label')));
+    foreach (['2026-11-29' => [[2.0, 10.0], [0.75, 3.75]], '2026-12-15' => [[4.0, 20.0], [0.75, 3.75]]] as $day => [$carbon, $flash]) {
+        check($rd($ais, 'gemini-4-carbon', $day) === $carbon, "new price page $day: Gemini 4 Carbon's dated price (Standard tab, not Batch)", json_encode($ais['gemini-4-carbon'] ?? null));
+        check($rd($ais, 'gemini-3.8-flash', $day) === $flash && $rd($ais, 'gemini-2.5-pro', $day) === [1.25, 10.0],
+            "new price page $day: gemini-3.8-flash gets its own price, never Gemini 2.5 Pro's (the 2.5 Pro note names it)", json_encode([$ais['gemini-3.8-flash'] ?? null, $ais['gemini-2.5-pro'] ?? null]));
+        check($rd($ais, 'gemini-3.8-live', $day) === [0.75, 4.5] && $rd($ais, 'gemini-3.8-live-extended-thinking', $day) === [0.75, 4.5] && $rd($ais, 'gemini-3.1-flash-live-preview', $day) === [0.75, 4.5],
+            "new price page $day: all three Live ids from a block over three lines, a section with no tabs, the text price", json_encode($ais['gemini-3.8-live'] ?? null));
+        check($rd($ais, 'gemini-3.1-pro-preview', $day) === [2.0, 12.0] && $rd($ais, 'gemini-3.1-pro-preview-customtools', $day) === [2.0, 12.0],
+            "new price page $day: both 3.1 Pro ids (\"... and ...\" over two lines) at the lowest prompt tier");
+        check($rd($ais, 'gemini-3.5-transcribe-live', $day) === [3.5, 21.0], "new price page $day: \"\$3.50 or \$0.005/min\" reads 3.50 (a per-minute price is not a per-1M price)", json_encode($ais['gemini-3.5-transcribe-live'] ?? null));
+        check(!isset($ais['gemini-3.5-flash-lite']) && $rd($ais, 'gemini-2.5-flash', $day) === [0.3, 2.5],
+            "new price page $day: gemini-3.5-flash-lite is not taken from the 2.5 Flash note; 2.5 Flash is its text price");
+    }
+    check(rh_ai_price_page_amounts('$0.005/min') === [] && rh_ai_price_page_amounts('$0.50 / 1,000,000 tokens per hour') === [] && rh_ai_price_page_amounts('$2.50.') === [[2.5, null, null]],
+        'amounts: a price followed by "/" is skipped (never shrunk to $0.00); a price before a full stop still counts');
+    check(rh_ai_price_page_md_clean("\$1.00 per image{% sup /%}, \$2.00{% sup %}*{% /sup %} (text)") === '$1.00 per image, $2.00 (text)',
+        'Markdoc cleaning: a {% sup %} footnote mark goes with its content; a self-closing {% sup /%} never swallows the text after it');
+    $md = rh_ai_price_page_markdoc_source($aisPage);
+    check($md !== '' && strpos($md, '&quot;') === false && count(rh_ai_price_page_parse($md)) === count($ais),
+        'a plain Markdown reply (the page text without the shell) parses the same');
+    check(rh_ai_price_page_markdoc_source($page) === '', 'the older HTML page still takes the HTML path');
+
+    // End to end at the new URL through the stubbed transport: saved, no "could not be read" notice
+    rh_ai_save_settings(['ai_notices_json' => ''], $pdo);
+    $GLOBALS['stub_page'] = $aisPage;
+    $GLOBALS['stub_pricelist'] = null;
+    $callsA = $GLOBALS['stub_page_calls'];
+    $rA = rh_ai_price_page_refresh($pdo, 'google');
+    $savedA = rh_ai_price_page_saved($pdo, 'google');
+    $pricesA = rh_ai_price_page_prices($pdo, 'google', '2026-11-29');
+    check($rA['ok'] && $rA['count'] === 10 && $GLOBALS['stub_page_calls'] === $callsA + 1 && isset($savedA['ids']['gemini-4-carbon'])
+        && ($pricesA['gemini-3.8-flash'] ?? null) === [0.75, 3.75] && strpos(json_encode(rh_ai_notices()), 'price_page') === false,
+        'refresh: the new page is read at its new URL and saved as ai_price_page_google, with no notice', json_encode([$rA, array_keys($savedA['ids'])]));
+    $GLOBALS['stub_page'] = null;
 
     $GLOBALS['stub_page'] = $page;
     $GLOBALS['stub_pricelist'] = $listJson;

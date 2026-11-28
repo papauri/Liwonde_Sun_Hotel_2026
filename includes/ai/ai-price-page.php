@@ -26,7 +26,8 @@ require_once __DIR__ . '/ai-providers.php';
 function rh_ai_price_page_url(string $provider): string
 {
     if ($provider === 'google') {
-        return 'https://ai.google.dev/gemini-api/docs/pricing';
+        // Moved 2026-11 (the old ai.google.dev page now answers 301 here; redirects are never followed).
+        return 'https://aistudio.google.com/docs/pricing';
     }
     return isset(rh_ai_price_list_providers()[$provider]) ? rh_ai_price_list_url() : '';
 }
@@ -127,7 +128,9 @@ function rh_ai_price_page_amounts(string $cellText): array
     $date = '(\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4}|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2})';
     $out = [];
     foreach (preg_split('/\n/', $cellText) ?: [] as $line) {
-        if (!preg_match_all('/\$\s?(\d+(?:\.\d+)?)/', $line, $am, PREG_OFFSET_CAPTURE)) {
+        // A price followed by "/" ("$0.005/min", "$0.50 / 1,000,000 tokens per hour") is not a per-1M-token price.
+        // Possessive, so "$0.005/min" can never shrink to "$0.00".
+        if (!preg_match_all('/\$\s?(\d++(?:\.\d++)?+)(?!\s*\/)/', $line, $am, PREG_OFFSET_CAPTURE)) {
             continue;
         }
         preg_match_all('/\b(until|through|thru|till|to|before|ends?|ending|from|starting|starts?|effective|after|as of|beginning|begins?)\s+(?:on\s+)?' . $date . '/i', $line, $qm, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
@@ -189,11 +192,162 @@ function rh_ai_price_page_amounts(string $cellText): array
 }
 
 /**
- * Read the price page HTML.
+ * The Markdoc source of the price page, or '' when the reply is plain HTML.
+ * Since 2026-11 the page is an app shell; its text is Markdoc, HTML-escaped, inside <noscript><pre>. A plain Markdown
+ * reply (the page's .md form) is used as it is. String positions, not one big regex, so a large page cannot hit the
+ * regex limits.
+ */
+function rh_ai_price_page_markdoc_source(string $body): string
+{
+    $pos = 0;
+    while (($ns = stripos($body, '<noscript', $pos)) !== false) {
+        $nsEnd = stripos($body, '</noscript>', $ns);
+        $pre = stripos($body, '<pre', $ns);
+        if ($pre === false) {
+            break;
+        }
+        if ($nsEnd !== false && $nsEnd < $pre) { // this <noscript> holds no <pre>
+            $pos = $nsEnd + 1;
+            continue;
+        }
+        $gt = strpos($body, '>', $pre);
+        $preEnd = $gt === false ? false : stripos($body, '</pre>', $gt);
+        if ($preEnd === false) {
+            break;
+        }
+        $inner = substr($body, $gt + 1, $preEnd - $gt - 1);
+        if (strpos($inner, '{% table') !== false) {
+            return str_replace(["\r\n", "\r"], "\n", html_entity_decode($inner, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+        $pos = $preEnd + 1;
+    }
+    return strpos($body, '{% table') !== false ? str_replace(["\r\n", "\r"], "\n", $body) : '';
+}
+
+/** Plain text of one bit of Markdoc: {% sup %} with its content, other {% %} tags, links (text kept) and ** removed. */
+function rh_ai_price_page_md_clean(string $s): string
+{
+    // An open {% sup %} ... {% /sup %} on one line (a self-closing {% sup /%} has no content and goes with the other tags).
+    $s = (string)preg_replace('/\{%\s*sup\s*%\}.*?\{%\s*\/sup\s*%\}/', '', $s);
+    $s = (string)preg_replace('/\{%.*?%\}/s', '', $s);
+    $s = (string)preg_replace('/\[([^\]]*)\]\([^)]*\)/', '$1', $s);
+    $s = str_replace(['**', "\xC2\xA0"], ['', ' '], $s);
+    $lines = [];
+    foreach (explode("\n", $s) as $l) {
+        $l = trim((string)preg_replace('/\s*\\\\+\s*$/', '', $l)); // a trailing "\" hard break
+        $l = (string)preg_replace('/[ \t]+/', ' ', $l);
+        if ($l !== '') {
+            $lines[] = $l;
+        }
+    }
+    return implode("\n", $lines);
+}
+
+/**
+ * The model ids of one Markdoc section: only from the italic link block under the heading
+ * (*[`id`](/docs/models/id), [`id2`](...)*), which can run over a few lines. Ids named anywhere else (a "routes to
+ * Gemini 3.8 Flash (`gemini-3.8-flash`)" note) never count.
+ * @return list<string>
+ */
+function rh_ai_price_page_md_ids(string $beforeTable): array
+{
+    $block = '';
+    $in = false;
+    foreach (explode("\n", $beforeTable) as $line) {
+        $t = rtrim($line);
+        if (!$in) {
+            if (!preg_match('/^\s*\*\[`/', $t)) {
+                continue;
+            }
+            $in = true;
+        } elseif (trim($t) === '') {
+            break; // the block never runs past a blank line
+        }
+        $block .= $t . "\n";
+        if (substr($t, -2) === ')*') {
+            break;
+        }
+    }
+    preg_match_all('/`([a-z][a-z0-9._\-]*)`/i', $block, $m);
+    return array_values(array_unique(array_map('strtolower', $m[1] ?? [])));
+}
+
+/**
+ * Read the Markdoc price page: one model per "## " section, its ids from the link block under the heading, its price
+ * from the first {% table %} with an "Input price" and an "Output price" row (the Standard tab; Batch, Flex and
+ * Priority come after it), Paid column. Same shape as rh_ai_price_page_parse.
+ */
+function rh_ai_price_page_parse_markdoc(string $md): array
+{
+    $out = [];
+    foreach (preg_split('/^## (?!#)/m', $md) ?: [] as $i => $sec) {
+        if ($i === 0) {
+            continue;
+        }
+        $nl = strpos($sec, "\n");
+        $label = rh_ai_price_page_md_clean($nl === false ? $sec : substr($sec, 0, $nl));
+        $tPos = strpos($sec, '{% table');
+        if ($tPos === false) {
+            continue;
+        }
+        $ids = rh_ai_price_page_md_ids(substr($sec, 0, $tPos));
+        if (!$ids || !preg_match_all('/\{%\s*table\s*%\}(.*?)\{%\s*\/table\s*%\}/s', $sec, $tm)) {
+            continue;
+        }
+        foreach ($tm[1] as $table) {
+            $paidCol = -1;
+            $in = null;
+            $outP = null;
+            foreach (preg_split('/^[ \t]*---[ \t]*$/m', $table) ?: [] as $row) {
+                $cells = [];
+                foreach (explode("\n", $row) as $line) {
+                    $line = rtrim($line);
+                    if (preg_match('/^\s*\*(?:\s(.*))?$/', $line, $cm)) {
+                        $cells[] = (string)($cm[1] ?? '');
+                    } elseif ($cells && trim($line) !== '') {
+                        $cells[count($cells) - 1] .= "\n" . $line; // a continuation line belongs to the cell above
+                    }
+                }
+                $cells = array_map('rh_ai_price_page_md_clean', $cells);
+                if (!$cells) {
+                    continue;
+                }
+                if ($paidCol < 0) {
+                    foreach ($cells as $ci => $c) {
+                        if (stripos($c, 'paid') !== false) {
+                            $paidCol = $ci;
+                        }
+                    }
+                }
+                $head = strtolower($cells[0]);
+                $cell = $cells[$paidCol >= 0 && isset($cells[$paidCol]) ? $paidCol : count($cells) - 1];
+                if ($in === null && strpos($head, 'input price') === 0) {
+                    $in = rh_ai_price_page_amounts($cell);
+                } elseif ($outP === null && strpos($head, 'output price') === 0) {
+                    $outP = rh_ai_price_page_amounts($cell);
+                }
+            }
+            if ($in && $outP) {
+                foreach ($ids as $id) {
+                    $out[$id] = ['in' => $in, 'out' => $outP, 'label' => $label];
+                }
+                break;
+            }
+        }
+    }
+    return $out;
+}
+
+/**
+ * Read the price page (the app shell with its Markdoc text, a Markdown reply, or the older HTML page).
  * @return array<string,array{in:list<array>,out:list<array>,label:string}> model id => price windows (see rh_ai_price_page_amounts)
  */
 function rh_ai_price_page_parse(string $html): array
 {
+    $md = rh_ai_price_page_markdoc_source($html);
+    if ($md !== '') {
+        return rh_ai_price_page_parse_markdoc($md);
+    }
     $out = [];
     // One model per section: from one <h2> to the next. The ids are in <code> before the first price table; the first
     // table with an "Input price" row is the standard tier (Batch and other tiers come after it).
@@ -328,17 +482,24 @@ function rh_ai_price_page_refresh(PDO $db, string $provider): array
     $isPage = $provider === 'google';
     $fromList = 0;
     $ua = 'User-Agent: Mozilla/5.0 (compatible; HotelAssistantPrices/1.0)';
+    // What the read gave, for one log line when nothing was found (never the body or headers).
+    $diag = ['http' => 0, 'error' => '', 'ids' => 0];
     try {
         if ($isPage) {
             $r = rh_ai_http('GET', $url, ['Accept: text/html', $ua], null, 10);
+            $diag = ['http' => (int)($r['http'] ?? 0), 'error' => (string)($r['error'] ?? ''), 'ids' => 0];
             if ($r['http'] === 200 && $r['body'] !== '' && strlen($r['body']) <= 6000000) {
                 $found = rh_ai_price_page_parse($r['body']);
+                $diag['ids'] = count($found);
             }
         }
         // The public list: the source for the other providers; for Google only after a good page read (a failed page
         // read keeps the last saved page prices with their dates, never a list-only set).
         if (isset(rh_ai_price_list_providers()[$provider]) && (!$isPage || $found)) {
             $r = rh_ai_http('GET', rh_ai_price_list_url(), ['Accept: application/json', $ua], null, 20);
+            if (!$isPage) {
+                $diag = ['http' => (int)($r['http'] ?? 0), 'error' => (string)($r['error'] ?? ''), 'ids' => 0];
+            }
             if ($r['http'] === 200 && $r['body'] !== '' && strlen($r['body']) <= 15000000) { // about 5 MB
                 foreach (rh_ai_price_list_parse($r['body'], $provider) as $id => $p) {
                     if (!isset($found[$id])) {
@@ -350,8 +511,11 @@ function rh_ai_price_page_refresh(PDO $db, string $provider): array
         }
     } catch (Throwable $e) {
         $found = $isPage ? $found : [];
+        $diag['error'] = trim($diag['error'] . ' ' . $e->getMessage());
     }
     if (!$found) {
+        error_log('Assistant: ' . $provider . ' prices not read from ' . $url . ': HTTP ' . $diag['http']
+            . ', error "' . mb_substr($diag['error'], 0, 200) . '", ' . $diag['ids'] . ' model ids parsed.');
         $saved = rh_ai_price_page_saved($db, $provider);
         $since = $saved['at'] !== '' ? ' (last read ' . date('j M Y', (int)strtotime($saved['at'])) . ')' : '';
         $msg = $isPage
