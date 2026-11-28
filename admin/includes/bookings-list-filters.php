@@ -333,6 +333,7 @@ if (!function_exists('rh_bk_valid_date')) {
             'group_bookings' => 'group-bookings',
             'current'        => 'current', // owner 2026-11-29: pending, tentative, confirmed, checked in (not cancelled, expired, checked out or no-show; deleted rows are never in the list)
             'online'         => 'online', // owner 2026-11-29: booked on the website or through a booking link (rh_bk_source_sql)
+            'front_desk'     => 'front-desk', // owner 2026-11-29: made in the system, every booking that is not Online
         ];
     }
 
@@ -416,6 +417,10 @@ if (!function_exists('rh_bk_valid_date')) {
             case 'online':
                 // Made by the guest (website or booking link): the same rule as ?source=online.
                 return ['clauses' => [rh_bk_source_sql() . " = 'online'"], 'order' => null];
+            case 'front-desk':
+                // Made in the system (staff, system or not recorded): exactly the bookings Online leaves out. The source
+                // expression always gives a value (ELSE 'none'), so Online + Front desk = All.
+                return ['clauses' => [rh_bk_source_sql() . " <> 'online'"], 'order' => null];
         }
         return ['clauses' => [], 'order' => null];
     }
@@ -1143,7 +1148,7 @@ if (!function_exists('rh_bk_filters_from_get')) {
      * The list's default ORDER BY when no header sort is chosen (Decision 5; the caller adds the tiebreak b.id DESC):
      *   tabs with their own order (today's check-ins / check-outs, expiring)  -> that order
      *   history views                                                         -> newest first (created_at DESC)
-     *   upcoming views (All, Current, Online, In house, Pending, Unpaid, Tentative, Groups) -> arrivals from today on, soonest
+     *   upcoming views (All, Current, Online, Front desk, In house, Pending, Unpaid, Tentative, Groups) -> arrivals from today on, soonest
      *                                                                            first, then past arrivals, latest first
      *   any other view (Paid, booked today / week / month, other statuses)    -> newest first, as before
      */
@@ -1156,7 +1161,7 @@ if (!function_exists('rh_bk_filters_from_get')) {
         if (rh_bk_view_kind($tab, $status) === 'history') {
             return 'b.created_at DESC';
         }
-        if (in_array($tab, ['', 'checked-in', 'pending', 'unpaid', 'tentative', 'group-bookings', 'current', 'online'], true)) {
+        if (in_array($tab, ['', 'checked-in', 'pending', 'unpaid', 'tentative', 'group-bookings', 'current', 'online', 'front-desk'], true)) {
             return '(b.check_in_date < CURDATE()) ASC, (CASE WHEN b.check_in_date >= CURDATE() THEN b.check_in_date END) ASC, b.check_in_date DESC';
         }
         return 'b.created_at DESC';
@@ -1208,7 +1213,7 @@ if (!function_exists('rh_bk_filters_from_get')) {
             || in_array($tab, ['paid', 'unpaid'], true)) {
             $only[] = 'payment';
         }
-        if ((string)($f['source'] ?? '') !== '' || $tab === 'online') {
+        if ((string)($f['source'] ?? '') !== '' || $tab === 'online' || $tab === 'front-desk') {
             $only[] = 'source';
         }
         if ((int)($f['created_by'] ?? 0) > 0) {

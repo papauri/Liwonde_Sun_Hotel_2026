@@ -32,7 +32,10 @@ eq(rh_bk_filters_from_get(['filter' => 'nonsense'])['filter'], '', 'unknown ?fil
 eq(rh_bk_tab_clauses('current')['clauses'], ["b.status NOT IN ('cancelled', 'expired', 'checked-out', 'no-show')"], 'Current clause');
 eq(rh_bk_tab_clauses('online')['clauses'], [rh_bk_source_sql() . " = 'online'"], 'Online clause = ?source=online rule');
 eq(rh_bk_tab_clauses('expired'), ['clauses' => [], 'order' => null], 'Expired adds nothing (filter_status does it)');
-foreach (['current', 'online'] as $t) {
+eq(rh_bk_tab_map()['front_desk'] ?? '', 'front-desk', '?filter=front_desk opens the Front desk tab');
+eq(rh_bk_filters_from_get(['filter' => 'front_desk'])['tab'], 'front-desk', 'filter=front_desk -> tab front-desk');
+eq(rh_bk_tab_clauses('front-desk')['clauses'], [rh_bk_source_sql() . " <> 'online'"], 'Front desk clause = not Online');
+foreach (['current', 'online', 'front-desk'] as $t) {
     check(strpos(implode(' ', rh_bk_tab_clauses($t)['clauses']), '?') === false, "$t clause has no placeholder (badge SUM can reuse it)");
     eq(rh_bk_default_order($t, ''), rh_bk_default_order('', ''), "$t: same order as All");
     eq(rh_bk_view_kind($t, ''), 'upcoming', "$t: upcoming view");
@@ -44,12 +47,14 @@ $cal = static function (array $get): array { $f = rh_bk_filters_from_get($get); 
 eq($cal(['filter' => 'current'])['list_only'], ['status'], 'calendar note: Current names status');
 eq($cal(['filter' => 'online'])['list_only'], ['source'], 'calendar note: Online names source');
 eq($cal(['filter_status' => 'expired'])['list_only'], ['status'], 'calendar note: Expired names status');
+eq($cal(['filter' => 'front_desk'])['list_only'], ['source'], 'calendar note: Front desk names source');
 $chips = rh_bk_chips(rh_bk_filters_from_get(['filter_status' => 'expired']));
 eq($chips[0]['label'] ?? '', 'Status: Expired', 'Expired chip');
 require_once $root . '/admin/includes/bookings-saved-filters.php';
 eq(rh_bk_saved_query('filter=current&size=25'), 'filter=current&size=25', 'saved filter keeps Current');
 eq(rh_bk_saved_query('filter=online'), 'filter=online', 'saved filter keeps Online');
 eq(rh_bk_saved_query('filter_status=expired'), 'filter_status=expired', 'saved filter keeps Expired');
+eq(rh_bk_saved_query('filter=front_desk'), 'filter=front_desk', 'saved filter keeps Front desk');
 
 // ---- database part: Liwonde only, read-only. Path check FIRST: at Rosalyn's (live) the database is never opened.
 if (stripos($root, 'Liwonde') !== false) { require $root . '/config/database.php'; }
@@ -62,7 +67,7 @@ if (stripos($root, 'Liwonde') === false || stripos((string)getSetting('site_name
         $sc = rh_bk_scope($f, true);
         $where = implode(' AND ', array_merge($sc['clauses'], ['b.deleted_at IS NULL']));
         $sum = static function (string $tab): string { return 'SUM(' . implode(' AND ', rh_bk_tab_clauses($tab)['clauses']) . ')'; };
-        $st = $pdo->prepare("SELECT COUNT(*) AS total, " . $sum('current') . " AS cur, " . $sum('online') . " AS onl, SUM(b.status = 'expired') AS exp
+        $st = $pdo->prepare("SELECT COUNT(*) AS total, " . $sum('current') . " AS cur, " . $sum('online') . " AS onl, " . $sum('front-desk') . " AS fd, SUM(b.status = 'expired') AS exp
             FROM bookings b LEFT JOIN rooms r ON b.room_id = r.id LEFT JOIN individual_rooms ir ON b.individual_room_id = ir.id WHERE $where");
         $st->execute($sc['params']);
         return array_map('intval', $st->fetch(PDO::FETCH_ASSOC));
@@ -92,6 +97,11 @@ if (stripos($root, 'Liwonde') === false || stripos((string)getSetting('site_name
     eq($b['exp'], $expHand, 'Expired: = status expired, not deleted (hand-written count)');
     eq($b['onl'], $listCount(['filter' => 'online']), 'Online: badge = list count');
     eq($b['onl'], $listCount(['source' => 'online']), 'Online tab count = ?source=online count');
+    $fd = $listCount(['filter' => 'front_desk']);
+    echo "front desk: $fd\n";
+    eq($fd, $b['fd'], 'Front desk: badge = list count');
+    eq($b['onl'] + $fd, $total, 'Online + Front desk = All');
+    eq($listCount(['filter' => 'front_desk', 'source' => 'online']), 0, 'Front desk + Source online = none');
     check($b['cur'] > 0 && $b['exp'] > 0, 'Liwonde has Current and Expired rows to prove against');
 
     // Current excludes the other tabs' statuses, deleted rows never listed.

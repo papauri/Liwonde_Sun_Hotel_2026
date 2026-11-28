@@ -3326,7 +3326,7 @@ $total_bookings = $pending = $tentative = $confirmed = $checked_in = 0;
 $checked_out = $cancelled = $no_show = $paid = $unpaid = 0;
 $today_checkins = $today_checkouts = $today_bookings = 0;
 $week_bookings = $month_bookings = $expiring_soon = $group_bookings = 0;
-$current_bookings = $online_bookings = $expired = 0;
+$current_bookings = $online_bookings = $front_desk_bookings = $expired = 0;
 $list_count = 0;
 $deleted_count = 0;
 $current_page_count = 0;
@@ -3509,6 +3509,7 @@ try {
             SUM(b.status = 'expired')                                                                     AS expired,
             {$bk_badge_sum('current')}                                                                      AS current_bookings,
             {$bk_badge_sum('online')}                                                                     AS online_bookings,
+            {$bk_badge_sum('front-desk')}                                                                 AS front_desk_bookings,
             {$bk_badge_sum('paid')}                                                                    AS paid,
             {$bk_badge_sum('unpaid')}                                                                     AS unpaid,
             {$bk_badge_sum('today-checkins')}                                                             AS today_checkins,
@@ -3544,6 +3545,7 @@ try {
     $expired         = (int)($stats['expired']         ?? 0);
     $current_bookings = (int)($stats['current_bookings'] ?? 0);
     $online_bookings = (int)($stats['online_bookings'] ?? 0);
+    $front_desk_bookings = (int)($stats['front_desk_bookings'] ?? 0);
     $paid           = (int)($stats['paid']            ?? 0);
     $unpaid          = (int)($stats['unpaid']          ?? 0);
     $today_checkins  = (int)($stats['today_checkins']  ?? 0);
@@ -4216,13 +4218,14 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
             $bk_tabs_main = [
                 ['all', 'All', 'fa-list', $total_bookings, 'All: every booking that is not deleted, any status.'],
                 ['current', 'Current', 'fa-circle-check', $current_bookings, 'Current: bookings still in play - pending, tentative, confirmed and checked in. Cancelled, Expired, Checked out and No-show bookings have their own tabs.'],
-                ['online', 'Online', 'fa-globe', $online_bookings, 'Online: booked by the guest on the website or through a booking link, any status. To narrow it down, pick a status in the Status filter (for example Expired).'],
                 ['today-checkins', 'Arriving today', 'fa-calendar-day', $today_checkins, 'Arriving today: bookings checking in today that have not checked in yet.'],
                 ['today-checkouts', 'Leaving today', 'fa-calendar-times', $today_checkouts, 'Leaving today: guests in the hotel who are due to check out today.'],
                 ['checked-in', 'Checked in', 'fa-sign-in-alt', $checked_in, 'Guests checked in now (in house).'],
                 ['pending', 'Pending', 'fa-clock', $pending, 'Pending: bookings not confirmed yet.'],
                 ['unpaid', 'Unpaid', 'fa-exclamation-circle', $unpaid, 'Unpaid: bookings with money still to pay, part paid included.'],
                 ['expired', 'Expired', 'fa-hourglass-end', $expired, 'Expired: unpaid bookings that lapsed before they were confirmed. They hold no room and owe nothing. Cancelled and No-show are under More.'],
+                ['online', 'Online', 'fa-globe', $online_bookings, 'Online: booked by the guest on the website or through a booking link, any status. Bookings staff made in the system are under Front desk. To narrow it down, pick a status in the Status filter (for example Expired).'],
+                ['front-desk', 'Front desk', 'fa-desktop', $front_desk_bookings, 'Front desk: made by staff in the system (walk-in, phone, email, import), any status - every booking not made by the guest online. Guest website bookings are under Online.'],
             ];
             $bk_tabs_more = [['tentative', 'Tentative', 'fa-hourglass-half', $tentative, 'Tentative: rooms held for a short time, not confirmed yet.']];
             if ($expiring_soon > 0) { // only while tentative holds are about to lapse
@@ -5996,7 +5999,8 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
                         break;
                     case 'current':
                     case 'online':
-                        // Server-filtered (rh_bk_tab_clauses 'current' / 'online'): every loaded row belongs.
+                    case 'front-desk':
+                        // Server-filtered (rh_bk_tab_clauses 'current' / 'online' / 'front-desk'): every loaded row belongs.
                         isVisible = true;
                         break;
                     default:
@@ -6053,6 +6057,7 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
                 'group-bookings': 'Group Bookings',
                 'current': 'Current Bookings',
                 'online': 'Online Bookings',
+                'front-desk': 'Front Desk Bookings',
                 'expired': 'Expired Bookings'
             };
 
@@ -6081,6 +6086,7 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
             if (tabName === 'group-bookings') newIcon = 'fa-users';
             if (tabName === 'current') newIcon = 'fa-circle-check';
             if (tabName === 'online') newIcon = 'fa-globe';
+            if (tabName === 'front-desk') newIcon = 'fa-desktop';
             if (tabName === 'expired') newIcon = 'fa-hourglass-end';
 
             titleElement.innerHTML = `<i class="fas ${newIcon}"></i> ${newTitle} `;
@@ -6150,6 +6156,9 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
             },
             'online': {
                 filter: 'online'
+            },
+            'front-desk': {
+                filter: 'front_desk'
             },
             'expired': {
                 filter_status: 'expired'
