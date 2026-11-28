@@ -17,8 +17,8 @@ Deeper trackers to read next:
   free); preview old vs new total, then save under row locks; group all-or-nothing; group fee voided; rooms restored.
   includes/booking-reactivate.php; permission reactivate_booking (admin + manager). Spec + ASSUMPTIONs:
   `.claude/REACTIVATE_EXPIRED_PLAN.md`, BUILD_PLAN.md. Test scripts/tests/reactivate_booking_test.php 55/0 (Liwonde only).
-- Migration 093 (bookings.reactivated_at) RUN on Liwonde. **Rosalyn's: owner to apply 093** (`php admin/migrations/migrate.php`
-  dry run, then `--run`); until then the button is hidden and pending expiry works as before.
+- Migration 093 (bookings.reactivated_at) RUN on Liwonde, and on Rosalyn's LIVE DB 2026-11-29 at the owner's request
+  ("do the migration for me"; dry run showed only 093 pending; additive column, no rows touched).
 - LATER: a reactivated booking that lapses again is not charged the group fee a second time; no test for a single
   room taken since expiry; the column probe runs on each page load until 093 is applied.
 
