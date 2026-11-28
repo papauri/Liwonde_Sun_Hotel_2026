@@ -91,6 +91,7 @@ function getAllRoles()
                 'checkout_guest',
                 'checkin_room_not_ready', // override the clean-room check-in rule (logged)
                 'correct_stay_after_checkout', // correct a checked-out room's dates (owner 2026-11-17: administrators + managers by default)
+                'reactivate_booking', // put an expired booking back to pending at today's rate (owner 2026-11-29: administrators + managers by default)
                 'room_dashboard',
                 'individual_rooms',
                 'block_rooms',
@@ -453,6 +454,16 @@ function getAllPermissions()
             'label' => 'Correct Stay After Check-out',
             'description' => 'Correct the dates of a room that has already checked out (late arrival, early or late departure). The bill is re-worked at the booked rate; money going back is a refund or a credit note. A reason is always required and kept in the booking history',
             'icon' => 'fa-calendar-check',
+            'category' => 'Guest Services',
+            'page' => '', // not a page: Booking Details
+            'group' => 'guest_services'
+        ],
+        // Reactivate an expired booking (owner 2026-11-29): on for administrators and managers by default. Server-side
+        // check in booking-details.php and includes/booking-reactivate.php.
+        'reactivate_booking' => [
+            'label' => 'Reactivate Expired Booking',
+            'description' => 'Put an expired booking back to pending when its room and dates are still free. It is re-priced at the rate of the day, shown before saving, and kept in the booking history',
+            'icon' => 'fa-rotate-left',
             'category' => 'Guest Services',
             'page' => '', // not a page: Booking Details
             'group' => 'guest_services'
@@ -2934,6 +2945,8 @@ function rhBookingActionPermission(string $action, string $status = ''): ?string
             return 'cancel_booking';
         case 'payment': case 'update_payment': case 'consolidation_record':
             return 'payment_add';
+        case 'reactivate': case 'reactivate_preview': case 'reactivate_apply':
+            return 'reactivate_booking'; // an expired booking back to pending at today's rate (owner 2026-11-29)
         case 'preview_stay_correction': case 'stay_correction_apply':
             return 'correct_stay_after_checkout'; // a checked-out room's dates (group bookings plan A8, owner 2026-11-17)
         case 'adjust_dates': case 'admin_update_checkout_date':

@@ -341,6 +341,101 @@ function rh_unpaid_confirmed_deadline(array $b): ?string
 }
 
 /**
+ * True once migration 093 added bookings.reactivated_at (Reactivate an expired booking, owner 2026-11-29).
+ * A read-only information_schema probe (never DDL), cached once per request. Until the migration runs the
+ * Reactivate action is hidden and the pending-expiry clock uses created_at exactly as before.
+ */
+function rh_reactivated_at_present(?PDO $db = null): bool
+{
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+    if ($db === null) {
+        $db = $GLOBALS['pdo'] ?? null;
+    }
+    if (!$db instanceof PDO) {
+        return false;
+    }
+    try {
+        $st = $db->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'
+            AND COLUMN_NAME = 'reactivated_at'");
+        $st->execute();
+        $cache = (int)$st->fetchColumn() === 1;
+    } catch (Throwable $e) {
+        error_log('[reactivate] column probe failed: ' . $e->getMessage());
+        $cache = false;
+    }
+    return $cache;
+}
+
+/**
+ * Pending hold in hours (site setting pending_expiry_hours): blank or missing = 48, 0 or less = never lapses (0),
+ * at most 720. Read straight from site_settings, the same as the expiry sweep always did. Cached per request.
+ */
+function rh_pending_expiry_hours(?PDO $db = null): int
+{
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+    if ($db === null) {
+        $db = $GLOBALS['pdo'] ?? null;
+    }
+    $v = false;
+    if ($db instanceof PDO) {
+        // A failed read throws to the caller (the sweep catches it and does nothing), never a guessed hold.
+        $st = $db->prepare("SELECT setting_value FROM site_settings WHERE setting_key = 'pending_expiry_hours'");
+        $st->execute();
+        $v = $st->fetchColumn();
+    }
+    $hours = ($v === false || $v === null || trim((string)$v) === '') ? 48 : (int)$v;
+    $cache = $hours <= 0 ? 0 : min($hours, 720);
+    return $cache;
+}
+
+/**
+ * SQL for the moment a pending booking's hold clock started: the later of created_at and reactivated_at once
+ * migration 093 ran, else created_at alone (a missing column never reaches the SQL). $present = null probes.
+ */
+function rh_pending_clock_sql(string $a = 'b', ?bool $present = null): string
+{
+    $a = preg_replace('/[^A-Za-z0-9_]/', '', $a);
+    if ($present === null) {
+        $present = rh_reactivated_at_present();
+    }
+    return $present
+        ? "GREATEST({$a}.created_at, COALESCE({$a}.reactivated_at, {$a}.created_at))"
+        : "{$a}.created_at";
+}
+
+/**
+ * When a pending booking row lapses (unix time), or 0 when pending bookings never lapse. Measured from the later of
+ * created_at and reactivated_at (a missing key = never reactivated). $hours = null reads the setting. Pure otherwise.
+ */
+function rh_pending_lapse_at(array $b, ?int $hours = null): int
+{
+    $hours = $hours ?? rh_pending_expiry_hours();
+    if ($hours <= 0) {
+        return 0;
+    }
+    $base = max((int)strtotime((string)($b['created_at'] ?? '')), (int)strtotime((string)($b['reactivated_at'] ?? '')));
+    return $base > 0 ? $base + $hours * 3600 : 0;
+}
+
+/**
+ * The automated_email_log stage of the pending-expired notice: one notice per lapse. A booking never reactivated keeps
+ * the old key 'expired'; after a reactivation each new lapse gets 'expired:r<unix time of the reactivation>'.
+ * $prefix is '' (live) or 'test:'. At most 40 characters (automated_email_log.stage).
+ */
+function rh_pending_expired_notice_stage(array $b, string $prefix = ''): string
+{
+    $r = trim((string)($b['reactivated_at'] ?? ''));
+    $ts = $r !== '' ? (int)strtotime($r) : 0;
+    return $prefix . 'expired' . ($ts > 0 ? ':r' . $ts : '');
+}
+
+/**
  * Lapse unpaid 'pending' bookings once pending_expiry_hours (default 48, 0 = never) have passed since
  * they were created. Never touches a booking with any payment, and ignores stays already over
  * (check-in in the past) so old history is left alone. Status becomes 'expired' (which frees the room:
@@ -356,18 +451,16 @@ function _expireStalePendingBookings(PDO $pdo): void
     $ran = true;
 
     try {
-        $st = $pdo->prepare("SELECT setting_value FROM site_settings WHERE setting_key = 'pending_expiry_hours'");
-        $st->execute();
-        $v = $st->fetchColumn();
-        $hours = ($v === false || trim((string)$v) === '') ? 48 : (int)$v;
+        $hours = rh_pending_expiry_hours($pdo);
         if ($hours <= 0) {
             return;
         }
-        $hours = min($hours, 720);
 
         $noPay = rh_booking_has_payment_sql('b');
+        // The hold clock restarts when staff reactivate an expired booking (migration 093); without the column: created_at.
+        $clock = rh_pending_clock_sql('b', rh_reactivated_at_present($pdo));
         $sel = $pdo->prepare("SELECT b.id, b.booking_reference FROM bookings b
-            WHERE b.status = 'pending' AND b.created_at < (NOW() - INTERVAL ? HOUR)
+            WHERE b.status = 'pending' AND {$clock} < (NOW() - INTERVAL ? HOUR)
               AND b.check_in_date >= CURDATE() AND NOT {$noPay} LIMIT 100");
         $sel->execute([$hours]);
         $rows = $sel->fetchAll(PDO::FETCH_ASSOC);

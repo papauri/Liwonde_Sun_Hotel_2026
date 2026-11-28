@@ -330,7 +330,7 @@ if (!function_exists('rh_bk_status_info')) {
                 $hours = (int)($o['pending_hours'] ?? 0);
                 $hasMoney = $paid > $tol || in_array((string)($b['payment_status'] ?? ''), ['partial', 'paid'], true) || !empty($b['deposit_paid']);
                 if ($hours > 0 && !$hasMoney && (string)($b['check_in_date'] ?? '') >= $today) {
-                    $lapse = strtotime((string)($b['created_at'] ?? '')) + $hours * 3600;
+                    $lapse = rh_pending_lapse_at($b, $hours); // from the later of booked / reactivated (migration 093)
                     $line('Lapses on', $lapse > 0 ? date('D j M Y, H:i', $lapse) : '', 'if nothing is paid or confirmed');
                 }
                 $note = 'Waiting for payment or confirmation.';

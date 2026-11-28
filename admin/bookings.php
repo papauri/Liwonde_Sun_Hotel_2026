@@ -4364,8 +4364,7 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
                                 // query per log table for the page's closed / in-house rows (admin/includes/booking-status-info.php).
                                 require_once __DIR__ . '/includes/booking-status-info.php';
                                 $bk_status_ev = rh_bk_status_events($pdo, $bookings);
-                                $bk_pending_hours_raw = trim((string)getSetting('pending_expiry_hours', ''));
-                                $bk_pending_hours = $bk_pending_hours_raw === '' ? 48 : max(0, min(720, (int)$bk_pending_hours_raw)); // the same rule as _expireStalePendingBookings
+                                try { $bk_pending_hours = rh_pending_expiry_hours($pdo); } catch (Throwable $e) { $bk_pending_hours = max(0, min(720, (int)getSetting('pending_expiry_hours', 48))); } // the same rule as _expireStalePendingBookings
                                 ?>
                                 <?php foreach ($bookings as $booking): ?>
                                     <?php

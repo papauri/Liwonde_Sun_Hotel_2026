@@ -1040,7 +1040,8 @@ if (!function_exists('rh_job_overdue_payment_reminders')) {
                 $res['skipped']++;
                 continue;
             }
-            $stage = $prefix . 'expired';
+            // One notice per lapse: a reactivated booking that lapses again gets its own key (migration 093).
+            $stage = rh_pending_expired_notice_stage($b, $prefix);
             if (!rh_auto_log_claim($pdo, $job, 'room', $id, $stage, $email, 'Pending booking expired ' . $b['booking_reference'])) {
                 $res['skipped']++;
                 continue;

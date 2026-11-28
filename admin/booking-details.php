@@ -88,6 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_bdNeed = rhBookingActionPermission((string)$_POST['booking_action']);
     } elseif (in_array((string)($_POST['action'] ?? ''), ['preview_stay_correction', 'stay_correction_apply'], true)) {
         $_bdNeed = rhBookingActionPermission((string)$_POST['action']); // correct_stay_after_checkout (group bookings plan A8)
+    } elseif (in_array((string)($_POST['action'] ?? ''), ['reactivate_preview', 'reactivate_apply'], true)) {
+        $_bdNeed = rhBookingActionPermission('reactivate'); // reactivate_booking: an expired booking back to pending (owner 2026-11-29)
     } elseif (in_array((string)($_POST['action'] ?? ''), ['group_op_preview', 'group_op_apply'], true)) {
         $_bdNeed = 'edit_booking'; // Make primary room / Remove from group (group bookings plan R3 / R6)
     } elseif ((string)($_POST['action'] ?? '') === 'group_room_guest_save') {
@@ -1671,6 +1673,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array((string)($_POST['action'] 
     exit;
 }
 
+// Reactivate an EXPIRED booking (owner 2026-11-29, migration 093): review (reactivate_preview, read only) then save
+// (reactivate_apply, re-checked and re-priced under the locks; a different price is refused). Permission
+// reactivate_booking is checked above and again in includes/booking-reactivate.php. JSON only; a refusal answers 409.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array((string)($_POST['action'] ?? ''), ['reactivate_preview', 'reactivate_apply'], true)) {
+    require_once __DIR__ . '/../includes/booking-reactivate.php';
+    header('Content-Type: application/json; charset=utf-8');
+    if ((string)$_POST['action'] === 'reactivate_preview') {
+        $raQ = rh_reactivate_quote($pdo, (int)$booking_id);
+        if (empty($raQ['ok'])) {
+            http_response_code(409);
+            echo json_encode(['success' => false, 'message' => (string)$raQ['error']]);
+            exit;
+        }
+        unset($raQ['ok'], $raQ['error']);
+        echo json_encode(['success' => true, 'quote' => $raQ], JSON_INVALID_UTF8_SUBSTITUTE);
+        exit;
+    }
+    try {
+        $raRes = rh_reactivate_apply($pdo, (int)$booking_id, $_POST['expected_total'] ?? null, $user);
+    } catch (Throwable $raE) {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'message' => $raE instanceof RuntimeException ? $raE->getMessage() : 'Nothing was changed. Reload the page and try again.']);
+        exit;
+    }
+    $raMsg = (count($raRes['rows']) > 1 ? count($raRes['rows']) . ' rooms reactivated' : 'Booking reactivated') . ": pending again at today's rate, total "
+        . $currency_symbol . ' ' . number_format((float)$raRes['new_total'], 2) . ' (was ' . $currency_symbol . ' ' . number_format((float)$raRes['old_total'], 2) . '). '
+        . implode(' ', $raRes['room_notes']) . ' No email was sent.';
+    $_SESSION['success_message'] = $raMsg;
+    echo json_encode(['success' => true, 'message' => $raMsg], JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+}
+
 // Handle date adjustment
 // Adjust Stay Dates: what would be kept for unused nights (read-only JSON, D-R1a). Notice date = today.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adjust_dates_preview'])) {
@@ -2130,6 +2164,13 @@ unset($_SESSION['success_message'], $_SESSION['error_message'], $_SESSION['flash
         $bd_perm_cancel = hasPermission((int)($user['id'] ?? 0), 'cancel_booking');
         $bd_perm_pay = hasPermission((int)($user['id'] ?? 0), 'payment_add');
         $bd_perm_correct = hasPermission((int)($user['id'] ?? 0), 'correct_stay_after_checkout');
+        // Reactivate (owner 2026-11-29): an expired booking that is still eligible, with the permission, once migration 093 ran.
+        $bd_can_reactivate = false;
+        if (!$bd_deleted && ($booking['status'] ?? '') === 'expired' && rh_reactivated_at_present($pdo)
+            && hasPermission((int)($user['id'] ?? 0), 'reactivate_booking')) {
+            require_once __DIR__ . '/../includes/booking-reactivate.php';
+            $bd_can_reactivate = rh_reactivate_row_error($pdo, $booking) === '';
+        }
         // G2 (owner 2026-11-18): "Change dates" in another group room's row lands here with ?open=dates&from=<that page>.
         // The dialog is picked from this page's own button flags (no new date rule); otherwise the plain reason shows.
         require_once __DIR__ . '/../includes/group-row-actions.php';
@@ -2362,6 +2403,11 @@ unset($_SESSION['success_message'], $_SESSION['error_message'], $_SESSION['flash
                 <?php if ($bd_can_correct_stay): ?>
                     <button type="button" class="action-btn adjust-dates" onclick="openStayCorrectModal()" data-help="Correct Stay Dates|The guest has checked out. Put in the dates they really stayed (late arrival, early or late departure). You see the new bill, what was paid and what is owed or goes back before anything is saved.">
                         <i class="fas fa-calendar-check"></i> Correct Stay Dates
+                    </button>
+                <?php endif; ?>
+                <?php if ($bd_can_reactivate): ?>
+                    <button type="button" class="action-btn adjust-dates" id="bdReactivateBtn" onclick="openReactivateModal()" data-help="Reactivate|Put this expired booking back to pending when its room and dates are still free. It is priced again at today's rate: you see the old and new total before anything is saved. No email goes to the guest.">
+                        <i class="fas fa-rotate-left"></i> Reactivate
                     </button>
                 <?php endif; ?>
                 <?php
@@ -4080,6 +4126,95 @@ unset($_SESSION['success_message'], $_SESSION['error_message'], $_SESSION['flash
         window.closeStayCorrectModal = function () {
             el('stayCorrectModal').classList.remove('active');
         };
+    })();
+    </script>
+    <?php endif; ?>
+
+    <?php if ($bd_can_reactivate): ?>
+    <!-- Reactivate an expired booking (owner 2026-11-29): review old vs new price, then confirm -->
+    <div class="modal-overlay" id="reactivateModal" role="dialog" aria-modal="true" aria-labelledby="reactivateTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="reactivateTitle"><i class="fas fa-rotate-left" aria-hidden="true"></i> Reactivate booking</h3>
+                <button type="button" class="modal-close" aria-label="Close" onclick="closeReactivateModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="bd-sc-note" style="margin-top:0;">The booking goes back to pending with the same reference and history, priced again at today's rate. Its hold time starts again now. Nothing is saved until you confirm, and no email goes to the guest.</p>
+                <p id="reactivateLoading" class="bd-sc-note">Checking the room and today's price...</p>
+                <div class="bd-sc-review"><dl id="reactivateLines"></dl></div>
+                <p id="reactivateError" role="alert" style="color:#b42318;font-weight:600;" hidden></p>
+            </div>
+            <div class="modal-actions modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeReactivateModal()">Close</button>
+                <button type="button" class="btn-primary" id="reactivateConfirm" disabled>Confirm reactivation</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+        var modal = document.getElementById('reactivateModal');
+        if (!modal) return;
+        var bookingId = <?php echo (int)$booking_id; ?>;
+        var csrf = <?php echo json_encode((string)$csrf_token); ?>;
+        var cur = <?php echo json_encode((string)$currency_symbol . ' '); ?>;
+        var lines = document.getElementById('reactivateLines');
+        var err = document.getElementById('reactivateError');
+        var loading = document.getElementById('reactivateLoading');
+        var confirmBtn = document.getElementById('reactivateConfirm');
+        var expected = null;
+        function money(v) { return cur + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        function showError(m) { err.textContent = m || ''; err.hidden = !m; }
+        function line(k, v) {
+            var dt = document.createElement('dt'); dt.textContent = k;
+            var dd = document.createElement('dd'); dd.textContent = v;
+            lines.appendChild(dt); lines.appendChild(dd);
+        }
+        function post(action, data) {
+            var fd = new FormData();
+            fd.append('action', action);
+            fd.append('csrf_token', csrf);
+            Object.keys(data || {}).forEach(function (k) { fd.append(k, data[k]); });
+            return fetch('booking-details.php?id=' + bookingId, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json().catch(function () { return { success: false, message: 'Unexpected reply (' + r.status + '). Reload the page and try again.' }; }); })
+                .catch(function () { return { success: false, message: 'No connection. Nothing was changed.' }; });
+        }
+        function review() {
+            lines.innerHTML = '';
+            showError('');
+            expected = null;
+            confirmBtn.disabled = true;
+            loading.hidden = false;
+            return post('reactivate_preview').then(function (res) {
+                loading.hidden = true;
+                if (!res || !res.success) { showError((res && res.message) || 'Could not check this booking.'); return; }
+                var q = res.quote;
+                var many = q.rows.length > 1;
+                line('Total before', money(q.old_total));
+                line("Total at today's rate", money(q.new_total));
+                q.rows.forEach(function (r) {
+                    var p = many ? r.ref + ' - ' : '';
+                    if (many) { line(r.ref, r.room_type + ', ' + r.check_in + ' to ' + r.check_out + ': ' + money(r.old_total) + ' -> ' + money(r.new_total)); }
+                    line(p + 'Rate plan', (r.old_plan || 'None') + ' -> ' + (r.new_plan || 'None'));
+                    (r.packages || []).forEach(function (k) { line(p + 'Package', k.name + ': ' + money(k.old) + ' -> ' + money(k.new)); });
+                    line(p + 'Room', r.room);
+                });
+                expected = q.new_total;
+                confirmBtn.disabled = false;
+            });
+        }
+        confirmBtn.addEventListener('click', function () {
+            if (expected === null) return;
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Reactivating...';
+            post('reactivate_apply', { expected_total: String(expected) }).then(function (res) {
+                if (res && res.success) { window.location.href = 'booking-details.php?id=' + bookingId; return; }
+                confirmBtn.textContent = 'Confirm reactivation';
+                showError((res && res.message) || 'Nothing was changed.');
+                if (res && /review again/i.test(res.message || '')) { review().then(function () { if (expected !== null) showError('The price changed since you opened this. Check the new figures, then confirm again.'); }); }
+            });
+        });
+        window.openReactivateModal = function () { modal.classList.add('active'); review(); };
+        window.closeReactivateModal = function () { modal.classList.remove('active'); };
     })();
     </script>
     <?php endif; ?>
