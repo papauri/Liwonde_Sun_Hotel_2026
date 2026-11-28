@@ -251,10 +251,15 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 
 ## Sheet view build log (run started 2026-11-29, session 66bedc76, owner "Lets do it in this session")
 - Cron 29e75167 (session-only, :17/:37/:57) auto-continues; if this window closed, continue by hand from the step below.
-- Step: Bundle A MID-REVIEW (qa-auditor on the combined uncommitted diff). Built: engine (sheet_grid_test 91/0,
-  builder's browser check 1920/1280/390 clean) + value-change-log (74/0, settings_change_log 104/0). After PASS:
-  browser check, commit, port to Rosalyn's.
-- Last commit: none yet. Done: nothing.
+- Step: Bundle B1 next (dept-stock-lead: S2 Stock Count, S4 Stock Items, S5 Reorder, S6 Budget; one ship). First the
+  dept-ai-lead value_change fix below.
+- Last commit: Bundle A SHIPPED Liwonde 2f2de22 / Rosalyn's 2bf7d40 (engine admin/js/sheet-grid.js + css, review
+  list admin/js/sheet-review.js, admin/includes/value-change-log.php + Staff activity "Price & value changes"; tests
+  sheet_grid_test 91/0, value_change_log 74/0, settings_change_log 104/0; qa-auditor 1 blocker (44px touch cells) fixed).
+- Bundle A LATER (qa-auditor): columns flagged computed re-marked only on load, pages must also set readOnly;
+  toFixed(6) in copy/fill down for >6 decimals, no digit cap; onSave `new` is Number/bool/null while `old` keeps the
+  page's type (B1/C save code must normalise both); stock cost_per_unit is DECIMAL(12,4) -> log with kind 'number'.
+  Copy/paste/undo shortcuts tested with simulated keys only: check on the real Stock Count page in B1.
 - B1 prerequisite (LATER for dept-ai-lead, via GUIDES_AI_SYNC): includes/ai/ai-desk.php:236/:301 special-case
   'setting_change' in staff counts; the new 'value_change' action needs the same treatment before B/C write rows.
 

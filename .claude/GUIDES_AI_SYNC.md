@@ -183,6 +183,11 @@ when prompted."
   as a token price. Guides: Assistant Settings > Models (where prices come from), if it says the page is the only
   source. Assistant: 'where do the model prices come from' -> Google's page first, the public list for any model it
   does not show, read daily.
+- 2026-11-29 Liwonde 2f2de22 / Rosalyn's 2bf7d40 (owner FEATURE, Sheet view Bundle A): shared spreadsheet grid, review
+  list and old -> new change log built; NOT on any screen yet, so staff see nothing new. Guides: no sync needed until
+  Bundle B1 (Stock Count grid) ships. Assistant (dept-ai-lead, before B1 writes rows): new admin_activity_log action
+  'value_change' (Staff activity type "Price & value changes", admin/includes/value-change-log.php); includes/ai/
+  ai-desk.php:236 and :301 special-case 'setting_change' in staff counts and must treat 'value_change' the same.
 
 ## Synced 2026-11-26 (owner prompted "assistant and guide sync"; guides + Assistant: commit "Guides + Assistant sync 2026-11-26" in both repos · guides 06, 07, 12, 13, 19, 99 (+ Liwonde-only brand fix in 01, 02, 14, 23; guide 07 Blocked Dates note) · Assistant: when-did-they-pay -> Paid "i", dashboard vs End of Day rule, email Tone, calendar arrow keys, bare pre-arrival question gets its own answer (payment chase needs "payment"), expired / cancelled / no-show answers point to the Status pill, movements arrows for tomorrow / next week, receipt comment per b145620, expiry questions never catch stock or gym questions · Manager Guides: Money and End of Day, Bookings, Daily checklist refreshed; others no change) - entries kept for reference
 
