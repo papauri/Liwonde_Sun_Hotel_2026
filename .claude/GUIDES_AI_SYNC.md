@@ -153,6 +153,18 @@ when prompted."
   room until confirmed. Guides: calendar / room timeline (changing dates by drag). Assistant: same answer as above,
   for pending / tentative too.
 
+- 2026-11-29 Liwonde 6cd9af3 / Rosalyn's dc14b7f (owner PATCH): an expired booking (lapsed before it was confirmed)
+  owes nothing unless it carries the group no-show / expiry charge. Its page shows Balance 0, no Record payment, and the
+  note "Expired before it was confirmed: nothing is owed"; a group invoice leaves such a room out. Guides: booking
+  details (payment box) + statuses (Expired). Assistant: 'why can't I take a payment on this expired booking' -> it owes
+  nothing; make a new booking (Reactivate is planned, .claude/REACTIVATE_EXPIRED_PLAN.md).
+- 2026-11-29 Liwonde 3d80a94 + 4e734b1 / Rosalyn's fc08ac9 + 983a72e (owner FEATURE): Bookings list main tabs now All,
+  Current, Arriving today, Leaving today, Checked in, Pending, Unpaid, Expired, Online, Front desk (More: Tentative,
+  Checked out, Cancelled, No-show, Groups, Deleted). Current = pending, tentative, confirmed, checked in. Online = made by
+  the guest on the website or a booking link; Front desk = every other booking (Online + Front desk = All). Expired also
+  in the Status drop-down. Each tab has a hover saying what it holds. Guides: bookings list (tabs). Assistant: 'show
+  bookings made on the website' -> Online tab; 'active / current bookings' -> Current tab.
+
 ## Synced 2026-11-26 (owner prompted "assistant and guide sync"; guides + Assistant: commit "Guides + Assistant sync 2026-11-26" in both repos · guides 06, 07, 12, 13, 19, 99 (+ Liwonde-only brand fix in 01, 02, 14, 23; guide 07 Blocked Dates note) · Assistant: when-did-they-pay -> Paid "i", dashboard vs End of Day rule, email Tone, calendar arrow keys, bare pre-arrival question gets its own answer (payment chase needs "payment"), expired / cancelled / no-show answers point to the Status pill, movements arrows for tomorrow / next week, receipt comment per b145620, expiry questions never catch stock or gym questions · Manager Guides: Money and End of Day, Bookings, Daily checklist refreshed; others no change) - entries kept for reference
 
 - 7994a1f / Rosalyn's 5c44967 (2026-11-25): Email & PDF templates: the preview and "Send test" of a PDF template now
