@@ -193,6 +193,16 @@ G-B build choices (dept-guest-site-lead, 2026-11-28):
 - ASSUMPTION: a used client_uuid answers `{ok:true, duplicate:true, step:5, redirect}` without pub_confirm_remember
   (no session write); G-C must remember the reference before following the redirect.
 
+G-A build choices (dept-guest-site-lead, 2026-11-28):
+- ASSUMPTION: a query prefill lands on the first incomplete step but never past step 3 (Room): rate plan and
+  packages are chosen there. A refused no-JS save opens the step of its error (step 0: first incomplete step).
+- ASSUMPTION: Review's rate plan row shows the plan's label with "Applied" (the quote carries no per-plan amount).
+- ASSUMPTION: step 4 blocks only on name / email / phone being empty or failing the browser's own field checks (what
+  `required` / type did); the page's own name and phone format hints stay advisory, the server still checks.
+- ASSUMPTION: step 2 refuses children >= guests (the page also lowers it on change) and a non-whole number.
+- ASSUMPTION: guard test package cases: the page's price checks are answered with the reply the PHP side got under
+  the same seeded package (the real server does not know it); the page still has to tick the package.
+
 ## Test cases (headless browser on Liwonde, every phase)
 1 room 2 nights pay in full; pay part (Partially Paid); pay over without tick (stopped in step 4) and with tick
 (credit note); 2 room types; child supplement; rate plan; joined room; manager override; under-tier refusal for front

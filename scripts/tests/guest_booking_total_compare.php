@@ -9,8 +9,10 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit("CLI only.\n"); }
  *   php scripts/tests/guest_booking_total_compare.php --only=single,joined
  *
  * Shown: scripts/tests/guest_booking_total_compare.mjs opens booking.php in its own headless Chrome (own php -S port,
- *   own CDP port, temp profile), lets the page price the stay itself and reads #summaryTotal plus the form fields it
- *   would post. Every POST to booking.php is failed in the browser (never submitted).
+ *   own CDP port, temp profile), walks the booking steps (phase G-A: Room, Your details, Review) and reads Review's
+ *   #summaryTotal (the page's own price check quote) plus the form fields it would post. Book is never pressed; a form
+ *   POST to booking.php is failed in the browser, only the page's price checks (dry_run=1) pass. Seeded package
+ *   cases: the page's price checks are answered with this script's own dry run under the same seed.
  * Stored: the same fields are posted to the real booking.php through scripts/tests/page_harness.php (one transaction,
  *   rolled back; page commits are savepoints) via scripts/tests/mixed_booking_post_page.php (seeds the public booking
  *   CSRF token, clears the per-IP limiter file). Each case has a fresh client_uuid and its own @example.invalid email,
@@ -44,13 +46,22 @@ $only = null;
 foreach (array_slice($argv, 1) as $a) { if (preg_match('/^--only=(.+)$/', $a, $m)) { $only = array_map('trim', explode(',', $m[1])); } }
 const GBTC_TOL = 0.01; // BALANCE_TOLERANCE
 
-$counts = function () use ($pdo): array {
+// The run is long and this connection sits idle meanwhile (the saves run in their own processes): when the server has
+// closed it ("gone away"), the end counts reconnect once to the same database (the one checked above).
+$reconnect = function () use (&$pdo): void {
+    $pdo = new PDO('mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET, DB_USER, DB_PASS,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_TIMEOUT => 10]);
+};
+$counts = function () use (&$pdo, $reconnect): array {
     $o = [];
-    foreach (['bookings', 'booking_packages', 'room_packages'] as $t) { $o[$t] = (int)$pdo->query("SELECT COUNT(*) FROM `$t`")->fetchColumn(); }
+    foreach (['bookings', 'booking_packages', 'room_packages'] as $t) {
+        try { $o[$t] = (int)$pdo->query("SELECT COUNT(*) FROM `$t`")->fetchColumn(); }
+        catch (PDOException $e) { $reconnect(); $o[$t] = (int)$pdo->query("SELECT COUNT(*) FROM `$t`")->fetchColumn(); }
+    }
     return $o;
 };
 // Other connections of this DB user (a harness left open would show here); the site's own traffic can also appear.
-$otherConns = function () use ($pdo): ?int {
+$otherConns = function () use (&$pdo): ?int {
     try { return (int)$pdo->query("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE USER = SUBSTRING_INDEX(CURRENT_USER(), '@', 1) AND ID <> CONNECTION_ID()")->fetchColumn(); }
     catch (Throwable $e) { return null; }
 };
@@ -127,18 +138,10 @@ foreach (['per_night' => 30000, 'per_stay' => 45000, 'per_person_per_night' => 1
 }
 if ($only) { $cases = array_values(array_filter($cases, fn($c) => in_array($c['key'], $only, true))); }
 
-// ── Shown: the browser helper ────────────────────────────────────────────────
+// ── Temp folder and time-limited child runs ──────────────────────────────────
 $tmp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'gbtc_' . bin2hex(random_bytes(4));
 @mkdir($tmp);
 register_shutdown_function(function () use ($tmp) { foreach (glob($tmp . '/*') ?: [] as $f) { @unlink($f); } @rmdir($tmp); });
-$browserCases = [];
-foreach ($cases as $c) {
-    if (!empty($c['server_quote']) || empty($c['dates'])) { continue; }
-    $browserCases[] = ['key' => $c['key'], 'room_id' => $c['room_id'], 'check_in' => $c['dates'][0], 'check_out' => $c['dates'][1], 'guests' => $c['guests'],
-        'children' => $c['children'], 'booking_type' => $c['booking_type'] ?? 'standard', 'inject_package' => $c['package'] ?? null];
-}
-file_put_contents("$tmp/cases.json", json_encode($browserCases));
-echo "browser: " . count($browserCases) . " case(s)...\n";
 // Runs a child with a hard time limit; on timeout only that child's own process tree is stopped.
 $runLimited = function (array $cmd, int $seconds, ?string $echoTo = null, ?array $env = null): array {
     $p = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, $env);
@@ -172,15 +175,6 @@ $freePort = function (array $not = []): int {
     }
     return 0;
 };
-$httpPort = $freePort();
-$cdpPort = $freePort([$httpPort]);
-if (!$httpPort || !$cdpPort) { exit("no free ports for the browser helper: nothing run\n"); }
-$nodeEnv = array_merge(getenv(), ['GBTC_HTTP_PORT' => (string)$httpPort, 'GBTC_CDP_PORT' => (string)$cdpPort]);
-$nodeRun = $runLimited(['node', $root . '/scripts/tests/guest_booking_total_compare.mjs', "$tmp/cases.json", "$tmp/shown.json"], 300, 'stdout', $nodeEnv);
-if ($nodeRun['timed_out']) { echo "browser helper hit the 300 s limit and was stopped: unmeasured cases are marked\n"; }
-$shownAll = json_decode((string)@file_get_contents("$tmp/shown.json"), true) ?: ['results' => []];
-$shown = [];
-foreach ($shownAll['results'] as $r) { $shown[$r['key']] = $r; }
 
 // ── Stored: the real save, rolled back ────────────────────────────────────────
 $port = 0;
@@ -198,10 +192,12 @@ if (!is_resource($smtp) || !is_file($spool . '.ready')) { exit("capture SMTP ser
 $mailCount = function () use ($spool): int { return is_file($spool) ? count(array_filter(file($spool, FILE_IGNORE_NEW_LINES) ?: [], 'strlen')) : 0; };
 $resetLimit = function (): void {
     foreach (['booking_form', 'booking_quote'] as $action) {
-        $key = 'iprl_' . $action . '_' . substr(hash('sha256', '127.0.0.1|' . $action), 0, 24);
-        if (function_exists('deleteCache')) { @deleteCache($key); }
-        $f = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $key . '.json';
-        if (is_file($f)) { @unlink($f); }
+        foreach (['127.0.0.1', '::1'] as $ip) {
+            $key = 'iprl_' . $action . '_' . substr(hash('sha256', $ip . '|' . $action), 0, 24);
+            if (function_exists('deleteCache')) { @deleteCache($key); }
+            $f = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $key . '.json';
+            if (is_file($f)) { @unlink($f); }
+        }
     }
 };
 
@@ -259,6 +255,45 @@ $dryClean = function (array $r, string $token): array {
 $dryProblems = [];
 $casePosts = [];
 
+// ── Shown: the browser helper (walks the booking steps; Review shows the price check quote) ──
+// A seeded package is unknown to the real server the page talks to, so for those cases the page's price checks are
+// answered with the reply this script gets under the same seed (inject_quote); the page still has to tick the package.
+$pkgSetup = function (array $p) use ($pdo): array {
+    return ["INSERT INTO room_packages (name, slug, short_description, icon, price_type, price_amount, applies_to, room_type_ids, is_featured, is_active, sort_order)
+            VALUES (" . $pdo->quote($p['name']) . ", " . $pdo->quote('zz-g0-' . $p['price_type'] . '-' . bin2hex(random_bytes(3))) . ", '', 'fas fa-gift', " . $pdo->quote($p['price_type']) . ", " . (float)$p['price_amount'] . ", 'all', NULL, 0, 1, 0)",
+        "SET @gbtc_pk = LAST_INSERT_ID()"];
+};
+$browserCases = [];
+foreach ($cases as $c) {
+    if (!empty($c['server_quote']) || empty($c['dates'])) { continue; }
+    $bc = ['key' => $c['key'], 'room_id' => $c['room_id'], 'check_in' => $c['dates'][0], 'check_out' => $c['dates'][1], 'guests' => $c['guests'],
+        'children' => $c['children'], 'booking_type' => $c['booking_type'] ?? 'standard', 'inject_package' => $c['package'] ?? null, 'inject_quote' => null];
+    if (!empty($c['package'])) {
+        $tokenP = 'gbtc' . bin2hex(random_bytes(16));
+        $uuidP = sprintf('%s-%s-4%s-a%s-%s', bin2hex(random_bytes(4)), bin2hex(random_bytes(2)), substr(bin2hex(random_bytes(2)), 1), substr(bin2hex(random_bytes(2)), 1), bin2hex(random_bytes(6)));
+        $postP = ['room_id' => (string)$c['room_id'], 'check_in_date' => $c['dates'][0], 'check_out_date' => $c['dates'][1], 'number_of_guests' => (string)$c['guests'],
+            'child_guests' => (string)$c['children'], 'booking_type' => 'standard', 'guest_country' => '', 'guest_address' => '', 'special_requests' => '',
+            'package_ids' => ['{pk}'], 'csrf_token' => $tokenP, 'client_uuid' => $uuidP, 'guest_name' => 'Zz Gzero Compare',
+            'guest_email' => 'zz.g0.browser@example.invalid', 'guest_phone' => '+265999000111'];
+        $dq = $dry($postP, 5, $tokenP, array_merge([$noWa], $pkgSetup($c['package'])), ['pk' => 'SELECT @gbtc_pk']);
+        if ($why = $dryClean($dq, $tokenP)) { $dryProblems[] = $c['key'] . ' dry (browser quote): ' . implode('; ', $why); }
+        $bc['inject_quote'] = (isset($dq['json']['ok']) && $dq['json']['ok'] && isset($dq['json']['quote'])) ? $dq['json'] : null;
+    }
+    $browserCases[] = $bc;
+}
+file_put_contents("$tmp/cases.json", json_encode($browserCases));
+echo "browser: " . count($browserCases) . " case(s)...\n";
+$resetLimit();
+$httpPort = $freePort();
+$cdpPort = $freePort([$httpPort]);
+if (!$httpPort || !$cdpPort) { exit("no free ports for the browser helper: nothing run\n"); }
+$nodeEnv = array_merge(getenv(), ['GBTC_HTTP_PORT' => (string)$httpPort, 'GBTC_CDP_PORT' => (string)$cdpPort]);
+$nodeRun = $runLimited(['node', $root . '/scripts/tests/guest_booking_total_compare.mjs', "$tmp/cases.json", "$tmp/shown.json"], 300, 'stdout', $nodeEnv);
+if ($nodeRun['timed_out']) { echo "browser helper hit the 300 s limit and was stopped: unmeasured cases are marked\n"; }
+$shownAll = json_decode((string)@file_get_contents("$tmp/shown.json"), true) ?: ['results' => []];
+$shown = [];
+foreach ($shownAll['results'] as $r) { $shown[$r['key']] = $r; }
+
 $rowsOut = [];
 $harnessProblems = [];
 foreach ($cases as $c) {
@@ -269,10 +304,7 @@ foreach ($cases as $c) {
     $setup = array_merge([$noWa], $c['seed'] ?? []);
     $vars = [];
     if (!empty($c['package'])) {
-        $p = $c['package'];
-        $setup[] = "INSERT INTO room_packages (name, slug, short_description, icon, price_type, price_amount, applies_to, room_type_ids, is_featured, is_active, sort_order)
-            VALUES (" . $pdo->quote($p['name']) . ", " . $pdo->quote('zz-g0-' . $p['price_type'] . '-' . bin2hex(random_bytes(3))) . ", '', 'fas fa-gift', " . $pdo->quote($p['price_type']) . ", " . (float)$p['price_amount'] . ", 'all', NULL, 0, 1, 0)";
-        $setup[] = "SET @gbtc_pk = LAST_INSERT_ID()";
+        $setup = array_merge($setup, $pkgSetup($c['package']));
         $vars['pk'] = 'SELECT @gbtc_pk';
     }
 
@@ -303,6 +335,10 @@ foreach ($cases as $c) {
         if (!$s) { $line['note'] = 'could not measure: the browser gave no result (run limit)'; $rowsOut[] = $line; continue; }
         $line['shown'] = $s['shown'];
         $line['shown_text'] = $s['shown_text'];
+        // Review shows the page's own price check quote, and Book is open on it.
+        $bq = isset($s['quote_total']) ? (float)$s['quote_total'] : null;
+        if ($bq === null || $s['shown'] === null || abs((float)$s['shown'] - $bq) > GBTC_TOL) { $line['note'] .= 'Review total is not the page\'s price check total (' . json_encode($bq) . '). '; $line['review_bad'] = true; }
+        if (empty($s['book_enabled'])) { $line['note'] .= 'Book is not open on a fresh quote. '; $line['review_bad'] = true; }
         $line['shown_detail'] = ['rate' => $s['rate_text'] ?? null, 'occupancy' => $s['occupancy_text'] ?? null, 'child' => $s['child_text'] ?? null,
             'package' => $s['package_text'] ?? null, 'plan' => $s['rate_plan_text'] ?? null, 'split_total' => $s['split_pricing']['total_with_vat'] ?? null];
         if (!empty($s['errors'])) { $line['note'] .= 'browser: ' . implode(' | ', $s['errors']) . ' '; }
@@ -466,10 +502,11 @@ echo 'rows left: ' . ($after === $before ? 'none (counts unchanged)' : 'COUNTS C
 $connsAfter = $otherConns();
 echo 'other DB connections of this user: before ' . ($connsBefore ?? '?') . ', after ' . ($connsAfter ?? '?')
     . (($connsBefore !== null && $connsAfter !== null && $connsAfter > $connsBefore) ? ' (MORE: check for a harness left open)' : ' (no harness connection left open)') . "\n";
-echo 'emails: ' . $mailCount() . ' captured by the local capture server, none sent out; browser POSTs blocked: ' . (int)($shownAll['posts_blocked'] ?? 0) . "\n";
+echo 'emails: ' . $mailCount() . ' captured by the local capture server, none sent out; browser POSTs blocked: ' . (int)($shownAll['posts_blocked'] ?? 0)
+    . ', browser price checks: ' . (int)($shownAll['dry_runs'] ?? 0) . "\n";
 if ($harnessProblems) { echo 'HARNESS PROBLEM (leak / not rolled back): ' . implode(', ', $harnessProblems) . "\n"; }
 if (!empty($shownAll['php_errors'])) { echo "php -S errors: " . implode(' | ', array_slice($shownAll['php_errors'], 0, 5)) . "\n"; }
-$bad = count(array_filter($rowsOut, fn($l) => $l['match'] === 'NO'));
+$bad = count(array_filter($rowsOut, fn($l) => $l['match'] === 'NO' || !empty($l['review_bad'])));
 echo "\nmismatches: $bad\n";
 $quoteBad = count(array_filter($rowsOut, fn($l) => ($l['quote_match'] ?? 'NO') === 'NO' && $l['stored'] !== null));
 echo "price check: quote vs stored mismatches $quoteBad of " . count(array_filter($rowsOut, fn($l) => $l['stored'] !== null)) . "\n";

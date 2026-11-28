@@ -3,16 +3,20 @@
 //
 //   node scripts/tests/guest_booking_total_compare.mjs <cases.json> <out.json>
 //
-// cases.json: [{ key, room_id, check_in, check_out, guests, children, booking_type, inject_package }]
+// cases.json: [{ key, room_id, check_in, check_out, guests, children, booking_type, inject_package, inject_quote }]
 //   inject_package (optional) { id, name, price_type, price_amount }: added to the packages list of the page's own
-//   check-availability.php answers (caught in the browser), then ticked, so the page's own JS prices it. Used when the
-//   hotel has no active package; the PHP side seeds the same package inside its rolled-back save.
-// out.json: per case { key, shown_text, shown, rate_text, child_text, package_text, occupancy_text, split_pricing,
-//   fields: [[name, value], ...] (the form as it would be posted), errors }.
+//   check-availability.php answers (caught in the browser), then ticked. Used when the hotel has no active package; the
+//   PHP side seeds the same package inside its rolled-back runs and passes the price check reply it got under that seed
+//   as inject_quote, which answers the page's price checks for that case (the real server does not know the package).
+// The page is walked like a guest: it opens on step 3 (Room) from the query, Continue, step 4 (Your details: type,
+// made-up name/email/phone), Review booking, then the Review figures are read once the price check quote is fresh.
+// out.json: per case { key, shown_text, shown, quote_total, rate_text, child_text, package_text, occupancy_text,
+//   split_pricing, fields: [[name, value], ...] (the form as it would be posted), errors }.
 //
 // Own php -S (dev-router.php) on its own port and its own headless Chrome (own CDP port, temp profile); both stopped at
-// the end. Every POST to booking.php is failed in the browser: nothing is ever submitted. No booking is written; the
-// page loads do log site_visitors / session_logs rows (HeadlessChrome) like any visit.
+// the end. Book is never pressed, and every page-load POST to booking.php is failed in the browser anyway; the only
+// POSTs let through are the page's own price checks (dry_run=1, read-only), any other script POST is failed too.
+// No booking is written; the page loads do log site_visitors / session_logs rows (HeadlessChrome) like any visit.
 // Env: GBTC_HTTP_PORT (8793), GBTC_CDP_PORT (9393); the PHP side passes two free ports. Refuses if either port already
 // answers, so it never drives someone else's Chrome or reads someone else's server (e.g. a Rosalyn's dev server).
 import { spawn } from 'node:child_process';
@@ -72,7 +76,7 @@ if (!up || !pageTarget || server.exitCode !== null || chrome.exitCode !== null) 
 
 ws = new WebSocket(pageTarget.webSocketDebuggerUrl);
 await new Promise(r => ws.addEventListener('open', r));
-let msgId = 0; const pending = new Map(); let pageErrors = []; let postsBlocked = 0; let inject = null;
+let msgId = 0; const pending = new Map(); let pageErrors = []; let postsBlocked = 0; let inject = null; let injectQuote = null; let dryRuns = 0;
 // Every CDP call gives up after 15 s: a reply that never comes must not hang the run.
 function send(method, params = {}) {
   const i = ++msgId; ws.send(JSON.stringify({ id: i, method, params }));
@@ -109,9 +113,20 @@ ws.addEventListener('message', async (ev) => {
     send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: p.responseStatusCode, responseHeaders: p.responseHeaders || [], body: Buffer.from(text, 'utf8').toString('base64') });
     return;
   }
-  if (p.request.method === 'POST' && /\/booking\.php(\?|$)/.test(p.request.url)) { // never submit
-    postsBlocked++;
-    send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Aborted' });
+  if (p.request.method === 'POST' && /\/booking\.php(\?|$)/.test(p.request.url)) {
+    // Never submit: a form POST (Document) is failed; a script POST passes only as a price check (dry_run=1).
+    const body = String(p.request.postData || '');
+    const isDry = p.resourceType !== 'Document' && /name="dry_run"\r?\n\r?\n1\r?\n/.test(body) && /name="response"\r?\n\r?\nwizard\r?\n/.test(body);
+    if (!isDry) { postsBlocked++; send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Aborted' }); return; }
+    dryRuns++;
+    if (injectQuote) {
+      const reply = Object.assign({}, injectQuote, { ok: true, step: 5 });
+      delete reply.csrf_token;
+      send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json; charset=utf-8' }],
+        body: Buffer.from(JSON.stringify(reply), 'utf8').toString('base64') });
+      return;
+    }
+    send('Fetch.continueRequest', { requestId: p.requestId });
     return;
   }
   send('Fetch.continueRequest', { requestId: p.requestId });
@@ -149,10 +164,23 @@ const READ = `(() => {
     package_text: vis('summaryPackageTotalRow') ? t('summaryPackageTotal') : null, occupancy_text: t('summaryOccupancyType'),
     rate_plan_text: vis('summaryRatePlanRow') ? (t('summaryRatePlanLabel') + ' ' + t('summaryRatePlanValue')) : null,
     summary_visible: vis('bookingSummary'), pending: typeof availabilityCheckPending !== 'undefined' ? !!availabilityCheckPending : null,
+    step: typeof gbCurrent !== 'undefined' ? gbCurrent : null, quote_state: (document.getElementById('bookingSummary') || { getAttribute: () => null }).getAttribute('data-quote'),
+    quote_total: (typeof gbQuote !== 'undefined' && gbQuote && gbQuote.totals) ? Number(gbQuote.totals.total_with_vat) : null,
+    book_enabled: !!document.querySelector('.btn-submit') && !document.querySelector('.btn-submit').disabled,
+    step_errors: Array.from(document.querySelectorAll('.gb-step__error:not([hidden]), .gb-field-error')).map(n => (n.textContent || '').trim()).filter(Boolean),
     check_in: ci, check_out: co, guests: g, children: c, split_pricing: sp, fields };
 })()`;
 const money = (s) => { const m = String(s || '').replace(/,/g, '').match(/-?\d+(\.\d+)?/); return m ? Number(m[0]) : null; };
-const priced = `(() => { const s = document.getElementById('summaryTotal'); const v = s ? s.textContent : ''; return /\\d/.test(v) && !(typeof availabilityCheckPending !== 'undefined' && availabilityCheckPending); })()`;
+const onStep = (n) => `typeof gbCurrent !== 'undefined' && gbCurrent === ${n}`;
+const idle = `typeof availabilityCheckPending !== 'undefined' && !availabilityCheckPending`;
+const errorsNow = `Array.from(document.querySelectorAll('.gb-step__error:not([hidden]), .gb-field-error')).map(n => n.textContent.trim()).join(' | ')`;
+// Waits for a step; when it does not come, says which step the page is on and what it says.
+async function waitStep(n, ms, label) {
+  try { await waitFor(onStep(n), ms, label); } catch (e) {
+    let where = ''; try { where = await js(`'on step ' + gbCurrent + ': ' + (${errorsNow} || 'no message')`); } catch {}
+    throw new Error(e.message + (where ? ' (' + where + ')' : ''));
+  }
+}
 
 const out = [];
 // Hard stop: the browser part gives up after GBTC_RUN_MS (240 s), keeps what it measured and stops its own php -S + Chrome.
@@ -166,23 +194,33 @@ for (const c of CASES) {
   const res = { key: c.key, errors: [] };
   pageErrors = [];
   inject = c.inject_package || null;
+  injectQuote = c.inject_quote || null;
   try {
     const q = new URLSearchParams({ room_id: String(c.room_id), check_in: c.check_in, check_out: c.check_out, guests: String(c.guests), children: String(c.children || 0) });
     await js('window.__gbNav = 1').catch(() => {});
     await send('Page.navigate', { url: `${BASE}/booking.php?${q}` });
     await waitFor('!window.__gbNav && document.readyState === "complete"', 30000, 'page load');
-    await waitFor(priced, 30000, 'a priced total');
-    if (c.booking_type === 'tentative') {
-      await js(`(() => { const r = document.querySelector('input[name="booking_type"][value="tentative"]'); if (!r) throw new Error('no tentative option'); r.click(); if (typeof selectBookingType === 'function') selectBookingType('tentative'); return 1; })()`);
-      await sleep(400);
-    }
+    // Step 3 Room (the query chose the room, dates and party)
+    await waitStep(3, 30000, 'the Room step');
+    await waitFor(`!!selectedRoomId && ${idle}`, 30000, 'the availability answer');
     if (inject) {
       await waitFor(`!!document.querySelector('#packagesList input[name="package_ids[]"][value="${inject.id}"]')`, 20000, 'the package option');
       await js(`(() => { const cb = document.querySelector('#packagesList input[name="package_ids[]"][value="${inject.id}"]'); if (!cb.checked) cb.click(); return 1; })()`);
       await sleep(400);
     }
-    await sleep(600);
-    await waitFor(priced, 30000, 'a priced total after the choices');
+    await waitFor(idle, 30000, 'the availability answer after the choices');
+    await js(`(document.querySelector('#gbStep3 [data-gb-next]').click(), 1)`);
+    // Step 4 Your details (made-up guest; booking type)
+    await waitStep(4, 45000, 'the Your details step');
+    if (c.booking_type === 'tentative') {
+      await js(`(() => { const r = document.querySelector('input[name="booking_type"][value="tentative"]'); if (!r) throw new Error('no tentative option'); r.click(); return 1; })()`);
+    }
+    await js(`(() => { const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+      set('guest_name', 'Zz Gzero Compare'); set('guest_email', 'zz.g0.browser@example.invalid'); set('guest_phone', '+265999000111'); return 1; })()`);
+    await js(`(document.querySelector('#gbStep4 [data-gb-next]').click(), 1)`);
+    // Step 5 Review: the server's quote, fresh
+    await waitStep(5, 20000, 'the Review step');
+    await waitFor(`document.getElementById('bookingSummary').getAttribute('data-quote') === 'fresh'`, 45000, 'a fresh price check on Review');
     Object.assign(res, await js(READ));
     res.shown = money(res.shown_text);
   } catch (e) {
@@ -194,6 +232,6 @@ for (const c of CASES) {
   console.log(`${c.key}: shown ${res.shown_text}${res.errors.length ? '  (' + res.errors.join(' | ') + ')' : ''}`);
 }
 clearTimeout(watchdog);
-writeFileSync(outFile, JSON.stringify({ results: out, posts_blocked: postsBlocked, php_errors: phpErrors }, null, 1));
+writeFileSync(outFile, JSON.stringify({ results: out, posts_blocked: postsBlocked, dry_runs: dryRuns, php_errors: phpErrors }, null, 1));
 await stopAll();
 process.exit(0);
