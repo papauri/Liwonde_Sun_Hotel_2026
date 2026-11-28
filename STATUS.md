@@ -12,6 +12,18 @@ Deeper trackers to read next:
 - `.claude/BUILD_PLAN.md`
 - Rosalyn's `.claude/TASKS.md`, the live task tracker shared by both hotels
 
+## Shipped 2026-11-29: Assistant reads Google's prices again (owner PATCH, profile Claude) - Liwonde 1ae0009 / Rosalyn's 5d76873
+- Fault: "Google's price page could not be read today" every day since 2026-11-20; no `ai_price_page_google` row ever saved.
+  Cause: ai.google.dev/gemini-api/docs/pricing now 301s to aistudio.google.com/docs/pricing (rh_ai_http never follows
+  redirects) and the new page is an app shell, prices as HTML-escaped Markdoc in `<noscript><pre>`.
+- Fix (includes/ai/ai-price-page.php): new URL, Markdoc parser path (old HTML path kept), ids only from each section's
+  link block (the 2.5 Pro callout names gemini-3.8-flash: it can never take 2.5 Pro's price), "$x/min" amounts skipped,
+  failed read logs HTTP code + error + ids parsed. Fixture = trimmed real page (keys removed). qa-auditor PASS, 71/71.
+- Takes effect after the owner deploys; the next daily refresh then saves the prices and the notice stops.
+- LATER: the notice says "last known prices were kept" even when none were ever saved; a failed page read also skips
+  the public list fallback; image/TTS/Live sections pick up per-image / per-minute output amounts (unreachable today:
+  rh_ai_model_is_chat drops those ids).
+
 ## Shipped 2026-11-29: Reactivate an expired booking, re-priced at today's rate (owner FEATURE, profile Claude session eccc298f) - Liwonde 5823058 / Rosalyn's f4d72d5
 - Booking details: Reactivate on an eligible expired booking (check-in today+, no payment, no repeat booking, rooms
   free); preview old vs new total, then save under row locks; group all-or-nothing; group fee voided; rooms restored.
