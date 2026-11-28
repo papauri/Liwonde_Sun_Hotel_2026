@@ -36,7 +36,7 @@ $GLOBALS['stub_page_calls'] = 0;
 rh_ai_set_transport(static function ($method, $url, $headers, $body, $timeout) {
     if ($method === 'GET' && $url === 'https://aistudio.google.com/docs/pricing') { // moved from ai.google.dev (fault 2026-11-29)
         $GLOBALS['stub_page_calls']++;
-        return $GLOBALS['stub_page'] !== null ? ['http' => 200, 'body' => $GLOBALS['stub_page'], 'error' => ''] : ['http' => 503, 'body' => '', 'error' => 'unavailable'];
+        return $GLOBALS['stub_page'] !== null ? ['http' => 200, 'body' => $GLOBALS['stub_page'], 'error' => ''] : ['http' => 500, 'body' => '', 'error' => 'unavailable'];
     }
     if ($method === 'GET' && strpos($url, 'model_prices_and_context_window.json') !== false) { // the public price list (2026-11-21)
         $GLOBALS['stub_pricelist_calls'] = ($GLOBALS['stub_pricelist_calls'] ?? 0) + 1;
@@ -185,14 +185,49 @@ try {
 
     // Fault 2026-11-29 (the price page never read since 2026-11-20): the page moved to aistudio.google.com and is now an
     // app shell whose text is Markdoc, HTML-escaped, inside <noscript><pre>. The fixture is a trimmed copy of the real
-    // page (the shell with its inline style/JSON emptied, seven model sections verbatim, in page order).
+    // page (the shell with its inline style/JSON emptied, ten model sections verbatim, in page order;
+    // the TTS and two image sections were added 2026-11-29 for the per-image / per-10s amounts).
     $aisPage = (string)file_get_contents($root . '/scripts/tests/fixtures/ai/google_pricing_aistudio.html');
     $ais = rh_ai_price_page_parse($aisPage);
     $aisIds = array_keys($ais);
     sort($aisIds);
-    check($aisIds === ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.1-flash-live-preview', 'gemini-3.1-pro-preview', 'gemini-3.1-pro-preview-customtools', 'gemini-3.5-transcribe-live',
-        'gemini-3.8-flash', 'gemini-3.8-live', 'gemini-3.8-live-extended-thinking', 'gemini-4-carbon'],
-        'new price page: exactly the ids from each section\'s link block (ids named in a note never count)', json_encode($aisIds));
+    check($aisIds === ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-pro-image', 'gemini-3.1-flash-live-preview', 'gemini-3.1-pro-preview', 'gemini-3.1-pro-preview-customtools', 'gemini-3.5-transcribe-live',
+        'gemini-3.8-flash', 'gemini-3.8-flash-tts', 'gemini-3.8-live', 'gemini-3.8-live-extended-thinking', 'gemini-4-carbon'],
+        'new price page: exactly the ids from each section\'s link block (ids named in a note never count; Gemini 2.5 Flash Image has only a per-image output price, so no page price)', json_encode($aisIds));
+    // Fault 2026-11-29 (qa LATER): image / TTS / video cells give per-image or per-second amounts that are not per 1M tokens.
+    foreach (['2026-11-29' => [0.5, 9.0], '2027-01-02' => [1.0, 18.0]] as $day => $tts) {
+        check($rd($ais, 'gemini-3.8-flash-tts', $day) === $tts, "new price page $day: TTS keeps its per-1M audio price, never the \"Equivalent to \$0.00225 per 10s audio\" figure", json_encode($ais['gemini-3.8-flash-tts'] ?? null));
+    }
+    check($rd($ais, 'gemini-3-pro-image', '2026-11-29') === [2.0, 12.0] && count($ais['gemini-3-pro-image']['in']) === 1 && count($ais['gemini-3-pro-image']['out']) === 2,
+        'new price page: Gemini 3 Pro Image keeps $2.00 in, $12.00 / $120.00 out; "equivalent to $0.0011 per image" and "$0.134 per 1K/2K image" are dropped', json_encode($ais['gemini-3-pro-image'] ?? null));
+    // Real cell text from the page (decoded Markdoc), as rh_ai_price_page_md_clean leaves it.
+    $realCells = [
+        "\$9.00 (audio) through December 31, 2026.\n\$18.00 (audio) starting January 1, 2027.\nEquivalent to \$0.00225 per 10s audio through December 31, 2026.\nEquivalent to \$0.0045 per 10s audio starting January 1, 2027."
+            => [[9.0, null, '2026-12-31'], [18.0, '2027-01-01', null]],
+        "\$7.50 (text and thinking)\n\$30.00 (images)\nEquivalent to \$0.0336 per 1K image,\n\$0.0504 per 2K image,\nand \$0.113 per 4K image." => [[7.5, null, null], [30.0, null, null]],
+        "\$3 (text and thinking)\n\$60.00 (images)\nEquivalent to \$0.045 per 0.5K image\n\$0.067 per 1K image,\n\$0.101 per 2K image,\nand \$0.151 per 4K image." => [[3.0, null, null], [60.0, null, null]],
+        "\$1.50 (text and thinking)\n\$30.00 (images)\nEquivalent to \$0.0336 per 1K resolution image" => [[1.5, null, null], [30.0, null, null]],
+        "\$2.00 (text/image),\nequivalent to \$0.0011 per image" => [[2.0, null, null]],
+        "\$12.00 (text and thinking)\n\$120.00 (images)\nEquivalent to \$0.134 per 1K/2K image\nand \$0.24 per 4K image" => [[12.0, null, null], [120.0, null, null]],
+        '$0.039 per image' => [],
+        "\$9.00 (text)\n\$17.50 (video, audio included)" => [[9.0, null, null], [17.5, null, null]],
+        "\$0.75 (text)\n\$3.00 or \$0.005/min (audio)\n\$1.00 or \$0.002/min (image/video)" => [[0.75, null, null], [3.0, null, null], [1.0, null, null]],
+        '$6.50 ($0.00016 per second)' => [[6.5, null, null]],
+        'approximately $0.07 per second (~$0.70 for a 10s clip, ~$1.04 for a 15s clip;' => [],
+        'then $14 per 1,000 requests (subject to a daily cap of 1,500 requests per day).' => [],
+        "\$1.25, prompts <= 200k tokens\n\$2.50, prompts > 200k tokens" => [[1.25, null, null], [2.5, null, null]],
+        '$0.30 (text / image / video)' => [[0.3, null, null]],
+        '$30 per 1,000,000 tokens' => [[30.0, null, null]],
+    ];
+    $cellBad = [];
+    foreach ($realCells as $cellText => $want) {
+        if (rh_ai_price_page_amounts($cellText) !== $want) {
+            $cellBad[] = [$cellText, rh_ai_price_page_amounts($cellText)];
+        }
+    }
+    check(!$cellBad, 'amounts: per-image, per-10s, per-second, per-clip, per-1,000-request and "Equivalent to" amounts are skipped; the per-1M token prices in the same cell (and dated windows) stay', json_encode($cellBad));
+    check(!isset($ais['gemini-2.5-flash-image']) && !isset(rh_ai_price_page_parse_markdoc("## X\n*[`x-image`](/docs/models/x-image)*\n{% table %}\n* Feature\n* Paid Tier\n---\n* Input price\n* \$0.30 (text / image)\n---\n* Output price\n* \$0.039 per image\n{% /table %}\n{% table %}\n* Feature\n* Paid Tier\n---\n* Input price\n* \$0.15\n---\n* Output price\n* \$2.00\n{% /table %}\n")['x-image']),
+        'a cell with only a per-image amount gives the id no page price at all (never a later tier\'s price, never a tiny number)');
     check(($ais['gemini-4-carbon']['label'] ?? '') === 'Gemini 4 Carbon' && strpos((string)($ais['gemini-3.8-live']['label'] ?? ''), '{%') === false,
         'new price page: the label is the section name without its {% id %} tag', json_encode(array_column($ais, 'label')));
     foreach (['2026-11-29' => [[2.0, 10.0], [0.75, 3.75]], '2026-12-15' => [[4.0, 20.0], [0.75, 3.75]]] as $day => [$carbon, $flash]) {
@@ -224,10 +259,78 @@ try {
     $rA = rh_ai_price_page_refresh($pdo, 'google');
     $savedA = rh_ai_price_page_saved($pdo, 'google');
     $pricesA = rh_ai_price_page_prices($pdo, 'google', '2026-11-29');
-    check($rA['ok'] && $rA['count'] === 10 && $GLOBALS['stub_page_calls'] === $callsA + 1 && isset($savedA['ids']['gemini-4-carbon'])
+    check($rA['ok'] && $rA['count'] === 12 && $GLOBALS['stub_page_calls'] === $callsA + 1 && isset($savedA['ids']['gemini-4-carbon'])
         && ($pricesA['gemini-3.8-flash'] ?? null) === [0.75, 3.75] && strpos(json_encode(rh_ai_notices()), 'price_page') === false,
         'refresh: the new page is read at its new URL and saved as ai_price_page_google, with no notice', json_encode([$rA, array_keys($savedA['ids'])]));
     $GLOBALS['stub_page'] = null;
+
+    // Fault 2026-11-29 (qa LATER): a failed page read. The notice says whether anything was ever read; the public list
+    // prices only ids not saved yet; the saved page prices, their dates and 'at' never change.
+    $notices = static fn(): string => json_encode(rh_ai_notices());
+    $seedAt = '2026-11-20 08:00:00';
+    $seedIds = [
+        'gemini-3.8-flash' => ['in' => [[0.75, null, '2026-12-31'], [1.5, '2027-01-01', null]], 'out' => [[3.75, null, '2026-12-31'], [7.5, '2027-01-01', null]], 'label' => 'Gemini 3.8 Flash'],
+        'gemini-4-neon' => ['in' => [[5.0, null, null]], 'out' => [[25.0, null, null]], 'label' => 'Gemini 4 Neon'],
+    ];
+    $seedOld = json_encode(['at' => $seedAt, 'ids' => $seedIds], JSON_UNESCAPED_SLASHES); // the shape saved before list_at existed
+    // (== below where whole numbers are compared: a JSON round trip turns 5.0 into 5)
+    // 1a. Nothing saved, page and list both fail
+    rh_ai_save_settings(['ai_price_page_google' => '', 'ai_notices_json' => ''], $pdo);
+    $GLOBALS['stub_pricelist'] = null;
+    $rE = rh_ai_price_page_refresh($pdo, 'google');
+    check(!$rE['ok'] && $rE['count'] === 0 && strpos($rE['message'], "Google's price page could not be read today and no prices have been read from it yet, so a model with no price is not used until one can be read.") !== false
+        && strpos($rE['message'], 'last known prices were kept') === false && strpos($notices(), 'no prices have been read from it yet') !== false && rh_ai_price_page_saved($pdo, 'google')['ids'] === [],
+        'page and list fail, nothing ever saved: the notice says no prices have been read yet (never "the last known prices were kept")', json_encode([$rE, $notices()]));
+    // 1b. Something saved (old shape), page and list both fail
+    rh_ai_save_settings(['ai_price_page_google' => $seedOld, 'ai_notices_json' => ''], $pdo);
+    $rK = rh_ai_price_page_refresh($pdo, 'google');
+    $rK2 = rh_ai_price_page_refresh($pdo, 'google');
+    $savedK = rh_ai_price_page_saved($pdo, 'google');
+    check(!$rK['ok'] && strpos($rK['message'], "Google's price page could not be read today, so the last known prices were kept (last read 20 Nov 2026).") !== false
+        && $savedK == ['at' => $seedAt, 'ids' => $seedIds, 'list_at' => ''] && substr_count($notices(), 'last known prices were kept (last read 20 Nov 2026)') === 1,
+        'page and list fail, a read saved before list_at existed: it loads, stays as it was, "last known prices were kept (last read ...)", one notice for two reads', json_encode([$rK, $savedK, $notices()]));
+    // 2a. Page fails, list read, a saved page read
+    rh_ai_save_settings(['ai_price_page_google' => $seedOld, 'ai_notices_json' => ''], $pdo);
+    $GLOBALS['stub_pricelist'] = $listJson; // gemini-4-neon 3/15 (saved at 5/25), gemini-3.9-flash 9/9 (not saved)
+    $rL = rh_ai_price_page_refresh($pdo, 'google');
+    $savedL = rh_ai_price_page_saved($pdo, 'google');
+    check($savedL['at'] === $seedAt && $savedL['list_at'] !== '' && $savedL['ids']['gemini-3.8-flash'] === $seedIds['gemini-3.8-flash'],
+        'page fails, list read: the saved page prices keep their date windows and \'at\' (last good page read) is unchanged; the list read has its own stamp', json_encode($savedL));
+    check($savedL['ids']['gemini-4-neon'] == $seedIds['gemini-4-neon'], 'page fails, list read: a saved id is never overwritten by a different list price', json_encode($savedL['ids']['gemini-4-neon'] ?? null));
+    check(($savedL['ids']['gemini-3.9-flash']['in'] ?? null) == [[9.0, null, null]] && ($savedL['ids']['gemini-3.9-flash']['out'] ?? null) == [[9.0, null, null]] && count($savedL['ids']) === 3
+        && (rh_ai_price_page_prices($pdo, 'google', '2026-11-29')['gemini-3.9-flash'] ?? null) === [9.0, 9.0],
+        'page fails, list read: a model the page never priced gets the list price (and the price readers see it)', json_encode($savedL['ids']));
+    check(!$rL['ok'] && $rL['count'] === 1 && strpos($rL['message'], 'last known prices were kept (last read 20 Nov 2026).') !== false
+        && strpos($rL['message'], 'The public model price list filled in 1 model id the page had not priced.') !== false
+        && strpos($notices(), 'Any model the page had not priced was filled in from the public model price list.') !== false,
+        'page fails, list read: the message says the page could not be read and the list filled in one model; the notice says so too', json_encode([$rL, $notices()]));
+    $rL2 = rh_ai_price_page_refresh($pdo, 'google');
+    check(rh_ai_price_page_saved($pdo, 'google')['ids'] === $savedL['ids'] && $rL2['count'] === 0 && strpos($rL2['message'], 'filled in') === false
+        && substr_count($notices(), 'Any model the page had not priced') === 1,
+        'page fails again, list read: nothing new to add, nothing changed, still one notice', json_encode([$rL2, $notices()]));
+    // 2b. Nothing saved before, page fails, list read: the list-only set is saved
+    rh_ai_save_settings(['ai_price_page_google' => '', 'ai_notices_json' => ''], $pdo);
+    $rN = rh_ai_price_page_refresh($pdo, 'google');
+    $savedN = rh_ai_price_page_saved($pdo, 'google');
+    $listIds = array_keys(rh_ai_price_list_parse($listJson, 'google'));
+    check(array_keys($savedN['ids']) === $listIds && $savedN['at'] === '' && $savedN['list_at'] !== '' && $rN['count'] === count($listIds)
+        && strpos($rN['message'], 'no prices have been read from it yet') !== false && strpos($rN['message'], 'filled in 2 model ids') !== false,
+        'nothing saved, page fails, list read: the list-only set is saved, \'at\' stays empty (no page read yet), the wording says so', json_encode([$rN, $savedN]));
+    // The next good page read saves the page again (page wins), with 'at' set and no list stamp
+    $GLOBALS['stub_page'] = $aisPage;
+    $rP = rh_ai_price_page_refresh($pdo, 'google');
+    $savedP = rh_ai_price_page_saved($pdo, 'google');
+    check($rP['ok'] && $savedP['at'] !== '' && $savedP['list_at'] === '' && ($savedP['ids']['gemini-3.8-flash'] ?? null) === $ais['gemini-3.8-flash'] && isset($savedP['ids']['gemini-4-neon']),
+        'a good page read after: the page prices are saved again with their read time; the list still fills what the page does not show', json_encode([$rP, array_keys($savedP['ids'])]));
+    $GLOBALS['stub_page'] = null;
+    $GLOBALS['stub_pricelist'] = null;
+    rh_ai_save_settings(['ai_notices_json' => ''], $pdo);
+    // 1c. The public-list wording (another provider), nothing saved and the list fails
+    rh_ai_save_settings(['ai_price_page_anthropic' => ''], $pdo);
+    $rAn = rh_ai_price_page_refresh($pdo, 'anthropic');
+    check(!$rAn['ok'] && strpos($rAn['message'], 'could not be read today from the public model price list and none have been read from it yet') !== false && strpos($rAn['message'], 'last known prices were kept') === false,
+        'list fails, nothing saved (another provider): the list wording says none have been read yet', json_encode($rAn));
+    rh_ai_save_settings(['ai_notices_json' => ''], $pdo);
 
     $GLOBALS['stub_page'] = $page;
     $GLOBALS['stub_pricelist'] = $listJson;

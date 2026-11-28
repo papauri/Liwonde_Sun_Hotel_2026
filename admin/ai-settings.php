@@ -826,7 +826,8 @@ $fmtPrice = static function ($v): string {
                     $mSpeed = $choices['speed_ms'];
                     // Prices read automatically (Google's price page; the public price list for the others): shown with the day read.
                     $pagePrices = rh_ai_price_page_prices($pdo, $p);
-                    $pageAt = rh_ai_price_page_saved($pdo, $p)['at'];
+                    $pageSaved = rh_ai_price_page_saved($pdo, $p);
+                    $pageAt = $pageSaved['at'] !== '' ? $pageSaved['at'] : (string)($pageSaved['list_at'] ?? ''); // list-only read: its own day, never 1 Jan 1970
                     $hasKeyP = !empty($states[$p]['has_key']);
                     $retiredRows = array_values(array_filter($rows, static fn($r) => ($mStatus[(string)$r['model_id']] ?? '') === 'retired'));
                 ?>
@@ -897,7 +898,7 @@ $fmtPrice = static function ($v): string {
                                         $pp = rh_ai_price_page_for($pagePrices, $mid);
                                         if ($pp !== null && $m['price_in_per_mtok'] !== null && $m['price_out_per_mtok'] !== null
                                             && abs((float)$m['price_in_per_mtok'] - $pp[0]) < 0.00005 && abs((float)$m['price_out_per_mtok'] - $pp[1]) < 0.00005): ?>
-                                            <span class="ai-muted">Price read <?php echo $h(date('j M Y', (int)strtotime($pageAt))); ?> from <?php echo $h(rh_ai_price_source_label($p)); ?>.</span>
+                                            <span class="ai-muted">Price read <?php echo $pageAt !== '' ? $h(date('j M Y', (int)strtotime($pageAt))) . ' ' : ''; ?>from <?php echo $h(rh_ai_price_source_label($p)); ?>.</span>
                                         <?php endif; ?>
                                         <?php if ($noPrice): ?><span class="badge badge-warning">No price yet</span><?php endif; ?>
                                         <?php if ($retired): ?><span class="badge badge-danger">No longer offered - choose a replacement</span><?php endif; ?>

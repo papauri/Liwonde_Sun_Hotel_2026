@@ -11,8 +11,8 @@
  *    price in effect is worked out on the day it is used, even when the page cannot be read that day.
  *  - Saved in site_settings (ai_price_page_<provider>: when read + the prices per id). rh_ai_sync_models lays these
  *    over the list it saves (owner 2026-11-21: prices are never typed; a page price replaces any old typed one).
- *  - The page cannot be read or no price is found: the last prices stay, one notice for the Assistant Settings people,
- *    and the page never breaks.
+ *  - The page cannot be read or no price is found: the last prices stay, the public list prices only a model not saved
+ *    yet, one notice for the Assistant Settings people, and the page never breaks.
  */
 
 require_once __DIR__ . '/ai-providers.php';
@@ -39,8 +39,9 @@ function rh_ai_price_list_url(): string
 }
 
 /**
- * Where each provider's models sit in the public price list: [list provider name, id prefix]. Google is here too: after
- * a good read of its own page, the list fills only the ids the page does not show (the page always wins).
+ * Where each provider's models sit in the public price list: [list provider name, id prefix]. Google is here too: the
+ * list fills only the ids its page does not price (the page always wins); when the page cannot be read, only ids not
+ * saved yet (the saved page prices and their dates are never overwritten).
  */
 function rh_ai_price_list_providers(): array
 {
@@ -181,14 +182,38 @@ function rh_ai_price_page_amounts(string $cellText): array
                 $win[$i]['from'] = date('Y-m-d', strtotime($win[$i - 1]['until'] . ' +1 day'));
             }
         }
+        // Skipped only here, so the dates above are worked out from every price on the line, as before.
         for ($i = 0; $i < $n; $i++) {
             $v = (float)$amts[$i][0];
-            if ($v >= 0 && $v <= 1000) {
+            if ($v >= 0 && $v <= 1000 && !rh_ai_price_page_not_per_token($line, $am[0][$i][1], $am[0][$i][1] + strlen($am[0][$i][0]))) {
                 $out[] = [$v, $win[$i]['from'], $win[$i]['until']];
             }
         }
     }
     return $out;
+}
+
+/**
+ * True when the price at $start..$end on one cell line is not a per-1M-token price (fault 2026-11-29: image, TTS and
+ * video cells): "Equivalent to" right in front of it ("Equivalent to $0.00225 per 10s audio"), or its own text, up to
+ * the next "$" on the line, says per image / second / minute / hour / clip / request / song / frame / 1,000
+ * ("$0.039 per image", "$0.0504 per 2K image", "$0.035 per 1,000 requests"). A token price on the same cell stays
+ * ("$30.00 (images)", "$0.30 (text / image / video)", "$3.50 or $0.005/min", "per 1,000,000 tokens", "per 1M tokens").
+ */
+function rh_ai_price_page_not_per_token(string $line, int $start, int $end): bool
+{
+    if (preg_match('/\b(?:equivalent|equates)\s+to\s*(?:about\s+|approximately\s+|~\s*)?$/i', substr($line, 0, $start))) {
+        return true;
+    }
+    $next = strpos($line, '$', $end);
+    $own = $next === false ? substr($line, $end) : substr($line, $end, $next - $end);
+    return (bool)preg_match(
+        '/\bper\s+(?:[\d.,]+\s*k?\b\s*(?:\/\s*[\d.,]+\s*k\b\s*)?)?(?:resolution\s+)?(?:images?|seconds?|secs?|minutes?|mins?|hours?|days?|clips?|requests?|songs?|frames?|query|queries)\b'
+        . '|\bper\s+[\d.]+\s*(?:s|secs?|seconds?|mins?|minutes?)\b'
+        . '|\bper\s+(?:1,000|1000|thousand)(?![,\d])'
+        . '|\bclips?\b/i',
+        $own
+    );
 }
 
 /**
@@ -327,9 +352,13 @@ function rh_ai_price_page_parse_markdoc(string $md): array
                     $outP = rh_ai_price_page_amounts($cell);
                 }
             }
-            if ($in && $outP) {
-                foreach ($ids as $id) {
-                    $out[$id] = ['in' => $in, 'out' => $outP, 'label' => $label];
+            // The first table with both rows is the standard tier. A cell with no per-1M-token price in it (only a
+            // per-image or per-second one) gives these ids no page price at all, never a Batch or other tier's price.
+            if ($in !== null && $outP !== null) {
+                if ($in && $outP) {
+                    foreach ($ids as $id) {
+                        $out[$id] = ['in' => $in, 'out' => $outP, 'label' => $label];
+                    }
                 }
                 break;
             }
@@ -396,9 +425,12 @@ function rh_ai_price_page_parse(string $html): array
                     $outP = rh_ai_price_page_amounts($cell);
                 }
             }
-            if ($in && $outP) {
-                foreach ($ids as $id) {
-                    $out[$id] = ['in' => $in, 'out' => $outP, 'label' => $label];
+            // As on the Markdoc page: the first table with both rows decides, never a later tier.
+            if ($in !== null && $outP !== null) {
+                if ($in && $outP) {
+                    foreach ($ids as $id) {
+                        $out[$id] = ['in' => $in, 'out' => $outP, 'label' => $label];
+                    }
                 }
                 break;
             }
@@ -425,7 +457,11 @@ function rh_ai_price_page_resolve(array $windows, string $day): ?float
     return $best;
 }
 
-/** The saved page read: ['at' => 'Y-m-d H:i:s', 'ids' => [...]] or an empty read. */
+/**
+ * The saved read: ['at' => last good read of the provider's own source (Google: its page), 'ids' => [...],
+ * 'list_at' => when the public list last filled in ids after a failed Google page read ('' if never)], or an empty
+ * read. A read saved before list_at existed (only at + ids) loads the same, with list_at ''.
+ */
 function rh_ai_price_page_saved(?PDO $db, string $provider): array
 {
     $raw = '';
@@ -439,7 +475,9 @@ function rh_ai_price_page_saved(?PDO $db, string $provider): array
         }
     }
     $j = $raw !== '' ? json_decode($raw, true) : null;
-    return is_array($j) && isset($j['ids']) && is_array($j['ids']) ? ['at' => (string)($j['at'] ?? ''), 'ids' => $j['ids']] : ['at' => '', 'ids' => []];
+    return is_array($j) && isset($j['ids']) && is_array($j['ids'])
+        ? ['at' => (string)($j['at'] ?? ''), 'ids' => $j['ids'], 'list_at' => (string)($j['list_at'] ?? '')]
+        : ['at' => '', 'ids' => [], 'list_at' => ''];
 }
 
 /**
@@ -478,53 +516,101 @@ function rh_ai_price_page_refresh(PDO $db, string $provider): array
         return ['ok' => false, 'count' => 0, 'message' => ''];
     }
     $label = rh_ai_provider_list()[$provider]['label'] ?? $provider;
-    $found = [];
     $isPage = $provider === 'google';
-    $fromList = 0;
+    $page = []; // Google's own page
+    $list = []; // the public list (kept apart, so a failed list read never drops what the page gave)
     $ua = 'User-Agent: Mozilla/5.0 (compatible; HotelAssistantPrices/1.0)';
     // What the read gave, for one log line when nothing was found (never the body or headers).
     $diag = ['http' => 0, 'error' => '', 'ids' => 0];
-    try {
-        if ($isPage) {
+    if ($isPage) {
+        try {
             $r = rh_ai_http('GET', $url, ['Accept: text/html', $ua], null, 10);
             $diag = ['http' => (int)($r['http'] ?? 0), 'error' => (string)($r['error'] ?? ''), 'ids' => 0];
             if ($r['http'] === 200 && $r['body'] !== '' && strlen($r['body']) <= 6000000) {
-                $found = rh_ai_price_page_parse($r['body']);
-                $diag['ids'] = count($found);
+                $page = rh_ai_price_page_parse($r['body']);
+                $diag['ids'] = count($page);
             }
+        } catch (Throwable $e) {
+            $page = [];
+            $diag['error'] = trim($diag['error'] . ' ' . $e->getMessage());
         }
-        // The public list: the source for the other providers; for Google only after a good page read (a failed page
-        // read keeps the last saved page prices with their dates, never a list-only set).
-        if (isset(rh_ai_price_list_providers()[$provider]) && (!$isPage || $found)) {
+    }
+    // The public list: the source for the other providers. For Google it only fills ids the page does not price (the
+    // page always wins); after a failed page read it only fills ids not saved yet (the saved page prices and their
+    // dates are never overwritten).
+    if (isset(rh_ai_price_list_providers()[$provider])) {
+        try {
             $r = rh_ai_http('GET', rh_ai_price_list_url(), ['Accept: application/json', $ua], null, 20);
             if (!$isPage) {
                 $diag = ['http' => (int)($r['http'] ?? 0), 'error' => (string)($r['error'] ?? ''), 'ids' => 0];
             }
             if ($r['http'] === 200 && $r['body'] !== '' && strlen($r['body']) <= 15000000) { // about 5 MB
-                foreach (rh_ai_price_list_parse($r['body'], $provider) as $id => $p) {
-                    if (!isset($found[$id])) {
-                        $found[$id] = $p;
-                        $fromList++;
-                    }
-                }
+                $list = rh_ai_price_list_parse($r['body'], $provider);
+            }
+        } catch (Throwable $e) {
+            $list = [];
+            if (!$isPage) {
+                $diag['error'] = trim($diag['error'] . ' ' . $e->getMessage());
             }
         }
-    } catch (Throwable $e) {
-        $found = $isPage ? $found : [];
-        $diag['error'] = trim($diag['error'] . ' ' . $e->getMessage());
     }
+    $found = $isPage ? $page : $list;
     if (!$found) {
         error_log('Assistant: ' . $provider . ' prices not read from ' . $url . ': HTTP ' . $diag['http']
             . ', error "' . mb_substr($diag['error'], 0, 200) . '", ' . $diag['ids'] . ' model ids parsed.');
         $saved = rh_ai_price_page_saved($db, $provider);
-        $since = $saved['at'] !== '' ? ' (last read ' . date('j M Y', (int)strtotime($saved['at'])) . ')' : '';
-        $msg = $isPage
-            ? $label . '\'s price page could not be read today, so the last known prices were kept' . $since . '.'
-            : 'The ' . $label . ' prices could not be read today from the public model price list, so the last known prices were kept' . $since . '.';
-        if (function_exists('rh_ai_notify_settings')) {
-            rh_ai_notify_settings($db, 'price_page', $msg . ' Prices are filled in automatically again once it can be read.');
+        // Google's page failed but the list was read: the saved ids stay exactly as they are ('at' too: it is the
+        // last good page read), and only ids not saved yet get the list price (a new model gets a price).
+        $added = 0;
+        if ($isPage && $list) {
+            $ids = $saved['ids'];
+            foreach ($list as $id => $p) {
+                if (!array_key_exists((string)$id, $ids)) {
+                    $ids[(string)$id] = $p;
+                    $added++;
+                }
+            }
+            if ($added > 0) {
+                try {
+                    rh_ai_save_settings(['ai_price_page_' . $provider => json_encode(['at' => $saved['at'], 'ids' => $ids, 'list_at' => date('Y-m-d H:i:s')], JSON_UNESCAPED_SLASHES)], $db);
+                } catch (Throwable $e) {
+                    error_log('Assistant: could not save the price list read: ' . $e->getMessage());
+                    $added = 0;
+                }
+            }
         }
-        return ['ok' => false, 'count' => 0, 'message' => $msg];
+        if ($saved['at'] !== '') {
+            $since = ' (last read ' . date('j M Y', (int)strtotime($saved['at'])) . ')';
+            $msg = $isPage
+                ? $label . '\'s price page could not be read today, so the last known prices were kept' . $since . '.'
+                : 'The ' . $label . ' prices could not be read today from the public model price list, so the last known prices were kept' . $since . '.';
+        } else {
+            $msg = $isPage
+                ? $label . '\'s price page could not be read today and no prices have been read from it yet, so a model with no price is not used until one can be read.'
+                : 'The ' . $label . ' prices could not be read today from the public model price list and none have been read from it yet, so a model with no price is not used until one can be read.';
+        }
+        // The notice depends only on whether the list was read (no count), so the same situation twice within 6 hours
+        // stays one notice even though the second read finds nothing new to add.
+        $note = $msg;
+        if ($isPage && $list) {
+            $note .= ' Any model the page had not priced was filled in from the public model price list.';
+        }
+        if ($added > 0) {
+            $msg .= ' The public model price list filled in ' . $added . ' model id' . ($added === 1 ? '' : 's') . ' the page had not priced.';
+        }
+        if (function_exists('rh_ai_notify_settings')) {
+            rh_ai_notify_settings($db, 'price_page', $note . ' Prices are filled in automatically again once it can be read.');
+        }
+        return ['ok' => false, 'count' => $added, 'message' => $msg];
+    }
+    $fromList = 0;
+    if ($isPage) {
+        foreach ($list as $id => $p) {
+            if (!isset($found[$id])) {
+                $found[$id] = $p;
+                $fromList++;
+            }
+        }
     }
     $at = date('Y-m-d H:i:s');
     try {
