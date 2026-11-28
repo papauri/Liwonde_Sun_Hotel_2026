@@ -251,8 +251,11 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
 
 ## Sheet view build log (run started 2026-11-29, session 66bedc76, owner "Lets do it in this session")
 - Cron 29e75167 (session-only, :17/:37/:57) auto-continues; if this window closed, continue by hand from the step below.
-- Step: Bundle B1 next (dept-stock-lead: S2 Stock Count, S4 Stock Items, S5 Reorder, S6 Budget; one ship). First the
-  dept-ai-lead value_change fix below.
+- Step: B1 BUILDING (dept-stock-lead running: S2 Stock Count, S4 Stock Items, S5 Reorder, S6 Budget; one ship) and
+  C BUILDING in parallel (dept-restaurant-lead running: S3 Menu grid; S11 Reports after). Rule: only dept-stock-lead
+  edits admin/js/sheet-grid.js / sheet-review.js until B1 ships. Do NOT start another B1 or C agent.
+- ai-desk value_change counts: left for the next owner-prompted Guides + Assistant sync (Pending line exists); it only
+  affects the Assistant's staff-activity figures, not money or stock.
 - Last commit: Bundle A SHIPPED Liwonde 2f2de22 / Rosalyn's 2bf7d40 (engine admin/js/sheet-grid.js + css, review
   list admin/js/sheet-review.js, admin/includes/value-change-log.php + Staff activity "Price & value changes"; tests
   sheet_grid_test 91/0, value_change_log 74/0, settings_change_log 104/0; qa-auditor 1 blocker (44px touch cells) fixed).
@@ -260,8 +263,6 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   toFixed(6) in copy/fill down for >6 decimals, no digit cap; onSave `new` is Number/bool/null while `old` keeps the
   page's type (B1/C save code must normalise both); stock cost_per_unit is DECIMAL(12,4) -> log with kind 'number'.
   Copy/paste/undo shortcuts tested with simulated keys only: check on the real Stock Count page in B1.
-- B1 prerequisite (LATER for dept-ai-lead, via GUIDES_AI_SYNC): includes/ai/ai-desk.php:236/:301 special-case
-  'setting_change' in staff counts; the new 'value_change' action needs the same treatment before B/C write rows.
 
 ## Planned 2026-11-26: spreadsheet view for Stock Count + Menu (owner FEATURE, profile Claude) - building (see log above)
 Plan: `.claude/SHEET_VIEW_PLAN.md` (S1 shared sheet engine -> S2 Stock Count -> S3 Menu with price review list + price
