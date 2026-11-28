@@ -246,7 +246,16 @@ Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lea
   - Icon preview (Conference Packages, Gym, Page Management) + booked rates on any room move + gym/event quotation email total = PDF DONE: Liwonde 4aa3d3b / Rosalyn's ffc4f2c.
   - Gym/event quotation email (+ WhatsApp) total = PDF, and Conference Packages script loaded once: DONE Liwonde 1404789.
 
-## Planned 2026-11-26: spreadsheet view for Stock Count + Menu (owner FEATURE, profile Claude) - not started
+## Sheet view build log (run started 2026-11-29, session 66bedc76, owner "Lets do it in this session")
+- Cron 29e75167 (session-only, :17/:37/:57) auto-continues; if this window closed, continue by hand from the step below.
+- Step: Bundle A building. Agents: ui-builder (engine + review modal + fixture + tests), backend-specialist
+  (admin/includes/value-change-log.php + staff-activity wiring). Then one qa-auditor on the combined diff, browser
+  check 1920/1280/390, commit, port to Rosalyn's.
+- Last commit: none yet. Done: nothing.
+- B1 prerequisite (LATER for dept-ai-lead, via GUIDES_AI_SYNC): includes/ai/ai-desk.php:236/:301 special-case
+  'setting_change' in staff counts; the new 'value_change' action needs the same treatment before B/C write rows.
+
+## Planned 2026-11-26: spreadsheet view for Stock Count + Menu (owner FEATURE, profile Claude) - building (see log above)
 Plan: `.claude/SHEET_VIEW_PLAN.md` (S1 shared sheet engine -> S2 Stock Count -> S3 Menu with price review list + price
 log + presence). No override permission, no logic change, phones unchanged, no new view permissions: staff without
 the page permission never see the grid (owner 2026-11-26). Later phases S4-S11 added (Stock Items, reorder, budget,
