@@ -93,11 +93,16 @@ Deeper trackers to read next:
     after commit) -> fixed -> accounting lead + final-review PASS. Tests dryrun 72/0, payment 31/0, email_wording
     175/0, browser cases 0 failed, plain vs background save identical. 20 test bookings cancelled, email off.
     Builders switched to effort HIGH (owner 2026-11-28).
-  - LATER batch IN PROGRESS (owner "complete any later items"): the 13 B/A/C later items (credit preview = applied,
-    per-row status, override-without-reason warning, one 0.01 credit threshold only if before/after identical, tests
-    in run_tests.php, harness receipt cleanup, JSON_INVALID_UTF8_SUBSTITUTE, credit covers total -> untick payment,
-    refused save restores status + email tick, quotation PDF test, flash on booking-details, price-mismatch log level,
-    background saves count as activity). Then guest phases G0 -> G-B -> G-A -> G-C.
+  - LATER batch SHIPPED 2026-11-28 (owner "complete any later items"): Liwonde c262782 / Rosalyn's 501da7b. Credit
+    preview walks the save's cash split + credit loop room by room (per-room status on Review; whole booking reads
+    paid when every room is), override-without-reason warning opens its field, one credit threshold BALANCE_TOLERANCE
+    0.01 (before/after identical: 7 rolled-back cases + 14 fixtures; bookings.amount_due is DECIMAL(10,2), checked),
+    dry-run + payment tests in run_tests.php, harness deletes only its own receipt PDFs, JSON_INVALID_UTF8_SUBSTITUTE,
+    credit covering the total unticks payment once with a note, refused save restores status + email tick, quotation
+    email test (tquote 20/0), flash shown on booking details, price-moved refusal logged as info. Background saves:
+    no change needed (activity hook logs every POST; only the dry run is marked refused). qa-auditor, accounting lead,
+    final-review PASS. Tests dryrun 82/0, payment 37/0, email_wording 175/0, guest_credit_ship_m 45/0,
+    group_credit_move 79/0. NEXT: guest phases G0 -> G-B -> G-A -> G-C (plan .claude/CREATE_BOOKING_WIZARD_PLAN.md).
 
 ## Token cost controls (owner 2026-11-17)
 Measured 10-17 Nov: about 55 model calls per commit, 97% on Opus, department-lead runs averaging 60-105 steps with
