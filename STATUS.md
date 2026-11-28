@@ -18,7 +18,8 @@ Deeper trackers to read next:
   confirmed stay near the edge auto-scrolls; the drop still opens the booking's Change dates (nothing saved there).
 - Tests: calendar_timeline 49/0, grid_select 96/0, timeline_scroll_browser pass; actions 55/1 (pre-existing check
   "(a) bookings.php reads booking_id + individual_room_id", admin/bookings.php untouched). qa-auditor PASS.
-- Owner decisions open: save on drop instead of opening Change dates? Allow dates-drag on pending/tentative?
+- Owner decisions 2026-11-28: the drop keeps opening Change dates (no save on the calendar); pending and tentative
+  stays drag to other dates too (dates only, no room move until confirmed) - Liwonde b9eb3af / Rosalyn's 29f1e2f.
 - LATER: same scroll for the HK/Maintenance timelines (room-timeline-ops.js); HK timeline sometimes overflows on
   first paint until a resize (pre-existing); QA: window resize still redraws during a drag (pre-existing), the
   ResizeObserver path skips blockBusy/picks.busy, st.refillLater unused, auto-scroll runs every frame at the window end.
