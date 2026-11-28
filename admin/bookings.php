@@ -3326,6 +3326,7 @@ $total_bookings = $pending = $tentative = $confirmed = $checked_in = 0;
 $checked_out = $cancelled = $no_show = $paid = $unpaid = 0;
 $today_checkins = $today_checkouts = $today_bookings = 0;
 $week_bookings = $month_bookings = $expiring_soon = $group_bookings = 0;
+$current_bookings = $online_bookings = $expired = 0;
 $list_count = 0;
 $deleted_count = 0;
 $current_page_count = 0;
@@ -3505,7 +3506,10 @@ try {
             SUM(b.status = 'checked-out')                                                                 AS checked_out,
             SUM(b.status = 'cancelled')                                                                   AS cancelled,
             SUM(b.status = 'no-show')                                                                     AS no_show,
-            {$bk_badge_sum('paid')}                                                                       AS paid,
+            SUM(b.status = 'expired')                                                                     AS expired,
+            {$bk_badge_sum('current')}                                                                      AS current_bookings,
+            {$bk_badge_sum('online')}                                                                     AS online_bookings,
+            {$bk_badge_sum('paid')}                                                                    AS paid,
             {$bk_badge_sum('unpaid')}                                                                     AS unpaid,
             {$bk_badge_sum('today-checkins')}                                                             AS today_checkins,
             {$bk_badge_sum('today-checkouts')}                                                            AS today_checkouts,
@@ -3537,7 +3541,10 @@ try {
     $checked_out     = (int)($stats['checked_out']     ?? 0);
     $cancelled       = (int)($stats['cancelled']       ?? 0);
     $no_show         = (int)($stats['no_show']         ?? 0);
-    $paid            = (int)($stats['paid']            ?? 0);
+    $expired         = (int)($stats['expired']         ?? 0);
+    $current_bookings = (int)($stats['current_bookings'] ?? 0);
+    $online_bookings = (int)($stats['online_bookings'] ?? 0);
+    $paid           = (int)($stats['paid']            ?? 0);
     $unpaid          = (int)($stats['unpaid']          ?? 0);
     $today_checkins  = (int)($stats['today_checkins']  ?? 0);
     $today_checkouts = (int)($stats['today_checkouts'] ?? 0);
@@ -4029,11 +4036,11 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
                     <span class="bk-drop">
                         <select name="filter_status" class="bookings-toolbar__input bookings-toolbar__input--status" aria-label="Booking status">
                             <option value="">Any status</option>
-                            <?php foreach (['pending' => 'Pending', 'tentative' => 'Tentative', 'confirmed' => 'Confirmed', 'checked-in' => 'Checked in', 'checked-out' => 'Checked out', 'cancelled' => 'Cancelled', 'no-show' => 'No-show', 'deleted' => 'Deleted'] as $bk_st_v => $bk_st_l): ?>
+                            <?php foreach (['pending' => 'Pending', 'tentative' => 'Tentative', 'confirmed' => 'Confirmed', 'checked-in' => 'Checked in', 'checked-out' => 'Checked out', 'cancelled' => 'Cancelled', 'no-show' => 'No-show', 'expired' => 'Expired', 'deleted' => 'Deleted'] as $bk_st_v => $bk_st_l): ?>
                                 <option value="<?php echo $bk_st_v; ?>" <?php echo $filter_status === $bk_st_v ? 'selected' : ''; ?>><?php echo $bk_st_l; ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <i class="help" data-tip="Booking status. Pending: not confirmed yet. Tentative: room held for a short time. Confirmed: booked, not arrived yet. Checked in: in the hotel now. Checked out: has left. Cancelled and No-show: did not stay. Deleted: bookings that were removed (they can be restored from there).">?</i>
+                        <i class="help" data-tip="Booking status. Pending: not confirmed yet. Tentative: room held for a short time. Confirmed: booked, not arrived yet. Checked in: in the hotel now. Checked out: has left. Cancelled and No-show: did not stay. Expired: unpaid bookings that lapsed before they were confirmed. Deleted: bookings that were removed (they can be restored from there).">?</i>
                     </span>
                     <span class="bk-drop">
                         <select name="pay" class="bookings-toolbar__input bookings-toolbar__input--status" aria-label="Payment">
@@ -4207,12 +4214,15 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
             <?php
             $bk_tab_open = $active_tab_override !== '' ? $active_tab_override : 'all';
             $bk_tabs_main = [
-                ['all', 'All', 'fa-list', $total_bookings, ''],
+                ['all', 'All', 'fa-list', $total_bookings, 'All: every booking that is not deleted, any status.'],
+                ['current', 'Current', 'fa-circle-check', $current_bookings, 'Current: bookings still in play - pending, tentative, confirmed and checked in. Cancelled, Expired, Checked out and No-show bookings have their own tabs.'],
+                ['online', 'Online', 'fa-globe', $online_bookings, 'Online: booked by the guest on the website or through a booking link, any status. To narrow it down, pick a status in the Status filter (for example Expired).'],
                 ['today-checkins', 'Arriving today', 'fa-calendar-day', $today_checkins, 'Arriving today: bookings checking in today that have not checked in yet.'],
                 ['today-checkouts', 'Leaving today', 'fa-calendar-times', $today_checkouts, 'Leaving today: guests in the hotel who are due to check out today.'],
                 ['checked-in', 'Checked in', 'fa-sign-in-alt', $checked_in, 'Guests checked in now (in house).'],
                 ['pending', 'Pending', 'fa-clock', $pending, 'Pending: bookings not confirmed yet.'],
                 ['unpaid', 'Unpaid', 'fa-exclamation-circle', $unpaid, 'Unpaid: bookings with money still to pay, part paid included.'],
+                ['expired', 'Expired', 'fa-hourglass-end', $expired, 'Expired: unpaid bookings that lapsed before they were confirmed. They hold no room and owe nothing. Cancelled and No-show are under More.'],
             ];
             $bk_tabs_more = [['tentative', 'Tentative', 'fa-hourglass-half', $tentative, 'Tentative: rooms held for a short time, not confirmed yet.']];
             if ($expiring_soon > 0) { // only while tentative holds are about to lapse
@@ -5206,7 +5216,7 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
         // The view kind of a list URL (rh_bk_view_kind): history when the status (or its ?status= alias) is one of these.
         function bkViewKindOf(params) {
             const st = params.get('filter_status') !== null ? params.get('filter_status') : (params.get('status') || '');
-            return ['checked-out', 'cancelled', 'no-show', 'deleted'].indexOf(st) !== -1 ? 'history' : 'upcoming';
+            return ['checked-out', 'cancelled', 'no-show', 'expired', 'deleted'].indexOf(st) !== -1 ? 'history' : 'upcoming';
         }
         function bkCurrentViewKind() {
             const s = document.querySelector('#booking-results [data-bk-state]');
@@ -5984,6 +5994,11 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
                         // Server-filtered (rh_bk_tab_clauses 'group-bookings'): every loaded row belongs.
                         isVisible = true;
                         break;
+                    case 'current':
+                    case 'online':
+                        // Server-filtered (rh_bk_tab_clauses 'current' / 'online'): every loaded row belongs.
+                        isVisible = true;
+                        break;
                     default:
                         // Generic status-named tab (e.g. "expired") that has no
                         // bespoke rule above — match the row's status directly so
@@ -6035,7 +6050,10 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
                 'today-bookings': "Today's Bookings",
                 'week-bookings': "This Week's Bookings",
                 'month-bookings': "This Month's Bookings",
-                'group-bookings': 'Group Bookings'
+                'group-bookings': 'Group Bookings',
+                'current': 'Current Bookings',
+                'online': 'Online Bookings',
+                'expired': 'Expired Bookings'
             };
 
             const icon = titleElement.querySelector('i');
@@ -6061,6 +6079,9 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
             if (tabName === 'week-bookings') newIcon = 'fa-calendar-week';
             if (tabName === 'month-bookings') newIcon = 'fa-calendar-alt';
             if (tabName === 'group-bookings') newIcon = 'fa-users';
+            if (tabName === 'current') newIcon = 'fa-circle-check';
+            if (tabName === 'online') newIcon = 'fa-globe';
+            if (tabName === 'expired') newIcon = 'fa-hourglass-end';
 
             titleElement.innerHTML = `<i class="fas ${newIcon}"></i> ${newTitle} `;
             if (countSpan) {
@@ -6123,6 +6144,15 @@ require_once __DIR__ . '/../includes/booking-group-ops.php'; // G4: rh_group_can
             },
             'group-bookings': {
                 filter: 'group_bookings'
+            },
+            'current': {
+                filter: 'current'
+            },
+            'online': {
+                filter: 'online'
+            },
+            'expired': {
+                filter_status: 'expired'
             },
         };
 

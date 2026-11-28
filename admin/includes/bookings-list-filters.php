@@ -331,6 +331,8 @@ if (!function_exists('rh_bk_valid_date')) {
             'week_bookings'  => 'week-bookings',
             'month_bookings' => 'month-bookings',
             'group_bookings' => 'group-bookings',
+            'current'        => 'current', // owner 2026-11-29: pending, tentative, confirmed, checked in (not cancelled, expired, checked out or no-show; deleted rows are never in the list)
+            'online'         => 'online', // owner 2026-11-29: booked on the website or through a booking link (rh_bk_source_sql)
         ];
     }
 
@@ -407,6 +409,13 @@ if (!function_exists('rh_bk_valid_date')) {
             case 'group-bookings':
                 // Group bookings tab (step 8g): every room of a group, the same rule as Booking kind = Group.
                 return ['clauses' => [rh_bk_group_sql()], 'order' => null];
+            case 'current':
+                // Still in play: pending, tentative, confirmed, checked in. Cancelled, expired, checked-out and no-show stay out
+                // (deleted rows are already out of every list and count).
+                return ['clauses' => ["b.status NOT IN ('cancelled', 'expired', 'checked-out', 'no-show')"], 'order' => null];
+            case 'online':
+                // Made by the guest (website or booking link): the same rule as ?source=online.
+                return ['clauses' => [rh_bk_source_sql() . " = 'online'"], 'order' => null];
         }
         return ['clauses' => [], 'order' => null];
     }
@@ -1123,10 +1132,10 @@ if (!function_exists('rh_bk_filters_from_get')) {
         ];
     }
 
-    /** 'history' for Checked out, Cancelled, No-show and Deleted (as tab or status), else 'upcoming' (Decision 5). */
+    /** 'history' for Checked out, Cancelled, No-show, Expired and Deleted (as tab or status), else 'upcoming' (Decision 5). */
     function rh_bk_view_kind(string $tab, string $status): string
     {
-        $history = ['checked-out', 'cancelled', 'no-show', 'deleted'];
+        $history = ['checked-out', 'cancelled', 'no-show', 'expired', 'deleted'];
         return in_array($tab, $history, true) || in_array($status, $history, true) ? 'history' : 'upcoming';
     }
 
@@ -1134,7 +1143,7 @@ if (!function_exists('rh_bk_filters_from_get')) {
      * The list's default ORDER BY when no header sort is chosen (Decision 5; the caller adds the tiebreak b.id DESC):
      *   tabs with their own order (today's check-ins / check-outs, expiring)  -> that order
      *   history views                                                         -> newest first (created_at DESC)
-     *   upcoming views (All, In house, Pending, Unpaid, Tentative, Groups)    -> arrivals from today on, soonest
+     *   upcoming views (All, Current, Online, In house, Pending, Unpaid, Tentative, Groups) -> arrivals from today on, soonest
      *                                                                            first, then past arrivals, latest first
      *   any other view (Paid, booked today / week / month, other statuses)    -> newest first, as before
      */
@@ -1147,7 +1156,7 @@ if (!function_exists('rh_bk_filters_from_get')) {
         if (rh_bk_view_kind($tab, $status) === 'history') {
             return 'b.created_at DESC';
         }
-        if (in_array($tab, ['', 'checked-in', 'pending', 'unpaid', 'tentative', 'group-bookings'], true)) {
+        if (in_array($tab, ['', 'checked-in', 'pending', 'unpaid', 'tentative', 'group-bookings', 'current', 'online'], true)) {
             return '(b.check_in_date < CURDATE()) ASC, (CASE WHEN b.check_in_date >= CURDATE() THEN b.check_in_date END) ASC, b.check_in_date DESC';
         }
         return 'b.created_at DESC';
@@ -1191,7 +1200,7 @@ if (!function_exists('rh_bk_filters_from_get')) {
             $p['start'] = $from;
         }
         $status = (string)($f['status'] ?? '');
-        $statusTabs = ['expiring-soon'];
+        $statusTabs = ['expiring-soon', 'current'];
         if (($status !== '' && !($status === 'checked-in' && $tab === 'checked-in')) || in_array($tab, $statusTabs, true)) {
             $only[] = 'status';
         }
@@ -1199,7 +1208,7 @@ if (!function_exists('rh_bk_filters_from_get')) {
             || in_array($tab, ['paid', 'unpaid'], true)) {
             $only[] = 'payment';
         }
-        if ((string)($f['source'] ?? '') !== '') {
+        if ((string)($f['source'] ?? '') !== '' || $tab === 'online') {
             $only[] = 'source';
         }
         if ((int)($f['created_by'] ?? 0) > 0) {
