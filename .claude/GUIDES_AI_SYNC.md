@@ -177,6 +177,12 @@ when prompted."
   deployed. Guides: if a guide names the price page address, update it; otherwise no change. Assistant: 'why does it say
   Google's price page could not be read' -> Google moved the page; fixed 2026-11-29, prices fill in on the next daily
   check.
+- 2026-11-29 Liwonde d7523a8 / Rosalyn's ce1ebf5 (owner PATCH): when Google's page cannot be read, the public price list
+  still prices any model the page has not (page prices always win and are never overwritten); the notice says "no
+  prices read yet" when none were ever saved; image / speech / video models never get a per-image or per-minute amount
+  as a token price. Guides: Assistant Settings > Models (where prices come from), if it says the page is the only
+  source. Assistant: 'where do the model prices come from' -> Google's page first, the public list for any model it
+  does not show, read daily.
 
 ## Synced 2026-11-26 (owner prompted "assistant and guide sync"; guides + Assistant: commit "Guides + Assistant sync 2026-11-26" in both repos · guides 06, 07, 12, 13, 19, 99 (+ Liwonde-only brand fix in 01, 02, 14, 23; guide 07 Blocked Dates note) · Assistant: when-did-they-pay -> Paid "i", dashboard vs End of Day rule, email Tone, calendar arrow keys, bare pre-arrival question gets its own answer (payment chase needs "payment"), expired / cancelled / no-show answers point to the Status pill, movements arrows for tomorrow / next week, receipt comment per b145620, expiry questions never catch stock or gym questions · Manager Guides: Money and End of Day, Bookings, Daily checklist refreshed; others no change) - entries kept for reference
 

@@ -20,9 +20,12 @@ Deeper trackers to read next:
   link block (the 2.5 Pro callout names gemini-3.8-flash: it can never take 2.5 Pro's price), "$x/min" amounts skipped,
   failed read logs HTTP code + error + ids parsed. Fixture = trimmed real page (keys removed). qa-auditor PASS, 71/71.
 - Takes effect after the owner deploys; the next daily refresh then saves the prices and the notice stops.
-- LATER: the notice says "last known prices were kept" even when none were ever saved; a failed page read also skips
-  the public list fallback; image/TTS/Live sections pick up per-image / per-minute output amounts (unreachable today:
-  rh_ai_model_is_chat drops those ids).
+- LATER items SHIPPED same day (owner "Fix the left for later"): Liwonde d7523a8 / Rosalyn's ce1ebf5. Honest notice
+  when nothing was ever saved; a failed Google page read still lets the public list fill ids not already saved (saved
+  page prices + windows untouched, 'at' = last good page read, new 'list_at'; Settings shows list_at, never 1 Jan 1970);
+  per image / second / minute / clip / request / 1,000 and "Equivalent to" amounts skipped. qa-auditor PASS, 86/86.
+- LATER: for a Google id the list filled, the Models table "Price read" line shows the page date and names the page as
+  the source.
 
 ## Shipped 2026-11-29: Reactivate an expired booking, re-priced at today's rate (owner FEATURE, profile Claude session eccc298f) - Liwonde 5823058 / Rosalyn's f4d72d5
 - Booking details: Reactivate on an eligible expired booking (check-in today+, no payment, no repeat booking, rooms
