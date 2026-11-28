@@ -40,6 +40,7 @@ try {
         ");
         foreach ($stale as $sid) {
             $ins->execute([$sid]);
+            recalculateBookingFinancials((int)$sid); // stored balance follows the expiry (owes nothing, fix 2026-11-29)
         }
         // Release the rooms those holds kept and expire their open quotations (one batch).
         rh_release_holds_for_booking_ids($pdo, $stale);

@@ -268,6 +268,14 @@ function _expireStaleTentativeBookings(PDO $pdo): void
                         rh_group_noshow_fee_apply($pdo, (int)$doneId, 'expired');
                     }
                 }
+                // The stored balance follows the new status (an expired hold without the charge owes nothing).
+                foreach ($doneIds as $doneId) {
+                    try {
+                        recalculateBookingFinancials((int)$doneId);
+                    } catch (Throwable $e) {
+                        error_log('[tentative] recalc after expiry failed: ' . $e->getMessage());
+                    }
+                }
             }
         }
     } catch (PDOException $e) {
@@ -377,6 +385,12 @@ function _expireStalePendingBookings(PDO $pdo): void
                 // Group no-show / expiry charge: the setting is read first; Off = nothing else runs. Never throws.
                 if (rh_group_noshow_charge_mode() !== '') {
                     rh_group_noshow_fee_apply($pdo, (int)$r['id'], 'expired');
+                }
+                // The stored balance follows the new status (an expired hold without the charge owes nothing).
+                try {
+                    recalculateBookingFinancials((int)$r['id']);
+                } catch (Throwable $e) {
+                    error_log('[pending] recalc after expiry failed: ' . $e->getMessage());
                 }
                 try {
                     if (!function_exists('logBookingStatusChange') && is_file(__DIR__ . '/../includes/booking-timeline.php')) {
@@ -7994,6 +8008,8 @@ function markTentativeBookingExpired(int $booking_id)
         if (rh_group_noshow_charge_mode() !== '') {
             rh_group_noshow_fee_apply($pdo, (int)$booking_id, 'expired');
         }
+        // The stored balance follows the new status (an expired hold without the charge owes nothing).
+        recalculateBookingFinancials((int)$booking_id);
 
         // Log the action
         logTentativeBookingAction($booking_id, 'expired', [
@@ -10591,6 +10607,13 @@ function getBookingFolioSummary(int $bookingId): array
             $baseVat = 0.0;
             $baseLevy = 0.0;
             $extrasLevy = rh_noshow_fee_levy($pdo, $booking);
+        } elseif (($booking['status'] ?? '') === 'expired') {
+            // Expired before it was confirmed (no group no-show charge): the booked stay is never owed. Its rates stay on
+            // the booking as history; folio charges, if any, stay billable.
+            $baseGross = 0.0;
+            $baseNet = 0.0;
+            $baseVat = 0.0;
+            $baseLevy = 0.0;
         }
         // Kept for unused nights (D-R1a, any status): its levy share is in the extras like the no-show charge's.
         $extrasLevy = round($extrasLevy + rh_unused_nights_levy($pdo, $booking), 2);
@@ -10750,10 +10773,14 @@ function recalculateBookingFinancials(int $bookingId): bool
         // posted and not voided remain billable.
         // A group room charged under group_noshow_charge (no-show / expired with its tagged row): billed from its folio
         // charges only, its booked stay no longer billed (getBookingFolioSummary does the same).
+        // Expired without that charge: the booked stay is never owed (unpaid hold, not a debt); folio charges stay billable.
         $baseReplaced = ($booking['status'] ?? '') === 'cancelled';
         if (($booking['status'] ?? '') === 'cancelled') {
             $baseTotalWithVat = max(0.0, (float)($booking['cancellation_retained_amount'] ?? 0));
         } elseif (in_array(($booking['status'] ?? ''), ['no-show', 'expired'], true) && rh_noshow_fee_tagged($pdo, $bookingId)) {
+            $baseTotalWithVat = 0.0;
+            $baseReplaced = true;
+        } elseif (($booking['status'] ?? '') === 'expired') {
             $baseTotalWithVat = 0.0;
             $baseReplaced = true;
         }

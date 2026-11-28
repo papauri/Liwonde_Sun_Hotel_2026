@@ -172,8 +172,9 @@ try {
     $p5 = gn_booking($pdo, 'confirmed', 3);
     $e5 = gn_booking($pdo, 'pending', 3, $p5);
     $pdo->prepare("UPDATE bookings SET status = 'expired', expired_at = NOW() WHERE id = ?")->execute([$e5]);
-    ok('expiry Off: nothing posted, the expired room bills its stay as today', !rh_group_noshow_fee_apply($pdo, $e5, 'expired')['posted'] && gn_rows($pdo, $e5) === []
-        && $near(getBookingFolioSummary($e5)['grand_total'], 3495));
+    // Owner fault 2026-11-29: an expired hold without the charge is never owed (was: billed its stay, 3,495).
+    ok('expiry Off: nothing posted, the expired room bills nothing (unpaid hold, not a debt)', !rh_group_noshow_fee_apply($pdo, $e5, 'expired')['posted'] && gn_rows($pdo, $e5) === []
+        && $near(getBookingFolioSummary($e5)['grand_total'], 0));
 
     // ---- Refund combinations (room paid in full 2,330; charge first night 1,165) ----
     foreach (['first_night' => 1165.0, 'full' => 1165.0, 'none' => 0.0] as $pol => $wantRefund) {

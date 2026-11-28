@@ -808,6 +808,10 @@ if (!function_exists('rh_inv_group_rooms')) {
                     $r['rh_inv_no_room_charge'] = true;
                     $r['rh_inv_noshow_fee'] = true;
                     $r['rh_inv_removed'] = $status === 'expired' ? 'Expired' : 'No-show';
+                } elseif (!$isDeleted && $status === 'expired') {
+                    // Expired without that charge: the folio summary bills no stay (fix 2026-11-29), so no stay line prints.
+                    $r['rh_inv_no_room_charge'] = true;
+                    $r['rh_inv_removed'] = 'Expired';
                 }
                 if (!isset($fs['error'])) {
                     $r['rh_inv_fs'] = $fs;

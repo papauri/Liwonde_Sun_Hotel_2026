@@ -455,7 +455,7 @@ switch ($sc) {
         [$c1] = br_booking($pdo, 'confirmed', 2, $p);      // cancelled, first night kept (1,165), guest paid 1,165
         [$c2] = br_booking($pdo, 'confirmed', 1, $p);      // cancelled, nothing kept, nothing paid -> off
         [$d1] = br_booking($pdo, 'confirmed', 1, $p);      // deleted, nothing kept, nothing paid -> off
-        [$e1] = br_booking($pdo, 'confirmed', 1, $p);      // expired: its folio summary still bills the full stay (1,165) -> stays, marked
+        [$e1] = br_booking($pdo, 'confirmed', 1, $p);      // expired, no group charge, no money: bills nothing (fix 2026-11-29) -> off the invoice
         $guestOf = [$p => 'GDOC LEAD', $m1 => 'GDOC MEMBER', $c1 => 'GDOC CANCELPAID', $c2 => 'GDOC CANCELZERO', $d1 => 'GDOC DELETED', $e1 => 'GDOC EXPIRED'];
         foreach ($guestOf as $id => $g) {
             $pdo->prepare('UPDATE bookings SET room_guest_name = ? WHERE id = ?')->execute([$g, $id]);
@@ -491,14 +491,14 @@ switch ($sc) {
             AND booking_id IN (?, ?, ?, ?, ?, ?)", [$p, $m1, $c1, $c2, $d1, $e1])['s'];
         $mIn = br_row($pdo, 'SELECT check_in_date, check_out_date FROM bookings WHERE id = ?', [$m1]);
         $out['gd'] = [
-            'ids' => $t['ids'] ?? null, 'want_ids' => [$p, $m1, $c1, $e1],
+            'ids' => $t['ids'] ?? null, 'want_ids' => [$p, $m1, $c1],
             'total' => $t['total'] ?? null, 'paid' => $t['paid'] ?? null, 'balance' => $t['balance'] ?? null, 'subtotal' => $t['subtotal'] ?? null,
             'vat' => $t['vat'] ?? null, 'levy' => $t['levy'] ?? null,
             'sum_grand' => round($sumGrand, 2), 'sum_paid' => round($sumPaid, 2), 'paid_rows' => round($paidRows, 2),
             'p_lead' => $pos('GDOC LEAD'), 'p_member' => $pos('GDOC MEMBER'), 'p_child' => $pos('Child supplement'), 'p_bar' => $pos('Bar (test)'),
             'p_cancel' => $pos('Cancelled room:'), 'p_expired' => $pos('Expired room:'), 'p_eguest' => $pos('GDOC EXPIRED'), 'p_cpaid' => $pos('GDOC CANCELPAID'), 'zero_shown' => $pos('GDOC CANCELZERO'), 'deleted_shown' => $pos('GDOC DELETED'),
             'member_dates' => strpos($h, date('d M Y', strtotime($mIn['check_in_date'])) . ' to ' . date('d M Y', strtotime($mIn['check_out_date']))) !== false,
-            'rooms_hdr' => strpos($h, '4 rooms') !== false, 'legacy' => strpos($h, '<!--rh-th=') === false, 'mode' => vat_mode(),
+            'rooms_hdr' => strpos($h, '3 rooms') !== false, 'legacy' => strpos($h, '<!--rh-th=') === false, 'mode' => vat_mode(),
         ];
         // Receipts: one room only + "Part of group REF (N rooms)"; a booking outside a group prints exactly as before.
         $out['gd_receipt_m1'] = rh_booked_rate_room_receipt_lines($pdo, $m1);

@@ -1969,9 +1969,12 @@ if (!function_exists('rh_stay_totals')) {
     require_once __DIR__ . '/../includes/pricing.php';
 }
 $bd_is_cancelled = (($booking['status'] ?? '') === 'cancelled');
+// A no-show / expired stay no longer billed (folio summary base 0): its packages are not billed either.
+$bd_base_unbilled = $bd_is_cancelled || (in_array((string)($booking['status'] ?? ''), ['no-show', 'expired'], true)
+    && isset($folio_summary['booking_base_amount']) && (float)$folio_summary['booking_base_amount'] <= BALANCE_TOLERANCE);
 $bd_pkg_rows = [];
 $bd_pkg_net_sum = 0.0;
-if (!$bd_is_cancelled) {
+if (!$bd_base_unbilled) {
     foreach (($booking_packages ?? []) as $bp) {
         $bd_pn = round((float) rh_stay_totals((float)($bp['total_cost'] ?? 0), 'price', false)['net'], 2);
         $bd_pkg_rows[] = ['name' => (string)($bp['package_name'] ?? ''), 'net' => $bd_pn];
@@ -3455,8 +3458,13 @@ unset($_SESSION['success_message'], $_SESSION['error_message'], $_SESSION['flash
                             </p>
                         <?php endif; ?>
 
-                        <?php if ($booking['payment_status'] !== 'paid' && !$bd_has_due): ?>
+                        <?php $bd_expired_hold = (($booking['status'] ?? '') === 'expired') && !bookingLifecycleNoshowFeeTagged($booking); ?>
+                        <?php if ($bd_expired_hold && !$bd_has_due): ?>
+                            <p class="bd-paid-note"><i class="fas fa-check-circle"></i> Expired before it was confirmed: nothing is owed.</p>
+                        <?php elseif ($booking['payment_status'] !== 'paid' && !$bd_has_due): ?>
                             <p class="bd-paid-note"><i class="fas fa-check-circle"></i> Nothing is owed on this booking.</p>
+                        <?php elseif ($booking['payment_status'] !== 'paid' && empty($bPerms['can_record_payment'])): /* the save would refuse: say why, no button */ ?>
+                            <p class="bd-paid-note"><i class="fas fa-info-circle"></i> <?php echo htmlspecialchars((string)($bPerms['can_record_payment_reason'] ?? '')); ?></p>
                         <?php elseif ($booking['payment_status'] !== 'paid'): ?>
                             <div class="payment-form">
                                 <?php if ($bd_perm_pay): /* owner 2026-11-12: full or part payment, never one click */ ?>
