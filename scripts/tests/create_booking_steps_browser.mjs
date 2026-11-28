@@ -125,7 +125,17 @@ let msgId = 0; const pending = new Map(); const pageErrors = []; let dialogs = [
 //   'capture'    caught and failed here: it never reaches the server
 //   'no-overpay' sent only if it carries no confirm_overpay (else failed here and flagged)
 //   anything else: sent unchanged, a copy kept in lastPost
-let fetchMode = null; let captured = null; let lastPost = null; let postBlocked = '';
+//   (Phase C: Create is a background POST with response=wizard; a POST with dry_run=1 is the price check and always
+//   passes untouched. The plain form post (Document) is still a Create.)
+//   'no-overpay'   Create sent with confirm_overpay taken out of the body (as if the tick was lost on the way)
+//   'tamper-quote' Create sent with quote_total raised by 500 (as if the price changed after the Review)
+//   'hold'         Create held here (held = { requestId, pairs }) until the case continues it
+//   'nocookie'     the browser's cookies cleared just before Create leaves and put back when its answer arrives (the
+//                  server sees no sign-in at Create; needs the Response stage on)
+//   'nocookie-clear' the cookies cleared at Create and left cleared
+//   'lose-reply'   Create sent and saved; its answer is dropped here (the reply never reaches the page)
+let fetchMode = null; let captured = null; let lastPost = null; let postBlocked = ''; let createPosts = 0; let held = null; let loseIds = new Set(); let cookieStash = null;
+const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 ws.addEventListener('message', (ev) => {
   const m = JSON.parse(ev.data);
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }
@@ -133,21 +143,50 @@ ws.addEventListener('message', (ev) => {
   if (m.method === 'Page.javascriptDialogOpening') { dialogs.push(m.params.message); send('Page.handleJavaScriptDialog', { accept: true }); }
   if (m.method === 'Fetch.requestPaused') {
     const p = m.params;
-    if (p.request.method === 'POST' && p.resourceType === 'Document') {
-      let body = p.request.postData;
-      if (body === undefined && Array.isArray(p.request.postDataEntries)) body = p.request.postDataEntries.map(e => Buffer.from(e.bytes || '', 'base64').toString('utf8')).join('');
-      const pairs = Array.from(new URLSearchParams(body || '').entries());
-      if (fetchMode === 'capture') {
-        captured = pairs;
-        send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Aborted' }); // caught here: never reaches the server
-      } else if (fetchMode === 'no-overpay' && pairs.some(([k]) => k === 'confirm_overpay')) {
-        postBlocked = 'the post still carried confirm_overpay, so it was stopped here (never sent)';
-        send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Aborted' });
-      } else {
-        lastPost = pairs;
-        send('Fetch.continueRequest', { requestId: p.requestId });
-      }
+    if (p.responseStatusCode !== undefined || p.responseErrorReason !== undefined) { // response stage ('lost' case only)
+      const rid = p.networkId || p.requestId;
+      if (loseIds.has(rid)) send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'ConnectionReset' });
+      else if (cookieStash && cookieStash.id === rid) { // sent without cookies: put them back before the page sees the answer
+        const params = cookieStash.cookies.map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite, expires: c.session ? undefined : c.expires }));
+        cookieStash = null;
+        send('Network.setCookies', { cookies: params }).then(() => send('Fetch.continueRequest', { requestId: p.requestId }));
+      } else send('Fetch.continueRequest', { requestId: p.requestId });
+      return;
+    }
+    let body = p.request.postData;
+    if (body === undefined && Array.isArray(p.request.postDataEntries)) body = p.request.postDataEntries.map(e => Buffer.from(e.bytes || '', 'base64').toString('utf8')).join('');
+    const pairs = p.request.method === 'POST' ? Array.from(new URLSearchParams(body || '').entries()) : [];
+    const has = (k, v) => pairs.some(([a, b]) => a === k && (v === undefined || b === v));
+    const isCreate = p.request.method === 'POST' && !has('dry_run', '1') && (p.resourceType === 'Document' || has('response', 'wizard'));
+    if (!isCreate) { send('Fetch.continueRequest', { requestId: p.requestId }); return; }
+    createPosts++;
+    if (fetchMode === 'capture') {
+      captured = pairs;
+      send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Aborted' }); // caught here: never reaches the server
+    } else if (fetchMode === 'no-overpay') {
+      const out = pairs.filter(([k]) => k !== 'confirm_overpay');
+      lastPost = out;
+      send('Fetch.continueRequest', { requestId: p.requestId, postData: b64(new URLSearchParams(out).toString()) });
+    } else if (fetchMode === 'tamper-quote') {
+      const out = pairs.map(([k, v]) => k === 'quote_total' ? [k, (Number(v) + 500).toFixed(2)] : [k, v]);
+      lastPost = out;
+      send('Fetch.continueRequest', { requestId: p.requestId, postData: b64(new URLSearchParams(out).toString()) });
+    } else if (fetchMode === 'hold') {
+      lastPost = pairs;
+      held = { requestId: p.requestId, pairs };
+    } else if (fetchMode === 'nocookie' || fetchMode === 'nocookie-clear') {
+      lastPost = pairs;
+      const keep = fetchMode === 'nocookie', rid = p.networkId || p.requestId;
+      send('Network.getAllCookies').then((g) => {
+        if (keep) cookieStash = { id: rid, cookies: (g.result && g.result.cookies) || [] };
+        return send('Network.clearBrowserCookies');
+      }).then(() => send('Fetch.continueRequest', { requestId: p.requestId }));
+    } else if (fetchMode === 'lose-reply') {
+      lastPost = pairs;
+      loseIds.add(p.networkId || p.requestId);
+      send('Fetch.continueRequest', { requestId: p.requestId });
     } else {
+      lastPost = pairs;
       send('Fetch.continueRequest', { requestId: p.requestId });
     }
   }
@@ -252,6 +291,7 @@ window.__t = window.__t || (function () {
     await next(1);
     if (!c.prefilled) {
       const free = roomsData.filter(r => typeLeft(r.id) >= (c.distinct ? 1 : c.rooms)).map(r => r.id);
+      if (c.leastLeft) free.sort((a, b) => typeLeft(a) - typeLeft(b)); // the type with the fewest rooms left first
       if (free.length < (c.distinct ? c.rooms : 1)) throw new Error('not enough free room types for the case');
       for (let i = 0; i < c.rooms; i++) {
         if (lines().length <= i) addRoomLine();
@@ -273,7 +313,7 @@ window.__t = window.__t || (function () {
       set($('paymentMethod'), c.method || 'cash');
       if (c.amount === 'over') {
         await settle();
-        set($('amountCollected'), (Number(cbQ.quote.totals.total_with_vat) + 5000).toFixed(2));
+        set($('amountCollected'), (Number(cbQ.quote.totals.total_with_vat) + (c.overBy || 5000)).toFixed(2));
       } else if (c.amount !== undefined && c.amount !== null) {
         set($('amountCollected'), String(c.amount));
       }
@@ -425,9 +465,15 @@ async function fullRun() {
     check(near(rv.sum.total, rv.total) && near(rv.sum.owed, rv.owed) && rv.sum.state === '', `${ctx.label}: the summary panel shows the same total and still owed`, JSON.stringify(rv.sum));
   }
   // Create: the real button, the real POST. Returns the new booking id, or the refusal shown on the page.
-  async function create(label) {
+  // clicks > 1: a double click, plus one more press (Enter / requestSubmit) while the first is still saving.
+  async function create(label, clicks = 1) {
     lastPost = null; postBlocked = '';
-    await js(`window.__cbCreate = 1; document.getElementById('cbSubmitBtn').click(); true`);
+    await js(`window.__cbCreate = 1; (function () { var b = document.getElementById('cbSubmitBtn'), f = document.getElementById('createBookingForm');
+      for (var i = 0; i < ${clicks}; i++) b.click();
+      if (${clicks} > 1) setTimeout(function () { try { f.requestSubmit(); } catch (e) {} b.click(); }, 1500); })(); true`);
+    return awaitCreate(label);
+  }
+  async function awaitCreate(label) {
     const t0 = Date.now();
     while (Date.now() - t0 < 120000) {
       await sleep(400);
@@ -442,8 +488,10 @@ async function fullRun() {
       if (!s || s.rs !== 'complete') continue;
       if (s.same) {
         // Still the page Create was pressed on (a refused page keeps its earlier refusal in cbRepost, so it is not
-        // read here): only the page's own checks can have stopped it, with nothing posted.
+        // read here). Nothing posted: the page's own checks stopped it. Posted (Phase C, Create in the background):
+        // the save's answer is shown in the step it belongs to, with the button back.
         if (!lastPost && s.err && !s.busy && Date.now() - t0 > 4000) return { id: 0, refused: 'page: ' + s.err };
+        if (lastPost && s.err && !s.busy) return { id: 0, refused: 'server: ' + s.err, server: true };
         continue;
       }
       const m = s.u.match(/booking-details\.php\?id=(\d+)/);
@@ -762,22 +810,24 @@ async function fullRun() {
         await js(`(async function () { document.getElementById('overCollectedCb').click(); await __t.settle(); await __t.next(4); return true; })()`);
         await waitFor('__t.reviewReady()', 60000, ctx.label + ': Review');
         const before = await js('__t.state()');
-        await js(`(function () { var f = document.getElementById('createBookingForm'); f.addEventListener('submit', function h() { f.removeEventListener('submit', h); document.getElementById('overCollectedCb').checked = false; }); return true; })()`);
+        // Phase C: Create saves in the background; the tick is taken out of the request on its way (never the form).
         fetchMode = 'no-overpay';
         const r = await create(ctx.label);
         fetchMode = null;
         if (r.id) track(ctx, r.id);
-        check(!r.id && !r.blocked && !!r.refused, `${ctx.label}: the save refused the post, no booking ("${String(r.refused || '').slice(0, 90)}")`, r.id ? 'booking ' + r.id : String(r.refused));
-        if (r.id || r.blocked) return;
-        await js(HELPERS);
-        await waitFor('typeof cbQ !== "undefined" && !!cbQ.quote && !__t.busy()', 60000, 'price check after the refusal');
+        const sentNoTick = !!lastPost && !lastPost.some(([k]) => k === 'confirm_overpay') && lastPost.some(([k, v]) => k === 'response' && v === 'wizard');
+        check(!r.id && r.server && sentNoTick, `${ctx.label}: the save refused the post without the tick, no booking ("${String(r.refused || '').slice(0, 90)}")`, r.id ? 'booking ' + r.id : String(r.refused));
+        if (r.id || !r.server) return;
+        const nb = select('SELECT COUNT(*) AS n FROM bookings WHERE guest_email = ? AND id > ?', [c.email, start.booking])[0];
+        check(Number(nb.n) === 0, `${ctx.label}: nothing stored for the guest`, String(nb.n));
         const after = await js('__t.state()');
-        check(after.step === 4 && after.err4.indexOf(String(r.refused).slice(0, 40)) !== -1, `${ctx.label}: the page opens step 4 with the refusal`, JSON.stringify({ step: after.step, err4: after.err4 }));
+        check(after.step === 4 && after.err4.indexOf(String(r.refused).replace(/^server: /, '').slice(0, 40)) !== -1 && /paid more than owed|more than/i.test(after.err4),
+          `${ctx.label}: the page opens step 4 with the refusal, no reload`, JSON.stringify({ step: after.step, err4: after.err4 }));
         const same = ['ci', 'co', 'guests', 'name', 'email', 'phone', 'requests', 'method', 'status'].filter(k => after[k] !== before[k]);
-        check(same.length === 0 && JSON.stringify(after.lines) === JSON.stringify(before.lines) && after.paid && near(after.amount, before.amount),
-          `${ctx.label}: nothing lost: dates, guests, rooms, guest, requests, payment ${after.method} ${after.amount}`, JSON.stringify({ changed: same, before, after }));
-        check(!after.tick, `${ctx.label}: the overpay tick is not restored (staff confirm it again)`);
+        check(same.length === 0 && JSON.stringify(after.lines) === JSON.stringify(before.lines) && after.paid && near(after.amount, before.amount) && after.tick === before.tick,
+          `${ctx.label}: nothing lost: dates, guests, rooms, guest, requests, payment ${after.method} ${after.amount}, the tick as staff left it`, JSON.stringify({ changed: same, before, after }));
         check(after.focus === 'overCollectedCb', `${ctx.label}: the overpay tick has the focus`, after.focus);
+        check(await js(`!document.getElementById('cbSubmitBtn').disabled`), `${ctx.label}: Create is back`);
         // A refused page comes back with the guest email ticked (its markup default, as on the old form): untick it again.
         await js(`(async function () { __t.emailTick(${JSON.stringify(c)}); __t.set(__t.$('amountCollected'), Number(cbQ.quote.totals.total_with_vat).toFixed(2)); await __t.settle(); await __t.next(4); return true; })()`);
         await waitFor('__t.reviewReady()', 60000, ctx.label + ': Review after the fix');
@@ -838,6 +888,254 @@ async function fullRun() {
         verify(ctx, id, rv, c);
         const au = select("SELECT id FROM booking_audit_log WHERE booking_id = ? AND action = 'email_sent' AND note LIKE 'Email wording edited before sending by %'", [id]);
         check(au.length === 0, `${ctx.label}: no "edited wording" History line`);
+      });
+
+      // ── Phase C: Create saves in the background (response=wizard) ──
+      const forGuest = (email) => Number(select('SELECT COUNT(*) AS n FROM bookings WHERE guest_email = ? AND id > ?', [email, start.booking])[0].n);
+      const sameForm = (a, b) => ['ci', 'co', 'guests', 'name', 'email', 'phone', 'requests', 'method', 'amount', 'paid', 'status'].filter(k => a[k] !== b[k]).concat(JSON.stringify(a.lines) === JSON.stringify(b.lines) ? [] : ['lines']);
+      const errOn = (n) => js(`(function () { var e = document.getElementById('cbErr${n}'); return e && e.style.display !== 'none' ? e.textContent.replace(/\\s+/g, ' ').trim() : ''; })()`);
+
+      // Success: a double click (and one more press while saving) sends ONE Create; the booking page shows the success
+      // flash; the same Create sent again answers with the same booking (same client_uuid), still one booking.
+      await runCase('wiz', W, shared, async (ctx) => {
+        const c = mk(ctx, 44, 2, { paid: true, method: 'cash' });
+        await open(BASE + '/admin/create-booking.php');
+        const rv = await toReview(ctx, c);
+        checkReview(ctx, rv);
+        createPosts = 0; dialogs = [];
+        const id = (await create(ctx.label, 2)).id;
+        if (id) track(ctx, id);
+        check(id > 0, `${ctx.label}: Create saved the booking and opened booking-details.php?id=${id}`);
+        if (!id) return;
+        const p = new Map(lastPost || []);
+        check(createPosts === 1, `${ctx.label}: double click + a press while saving sent one Create`, String(createPosts));
+        check(p.get('response') === 'wizard' && !p.has('dry_run') && near(p.get('quote_total'), rv.total) && !!p.get('client_uuid'), `${ctx.label}: Create posted response=wizard with quote_total ${p.get('quote_total')} (Review ${f2(rv.total)})`);
+        check(forGuest(c.email) === 1, `${ctx.label}: one booking for the guest`, String(forGuest(c.email)));
+        await sleep(800);
+        const flash = await js(`document.body.innerText.replace(/\\s+/g, ' ')`);
+        const ref = group(id)[0].booking_reference;
+        // The save keeps $_SESSION['flash_message'] exactly as after a plain post (static check in create_booking_dryrun_test).
+        // No admin page renders that key today (admin/includes/admin-flash.php reads other keys), for the plain post too.
+        console.log(`   booking page ${flash.indexOf('created successfully') !== -1 ? 'shows' : 'does not show'} "Booking ${ref} ... created successfully" (same as after a plain post: flash_message is not rendered by admin-flash.php)`);
+        check(dialogs.length === 0, `${ctx.label}: no leave-page dialog`, dialogs.join(' | '));
+        verify(ctx, id, rv, c);
+        const again = await js(`(async function () { var r = await fetch('/admin/create-booking.php', { method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' }, body: ${JSON.stringify(new URLSearchParams(lastPost || []).toString())} });
+          var t = await r.text(); try { return JSON.parse(t); } catch (e) { return { raw: t.slice(0, 200) }; } })()`);
+        check(again && again.ok === true && again.duplicate === true && again.redirect === 'booking-details.php?id=' + id && forGuest(c.email) === 1,
+          `${ctx.label}: the same Create sent again answers with the same booking, still one booking`, JSON.stringify(again));
+      });
+
+      // Room taken between Review and Create: Create is held, another booking takes every room left of the type, then
+      // Create goes on: the save refuses at step 2, nothing is lost, nothing stored for the guest.
+      await runCase('taken', W, shared, async (ctx) => {
+        if (W < 500) return;
+        const c = mk(ctx, 47, 2, { leastLeft: true });
+        await open(BASE + '/admin/create-booking.php');
+        const rv = await toReview(ctx, c);
+        checkReview(ctx, rv);
+        const before = await js('__t.state()');
+        const type = Number(before.lines[0]);
+        fetchMode = 'hold'; held = null; lastPost = null; postBlocked = '';
+        await js(`window.__cbCreate = 1; document.getElementById('cbSubmitBtn').click(); true`);
+        for (let i = 0; i < 300 && !held; i++) await sleep(200);
+        if (!held) throw new Error('Create was not posted');
+        const bl = await js(`(async function () {
+          var fd = new FormData(document.getElementById('createBookingForm')), left = typeLeft(${type}) + 1; // typeLeft counts this form's own room as taken
+          ['payment_method', 'amount_collected', 'send_email', 'confirm_overpay', 'email_wording_key', 'email_wording_html', 'apply_credit_note_ids[]', 'apply_credit_override', 'apply_credit_override_reason', 'send_quotation'].forEach(function (k) { fd.delete(k); });
+          fd.set('payment_received', '0'); fd.set('room_line_qty[]', String(left)); fd.set('number_of_guests', String(Math.max(1, left)));
+          fd.set('guest_name', 'Steps blocker ${W}'); fd.set('guest_email', 'steps.blocker.${W}.${RUN}@example.invalid');
+          fd.set('client_uuid', Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function (b) { return b.toString(16).padStart(2, '0'); }).join(''));
+          fd.set('response', 'json');
+          var r = await fetch('/admin/create-booking.php', { method: 'POST', body: new URLSearchParams(fd), credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          var t = await r.text(); try { var j = JSON.parse(t); j.left = left; return j; } catch (e) { return { success: false, message: 'not JSON: ' + t.slice(0, 200), left: left }; }
+        })()`);
+        if (bl && bl.booking_id) track(ctx, Number(bl.booking_id));
+        check(!!(bl && bl.success), `${ctx.label}: another booking took the ${bl && bl.left} room(s) left of type ${type}`, JSON.stringify(bl));
+        fetchMode = null;
+        await send('Fetch.continueRequest', { requestId: held.requestId });
+        const r = await awaitCreate(ctx.label);
+        if (r.id) track(ctx, r.id);
+        const after = await js('__t.state()');
+        const e2 = await errOn(2);
+        check(!r.id && r.server && after.step === 2 && /remain available|no longer available|not available|unavailable/i.test(e2), `${ctx.label}: the save refused at step 2: "${e2.slice(0, 110)}"`, JSON.stringify({ r, step: after.step }));
+        check(sameForm(before, after).length === 0, `${ctx.label}: nothing lost`, JSON.stringify(sameForm(before, after)));
+        check(forGuest(c.email) === 0, `${ctx.label}: nothing stored for the guest`);
+      });
+
+      // Price changed after the Review (quote_total raised on the way): refused at step 5, nothing saved.
+      await runCase('tamper', W, shared, async (ctx) => {
+        if (W < 500) return;
+        const c = mk(ctx, 50, 2, { paid: true, method: 'cash' });
+        await open(BASE + '/admin/create-booking.php');
+        const rv = await toReview(ctx, c);
+        checkReview(ctx, rv);
+        const before = await js('__t.state()');
+        fetchMode = 'tamper-quote';
+        const r = await create(ctx.label);
+        fetchMode = null;
+        if (r.id) track(ctx, r.id);
+        const after = await js('__t.state()');
+        const e5 = await errOn(5);
+        check(!r.id && r.server && after.step === 5 && /^The price changed since you checked it: .+ -> .+\. Check the Review again\./.test(e5), `${ctx.label}: refused at step 5: "${e5}"`, JSON.stringify(r));
+        check(sameForm(before, after).length === 0 && forGuest(c.email) === 0, `${ctx.label}: nothing lost, nothing stored`);
+      });
+
+      // Signed out at Create (the cookies cleared while Create leaves, put back when its answer comes): "It may have
+      // saved", the form untouched, nothing saved; after signing in again a re-press saves ONE booking. A Create whose
+      // answer is lost after it saved: a re-press finds that booking (same client_uuid) and shows it, still one booking.
+      // Last, the cookies cleared for good at Create: nothing is saved, and a re-press never makes a booking.
+      await runCase('lost', W, shared, async (ctx) => {
+        if (W < 500) return;
+        await send('Fetch.enable', { patterns: [{ urlPattern: '*create-booking.php*', requestStage: 'Request' }, { urlPattern: '*create-booking.php*', requestStage: 'Response' }] });
+        try {
+          const c = mk(ctx, 53, 2);
+          await open(BASE + '/admin/create-booking.php');
+          const rv = await toReview(ctx, c);
+          checkReview(ctx, rv);
+          const before = await js('__t.state()');
+          createPosts = 0;
+          fetchMode = 'nocookie';
+          const r = await create(ctx.label);
+          fetchMode = null;
+          if (r.id) track(ctx, r.id);
+          const where1 = await js('location.pathname');
+          if (!where1.endsWith('/create-booking.php')) throw new Error('the tab left for ' + where1 + ' after Create: ' + JSON.stringify(r));
+          const after = await js('__t.state()');
+          const e5 = await errOn(5);
+          check(!r.id && r.server && e5.indexOf('It may have saved. Check Bookings before pressing Create again.') === 0 && after.step === 5, `${ctx.label}: signed out at Create: "${e5}"`, JSON.stringify(r));
+          check(sameForm(before, after).length === 0 && await js(`!document.getElementById('cbSubmitBtn').disabled`), `${ctx.label}: the form is untouched and Create is back`);
+          check(forGuest(c.email) === 0, `${ctx.label}: nothing saved while signed out`);
+          const st = await js(`fetch('/__devlogin?to=dashboard.php', { credentials: 'same-origin' }).then(function (r) { return r.status; })`);
+          check(st === 200, `${ctx.label}: signed in again (another request, the form stays)`, String(st));
+          const r2 = await create(ctx.label);
+          if (r2.id) track(ctx, r2.id);
+          check(r2.id > 0 && forGuest(c.email) === 1 && createPosts === 2, `${ctx.label}: re-press after signing in again saved ONE booking`, JSON.stringify({ r2, n: forGuest(c.email), createPosts }));
+
+          const c2 = mk(ctx, 56, 2, { email: `steps.lost2.${W}.${RUN}@example.invalid` });
+          await open(BASE + '/admin/create-booking.php');
+          const rv2 = await toReview(ctx, c2);
+          checkReview(ctx, rv2);
+          loseIds = new Set();
+          fetchMode = 'lose-reply';
+          const r3 = await create(ctx.label);
+          fetchMode = null;
+          if (r3.id) track(ctx, r3.id);
+          const saved = select('SELECT id FROM bookings WHERE guest_email = ? AND id > ? AND primary_booking_id IS NULL ORDER BY id', [c2.email, start.booking]);
+          saved.forEach(b => track(ctx, Number(b.id)));
+          const e5b = await errOn(5);
+          check(!r3.id && r3.server && e5b.indexOf('It may have saved.') === 0 && saved.length === 1, `${ctx.label}: answer lost after the save: "${e5b.slice(0, 70)}", ${saved.length} booking saved`);
+          const r4 = await create(ctx.label);
+          if (r4.id) track(ctx, r4.id);
+          const link = await js(`(function () { var a = document.querySelector('#cbErr5 a'); return a ? a.getAttribute('href') : ''; })()`);
+          check(!r4.id && /Booking already created/.test(r4.refused || '') && saved.length === 1 && link === 'booking-details.php?id=' + saved[0].id && forGuest(c2.email) === 1,
+            `${ctx.label}: re-press shows the booking already made (link ${link}), still one booking`, JSON.stringify({ r4, link, n: forGuest(c2.email) }));
+
+          const c3 = mk(ctx, 59, 1, { email: `steps.lost3.${W}.${RUN}@example.invalid` });
+          await open(BASE + '/admin/create-booking.php');
+          const rv3 = await toReview(ctx, c3);
+          checkReview(ctx, rv3);
+          fetchMode = 'nocookie-clear';
+          const r5 = await create(ctx.label);
+          fetchMode = null;
+          if (r5.id) track(ctx, r5.id);
+          const where = await js('location.pathname');
+          console.log(`   cookies cleared for good at Create: ${JSON.stringify(r5).slice(0, 160)}; tab on ${where}`);
+          const onPage = where.endsWith('/create-booking.php');
+          const e5c = onPage ? await errOn(5) : '';
+          check(!r5.id && forGuest(c3.email) === 0 && (!onPage || e5c.indexOf('It may have saved.') === 0),
+            `${ctx.label}: cookies cleared for good at Create: nothing saved${onPage ? ', "' + e5c.slice(0, 60) + '"' : ' (the tab went to ' + where + ')'}`);
+          const st2 = await js(`fetch('/__devlogin?to=dashboard.php', { credentials: 'same-origin' }).then(function (r) { return r.status; })`);
+          if (onPage) {
+            const r6 = await create(ctx.label);
+            if (r6.id) track(ctx, r6.id);
+            check(!r6.id && forGuest(c3.email) === 0, `${ctx.label}: re-press after signing in again (a new session, status ${st2}): "${String(r6.refused || '').slice(0, 80)}", no booking`, JSON.stringify(r6));
+          } else {
+            check(st2 === 200 && forGuest(c3.email) === 0, `${ctx.label}: signed in again (status ${st2}): still no booking`);
+          }
+        } finally {
+          loseIds = new Set(); cookieStash = null; fetchMode = null;
+          await send('Fetch.enable', { patterns: [{ urlPattern: '*create-booking.php*', requestStage: 'Request' }] });
+        }
+      });
+
+      // Plain post vs Create in the background: the same form, the same dates, one after the other (each cancelled
+      // before the next, which gives the credit back): the stored money, status, payments, credit applied and the
+      // email log are identical. The credit comes from a small overpay booking (one credit note email).
+      await runCase('diff', W, shared, async (ctx) => {
+        if (W < 500) return;
+        const guest = { name: 'Steps diff ' + RUN, email: `steps.diff.${RUN}@example.invalid`, phone: '+265 999 000 160' };
+        const srcC = mk(ctx, 60, 1, Object.assign({ paid: true, method: 'cash', amount: 'over', overBy: 300, stop4: true }, guest));
+        await open(BASE + '/admin/create-booking.php');
+        await js(`__t.fill(${JSON.stringify(srcC)})`);
+        await js(`(async function () { document.getElementById('overCollectedCb').click(); await __t.settle(); await __t.next(4); return true; })()`);
+        await waitFor('__t.reviewReady()', 60000, ctx.label + ': Review (credit source)');
+        ctx.emails = 1; // the credit note email for the 300.00 extra (to the test recipient on the test platform)
+        const srcId = await createOk(ctx, { keep: true });
+        if (!srcId) return;
+        const note = select('SELECT id, credit_note_number, original_amount - amount_used AS bal FROM credit_notes WHERE booking_id = ? ORDER BY id', [srcId])[0];
+        check(!!note && near(note.bal, 300), `${ctx.label}: credit source ${note ? note.credit_note_number : '(none)'} with ${note ? f2(note.bal) : '-'}`);
+        if (!note) return;
+        const strip = (rows, refs, drop) => rows.map(r => {
+          const o = {};
+          for (const [k, v] of Object.entries(r)) {
+            if (drop.has(k) || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(v))) continue;
+            o[k] = typeof v === 'string' ? refs.reduce((s, ref) => s.split(ref).join('REF'), v) : v;
+          }
+          return o;
+        });
+        const DROP = new Set(['id', 'booking_reference', 'primary_booking_id', 'individual_room_id', 'client_uuid', 'booking_id', 'applied_to_booking_id', 'payment_id', 'receipt_number', 'invoice_number', 'payment_reference']);
+        const snapshot = (id, e0) => {
+          const rows = group(id), ids = rows.map(r => Number(r.id)), refs = rows.map(r => r.booking_reference);
+          const bk = select(`SELECT * FROM bookings WHERE id IN (${inList(ids)}) ORDER BY id`, ids);
+          const pay = select(`SELECT * FROM payments WHERE booking_id IN (${inList(ids)}) ORDER BY id`, ids);
+          const app = select(`SELECT * FROM credit_note_applications WHERE applied_to_booking_id IN (${inList(ids)}) ORDER BY id`, ids);
+          const em = select('SELECT * FROM email_send_log WHERE id > ? ORDER BY id', [e0]);
+          const emKeys = em.length ? Object.keys(em[0]).filter(k => /^(email_kind|status)$|recipient|to_email|email_to/i.test(k)) : [];
+          return { bookings: strip(bk, refs, DROP), payments: strip(pay, refs, DROP), credit: strip(app, refs, DROP),
+            emails: em.map(e => Object.fromEntries(emKeys.map(k => [k, typeof e[k] === 'string' ? refs.reduce((s, ref) => s.split(ref).join('REF'), e[k]) : e[k]]))) };
+        };
+        const subs = [
+          { tag: 'paid in full', c: mk(ctx, 63, 2, Object.assign({ paid: true, method: 'cash' }, guest)) },
+          { tag: 'part pay with credit', c: mk(ctx, 66, 3, Object.assign({ paid: true, method: 'bank_transfer', amount: '1000.00', credit: note.id }, guest)) },
+        ];
+        for (const s of subs) {
+          const snaps = {}, posts = {}, flashShown = {};
+          for (const mode of ['plain', 'wizard']) {
+            await open(BASE + '/admin/create-booking.php');
+            const rv = await toReview(ctx, s.c);
+            checkReview(ctx, rv);
+            const e0 = maxId('email_send_log');
+            let r;
+            if (mode === 'plain') {
+              lastPost = null; postBlocked = '';
+              await js(`window.__cbCreate = 1; HTMLFormElement.prototype.submit.call(document.getElementById('createBookingForm')); true`);
+              r = await awaitCreate(ctx.label);
+            } else {
+              r = await create(ctx.label);
+            }
+            if (!r.id) { check(false, `${ctx.label}: ${s.tag} ${mode}: saved`, r.refused || ''); return; }
+            const m = track(ctx, r.id);
+            await sleep(800);
+            flashShown[mode] = (await js(`document.body.innerText`)).indexOf('created successfully') !== -1;
+            posts[mode] = lastPost || [];
+            snaps[mode] = snapshot(r.id, e0);
+            if (s.c.credit) check(snaps[mode].credit.length > 0, `${ctx.label}: ${s.tag} ${mode}: credit applied (${snaps[mode].credit.map(a => a.amount_applied).join(', ')})`);
+            await ctx.cancelNow(m);
+          }
+          check(flashShown.plain === flashShown.wizard, `${ctx.label}: ${s.tag}: the booking page shows the same after both (success message ${flashShown.plain ? 'shown' : 'not shown'} both times)`);
+          const pp = new Map(posts.plain), pw = new Map(posts.wizard);
+          const extra = posts.wizard.filter(([k]) => !pp.has(k)).map(([k]) => k).sort();
+          check(!pp.has('response') && !pp.has('quote_total') && JSON.stringify(extra) === JSON.stringify(['quote_total', 'response']) && pw.get('response') === 'wizard',
+            `${ctx.label}: ${s.tag}: the plain post carries no response/quote_total; Create adds only those two`, JSON.stringify(extra));
+          for (const part of ['bookings', 'payments', 'credit', 'emails']) {
+            const a = JSON.stringify(snaps.plain[part]), b = JSON.stringify(snaps.wizard[part]);
+            const diffs = [];
+            (snaps.plain[part] || []).forEach((row, i) => { const o = (snaps.wizard[part] || [])[i] || {}; Object.keys(Object.assign({}, row, o)).forEach(k => { if (JSON.stringify(row[k]) !== JSON.stringify(o[k])) diffs.push(`${k}: ${JSON.stringify(row[k])} vs ${JSON.stringify(o[k])}`); }); });
+            check(a === b, `${ctx.label}: ${s.tag}: ${part} identical, plain vs Create (${(snaps.plain[part] || []).length} row(s))`, diffs.slice(0, 12).join('; ') || `${a.slice(0, 200)} vs ${b.slice(0, 200)}`);
+          }
+          console.log(`   ${s.tag}: bookings ${JSON.stringify(snaps.plain.bookings.map(b => ({ total_with_vat: b.total_with_vat, amount_paid: b.amount_paid, status: b.status, payment_status: b.payment_status })))}; payments ${JSON.stringify(snaps.plain.payments.map(p => p.amount))}; credit ${JSON.stringify(snaps.plain.credit.map(a => a.amount_applied))}; emails ${JSON.stringify(snaps.plain.emails)}`);
+        }
       });
     }
   } finally {

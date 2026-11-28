@@ -78,8 +78,16 @@ $dryRanges = [];
 for ($p = 0; ($p = strpos($h, 'if ($cbDryRun) {', $p)) !== false; $p++) { $dryRanges[] = cbt_block($h, $p); }
 $calls = [];
 for ($p = 0; ($p = strpos($h, '$cbWizardReply(', $p)) !== false; $p++) { $calls[] = $p; }
-$outside = array_filter($calls, static function ($c) use ($dryRanges) { foreach ($dryRanges as [$o, $e]) { if ($c > $o && $c < $e) { return false; } } return true; });
-check(count($calls) === 3 && !$outside, 'the three wizard replies (duplicate, quote, refusal) only run in a dry run', 'calls ' . count($calls) . ', outside ' . count($outside));
+$wizRanges = [];
+for ($p = 0; ($p = strpos($h, 'if ($cbWizard) {', $p)) !== false; $p++) { $wizRanges[] = cbt_block($h, $p); }
+$inRanges = static function (int $c, array $ranges): bool { foreach ($ranges as [$o, $e]) { if ($c > $o && $c < $e) { return true; } } return false; };
+$inDry = array_filter($calls, static fn($c) => $inRanges($c, $dryRanges));
+$inWiz = array_filter($calls, static fn($c) => $inRanges($c, $wizRanges));
+$outside = array_filter($calls, static fn($c) => !$inRanges($c, $dryRanges) && !$inRanges($c, $wizRanges));
+check(count($inDry) === 3 && count($inWiz) === 5 && !$outside && count($calls) === 8,
+    'wizard replies: three in a dry run (duplicate, quote, refusal), five in a Create (still saving, duplicate, success, saved-then-failed, refusal), none elsewhere',
+    'calls ' . count($calls) . ', dry ' . count($inDry) . ', create ' . count($inWiz) . ', outside ' . count($outside));
+
 // Writes / logs / locks / session / redirects between the handler start and the quote reply: each one guarded.
 $preDry = substr($h, 0, (int)$dbClose);
 preg_match_all('/INSERT\s+INTO|UPDATE\s+`?\w+`?\s+SET|DELETE\s+FROM|REPLACE\s+INTO|rh_log_event\(|logBookingAudit|\$_SESSION\[[^\]]+\]\s*=[^=]|GET_LOCK|header\(\'Location/', $preDry, $wm, PREG_OFFSET_CAPTURE);
@@ -107,6 +115,51 @@ $dryCode = (string)preg_replace('#//[^
 check(stripos($dryCode, 'applyCreditNote') === false && stripos($dryCode, 'INSERT') === false && stripos($dryCode, 'send') === false && stripos($dryCode, 'rh_log_event') === false,
     'the dry-run block applies no credit, inserts, sends and logs nothing');
 
+// ── 2b. Create without reload (Phase C): response=wizard WITHOUT dry_run; the save is the plain save ──
+check(substr_count($h, "\$cbWizard   = (\$_POST['response'] ?? '') === 'wizard' && !\$cbDryRun;") === 1, 'Create mode is response=wizard and not a dry run');
+$cbtWiz = static function (array $post) use ($cbtDry): bool { return ($post['response'] ?? '') === 'wizard' && !$cbtDry($post); }; // the same expression
+check($cbtWiz(['response' => 'wizard']) && !$cbtWiz(['response' => 'wizard', 'dry_run' => '1']) && !$cbtWiz(['response' => 'json']) && !$cbtWiz([]) && !$cbtWiz(['response' => ['wizard']]),
+    'only response=wizard without dry_run=1 is a Create; the Assistant json replay and the plain form are not');
+check(substr_count($src, "\$_POST['quote_total']") === 1, 'quote_total is read in one place only');
+$posQuote = strpos($h, "\$cbQuoteTotal = \$_POST['quote_total'] ?? null;");
+$quoteIf = false;
+foreach ($wizRanges as [$o, $e]) { if ($posQuote !== false && $posQuote > $o && $posQuote < $e) { $quoteIf = substr($h, $o, $e - $o + 1); } }
+check($quoteIf !== false && $posQuote > $dbClose && $posQuote < $posTxComment, 'the quote_total check is inside if ($cbWizard), after the dry-run block and before the Transaction comment (no lock, nothing written)');
+check(is_string($quoteIf) && strpos($quoteIf, '$cbStep = 5;') !== false && strpos($quoteIf, 'round(abs($grand_total_with_vat - (float)$cbQuoteTotal), 2) > BALANCE_TOLERANCE') !== false
+    && strpos($quoteIf, "'The price changed since you checked it: '") !== false && strpos($quoteIf, "'. Check the Review again.'") !== false
+    && strpos($quoteIf, '!is_numeric($cbQuoteTotal)') !== false,
+    'a total that differs by more than BALANCE_TOLERANCE (or a missing one) refuses at step 5, before anything is saved');
+// The tolerance rule itself (same expression as the save): 0.01 passes, 0.02 refuses, a float wobble never refuses.
+$cbtQuoteRefuses = static fn(float $grand, string $qt): bool => round(abs($grand - (float)$qt), 2) > BALANCE_TOLERANCE;
+check(!$cbtQuoteRefuses(1000.00, '1000.00') && !$cbtQuoteRefuses(1000.01, '1000.00') && !$cbtQuoteRefuses(0.1 + 0.2, '0.30') && !$cbtQuoteRefuses(999.99, '1000.00')
+    && $cbtQuoteRefuses(1000.02, '1000.00') && $cbtQuoteRefuses(1100.00, '1000.00') && $cbtQuoteRefuses(1000.00, '0'),
+    'quote check: within 0.01 passes (incl. 0.1+0.2 vs 0.30), 0.02 or more refuses');
+$posWizOk = strpos($h, "\$cbWizardReply(['ok' => true, 'redirect' => 'booking-details.php?id=' . (int)\$primary_id]);");
+$posSuccFlash = strpos($h, "\$_SESSION['flash_message'] = [\n            'type' => 'success',");
+$succGap = ($posWizOk !== false && $posSuccFlash !== false) ? substr($h, $posSuccFlash, $posWizOk - $posSuccFlash) : '';
+$jsonExit3 = "if ((\$_POST['response'] ?? '') === 'json') { \$__jsonMsg = (string)\$_SESSION['flash_message']['text']; unset(\$_SESSION['flash_message']); header('Content-Type: application/json; charset=utf-8'); echo json_encode(['success' => true, 'booking_id' => (int)\$primary_id, 'reference' => (string)\$primary_ref, 'message' => \$__jsonMsg]); exit; } // Assistant replay (additive)";
+$succGapNoJson = str_replace($jsonExit3, '', $succGap);
+check($posWizOk !== false && $posSuccFlash !== false && $posSuccFlash < $posWizOk && strpos($succGap, $jsonExit3) !== false
+    && strpos($succGapNoJson, 'unset(') === false && strpos($succGapNoJson, 'exit') === false,
+    'a Create that saved answers {ok, redirect} after the success flash is set, and keeps the flash (nothing unset in between apart from the json branch)');
+$posWizDup = strpos($h, "\$cbWizardReply(['ok' => true, 'duplicate' => true, 'redirect' => 'booking-details.php?id=' . (int)\$__existingBooking['id']]);");
+check($posWizDup !== false && $posDupFlash < $posWizDup && $posWizDup < strpos($h, "header('Location: booking-details.php?id=' . (int)\$__existingBooking['id']);"),
+    'a repeated Create (same client_uuid) answers like a success, with the plain path\'s flash');
+$pos409 = strpos($h, 'http_response_code(409);');
+$posWiz409 = strpos($h, "if (\$cbWizard) {\n                    \$cbWizardReply(['ok' => false, 'step' => 0,");
+check($pos409 !== false && $posWiz409 !== false && $pos409 < $posWiz409 && $posWiz409 < strpos($h, "echo '<!doctype html><meta charset=\"utf-8\"><title>Still saving</title>"),
+    'a Create still being saved by the first press answers {ok:false, step 0} with 409');
+$posCatchWiz = strpos($catch, 'if ($cbWizard) {');
+check($posCatchWiz !== false && $posCatchLog < $posCatchWiz && $posCatchWiz < strpos($catch, "(\$_POST['response'] ?? '') === 'json'")
+    && strpos($catch, "\$cbWizardReply(['ok' => false, 'step' => rh_is_lock_conflict(\$e) ? 0 : \$cbStep, 'message' => \$error, 'field' => \$cbField]);") !== false,
+    'a refused Create is logged like a plain refused save, then answers {ok:false, step, message, field}');
+check(!preg_match('/name=["\'](response|quote_total|dry_run)["\']/', $src) && strpos($src, "body.set('response', 'wizard');\n                    body.set('quote_total',") !== false,
+    'response, quote_total and dry_run are never form fields: the page script adds them to its own fetch (a no-JS post stays the plain save)');
+check(strpos($src, "if (go === 'queue') submitNow(); else createBusy(false);") !== false && strpos($src, "submitOk = false;\n                createBusy(false);\n            }") !== false,
+    'offline: the form is handed to the offline queue with the button still disabled, re-enabled only after');
+check(strpos($h, "\$pdo->commit();\n        \$cbSaved = true;") !== false && strpos($catch, "if (\$cbSaved) {") !== false && strpos($catch, "'saved' => true") !== false
+    && strpos($catch, 'Nothing was saved') === false,
+    'a failure after the commit says the booking was saved (never "nothing was saved")');
 // ── 3. response=json (the Assistant's replay) is byte-for-byte as before ──
 $jsonExits = [
     "if ((\$_POST['response'] ?? '') === 'json') { header('Content-Type: application/json; charset=utf-8'); echo json_encode(['success' => false, 'error' => 'still_saving', 'message' => 'This booking is still being saved from the first submission. Check the Bookings list before trying again.']); exit; } // Assistant replay (additive)",
